@@ -25,7 +25,7 @@ export {
 } from './errors';
 
 export { assertNoRawCapabilityToken, redactCapabilitySecrets } from './redact';
-export { buildCapabilityUrl } from './urls';
+export { buildCapabilityPath, buildCapabilityUrl } from './urls';
 
 export {
   issueCapabilityForTask,

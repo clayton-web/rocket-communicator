@@ -8,7 +8,9 @@ export type CapabilityTokenErrorCode =
   | 'MISSING_CONFIGURATION'
   | 'INVALID_TTL_CONFIGURATION'
   | 'ISSUANCE_CONFLICT'
-  | 'ISSUANCE_PRECONDITION';
+  | 'ISSUANCE_PRECONDITION'
+  | 'PRECONDITION_FAILED'
+  | 'NOT_FOUND';
 
 /**
  * Stable internal capability-token errors. External HTTP mappers should avoid

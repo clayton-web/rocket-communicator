@@ -11,9 +11,12 @@ type ReturnTaskToOwnerRequest = components['schemas']['ReturnTaskToOwnerRequest'
 type RequestClarificationRequest = components['schemas']['RequestClarificationRequest'];
 type SnoozeTaskRequest = components['schemas']['SnoozeTaskRequest'];
 type DismissTaskRequest = components['schemas']['DismissTaskRequest'];
+type IssueTaskCapabilityRequest = components['schemas']['IssueTaskCapabilityRequest'];
 type TaskSummaryPoint = components['schemas']['TaskSummaryPoint'];
 type TaskOutcomeType = components['schemas']['TaskOutcomeType'];
 type TaskPriority = components['schemas']['TaskPriority'];
+type CapabilityAction = components['schemas']['CapabilityAction'];
+type CapabilityScope = components['schemas']['CapabilityScope'];
 
 const OUTCOME_TYPES = new Set<TaskOutcomeType>([
   'completed',
@@ -27,6 +30,17 @@ const OUTCOME_TYPES = new Set<TaskOutcomeType>([
 ]);
 
 const PRIORITIES = new Set<TaskPriority>(['low', 'normal', 'high', 'urgent']);
+
+const CAPABILITY_ACTIONS = new Set<CapabilityAction>([
+  'view_assigned_task',
+  'complete_task',
+  'mark_task_waiting',
+  'add_task_note',
+  'record_completion_outcome',
+  'return_task_to_owner',
+  'request_clarification',
+  'submit_work_request',
+]);
 
 function fail(message: string): { ok: false; response: NextResponse<ErrorResponse> } {
   return {
@@ -187,6 +201,39 @@ export function parseOptionalNoteBody(
     value: {
       note: body.note as string | undefined,
       reason: body.reason as string | undefined,
+    },
+  };
+}
+
+/** Validates optional IssueTaskCapabilityRequest (scope override only; no TTL/replace flags). */
+export function parseIssueCapabilityBody(
+  body: Record<string, unknown>,
+):
+  | { ok: true; value: IssueTaskCapabilityRequest }
+  | { ok: false; response: NextResponse<ErrorResponse> } {
+  if (body.scope === undefined) {
+    return { ok: true, value: {} };
+  }
+  if (!Array.isArray(body.scope)) {
+    return fail('scope must be an array of capability actions.');
+  }
+  if (body.scope.length < 1 || body.scope.length > 8) {
+    return fail('scope must contain between 1 and 8 actions.');
+  }
+  const seen = new Set<string>();
+  for (const action of body.scope) {
+    if (typeof action !== 'string' || !CAPABILITY_ACTIONS.has(action as CapabilityAction)) {
+      return fail('scope contains an invalid capability action.');
+    }
+    if (seen.has(action)) {
+      return fail('scope must not contain duplicate actions.');
+    }
+    seen.add(action);
+  }
+  return {
+    ok: true,
+    value: {
+      scope: body.scope as CapabilityScope,
     },
   };
 }

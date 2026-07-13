@@ -48,6 +48,11 @@ export interface IssueCapabilityCommand {
   pepper: string;
   appUrl: string;
   now: UtcInstant;
+  /**
+   * When provided (Owner HTTP If-Match), must equal the current task version.
+   * Mismatch → PRECONDITION_FAILED. Used as the optimistic write precondition.
+   */
+  expectedVersion?: number;
   capabilityId?: CapabilityId;
   /**
    * Optional subset of the assignment's allowed recipient actions (OpenAPI IssueTaskCapabilityRequest).
@@ -172,7 +177,26 @@ async function persistIssuance(
   const pepper = assertValidCapabilityPepper(command.pepper, 'pepper');
   const owner = ownerActor(command.owner.ownerId, command.owner.organizationId);
 
-  const current = await getTaskById(command.db, owner.organizationId, command.taskId);
+  let current: Task;
+  try {
+    current = await getTaskById(command.db, owner.organizationId, command.taskId);
+  } catch (error) {
+    if (error instanceof PersistenceError) {
+      if (error.code === 'NOT_FOUND' || error.code === 'ORGANIZATION_MISMATCH') {
+        throw capabilityTokenError('NOT_FOUND', 'Task not found.', { taskId: command.taskId });
+      }
+    }
+    throw error;
+  }
+
+  if (command.expectedVersion !== undefined && current.version !== command.expectedVersion) {
+    throw capabilityTokenError(
+      'PRECONDITION_FAILED',
+      'The resource has changed since the provided ETag.',
+      { taskId: command.taskId },
+    );
+  }
+
   if (!current.assignment) {
     throw capabilityTokenError(
       'ISSUANCE_PRECONDITION',
@@ -183,6 +207,7 @@ async function persistIssuance(
 
   const assignmentSnapshot: TaskAssignment = { ...current.assignment };
   const scope = resolveCapabilityScopeFromAssignment(assignmentSnapshot, command.scope);
+  const writeVersion = command.expectedVersion ?? current.version;
 
   const existingActive = await findActiveCapabilitiesForAssignment(
     command.db,
@@ -257,7 +282,8 @@ async function persistIssuance(
       const task = await updateTaskWithExpectedVersion(
         tx,
         owner.organizationId,
-        current.version,
+        // If-Match expectedVersion is enforced atomically here (not only via the pre-transaction read).
+        writeVersion,
         taskForPersist,
       );
 
@@ -334,9 +360,11 @@ async function persistIssuance(
       );
     }
     if (error instanceof PersistenceError && error.code === 'OPTIMISTIC_CONCURRENCY') {
-      throw capabilityTokenError('ISSUANCE_CONFLICT', 'Task changed during capability issuance.', {
-        taskId: command.taskId,
-      });
+      throw capabilityTokenError(
+        'PRECONDITION_FAILED',
+        'The resource has changed since the provided ETag.',
+        { taskId: command.taskId },
+      );
     }
     throw error;
   }
