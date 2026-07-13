@@ -1,14 +1,15 @@
 import type { Actor } from '../types/actor.js';
 import { isCapability, isOwner } from '../types/actor.js';
-import { assertCan } from '../policies/capabilities.js';
+import { assertCan, assertOwner } from '../policies/capabilities.js';
 import { assertMatchingPrecondition } from '../concurrency/etag.js';
-import { invalidTransition } from '../errors/domain-errors.js';
+import { invalidTransition, validationError } from '../errors/domain-errors.js';
 import {
   type Task,
   type TaskStatus,
   isActionableTaskStatus,
   isTerminalTaskStatus,
 } from '../entities/task.js';
+import type { TaskSuggestion } from '../entities/task-suggestion.js';
 import { buildCompletionRetention, buildDismissalRetention } from '../retention/calculators.js';
 import {
   pauseRemindersForWaiting,
@@ -22,20 +23,28 @@ import type {
   TaskOutcomeType,
 } from '../value-objects/task-outcome.js';
 import type { TaskNote } from '../value-objects/task-note.js';
+import type { TaskSummaryPoint } from '../value-objects/task-summary-point.js';
+import { MAX_TEXT_VALUE_LENGTH } from '../value-objects/task-summary-point.js';
+import type { SourceReference } from '../value-objects/source-reference.js';
 import type { UtcInstant } from '../types/timestamps.js';
-import type { OwnerId, RecipientId } from '../types/ids.js';
+import type { OrganizationId, AssignmentId, TaskId, TaskSuggestionId } from '../types/ids.js';
 import { assertFollowUpRequiresSuggestion } from '../policies/voice.policy.js';
 import { validateSummaryPoints } from '../validation/summary-points.js';
 import {
   formatCapabilityAuditContext,
   type ActionAttribution,
   type CapabilityAction,
+  type CapabilityAuditOptions,
+  type OwnerAuditContext,
 } from '../value-objects/capability.js';
+
+export const MAX_TYPED_MESSAGE_LENGTH = 2000;
 
 export interface TaskMutationContext {
   actor: Actor;
   ifMatch?: string;
   now: UtcInstant;
+  requestId?: string;
 }
 
 function ensureNotTerminal(task: Task): void {
@@ -64,24 +73,100 @@ function validateFollowUpProposal(proposal: FollowUpProposal): void {
   validateSummaryPoints(proposal.summaryPoints);
 }
 
-function buildAttribution(
+function assertTypedMessage(message: string, field: string): void {
+  if (message.trim().length < 1) {
+    throw validationError(`${field} must not be empty.`, [
+      { field, message: 'Required typed text is empty.' },
+    ]);
+  }
+  if (message.length > MAX_TYPED_MESSAGE_LENGTH) {
+    throw validationError(`${field} exceeds ${MAX_TYPED_MESSAGE_LENGTH} characters.`, [
+      { field, message: 'Text too long.' },
+    ]);
+  }
+}
+
+export function buildOwnerAuditContext(
+  actor: { ownerId: string },
+  recordedAt: UtcInstant,
+  requestId?: string,
+): OwnerAuditContext {
+  return {
+    ownerId: actor.ownerId,
+    recordedAt,
+    requestId,
+  };
+}
+
+export function buildActionAttribution(
   actor: Actor,
   now: UtcInstant,
-  capabilityAction?: CapabilityAction,
+  options: {
+    capabilityAction?: CapabilityAction;
+    resourceVersion?: number;
+    taskStatus?: string;
+    requestId?: string;
+    note?: string;
+    outcome?: CapabilityAuditOptions['outcome'];
+  } = {},
 ): ActionAttribution {
   if (isOwner(actor)) {
     return {
       kind: 'owner',
-      owner: { ownerId: actor.ownerId, recordedAt: now },
+      owner: buildOwnerAuditContext(actor, now, options.requestId),
     };
   }
-  if (isCapability(actor) && capabilityAction) {
+  if (isCapability(actor) && options.capabilityAction) {
     return {
       kind: 'capability',
-      capability: formatCapabilityAuditContext(actor, capabilityAction, now),
+      capability: formatCapabilityAuditContext(actor, options.capabilityAction, now, {
+        outcome: options.outcome ?? 'succeeded',
+        resourceVersion: options.resourceVersion,
+        taskStatus: options.taskStatus,
+        requestId: options.requestId,
+        note: options.note,
+      }),
     };
   }
   throw invalidTransition('Attribution requires an Owner or Capability actor.');
+}
+
+/**
+ * Owner-only typed standalone Task creation (D038/D048; CreateTaskRequest).
+ * Does not create an assignment or capability — assignment remains a separate attribute.
+ */
+export function createStandaloneTask(input: {
+  actor: Actor;
+  now: UtcInstant;
+  id: TaskId;
+  organizationId: OrganizationId;
+  summaryPoints: TaskSummaryPoint[];
+  dueAt?: UtcInstant | null;
+  priority?: Task['priority'];
+  sourceReference?: SourceReference;
+}): Task {
+  assertOwner(input.actor);
+  assertCan(input.actor, 'create_standalone_task', undefined, input.now);
+  if (input.actor.organizationId !== input.organizationId) {
+    throw validationError('Task organizationId must match the Owner organization.');
+  }
+  validateSummaryPoints(input.summaryPoints);
+
+  return {
+    id: input.id,
+    organizationId: input.organizationId,
+    status: 'open',
+    summaryPoints: input.summaryPoints,
+    dueAt: input.dueAt ?? null,
+    priority: input.priority,
+    sourceReference: input.sourceReference,
+    notes: [],
+    reminder: { paused: false },
+    retention: {},
+    version: 1,
+    createdAt: input.now,
+    updatedAt: input.now,
+  };
 }
 
 export function startTask(task: Task, context: TaskMutationContext): Task {
@@ -148,15 +233,26 @@ export function completeTask(
   ensureNotTerminal(task);
   withPrecondition(task, context.ifMatch);
 
+  if (context.note !== undefined) {
+    assertTypedMessage(context.note, 'note');
+  }
+
   if (context.followUpProposal) {
     assertFollowUpRequiresSuggestion();
     validateFollowUpProposal(context.followUpProposal);
   }
 
+  const nextVersion = task.version + 1;
   const outcome: TaskOutcome = {
     outcomeType: context.outcomeType,
     completedAt: context.now,
-    attribution: buildAttribution(context.actor, context.now, 'complete_task'),
+    attribution: buildActionAttribution(context.actor, context.now, {
+      capabilityAction: 'complete_task',
+      resourceVersion: nextVersion,
+      taskStatus: 'completed',
+      requestId: context.requestId,
+      note: context.note,
+    }),
     note: context.note,
     summaryPoints: context.summaryPoints,
     followUpProposal: context.followUpProposal,
@@ -216,40 +312,209 @@ export function snoozeTask(
   );
 }
 
-export function addTaskNote(task: Task, context: TaskMutationContext & { note: TaskNote }): Task {
+/** Typed note with attribution built from the actor (D052, D057, D058). */
+export function addTaskNote(
+  task: Task,
+  context: TaskMutationContext & { noteId: string; body: string },
+): Task {
   assertCan(context.actor, 'add_task_note', task, context.now);
   ensureNotTerminal(task);
   withPrecondition(task, context.ifMatch);
-  return bumpVersion({ ...task, notes: [...task.notes, context.note] }, context.now);
+  assertTypedMessage(context.body, 'body');
+
+  const nextVersion = task.version + 1;
+  const note: TaskNote = {
+    id: context.noteId,
+    body: context.body,
+    createdAt: context.now,
+    attribution: buildActionAttribution(context.actor, context.now, {
+      capabilityAction: 'add_task_note',
+      resourceVersion: nextVersion,
+      taskStatus: task.status,
+      requestId: context.requestId,
+      note: context.body,
+    }),
+  };
+
+  return bumpVersion({ ...task, notes: [...task.notes, note] }, context.now);
 }
 
+/**
+ * Identifiers the application/persistence layer must invalidate atomically with
+ * return-to-Owner (D056). Domain does not revoke the capability entity here —
+ * Phase 2 / application services own that orchestration invariant.
+ */
+export interface ReturnToOwnerInvalidationHint {
+  taskId: TaskId;
+  assignmentId: AssignmentId;
+  /** Prior `assignment.activeCapabilityId`, when recorded. */
+  capabilityId: string | null;
+}
+
+export interface ReturnTaskToOwnerResult {
+  task: Task;
+  /** Use with `invalidateCapabilityOnAssignmentChange` / `revokeCapability` in the same unit of work. */
+  capabilityInvalidation: ReturnToOwnerInvalidationHint;
+  attribution: ActionAttribution;
+}
+
+/**
+ * Return assignment to the Owner; status unchanged (STATE_MACHINE).
+ * Exposes `capabilityInvalidation` so Phase 2 can revoke the bound capability atomically.
+ * Does not mutate capability entities or perform persistence.
+ */
 export function returnTaskToOwner(
   task: Task,
-  context: TaskMutationContext & { ownerId: OwnerId },
-): Task {
+  context: TaskMutationContext & { noteId?: string; note?: string },
+): ReturnTaskToOwnerResult {
   assertCan(context.actor, 'return_task_to_owner', task, context.now);
   ensureNotTerminal(task);
   withPrecondition(task, context.ifMatch);
   if (!task.assignment) {
     throw invalidTransition('Task must be assigned before returning to Owner.');
   }
-  return bumpVersion(
-    {
-      ...task,
-      assignment: undefined,
-    },
-    context.now,
-  );
+
+  const capabilityInvalidation: ReturnToOwnerInvalidationHint = {
+    taskId: task.id,
+    assignmentId: task.assignment.id,
+    capabilityId: task.assignment.activeCapabilityId ?? null,
+  };
+
+  const nextVersion = task.version + 1;
+  const attribution = buildActionAttribution(context.actor, context.now, {
+    capabilityAction: 'return_task_to_owner',
+    resourceVersion: nextVersion,
+    taskStatus: task.status,
+    requestId: context.requestId,
+    note: context.note,
+  });
+
+  const notes = [...task.notes];
+  if (context.note !== undefined) {
+    assertTypedMessage(context.note, 'note');
+    if (!context.noteId) {
+      throw validationError('noteId is required when returning with a note.');
+    }
+    notes.push({
+      id: context.noteId,
+      body: context.note,
+      createdAt: context.now,
+      attribution,
+    });
+  }
+
+  return {
+    task: bumpVersion(
+      {
+        ...task,
+        assignment: undefined,
+        notes,
+      },
+      context.now,
+    ),
+    capabilityInvalidation,
+    attribution,
+  };
 }
 
 /** @deprecated Use returnTaskToOwner */
 export const returnTaskToPrimary = returnTaskToOwner;
 
-export function requestClarification(task: Task, context: TaskMutationContext): Task {
+/**
+ * Typed clarification request; does not change TaskStatus (STATE_MACHINE, D058).
+ * Persisted as an attributed note so the typed message survives without inventing fields.
+ */
+export function requestClarification(
+  task: Task,
+  context: TaskMutationContext & { noteId: string; message: string },
+): Task {
   assertCan(context.actor, 'request_clarification', task, context.now);
   ensureNotTerminal(task);
   withPrecondition(task, context.ifMatch);
-  return bumpVersion({ ...task }, context.now);
+  assertTypedMessage(context.message, 'message');
+
+  const nextVersion = task.version + 1;
+  const note: TaskNote = {
+    id: context.noteId,
+    body: context.message,
+    createdAt: context.now,
+    attribution: buildActionAttribution(context.actor, context.now, {
+      capabilityAction: 'request_clarification',
+      resourceVersion: nextVersion,
+      taskStatus: task.status,
+      requestId: context.requestId,
+      note: context.message,
+    }),
+  };
+
+  return bumpVersion({ ...task, notes: [...task.notes, note] }, context.now);
+}
+
+/**
+ * Recipient work request → pending Task Suggestion (D061). Does not create a Task.
+ * Full typed message is recorded on the source task as an attributed note; the suggestion
+ * request summary point carries a contract-safe preview (max summary-point value length).
+ */
+export function submitWorkRequest(
+  task: Task,
+  context: TaskMutationContext & {
+    suggestionId: TaskSuggestionId;
+    message: string;
+    noteId: string;
+    summaryPointId?: string;
+  },
+): { task: Task; suggestion: TaskSuggestion; attribution: ActionAttribution } {
+  assertCan(context.actor, 'submit_work_request', task, context.now);
+  ensureNotTerminal(task);
+  withPrecondition(task, context.ifMatch);
+  assertTypedMessage(context.message, 'message');
+
+  const nextVersion = task.version + 1;
+  const attribution = buildActionAttribution(context.actor, context.now, {
+    capabilityAction: 'submit_work_request',
+    resourceVersion: nextVersion,
+    taskStatus: task.status,
+    requestId: context.requestId,
+    note: context.message,
+  });
+
+  const note: TaskNote = {
+    id: context.noteId,
+    body: context.message,
+    createdAt: context.now,
+    attribution,
+  };
+
+  const preview =
+    context.message.length <= MAX_TEXT_VALUE_LENGTH
+      ? context.message
+      : context.message.slice(0, MAX_TEXT_VALUE_LENGTH);
+
+  const summaryPoints: TaskSummaryPoint[] = [
+    {
+      id: context.summaryPointId ?? 'work_request',
+      kind: 'request',
+      label: 'Work request',
+      order: 0,
+      value: preview,
+    },
+  ];
+  validateSummaryPoints(summaryPoints);
+
+  const suggestion: TaskSuggestion = {
+    id: context.suggestionId,
+    organizationId: task.organizationId,
+    status: 'pending',
+    summaryPoints,
+    voiceOriginated: false,
+    retention: {},
+    version: 1,
+    createdAt: context.now,
+    updatedAt: context.now,
+  };
+
+  const updatedTask = bumpVersion({ ...task, notes: [...task.notes, note] }, context.now);
+  return { task: updatedTask, suggestion, attribution };
 }
 
 export const TERMINAL_TASK_STATUSES: TaskStatus[] = ['completed', 'dismissed'];

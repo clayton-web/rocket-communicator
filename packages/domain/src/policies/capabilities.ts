@@ -2,7 +2,6 @@ import type { Actor, CapabilityActor, OwnerActor } from '../types/actor.js';
 import { isCapability, isOwner } from '../types/actor.js';
 import { forbiddenError } from '../errors/domain-errors.js';
 import type { Task } from '../entities/task.js';
-import { isTerminalTaskStatus } from '../entities/task.js';
 import type { CapabilityAction } from '../value-objects/capability.js';
 import { assertCapabilityPermitsAction, isCapabilityActive } from './capability.policy.js';
 
@@ -14,6 +13,7 @@ export type OwnerAction =
   | 'confirm_assignment'
   | 'create_standalone_task'
   | 'create_task_from_voice'
+  | 'issue_task_capability'
   | 'start_task'
   | 'snooze_task'
   | 'dismiss_task'
@@ -22,6 +22,7 @@ export type OwnerAction =
   | 'add_task_note'
   | 'return_task_to_owner'
   | 'request_clarification'
+  | 'submit_work_request'
   | 'approve_learning'
   | 'manage_workflow_rules'
   | 'manage_reminder_policies'
@@ -35,6 +36,7 @@ const OWNER_ACTIONS = new Set<OwnerAction>([
   'merge_task_suggestion',
   'confirm_assignment',
   'create_standalone_task',
+  'issue_task_capability',
   'start_task',
   'snooze_task',
   'dismiss_task',
@@ -55,10 +57,14 @@ const CAPABILITY_ACTION_MAP: Partial<Record<OwnerAction, CapabilityAction>> = {
   add_task_note: 'add_task_note',
   return_task_to_owner: 'return_task_to_owner',
   request_clarification: 'request_clarification',
+  submit_work_request: 'submit_work_request',
 };
 
 export function canOwner(actor: OwnerActor, action: OwnerAction): boolean {
   if (action === 'create_task_from_voice') {
+    return false;
+  }
+  if (action === 'submit_work_request') {
     return false;
   }
   return OWNER_ACTIONS.has(action);

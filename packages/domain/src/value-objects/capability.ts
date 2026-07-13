@@ -1,5 +1,7 @@
 import type { AssignmentId, CapabilityId, RecipientId, TaskId } from '../types/ids.js';
 import type { UtcInstant } from '../types/timestamps.js';
+import { addMilliseconds, MS_PER_DAY } from '../types/timestamps.js';
+import { validationError } from '../errors/domain-errors.js';
 
 export type CapabilityAction =
   | 'view_assigned_task'
@@ -17,6 +19,23 @@ export type CapabilityStatus = 'active' | 'revoked' | 'expired' | 'used';
 export type CapabilityScope = CapabilityAction[];
 
 export type AssignmentDeliveryStatus = 'pending' | 'sent' | 'failed';
+
+/** Default Recipient scope for issued capabilities (STATE_MACHINE / D050 / D061). */
+export const DEFAULT_RECIPIENT_CAPABILITY_SCOPE: CapabilityScope = [
+  'view_assigned_task',
+  'complete_task',
+  'mark_task_waiting',
+  'add_task_note',
+  'return_task_to_owner',
+  'request_clarification',
+  'submit_work_request',
+];
+
+/**
+ * Documented seven-day default TTL (D055). Callers/config must inject this (or another
+ * positive duration) into `issueTaskCapability`; the domain does not silently apply it.
+ */
+export const DEFAULT_CAPABILITY_TTL_MS = 7 * MS_PER_DAY;
 
 export interface TaskCapability {
   id: CapabilityId;
@@ -59,6 +78,22 @@ export type ActionAttribution =
   | { kind: 'owner'; owner: OwnerAuditContext }
   | { kind: 'capability'; capability: CapabilityAuditContext };
 
+export interface CapabilityActorContext {
+  capabilityId: CapabilityId;
+  taskId: TaskId;
+  assignmentId: AssignmentId;
+  intendedRecipientEmail: string;
+}
+
+export interface CapabilityAuditOptions {
+  outcome?: CapabilityAuditContext['outcome'];
+  resourceVersion?: number;
+  taskStatus?: string;
+  requestId?: string;
+  correlationId?: string | null;
+  note?: string;
+}
+
 export function capabilityAttributionLabel(email: string, action: CapabilityAction): string {
   return `Action submitted through link sent to ${email} (${action.replaceAll('_', ' ')})`;
 }
@@ -67,7 +102,7 @@ export function formatCapabilityAuditContext(
   actor: CapabilityActorContext,
   action: CapabilityAction,
   recordedAt: UtcInstant,
-  outcome: CapabilityAuditContext['outcome'] = 'succeeded',
+  options: CapabilityAuditOptions = {},
 ): CapabilityAuditContext {
   return {
     capabilityId: actor.capabilityId,
@@ -76,14 +111,22 @@ export function formatCapabilityAuditContext(
     intendedRecipientEmail: actor.intendedRecipientEmail,
     action,
     recordedAt,
-    outcome,
+    outcome: options.outcome ?? 'succeeded',
+    resourceVersion: options.resourceVersion,
+    taskStatus: options.taskStatus,
+    note: options.note,
+    requestId: options.requestId,
+    correlationId: options.correlationId,
     attributionLabel: capabilityAttributionLabel(actor.intendedRecipientEmail, action),
   };
 }
 
-export interface CapabilityActorContext {
-  capabilityId: CapabilityId;
-  taskId: TaskId;
-  assignmentId: AssignmentId;
-  intendedRecipientEmail: string;
+export function computeCapabilityExpiresAt(
+  issuedAt: UtcInstant,
+  ttlMs: number = DEFAULT_CAPABILITY_TTL_MS,
+): UtcInstant {
+  if (ttlMs <= 0) {
+    throw validationError('Capability TTL must be a positive duration.');
+  }
+  return addMilliseconds(issuedAt, ttlMs);
 }

@@ -47,7 +47,7 @@ export type {
   SummaryPointKind,
   Sensitivity,
 } from './value-objects/task-summary-point.js';
-export { MAX_SUMMARY_POINTS } from './value-objects/task-summary-point.js';
+export { MAX_SUMMARY_POINTS, MAX_TEXT_VALUE_LENGTH } from './value-objects/task-summary-point.js';
 export type { SourceReference, SourceType } from './value-objects/source-reference.js';
 export type { TaskAssignment } from './value-objects/task-assignment.js';
 export type {
@@ -59,10 +59,14 @@ export type {
   CapabilityAuditContext,
   OwnerAuditContext,
   ActionAttribution,
+  CapabilityAuditOptions,
 } from './value-objects/capability.js';
 export {
   capabilityAttributionLabel,
   formatCapabilityAuditContext,
+  computeCapabilityExpiresAt,
+  DEFAULT_CAPABILITY_TTL_MS,
+  DEFAULT_RECIPIENT_CAPABILITY_SCOPE,
 } from './value-objects/capability.js';
 export type {
   TaskOutcome,
@@ -148,6 +152,7 @@ export {
 } from './state-machines/task-suggestion.machine.js';
 
 export {
+  createStandaloneTask,
   startTask,
   markTaskWaiting,
   resumeTask,
@@ -158,8 +163,21 @@ export {
   returnTaskToOwner,
   returnTaskToPrimary,
   requestClarification,
+  submitWorkRequest,
+  buildActionAttribution,
+  buildOwnerAuditContext,
+  MAX_TYPED_MESSAGE_LENGTH,
   TERMINAL_TASK_STATUSES,
+  type ReturnTaskToOwnerResult,
+  type ReturnToOwnerInvalidationHint,
 } from './state-machines/task.machine.js';
+
+export {
+  issueTaskCapability,
+  revokeCapability,
+  markCapabilityExpired,
+  invalidateCapabilityOnAssignmentChange,
+} from './state-machines/capability.lifecycle.js';
 
 export type { DomainEvent, DomainEventType } from './events/domain-events.js';
 
