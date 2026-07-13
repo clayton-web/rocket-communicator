@@ -2,32 +2,36 @@
 
 Planning milestones only. No application scaffolding occurs in A0.
 
-**Current milestone: A0** (documentation and Git baseline). A0 is not complete until validation succeeds and the baseline commit exists.
+**Current milestone: A1 complete** (repository foundation). Next: **A2** (API contracts and domain model) — not started.
+
+Process for all later milestones: [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW.md) · [REVIEW_CHECKLIST.md](REVIEW_CHECKLIST.md) · [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md)
 
 ---
 
 ## A0: Documentation and Git baseline
 
-- **Objective:** Establish product, architecture, workflow, retention, security, decision, milestone, and open-question docs; local Git on `main`; baseline commit.
-- **Likely scope:** `README.md`, `docs/*`, `.gitignore`, local `git init`, first commit.
-- **Acceptance criteria:** All required docs exist; terminology consistent; exclusions and retention rules correct; no code/deps/services; commit `docs: establish project architecture baseline` on `main` without remote.
+- **Objective:** Establish product, architecture, workflow, retention, security, decision, milestone, and open-question docs; local Git on `main`; baseline commit; then complete governing documentation (constitutions, glossary, index, engineering workflow).
+- **Likely scope:** `README.md`, `docs/*`, `.gitignore`, local `git init`, first commit; subsequent documentation-only refinements under A0 until A1 begins.
+- **Acceptance criteria:** All required docs exist; terminology consistent; exclusions and retention rules correct; no code/deps/services; constitution and documentation index present; architecture baseline commit on `main` without remote.
 - **Major risks:** Doc drift vs later implementation; unresolved open questions misread as decisions.
 - **Out of scope:** App shells, dependencies, schemas, remotes, cloud resources.
-- **Recommended Git checkpoint:** `docs: establish project architecture baseline`
+- **Recommended Git checkpoint:** `docs: establish project architecture baseline` (created); further docs-only commits as requested
 
 ## A1: Repository tooling and application shells
 
 - **Objective:** Empty monorepo tooling with non-functional app shells.
-- **Likely scope:** pnpm/workspace or equivalent, Next.js stub, Android empty Compose app, CI lint/build smoke, `.env.example`.
-- **Acceptance criteria:** Web and Android projects build empty shells; CI green; still no external service wiring.
+- **Likely scope:** pnpm workspaces (no Turbo/Nx/Husky), Next.js App Router stub, Android empty Compose `:app` (`minSdk` 31), shared `eslint-config` / `typescript-config`, Prettier, EditorConfig, ktlint, GitHub Actions smoke CI. **No** `.env.example` (no env vars yet). **No** `packages/contracts|domain|db|ai|ui`.
+- **Acceptance criteria:** Web and Android projects build empty shells; format/lint/test/build checks pass; CI workflows present; docs reflect foundation; still no external service wiring or product features.
 - **Major risks:** Over-scaffolding before contracts exist.
-- **Out of scope:** Auth, Gmail, AI, notifications.
+- **Out of scope:** Auth, Gmail, AI, notifications, Prisma, Supabase, voice, tasks, API routes, `.env.example`.
 - **Recommended Git checkpoint:** `chore: monorepo and application shells`
+- **Status:** Complete (implementation + documentation + local verification). Instrumentation Android tests are local-only (no emulator CI in A1).
+- **Recorded foundation:** namespace `com.aicommunication.assistant`; `minSdk` 31; Node 22 / pnpm 9.15.9; Next.js 16.2.10; React 19.0.0; AGP 8.8.2; Kotlin 2.1.10; Gradle 8.12.1.
 
 ## A2: API contracts and domain model
 
-- **Objective:** Canonical OpenAPI/JSON Schema, Prisma draft model, domain state machine docs-as-code stubs.
-- **Likely scope:** `packages/contracts`, `packages/db`, `packages/domain`; generators planned for TS/Kotlin.
+- **Objective:** Canonical OpenAPI contract, Prisma draft model, domain state machine docs-as-code stubs.
+- **Likely scope:** `packages/contracts` (OpenAPI source of truth), `packages/db`, `packages/domain`; generators for TS/Kotlin from OpenAPI; optional JSON Schema derived from OpenAPI.
 - **Acceptance criteria:** Schemas validate sample payloads; state transitions unit-tested; no production migrations required yet if still local-only.
 - **Major risks:** Premature tables that fight retention design.
 - **Out of scope:** Live Supabase project requirement beyond local planning (connection still later).
@@ -46,7 +50,7 @@ Planning milestones only. No application scaffolding occurs in A0.
 
 - **Objective:** Task CRUD, notes, complete, waiting, snooze; authenticated `/t/[id]` style view.
 - **Likely scope:** Task APIs, minimal UI for primary and admin.
-- **Acceptance criteria:** Admin can open assigned task and complete/wait/note with audit; no unauthenticated mutations.
+- **Acceptance criteria:** Admin can open assigned task and complete/wait/note/return/request clarification with audit; cannot create standalone tasks or change rules; admin work requests become Task Suggestions; no unauthenticated mutations.
 - **Major risks:** Building a full dashboard by accident.
 - **Out of scope:** AI, Gmail forward, Android.
 - **Recommended Git checkpoint:** `feat: task core and minimal admin task view`
@@ -71,9 +75,9 @@ Planning milestones only. No application scaffolding occurs in A0.
 
 ## A7: Gmail forwarding and assignment email
 
-- **Objective:** After approval, assign admin; for Gmail-origin tasks forward original with all attachments and summary header; non-email tasks get normal assignment email.
-- **Likely scope:** Mailer, idempotent forward, audit of approver and Gmail ids, secure links.
-- **Acceptance criteria:** No send without approval; attachments included; duplicate forward prevented; admin from user record not hard-coded.
+- **Objective:** After one Primary confirmation, assign admin; for Gmail-origin tasks forward original with all attachments and summary header (bundled with create task + schedule reminders per D037); non-email tasks get normal assignment email.
+- **Likely scope:** Mailer, idempotent forward, audit of single bundled approval and Gmail ids, secure links.
+- **Acceptance criteria:** No send without the single confirmation; dialog discloses create task, forward email, forward attachments, schedule reminders; attachments included; duplicate forward prevented; admin from user record not hard-coded.
 - **Major risks:** Attachment size/policy failures; partial forwards.
 - **Out of scope:** Separate attachment approval UX.
 - **Recommended Git checkpoint:** `feat: assignment email and gmail forward`
@@ -116,9 +120,9 @@ Planning milestones only. No application scaffolding occurs in A0.
 
 ## A12: Voice capture and transcription
 
-- **Objective:** Record → transcribe → structure → confirm; delete audio on success; multi-intent complete + follow-up proposal with assignment approval gate.
+- **Objective:** Record → transcribe → structure → confirm; delete audio on success; voice never creates Tasks directly—follow-ups and new work are Task Suggestions (D038); multi-intent complete + follow-up proposal with assignment confirmation gate (D037).
 - **Likely scope:** Android recorder, upload API, OpenAI transcription, confirmation UI.
-- **Acceptance criteria:** Example multi-intent utterance produces structured proposal; admin email not sent without approval; audio removed after success.
+- **Acceptance criteria:** Example multi-intent utterance completes current task and creates follow-up **Task Suggestion** only; admin email not sent without assignment confirmation; audio removed after success.
 - **Major risks:** Failed transcription policy still open.
 - **Out of scope:** Live-call transcription.
 - **Recommended Git checkpoint:** `feat: voice capture and transcription`

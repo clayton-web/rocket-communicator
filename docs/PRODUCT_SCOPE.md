@@ -1,5 +1,7 @@
 # Product scope
 
+Governed by [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md). AI behaviour: [AI_CONSTITUTION.md](AI_CONSTITUTION.md). Terms: [GLOSSARY.md](GLOSSARY.md).
+
 ## Product objective
 
 Build a private, Android-first AI Communication Action Assistant that:
@@ -33,7 +35,9 @@ The product’s main purpose is to answer: what needs action, what matters, who 
 - Receives task assignments through email.
 - Opens tasks through secure authenticated task links.
 - Uses a minimal responsive web task view (not a full dashboard in version one).
-- Can mark tasks complete, waiting, or reassign where authorized.
+- **May (D039):** complete tasks; mark waiting; add notes; return task to primary; request clarification.
+- **May not (D039):** create standalone tasks; approve AI learning; change workflow rules; change reminder policies; create automations.
+- Administrator-generated work requests become **Task Suggestions** for Primary User approval.
 - Is selected from an authorized Workspace user record (not hard-coded in source).
 
 Version one designs for **one** administrator while preserving schema expansion for additional administrators later.
@@ -53,14 +57,14 @@ A web interface may exist for authentication, APIs, and the minimal administrato
 
 ### Included in version one
 
-| Source | Notes |
-|--------|--------|
-| One primary Google Workspace Gmail inbox | Gmail API; schema may allow future accounts |
-| Google Messages notifications | Best-effort via NotificationListenerService |
-| Missed-call notifications | Expected prompts; still device-dependent |
-| Post-call prompts for known or selected contacts | Best-effort; not universal |
-| Manually dictated tasks | Always available |
-| Spoken task notes and completion outcomes | Always available |
+| Source                                    | Notes                                                       |
+| ----------------------------------------- | ----------------------------------------------------------- |
+| One primary Google Workspace Gmail inbox  | Gmail API; schema may allow future accounts                 |
+| Google Messages notifications             | Best-effort via NotificationListenerService                 |
+| Missed-call notifications                 | Expected prompts; still device-dependent                    |
+| Post-call prompts for a Known Contact     | Best-effort; not universal (see [GLOSSARY.md](GLOSSARY.md)) |
+| Manually dictated tasks                   | Always available                                            |
+| Spoken task notes and completion outcomes | Always available                                            |
 
 ### Excluded from version one
 
@@ -91,11 +95,12 @@ The primary user may:
 ## Administrator assignment model
 
 - AI may recommend the administrator as assignee.
-- The primary user must approve the assignment.
-- Assignment email is sent **only after** that approval.
+- The Primary User must approve the assignment.
+- For Gmail-origin assignments, **assignment approval and Gmail forwarding are one business action** with a **single confirmation** that discloses: create task, forward original email, forward attachments, and schedule reminders (D037).
+- Assignment email / forward is sent **only after** that confirmation.
 - The administrator recipient comes from an authorized Workspace user record.
 - Secure authenticated task links are required; unauthenticated one-click mutations are excluded.
-- Sensitive details may remain behind the authenticated link when appropriate for non-forward assignment emails.
+- Sensitive details may remain behind the authenticated link when appropriate for **non-forward** assignment emails.
 
 ## Email forwarding requirements (Gmail-origin assignments)
 
@@ -105,9 +110,9 @@ When an approved task originates from Gmail and is assigned to the administrator
 2. An AI-generated point-form task summary is placed **above** the forwarded email.
 3. The forward includes requested action, due date, priority, secure authenticated task link, original sender and subject, original body, and **all original attachments**.
 4. There is **no** separate attachment-approval step.
-5. The entire assignment and forwarding action still requires primary-user approval.
+5. The entire assignment and forwarding action is **one** Primary User confirmation (D037)—not a separate forward approval.
 6. Duplicate forwarding must be prevented.
-7. The system records who approved forwarding and when, plus the Gmail identifier of the forwarded message.
+7. The system records who approved the bundled action and when, plus the Gmail identifier of the forwarded message.
 
 For **non-email** tasks, send a normal assignment email with the structured summary and secure task link (no Gmail forward).
 
@@ -115,18 +120,20 @@ For **non-email** tasks, send a normal assignment email with the structured summ
 
 ## Voice requirements
 
-Voice input should support:
+Voice input should support proposing or structuring:
 
-- creating a task
-- adding a note
-- recording a call outcome
-- completing a task
-- creating a follow-up task
-- setting a due date
-- correcting a summary
-- teaching a workflow preference
+- a new task (as a **Task Suggestion**, never a Task directly)
+- a note
+- a call outcome
+- task completion (on an existing Task)
+- a follow-up (**Task Suggestion** only until Primary approval)
+- a due date
+- a summary correction
+- a workflow preference
 
-Multi-intent utterances (for example, complete + capture amount + propose follow-up assignment) must produce a **structured proposal** that still waits for primary-user approval before sending an administrator assignment email.
+**No voice interaction creates a Task directly (D038).** Voice always produces a proposed action requiring Primary User approval before a Task exists (except confirming completion/notes on an already approved Task).
+
+Multi-intent utterances (for example, complete + capture amount + propose follow-up assignment) must produce a **structured proposal**: completion may apply to the current Task on confirm; follow-ups begin as Task Suggestions; administrator assignment email waits for the single assignment confirmation (D037).
 
 Raw audio is deleted after successful transcription and validation. Failed-transcription retention is unresolved (see [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md)).
 

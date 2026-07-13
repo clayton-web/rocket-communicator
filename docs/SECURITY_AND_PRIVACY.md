@@ -1,5 +1,7 @@
 # Security and privacy
 
+Governed by [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md). Terms: [GLOSSARY.md](GLOSSARY.md). Related: [DATA_RETENTION.md](DATA_RETENTION.md) (forwarding boundary). Permissions: [DECISIONS.md](DECISIONS.md) D039.
+
 ## Google Workspace authentication
 
 - Users sign in with Google accounts via Supabase Auth (intended).
@@ -14,17 +16,26 @@
 
 ## Role permissions (version one)
 
-| Capability | Primary | Administrator |
-|------------|---------|---------------|
-| Connect Gmail account | Yes | No |
-| Review/approve/dismiss/merge suggestions | Yes | No |
-| Approve assignment and Gmail forward | Yes | No |
-| Create manual/voice tasks | Yes | Limited/no (v1 focus on assigned tasks) |
-| View assigned tasks via secure link | Yes | Yes (assigned) |
-| Complete / waiting / note / reassign on assigned tasks | Yes | Yes (authorized) |
-| Change org-wide rules | Yes | No |
+| Capability                                                       | Primary                                        | Administrator                        |
+| ---------------------------------------------------------------- | ---------------------------------------------- | ------------------------------------ |
+| Connect Gmail account                                            | Yes                                            | No                                   |
+| Review/approve/dismiss/merge suggestions                         | Yes                                            | No                                   |
+| Approve assignment and Gmail forward (single confirmation, D037) | Yes                                            | No                                   |
+| Create standalone tasks (typed)                                  | Yes                                            | No                                   |
+| Create tasks via voice                                           | No — voice yields Task Suggestions only (D038) | No                                   |
+| Submit work request → Task Suggestion                            | Yes                                            | Yes (becomes suggestion for Primary) |
+| View assigned tasks via secure link                              | Yes                                            | Yes (assigned)                       |
+| Complete assigned tasks                                          | Yes                                            | Yes                                  |
+| Mark waiting                                                     | Yes                                            | Yes                                  |
+| Add notes                                                        | Yes                                            | Yes                                  |
+| Return task to primary                                           | Yes                                            | Yes                                  |
+| Request clarification                                            | Yes                                            | Yes                                  |
+| Snooze                                                           | Yes                                            | No                                   |
+| Approve AI learning / activate workflow rules                    | Yes                                            | No                                   |
+| Change reminder policies                                         | Yes                                            | No                                   |
+| Create automations                                               | Yes (future, after approval ladder)            | No                                   |
 
-Exact reassign targets remain implementation detail; v1 expects reassignment within the org’s known roles.
+Administrator-generated work requests become Task Suggestions for Primary User approval (D039).
 
 ## Server-side authorization
 
@@ -85,7 +96,7 @@ Email clients and intermediaries may prefetch links. Unauthenticated GET/POST co
 
 ## Attachment forwarding implications
 
-- After primary approval of a Gmail-origin administrator assignment, **all original attachments** are forwarded automatically—no separate attachment approval.
+- After Primary User single confirmation of a Gmail-origin administrator assignment (D037), **all original attachments** are forwarded automatically—no separate attachment approval.
 - This intentionally copies potentially sensitive files into the administrator’s mailbox.
 - Users must understand that forwarding expands the retention and exposure boundary beyond the application database (see [DATA_RETENTION.md](DATA_RETENTION.md)).
 
@@ -94,12 +105,14 @@ Email clients and intermediaries may prefetch links. Unauthenticated GET/POST co
 Log at least:
 
 - suggestion approvals/dismissals/merges
-- assignment and forward approvals (actor, time)
+- assignment and forward approvals (actor, time)—single bundled confirmation
 - Gmail forwarded message identifiers
 - reminder attempts and escalation
 - retention purges and failures
 - authz failures and secure-link use
 - Gmail reauth events
+- administrator return-to-primary and clarification requests
+- administrator work requests that create Task Suggestions
 
 ## Secret management
 

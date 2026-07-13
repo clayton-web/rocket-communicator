@@ -1,5 +1,7 @@
 # Data retention
 
+Governed by [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md). Terms: [GLOSSARY.md](GLOSSARY.md). Decisions: [DECISIONS.md](DECISIONS.md) (D020, D021, D028, D031).
+
 ## Purpose
 
 This product must not become a permanent communication archive. Retention separates:
@@ -13,16 +15,16 @@ This product must not become a permanent communication archive. Retention separa
 
 ## Data classification
 
-| Class | Examples | Default fate |
-|-------|----------|--------------|
-| Temporary communication excerpts | Gmail body snippets, notification text stored for AI/task context | Delete 7 days after related task completed or suggestion dismissed |
-| Active operational task data | Title, structured summary points, assignee, due, status, notes | Kept while active; then enter completed/dismissed retention path |
-| Completed task visibility | Operational summary and completion outcome | Visible 30 days after completion |
-| Raw voice audio | Uploaded recordings | Delete immediately after successful transcription and validation |
-| Transcripts | Text from speech | Treated as task/suggestion content under task retention; not kept as a permanent archive |
-| Forwarded Gmail messages and attachments | Copies in administrator (and Sent) mailboxes | **Outside app deletion control** — Workspace/Gmail retention |
-| Durable workflow intelligence | Approved preferences/rules, anonymized patterns, confidence signals | May be retained longer; **no raw message bodies** |
-| Audit metadata | Who approved what, when, message ids, reminder attempts | Minimal metadata retained as required; scrub free-text payloads when content purges |
+| Class                                    | Examples                                                            | Default fate                                                                             |
+| ---------------------------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Temporary communication excerpts         | Gmail body snippets, notification text stored for AI/task context   | Delete 7 days after related task completed or suggestion dismissed                       |
+| Active operational task data             | Title, structured summary points, assignee, due, status, notes      | Kept while active; then enter completed/dismissed retention path                         |
+| Completed task visibility                | Operational summary and completion outcome                          | Visible 30 days after completion                                                         |
+| Raw voice audio                          | Uploaded recordings                                                 | Delete immediately after successful transcription and validation                         |
+| Transcripts                              | Text from speech                                                    | Treated as task/suggestion content under task retention; not kept as a permanent archive |
+| Forwarded Gmail messages and attachments | Copies in administrator (and Sent) mailboxes                        | **Outside app deletion control** — Workspace/Gmail retention                             |
+| Durable workflow intelligence            | Approved preferences/rules, anonymized patterns, confidence signals | May be retained longer; **no raw message bodies**                                        |
+| Audit metadata                           | Who approved what, when, message ids, reminder attempts             | Minimal metadata retained as required; scrub free-text payloads when content purges      |
 
 ## Temporary communication excerpts
 

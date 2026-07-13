@@ -1,0 +1,8 @@
+node_modules
+.next
+build
+.gradle
+coverage
+pnpm-lock.yaml
+apps/android/local.properties
+apps/android/**/build

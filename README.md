@@ -2,6 +2,8 @@
 
 Private, Android-first AI assistant that turns ongoing personal business communications into temporary, actionable work for one primary user and one administrator in the same Google Workspace organization.
 
+**Governing document:** [docs/PROJECT_CONSTITUTION.md](docs/PROJECT_CONSTITUTION.md) — highest authority for product behaviour and engineering rules.
+
 ## Purpose
 
 Answer:
@@ -18,36 +20,67 @@ The product is **not** a permanent communication archive.
 
 ## Current status
 
-**Architecture and planning baseline only.**
+**Repository foundation (Milestone A1) is active.**
 
-- Documentation and local Git baseline are in progress under milestone **A0**.
-- No application has been scaffolded (no web app, no Android app).
-- No dependencies have been installed.
-- No database schemas or migrations exist.
-- No external services (Vercel, Supabase, Firebase, Google Cloud, OpenAI, Gmail) are connected.
-- No GitHub remote is configured in this pass.
+- Documentation source of truth is in place under `docs/`.
+- pnpm monorepo with empty Next.js and Android Compose shells builds and tests.
+- Shared TypeScript ESLint/config packages, Prettier, EditorConfig, and ktlint are configured.
+- GitHub Actions CI workflows are present for local/remote smoke checks.
+- **No product features** are implemented (no Gmail, OpenAI, Supabase, auth, notifications, voice, tasks, or APIs).
+- **No** `.env.example` yet (no environment variables required).
+- No GitHub remote is configured in this workspace pass.
+- Distribution remains private sideload / internal testing (not Play Store).
+
+### Foundation versions (A1)
+
+| Component                          | Version                         |
+| ---------------------------------- | ------------------------------- |
+| Node.js (engines / `.nvmrc`)       | 22 (LTS range `>=22 <25`)       |
+| pnpm                               | 9.15.9 (`packageManager`)       |
+| Next.js                            | 16.2.10                         |
+| React / React DOM                  | 19.0.0                          |
+| TypeScript                         | 5.8.x                           |
+| Android `minSdk`                   | 31 (Android 12)                 |
+| Android `compileSdk` / `targetSdk` | 35                              |
+| Android Gradle Plugin              | 8.8.2                           |
+| Kotlin                             | 2.1.10                          |
+| Gradle wrapper                     | 8.12.1                          |
+| Compose BOM                        | 2025.02.00                      |
+| Android application id             | `com.aicommunication.assistant` |
+| Primary device target              | Samsung Galaxy S24+ (D040)      |
 
 ## Intended users (version one)
 
-| Role | Primary interface |
-|------|-------------------|
-| **Primary user** | Android application |
+| Role              | Primary interface                                                                    |
+| ----------------- | ------------------------------------------------------------------------------------ |
+| **Primary User**  | Android application                                                                  |
 | **Administrator** | Assignment emails, secure authenticated task links, minimal responsive web task view |
 
-Both users belong to the same Google Workspace organization.
+Both users belong to the same Google Workspace organization. Definitions: [docs/GLOSSARY.md](docs/GLOSSARY.md).
 
-## Major version-one capabilities
+## Repository layout (A1)
 
-- Capture from one primary Google Workspace Gmail inbox
-- Capture Google Messages notification content where Android exposes it
-- Missed-call prompts; best-effort completed-call prompts for known or selected contacts
-- Manual and spoken task creation, notes, and completion outcomes
-- High-quality point-form AI task suggestions (approval required before task creation)
-- Primary-user approval before administrator assignment and assignment email
-- For Gmail-origin tasks: forward original email and **all attachments** after assignment approval, with an AI summary above the forward
-- Deterministic reminder and escalation engine
-- Temporary data retention (7-day excerpts; 30-day completed-task visibility)
-- Durable workflow learning signals without retaining raw message bodies
+```text
+apps/android/     Kotlin + Jetpack Compose shell (minSdk 31)
+apps/web/         Next.js App Router shell
+packages/eslint-config/
+packages/typescript-config/
+docs/             Product and engineering source of truth
+.github/workflows/ci.yml
+```
+
+Future packages (`contracts`, `domain`, `db`, `ai`, `ui`) are intentionally **not** created until later milestones.
+
+## Local verification
+
+```bash
+pnpm install
+pnpm verify
+```
+
+Individual scripts: `format:check`, `lint`, `test:web`, `build:web`, `android:ktlint`, `android:test`, `android:assemble`.
+
+Android instrumentation smoke tests under `androidTest/` are for **local** device/emulator runs only (not A1 CI).
 
 ## Explicit exclusions (version one)
 
@@ -62,20 +95,55 @@ Both users belong to the same Google Workspace organization.
 - Automatic task creation or automatic assignment emails without approval
 - Permanent communication archive
 
+## Documentation hierarchy
+
+Authority flows downward. See [docs/DOCUMENTATION_INDEX.md](docs/DOCUMENTATION_INDEX.md).
+
+```text
+PROJECT_CONSTITUTION.md          ← highest-level governing document
+    ├── AI_CONSTITUTION.md
+    ├── PRODUCT_SCOPE.md
+    ├── DECISIONS.md
+    ├── ARCHITECTURE.md / WORKFLOWS.md
+    ├── DATA_RETENTION.md / SECURITY_AND_PRIVACY.md
+    ├── GLOSSARY.md
+    ├── MILESTONES.md
+    ├── ENGINEERING_WORKFLOW.md / REVIEW_CHECKLIST.md
+    └── OPEN_QUESTIONS.md
+```
+
+## Development workflow
+
+Every milestone follows: Architecture → Planning → Review → Implementation → Testing → Documentation verification → Commit → Next milestone.
+
+Details: [docs/ENGINEERING_WORKFLOW.md](docs/ENGINEERING_WORKFLOW.md).  
+Review gate: [docs/REVIEW_CHECKLIST.md](docs/REVIEW_CHECKLIST.md).
+
+**Engineering Rule #1:** Implementation may never change documented product behaviour without documentation being updated first.  
+**Engineering Rule #2:** Documentation wins over implementation.
+
 ## Documentation index
 
-| Document | Description |
-|----------|-------------|
-| [docs/PRODUCT_SCOPE.md](docs/PRODUCT_SCOPE.md) | Product objectives, users, inclusions, exclusions, MVP definition |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture, components, contracts, limitations |
-| [docs/WORKFLOWS.md](docs/WORKFLOWS.md) | End-to-end workflows with approvals, audits, and failures |
-| [docs/DATA_RETENTION.md](docs/DATA_RETENTION.md) | Retention classes, 7-day / 30-day rules, Gmail forwarding boundary |
-| [docs/SECURITY_AND_PRIVACY.md](docs/SECURITY_AND_PRIVACY.md) | AuthZ, RLS boundary, tokens, links, privacy limits |
-| [docs/DECISIONS.md](docs/DECISIONS.md) | Architecture decision register |
-| [docs/MILESTONES.md](docs/MILESTONES.md) | Phased planning milestones (A0–A15) |
-| [docs/OPEN_QUESTIONS.md](docs/OPEN_QUESTIONS.md) | Unresolved decisions that block later implementation |
+| Document                                                     | Description                                             |
+| ------------------------------------------------------------ | ------------------------------------------------------- |
+| [docs/DOCUMENTATION_INDEX.md](docs/DOCUMENTATION_INDEX.md)   | Full navigation, audience, maintainers, update triggers |
+| [docs/PROJECT_CONSTITUTION.md](docs/PROJECT_CONSTITUTION.md) | Highest-level governing document                        |
+| [docs/AI_CONSTITUTION.md](docs/AI_CONSTITUTION.md)           | AI behaviour law and learning ladder                    |
+| [docs/ENGINEERING_WORKFLOW.md](docs/ENGINEERING_WORKFLOW.md) | How milestones are executed                             |
+| [docs/REVIEW_CHECKLIST.md](docs/REVIEW_CHECKLIST.md)         | Implementation review checklist                         |
+| [docs/GLOSSARY.md](docs/GLOSSARY.md)                         | Canonical term definitions                              |
+| [docs/PRODUCT_SCOPE.md](docs/PRODUCT_SCOPE.md)               | Objectives, users, inclusions, exclusions, MVP          |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)                 | System architecture, components, contracts              |
+| [docs/WORKFLOWS.md](docs/WORKFLOWS.md)                       | End-to-end workflows                                    |
+| [docs/DATA_RETENTION.md](docs/DATA_RETENTION.md)             | Retention classes and Gmail boundary                    |
+| [docs/SECURITY_AND_PRIVACY.md](docs/SECURITY_AND_PRIVACY.md) | AuthZ, privacy, secure links                            |
+| [docs/DECISIONS.md](docs/DECISIONS.md)                       | Decision register                                       |
+| [docs/MILESTONES.md](docs/MILESTONES.md)                     | Phased milestones (A0–A15)                              |
+| [docs/OPEN_QUESTIONS.md](docs/OPEN_QUESTIONS.md)             | Unresolved decisions                                    |
 
 ## Development principles
+
+Aligned with [docs/PROJECT_CONSTITUTION.md](docs/PROJECT_CONSTITUTION.md):
 
 1. **Approval-first** — AI recommends; humans authorize consequential actions.
 2. **Privacy by design** — minimize stored communication content; separate temporary data from durable learning.
@@ -83,11 +151,11 @@ Both users belong to the same Google Workspace organization.
 4. **Android-first UX** — the phone app is the primary interface; web is minimal for the administrator.
 5. **Low vendor sprawl** — prefer Supabase + Vercel + Gmail API + OpenAI; do not duplicate databases (no Neon in v1).
 6. **Honest reliability** — treat Android notification and call capture as best-effort; always keep manual and voice fallbacks.
-7. **Contracts over shared types** — canonical OpenAPI or JSON Schema; generate clients for TypeScript and Kotlin separately.
+7. **Contracts over shared types** — OpenAPI is the canonical contract; generate TypeScript and Kotlin clients from OpenAPI (JSON Schema may be derived, not authoritative).
+8. **Documentation is the source of truth** — docs win over code until docs are intentionally changed.
 
 ## Local repository status
 
-- Local Git repository is the source of truth for this planning baseline.
-- Default branch: `main`.
-- Remote hosting (GitHub) is intentionally deferred.
-- First baseline commit message (when created): `docs: establish project architecture baseline`.
+- Local Git repository on branch `main`.
+- Remote hosting (GitHub) is intentionally deferred until you create it.
+- Next milestone after A1 commit: **A2** (API contracts and domain model)—not started.

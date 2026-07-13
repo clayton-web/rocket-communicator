@@ -1,0 +1,24 @@
+{
+  "name": "ai-communication-action-assistant",
+  "private": true,
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": ">=22 <25"
+  },
+  "scripts": {
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "pnpm --filter @aicaa/web lint",
+    "test": "pnpm --filter @aicaa/web test",
+    "test:web": "pnpm --filter @aicaa/web test",
+    "build": "pnpm --filter @aicaa/web build",
+    "build:web": "pnpm --filter @aicaa/web build",
+    "android:ktlint": "cd apps/android && ./gradlew ktlintCheck",
+    "android:test": "cd apps/android && ./gradlew testDebugUnitTest",
+    "android:assemble": "cd apps/android && ./gradlew assembleDebug",
+    "verify": "pnpm format:check && pnpm lint && pnpm test:web && pnpm build:web && pnpm android:ktlint && pnpm android:test && pnpm android:assemble"
+  },
+  "devDependencies": {
+    "prettier": "^3.5.3"
+  }
+}

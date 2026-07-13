@@ -1,0 +1,16 @@
+{
+  "name": "@aicaa/eslint-config",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./next": "./next.js"
+  },
+  "dependencies": {
+    "eslint-config-next": "16.2.10"
+  },
+  "peerDependencies": {
+    "eslint": "^9.0.0",
+    "typescript": "^5.0.0"
+  }
+}

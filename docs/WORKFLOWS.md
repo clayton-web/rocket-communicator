@@ -1,6 +1,8 @@
 # Workflows
 
-Point-form workflows for version one. Every consequential business action that creates tasks, assignments, forwards, or follow-up assignments requires primary-user approval unless noted as administrator-authorized task mutation on an already assigned task.
+Point-form workflows for version one. Terms: [GLOSSARY.md](GLOSSARY.md). AI constraints: [AI_CONSTITUTION.md](AI_CONSTITUTION.md).
+
+Every consequential business action that creates Tasks, Assignments, forwards, or Follow-up assignments requires Primary User approval unless noted as Administrator-authorized task mutation on an already assigned task.
 
 ---
 
@@ -23,18 +25,21 @@ Point-form workflows for version one. Every consequential business action that c
 
 ## 2. Approved email assignment and forwarding
 
-- **Trigger:** Primary user approves assigning a **Gmail-origin** task to the administrator.
+- **Trigger:** Primary User confirms administrator assignment for a **Gmail-origin** item (from a Task Suggestion and/or Task).
 - **Steps:**
   1. Confirm assignee is an authorized Workspace administrator user record.
-  2. Create/activate assignment; require explicit forward+send confirmation if not bundled in the same approve-assign action.
-  3. Compose forward via Gmail API: AI point-form summary and action metadata **above** original; include original sender, subject, body, **all attachments**.
-  4. Include secure authenticated task link.
-  5. Send once; store Gmail id of forwarded message; mark forward complete (idempotent).
-- **Approval boundaries:** Primary must approve assignment **and** the forwarding action (may be one confirmation UX). No separate attachment approval. No hard-coded admin address.
-- **Stored information:** Assignment, approval actor/time, forwarded message id, summary snapshot used in header.
-- **Side effects:** Copy appears in administrator Gmail (and likely primary Sent); app retention does not delete that mailbox copy.
+  2. Present **one** confirmation dialog that discloses the bundled business action (D037):
+     - Create task (activate Task from suggestion if needed)
+     - Forward original email
+     - Forward attachments
+     - Schedule reminders
+  3. On single confirmation: create/activate Task and Assignment; compose forward via Gmail API with AI point-form summary **above** original; include original sender, subject, body, **all attachments**; include secure authenticated task link; schedule reminders per policy.
+  4. Send forward once; store Gmail id of forwarded message; mark forward complete (idempotent).
+- **Approval boundaries:** Assignment approval and Gmail forwarding are **one** business action—**one confirmation only**. No separate attachment approval. No hard-coded admin address.
+- **Stored information:** Assignment, single approval actor/time, forwarded message id, summary snapshot used in header.
+- **Side effects:** Copy appears in administrator Gmail (and likely primary Sent); reminders armed; app retention does not delete that mailbox copy.
 - **Failure behaviour:** If send/forward fails, task may remain approved/assigned pending retry; do not claim success; handle partial attachment failure per open question policy when decided.
-- **Audit events:** `assignment.approved`, `gmail.forward.requested`, `gmail.forward.succeeded|failed`, `email.sent`.
+- **Audit events:** `assignment.approved`, `gmail.forward.requested`, `gmail.forward.succeeded|failed`, `email.sent`, `reminder.scheduled`.
 
 ---
 
@@ -58,22 +63,22 @@ Point-form workflows for version one. Every consequential business action that c
 
 - **Trigger:** Missed-call notification detected (best-effort).
 - **Steps:**
-  1. Always prompt primary user to record outcome or create task.
-  2. Optional voice capture → transcription → structured draft suggestion/task fields.
-  3. User confirms before task creation / assignment email.
-- **Approval boundaries:** Prompt is automatic; task/assignment creation is not.
-- **Stored information:** Call metadata available from notification; voice transcript per retention rules.
+  1. Always prompt primary user to record outcome or propose a task.
+  2. Optional voice capture → transcription → structured **Task Suggestion** (or note proposal)—never a Task directly (D038).
+  3. Primary approves the Task Suggestion (workflow 7) before a Task exists; administrator assignment uses workflow 2 / non-email assignment path as applicable.
+- **Approval boundaries:** Prompt is automatic; voice produces proposals only; Task and assignment require Primary User approval.
+- **Stored information:** Call metadata available from notification; voice transcript per retention rules; Task Suggestion.
 - **Side effects:** Audio deleted after successful transcription/validation.
-- **Failure behaviour:** If detection fails, user can still manual/voice create; if transcription fails, see open question on audio retention.
-- **Audit events:** `missed_call.prompted`, `voice.*`, `suggestion.created` or `task.created` after confirm.
+- **Failure behaviour:** If detection fails, user can still manual/voice propose; if transcription fails, see open question on audio retention.
+- **Audit events:** `missed_call.prompted`, `voice.*`, `suggestion.created`.
 
 ---
 
-## 5. Known-contact completed call to optional prompt
+## 5. Known Contact completed call to optional prompt
 
-- **Trigger:** Completed-call notification for a known, selected, or follow-up-tracked number.
+- **Trigger:** Completed-call notification for a Known Contact (on-device match, user-selected, and/or follow-up-tracked number).
 - **Steps:**
-  1. Evaluate contact track list.
+  1. Evaluate Known Contact / contact track list.
   2. If matched, optional prompt for outcome note.
   3. Unknown completed calls: **do not** always prompt.
 - **Approval boundaries:** Same as other task creation paths.
@@ -84,15 +89,15 @@ Point-form workflows for version one. Every consequential business action that c
 
 ---
 
-## 6. Manual voice-created task
+## 6. Manual voice task proposal
 
-- **Trigger:** User starts voice task creation in the app.
-- **Steps:** Record → upload → transcribe → structure → show draft → user confirms.
-- **Approval boundaries:** Confirmation required before active task; assignment email still needs approval if admin assigned.
-- **Stored information:** Transcript, structured fields, task after confirm.
+- **Trigger:** Primary User starts voice task creation in the app.
+- **Steps:** Record → upload → transcribe → structure → show proposed **Task Suggestion** → user may edit → remains a suggestion until workflow 7 approval.
+- **Approval boundaries:** Voice never creates a Task directly (D038). Assignment email still requires the assignment confirmation (D037 for Gmail-origin admin assign).
+- **Stored information:** Transcript, structured fields, Task Suggestion.
 - **Side effects:** Audio deleted after success path.
-- **Failure behaviour:** Retry transcription; allow typed edit of draft.
-- **Audit events:** `voice.uploaded`, `voice.transcribed`, `task.created`.
+- **Failure behaviour:** Retry transcription; allow typed edit of draft suggestion.
+- **Audit events:** `voice.uploaded`, `voice.transcribed`, `suggestion.created`.
 
 ---
 
@@ -100,7 +105,7 @@ Point-form workflows for version one. Every consequential business action that c
 
 - **Trigger:** Primary approves a `TaskSuggestion` (possibly after edits).
 - **Steps:** Create `Task` from suggestion; copy structured points; schedule retention clocks as applicable; optional self-assignment without admin email.
-- **Approval boundaries:** This step creates the task; admin email/forward is a separate (or clearly confirmed) approval.
+- **Approval boundaries:** This step creates the task. If assigning to the administrator for a Gmail-origin item, use workflow 2’s **single** bundled confirmation (create task + forward + attachments + schedule reminders) rather than a second forward approval (D037). Non-email admin assignment still requires one assignment confirmation (no Gmail forward).
 - **Stored information:** Task, link to source event, corrections as learning signals.
 - **Side effects:** Suggestion marked approved; may merge path instead (workflow 12).
 - **Failure behaviour:** Transactional create; on failure leave suggestion pending.
@@ -108,23 +113,26 @@ Point-form workflows for version one. Every consequential business action that c
 
 ---
 
-## 8. Administrator task completion
+## 8. Administrator task actions
 
-- **Trigger:** Administrator opens authenticated task link and completes (preset, typed note, or later voice on web if supported).
-- **Steps:** Validate admin role and assignment; record outcome; set completed; stop reminders; set excerpt purge and visibility windows.
-- **Approval boundaries:** Admin may complete assigned tasks; cannot approve suggestions or connect Gmail; cannot send new admin assignment emails as primary.
-- **Stored information:** Outcome, completion timestamp, actor.
-- **Side effects:** Reminder stop; retention timers.
+- **Trigger:** Administrator opens authenticated task link and acts on an assigned task.
+- **Allowed (D039):** complete; mark waiting; add notes; return task to primary; request clarification.
+- **Forbidden (D039):** create standalone tasks; approve AI learning; change workflow rules; change reminder policies; create automations.
+- **Steps (complete example):** Validate admin role and assignment; record outcome; set completed; stop reminders; set excerpt purge and visibility windows.
+- **Steps (return / clarification):** Update task toward primary ownership or attach a clarification request; do not create a new Task. If the administrator needs new work done, submit a **work request** that becomes a **Task Suggestion** for Primary User approval.
+- **Approval boundaries:** Admin may mutate assigned tasks only within the allowed set; cannot approve suggestions, connect Gmail, or send assignment emails as primary.
+- **Stored information:** Outcome or note/clarification/return metadata; actor; timestamps.
+- **Side effects:** Reminder stop or reschedule as appropriate; retention timers on complete.
 - **Failure behaviour:** Auth failure → deny; conflict → surface newer state.
-- **Audit events:** `task.completed`, `outcome.recorded`, `reminder.cancelled`.
+- **Audit events:** `task.completed`, `outcome.recorded`, `task.waiting`, `task.returned_to_primary`, `clarification.requested`, `reminder.cancelled`, `suggestion.created` (from admin work request).
 
 ---
 
 ## 9. Waiting and snooze
 
-- **Trigger:** Primary or authorized admin sets waiting or snooze.
-- **Steps:** Waiting stores `waiting_until` and pauses reminders; snooze recalculates `next_follow_up_at` / reminder time without requiring a distinct status if derived UI suffices.
-- **Approval boundaries:** Allowed on active tasks per role permissions.
+- **Trigger:** Primary User sets waiting or snooze; Administrator may set **waiting** only (D039).
+- **Steps:** Waiting stores `waiting_until` and pauses reminders; snooze (Primary only) recalculates `next_follow_up_at` / reminder time without necessarily introducing a separate persisted status.
+- **Approval boundaries:** Per role permissions (D039).
 - **Stored information:** Waiting/snooze timestamps, reason note optional.
 - **Side effects:** Reminder schedule update.
 - **Failure behaviour:** Invalid dates rejected; audit attempted change.
@@ -153,15 +161,15 @@ Point-form workflows for version one. Every consequential business action that c
 
 - **Trigger:** User dictates a multi-intent completion (e.g., complete, record $1,500 approval, assign contractor follow-up to administrator for tomorrow).
 - **Steps:**
-  1. Transcribe and structure into: complete original, outcome fields, proposed follow-up task, proposed assignee/due.
-  2. Show confirmation UI.
-  3. Apply completion immediately if confirmed.
-  4. Create follow-up as suggestion or pending task per UX; **hold assignment email** until primary approves admin assignment.
-- **Approval boundaries:** Consequential follow-up assignment email requires primary approval.
-- **Stored information:** Outcome, amounts as structured facts, follow-up proposal, approvals.
-- **Side effects:** Audio deleted after success; possible later forward/assignment email.
-- **Failure behaviour:** Partial apply only for confirmed segments; keep draft on AI failure.
-- **Audit events:** `voice.structured`, `task.completed`, `follow_up.proposed`, `assignment.approved` (later).
+  1. Transcribe and structure into: complete original, outcome fields, proposed follow-up as a **Task Suggestion**, proposed assignee/due (D038).
+  2. Show confirmation UI for the structured proposal.
+  3. On confirm: apply completion to the **existing** Task immediately; create the follow-up only as a **Task Suggestion** (never a Task directly from voice).
+  4. Hold assignment email / Gmail forward until Primary User confirms the administrator assignment via the single bundled confirmation when applicable (D037).
+- **Approval boundaries:** Voice never creates a Task directly. Follow-up becomes a Task only after suggestion approval. Consequential administrator assignment uses one confirmation (workflow 2).
+- **Stored information:** Outcome, amounts as structured facts, follow-up Task Suggestion, later approvals.
+- **Side effects:** Audio deleted after success; possible later forward/assignment email after Primary approval.
+- **Failure behaviour:** Partial apply only for confirmed segments; keep draft suggestion on AI failure.
+- **Audit events:** `voice.structured`, `task.completed`, `suggestion.created` (follow-up), `assignment.approved` (later).
 
 ---
 
