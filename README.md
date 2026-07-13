@@ -12,12 +12,12 @@ Not a permanent communication archive.
 
 ## Current status
 
-| Area | Status |
-| ---- | ------ |
-| A3 Owner authentication | Complete (`apps/web` Google Workspace + Supabase) |
-| A4 Phase 0–2 | Complete (decisions/OpenAPI alignment, domain, `packages/db`) |
-| A4 remaining | Capability runtime, Owner/Recipient task HTTP, `/c/[token]` UI |
-| Later | Gmail, AI, Android auth, notifications, voice, workers |
+| Area                    | Status                                                         |
+| ----------------------- | -------------------------------------------------------------- |
+| A3 Owner authentication | Complete (`apps/web` Google Workspace + Supabase)              |
+| A4 Phase 0–2            | Complete (decisions/OpenAPI alignment, domain, `packages/db`)  |
+| A4 remaining            | Capability runtime, Owner/Recipient task HTTP, `/c/[token]` UI |
+| Later                   | Gmail, AI, Android auth, notifications, voice, workers         |
 
 Terms: [docs/GLOSSARY.md](docs/GLOSSARY.md). Plan: [docs/MILESTONES.md](docs/MILESTONES.md).
 
@@ -55,18 +55,18 @@ Capability / DB env placeholders: `apps/web/.env.example`, `packages/db/.env.exa
 
 Authority: [docs/DOCUMENTATION_INDEX.md](docs/DOCUMENTATION_INDEX.md)
 
-| Need | Document |
-| ---- | -------- |
-| Definitions | [GLOSSARY](docs/GLOSSARY.md) |
-| Binding choices | [DECISIONS](docs/DECISIONS.md) |
-| System shape | [ARCHITECTURE](docs/ARCHITECTURE.md) |
+| Need                        | Document                                             |
+| --------------------------- | ---------------------------------------------------- |
+| Definitions                 | [GLOSSARY](docs/GLOSSARY.md)                         |
+| Binding choices             | [DECISIONS](docs/DECISIONS.md)                       |
+| System shape                | [ARCHITECTURE](docs/ARCHITECTURE.md)                 |
 | AuthZ / capability security | [SECURITY_AND_PRIVACY](docs/SECURITY_AND_PRIVACY.md) |
-| Task states | [STATE_MACHINE](docs/STATE_MACHINE.md) |
-| HTTP surface | [API_CONTRACT](docs/API_CONTRACT.md) |
-| Flows | [WORKFLOWS](docs/WORKFLOWS.md) |
-| Scope / MVP | [PRODUCT_SCOPE](docs/PRODUCT_SCOPE.md) |
-| Plan | [MILESTONES](docs/MILESTONES.md) |
-| Open unknowns | [OPEN_QUESTIONS](docs/OPEN_QUESTIONS.md) |
+| Task states                 | [STATE_MACHINE](docs/STATE_MACHINE.md)               |
+| HTTP surface                | [API_CONTRACT](docs/API_CONTRACT.md)                 |
+| Flows                       | [WORKFLOWS](docs/WORKFLOWS.md)                       |
+| Scope / MVP                 | [PRODUCT_SCOPE](docs/PRODUCT_SCOPE.md)               |
+| Plan                        | [MILESTONES](docs/MILESTONES.md)                     |
+| Open unknowns               | [OPEN_QUESTIONS](docs/OPEN_QUESTIONS.md)             |
 
 ## Local repository
 

@@ -12,30 +12,30 @@ Assignment binds a Task to a Recipient. A Capability is the authorization grant 
 
 ## Package layout
 
-| Path | Responsibility |
-| ---- | -------------- |
-| `apps/android` | Kotlin + Jetpack Compose Owner UX (auth/task UI in later milestones; A1 shell + A2 api-contract module exist) |
-| `apps/web` | Next.js App Router: Owner session APIs; Owner task HTTP, capability runtime, and Recipient capability pages remain A4 remaining work |
-| `packages/contracts` | Canonical OpenAPI 3.1; generated TypeScript and Kotlin DTOs (D007) |
-| `packages/domain` | Pure TypeScript state machines, policies, retention helpers—no I/O |
-| `packages/db` | Prisma schema, migrations, repositories, transactions (server-only; D006, D062) |
-| `packages/eslint-config` / `packages/typescript-config` | Shared tooling |
-| `packages/ai` / `packages/ui` | Deferred |
+| Path                                                    | Responsibility                                                                                                                       |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `apps/android`                                          | Kotlin + Jetpack Compose Owner UX (auth/task UI in later milestones; A1 shell + A2 api-contract module exist)                        |
+| `apps/web`                                              | Next.js App Router: Owner session APIs; Owner task HTTP, capability runtime, and Recipient capability pages remain A4 remaining work |
+| `packages/contracts`                                    | Canonical OpenAPI 3.1; generated TypeScript and Kotlin DTOs (D007)                                                                   |
+| `packages/domain`                                       | Pure TypeScript state machines, policies, retention helpers—no I/O                                                                   |
+| `packages/db`                                           | Prisma schema, migrations, repositories, transactions (server-only; D006, D062)                                                      |
+| `packages/eslint-config` / `packages/typescript-config` | Shared tooling                                                                                                                       |
+| `packages/ai` / `packages/ui`                           | Deferred                                                                                                                             |
 
 Do not share Zod types with Kotlin. Generate clients from OpenAPI. Neon is not used in v1 (D005).
 
 ## Component map
 
-| Component | Responsibility |
-| --------- | -------------- |
-| Android app | Capture, voice, Owner task UI (later); Owner session credentials only |
-| Next.js | Owner auth, Owner APIs, capability runtime, Recipient capability routes/pages, mailer, workers |
-| Supabase Auth | Google Workspace sign-in for the **Owner only** (D048) |
-| Supabase Postgres | System of record |
-| Prisma | Server data access only |
-| Gmail API | Ingest, assignment mail, forward-with-attachments |
-| OpenAI | Structured extraction and transcription |
-| Reminder / retention workers | Deterministic schedules and purge (later milestones) |
+| Component                    | Responsibility                                                                                 |
+| ---------------------------- | ---------------------------------------------------------------------------------------------- |
+| Android app                  | Capture, voice, Owner task UI (later); Owner session credentials only                          |
+| Next.js                      | Owner auth, Owner APIs, capability runtime, Recipient capability routes/pages, mailer, workers |
+| Supabase Auth                | Google Workspace sign-in for the **Owner only** (D048)                                         |
+| Supabase Postgres            | System of record                                                                               |
+| Prisma                       | Server data access only                                                                        |
+| Gmail API                    | Ingest, assignment mail, forward-with-attachments                                              |
+| OpenAI                       | Structured extraction and transcription                                                        |
+| Reminder / retention workers | Deterministic schedules and purge (later milestones)                                           |
 
 ## Platform directions
 
@@ -60,9 +60,9 @@ Do not share Zod types with Kotlin. Generate clients from OpenAPI. Neon is not u
 
 ## Auth boundary (summary)
 
-| Party | Mechanism |
-| ----- | --------- |
-| Owner | Supabase session (authentication) |
+| Party     | Mechanism                                         |
+| --------- | ------------------------------------------------- |
+| Owner     | Supabase session (authentication)                 |
 | Recipient | Capability token (authorization only; no account) |
 
 Full rules: [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md).

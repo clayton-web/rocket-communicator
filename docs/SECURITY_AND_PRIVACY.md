@@ -4,13 +4,13 @@ Governed by [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md). Definitions: [GL
 
 ## Distinctions
 
-| Concept | Meaning here |
-| ------- | ------------ |
-| Authentication | Proving the Owner’s identity (Supabase Google Workspace sign-in) |
-| Authorization | Allowing an action after checks (Owner session rules, or Capability scope/status/expiry/binding) |
-| Identity | Verified Owner person via Session. A Capability Link holder is **not** treated as verified identity |
-| Capability | Authorization grant persisted server-side (hash, scope, binding) |
-| Bearer credential | The raw capability secret in the Capability Link; possession authorizes within scope |
+| Concept              | Meaning here                                                                                              |
+| -------------------- | --------------------------------------------------------------------------------------------------------- |
+| Authentication       | Proving the Owner’s identity (Supabase Google Workspace sign-in)                                          |
+| Authorization        | Allowing an action after checks (Owner session rules, or Capability scope/status/expiry/binding)          |
+| Identity             | Verified Owner person via Session. A Capability Link holder is **not** treated as verified identity       |
+| Capability           | Authorization grant persisted server-side (hash, scope, binding)                                          |
+| Bearer credential    | The raw capability secret in the Capability Link; possession authorizes within scope                      |
 | Truthful attribution | Audit describes capability use for the intended Recipient email; does not claim “verified person X acted” |
 
 ## Owner authentication
@@ -31,18 +31,18 @@ Governed by [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md). Definitions: [GL
 
 ## Permission matrix (v1)
 
-| Action | Owner (Session) | Recipient (Capability) |
-| ------ | --------------- | ---------------------- |
-| Connect Gmail | Yes | No |
-| Approve/dismiss/merge suggestions | Yes | No |
-| Approve assignment + Gmail forward (D037) | Yes | No |
-| Create standalone Task (typed) | Yes | No |
-| Create Task via voice | No (Suggestions only, D038) | No |
-| Work request → Suggestion | No (Owner review only) | Yes |
-| View assigned Task via link | Via Owner APIs | Yes (scoped) |
-| Complete / waiting / notes / return / clarification | Yes | Yes (POST after confirm) |
-| Snooze | Yes | No |
-| Approve learning / policies / automations | Yes (D054) | No |
+| Action                                              | Owner (Session)             | Recipient (Capability)   |
+| --------------------------------------------------- | --------------------------- | ------------------------ |
+| Connect Gmail                                       | Yes                         | No                       |
+| Approve/dismiss/merge suggestions                   | Yes                         | No                       |
+| Approve assignment + Gmail forward (D037)           | Yes                         | No                       |
+| Create standalone Task (typed)                      | Yes                         | No                       |
+| Create Task via voice                               | No (Suggestions only, D038) | No                       |
+| Work request → Suggestion                           | No (Owner review only)      | Yes                      |
+| View assigned Task via link                         | Via Owner APIs              | Yes (scoped)             |
+| Complete / waiting / notes / return / clarification | Yes                         | Yes (POST after confirm) |
+| Snooze                                              | Yes                         | No                       |
+| Approve learning / policies / automations           | Yes (D054)                  | No                       |
 
 ## Server enforcement
 

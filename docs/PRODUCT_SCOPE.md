@@ -14,13 +14,13 @@ Android is the Owner’s primary interface (capture, review, voice). Web serves 
 
 ## Included communication sources (v1)
 
-| Source | Notes |
-| ------ | ----- |
-| One Google Workspace Gmail inbox | Gmail API |
-| Google Messages notifications | Best-effort |
-| Missed-call notifications | Expected; device-dependent |
-| Known Contact completed-call prompts | Best-effort |
-| Manual / spoken capture | Always available |
+| Source                               | Notes                      |
+| ------------------------------------ | -------------------------- |
+| One Google Workspace Gmail inbox     | Gmail API                  |
+| Google Messages notifications        | Best-effort                |
+| Missed-call notifications            | Expected; device-dependent |
+| Known Contact completed-call prompts | Best-effort                |
+| Manual / spoken capture              | Always available           |
 
 ## Excluded (v1)
 
