@@ -70,38 +70,140 @@ describe('domain allowlist', () => {
     expect(extractEmailDomain('invalid')).toBeNull();
   });
 
-  it('reads hosted domain from verified Google identity_data', () => {
+  it('accepts top-level identity_data.hd', () => {
     const user = createGoogleSupabaseUser({
       email: 'owner@example.com',
       hostedDomain: 'example.com',
+      hostedDomainLocation: 'top_level',
+    });
+
+    expect(extractHostedDomain(user)).toBe('example.com');
+  });
+
+  it('accepts identity_data.custom_claims.hd from the live Supabase shape', () => {
+    const user = createGoogleSupabaseUser({
+      email: 'owner@example.com',
+      hostedDomain: 'example.com',
+      hostedDomainLocation: 'custom_claims',
     });
 
     expect(extractHostedDomain(user)).toBe('example.com');
     expect(workspaceIdentityFromUser(user).hostedDomain).toBe('example.com');
   });
 
-  it('ignores user_metadata.hd when identity_data.hd is absent', () => {
+  it('normalizes custom_claims.hd case and whitespace during comparison', () => {
     const user = createGoogleSupabaseUser({
       email: 'owner@example.com',
-      hostedDomain: null,
-      includeUserMetadataHd: true,
+      hostedDomain: '  Example.COM  ',
+      hostedDomainLocation: 'custom_claims',
     });
 
-    expect(extractHostedDomain(user)).toBeNull();
+    expect(isWorkspaceDomainPermitted(workspaceIdentityFromUser(user), 'example.com')).toEqual({
+      permitted: true,
+    });
   });
 
-  it('ignores spoofed user_metadata.hd when identity_data.hd mismatches', () => {
+  it('prefers top-level identity_data.hd when both hd locations are present', () => {
     const user = createGoogleSupabaseUser({
       email: 'owner@example.com',
       hostedDomain: 'example.com',
+      hostedDomainLocation: 'both',
     });
-    user.user_metadata = { ...user.user_metadata, hd: 'attacker.com' };
+    user.identities![0]!.identity_data = {
+      ...user.identities![0]!.identity_data,
+      hd: 'example.com',
+      custom_claims: { hd: 'other.com' },
+    };
 
     expect(extractHostedDomain(user)).toBe('example.com');
     expect(isWorkspaceDomainPermitted(workspaceIdentityFromUser(user), 'example.com')).toEqual({
       permitted: true,
     });
-    expect(isWorkspaceDomainPermitted(workspaceIdentityFromUser(user), 'attacker.com')).toEqual({
+    expect(isWorkspaceDomainPermitted(workspaceIdentityFromUser(user), 'other.com')).toEqual({
+      permitted: false,
+      reason: 'email_domain_mismatch',
+    });
+  });
+
+  it('rejects when both verified hd locations are missing', () => {
+    const user = createGoogleSupabaseUser({
+      email: 'owner@example.com',
+      hostedDomain: null,
+      hostedDomainLocation: 'none',
+    });
+
+    expect(extractHostedDomain(user)).toBeNull();
+    expect(isWorkspaceDomainPermitted(workspaceIdentityFromUser(user), 'example.com')).toEqual({
+      permitted: false,
+      reason: 'missing_hosted_domain',
+    });
+  });
+
+  it('rejects malformed custom_claims safely', () => {
+    for (const customClaims of [null, [], 'invalid', { hd: 123 }, { hd: '   ' }]) {
+      const user = createGoogleSupabaseUser({
+        email: 'owner@example.com',
+        hostedDomain: null,
+        hostedDomainLocation: 'none',
+      });
+      user.identities![0]!.identity_data = {
+        ...user.identities![0]!.identity_data,
+        custom_claims: customClaims,
+      };
+
+      expect(extractHostedDomain(user)).toBeNull();
+    }
+  });
+
+  it('rejects custom_claims.hd mismatch with hosted_domain_mismatch', () => {
+    const user = createGoogleSupabaseUser({
+      email: 'owner@example.com',
+      hostedDomain: 'other.com',
+      hostedDomainLocation: 'custom_claims',
+    });
+
+    expect(isWorkspaceDomainPermitted(workspaceIdentityFromUser(user), 'example.com')).toEqual({
+      permitted: false,
+      reason: 'hosted_domain_mismatch',
+    });
+  });
+
+  it('ignores user_metadata.custom_claims.hd', () => {
+    const user = createGoogleSupabaseUser({
+      email: 'owner@example.com',
+      hostedDomain: null,
+      hostedDomainLocation: 'none',
+      includeUserMetadataCustomClaimsHd: true,
+    });
+
+    expect(extractHostedDomain(user)).toBeNull();
+    expect(isWorkspaceDomainPermitted(workspaceIdentityFromUser(user), 'example.com')).toEqual({
+      permitted: false,
+      reason: 'missing_hosted_domain',
+    });
+  });
+
+  it('rejects personal Gmail accounts without a verified hd claim', () => {
+    const user = createGoogleSupabaseUser({
+      email: 'owner@gmail.com',
+      hostedDomain: null,
+      hostedDomainLocation: 'none',
+    });
+
+    expect(isWorkspaceDomainPermitted(workspaceIdentityFromUser(user), 'example.com')).toEqual({
+      permitted: false,
+      reason: 'email_domain_mismatch',
+    });
+  });
+
+  it('rejects email-domain mismatch even when hd matches', () => {
+    const user = createGoogleSupabaseUser({
+      email: 'owner@other.com',
+      hostedDomain: 'example.com',
+      hostedDomainLocation: 'custom_claims',
+    });
+
+    expect(isWorkspaceDomainPermitted(workspaceIdentityFromUser(user), 'example.com')).toEqual({
       permitted: false,
       reason: 'email_domain_mismatch',
     });

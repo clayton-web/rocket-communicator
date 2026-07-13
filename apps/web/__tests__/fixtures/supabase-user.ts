@@ -1,22 +1,26 @@
 import type { User } from '@supabase/supabase-js';
 
+type HostedDomainLocation = 'custom_claims' | 'top_level' | 'both' | 'none';
+
 interface GoogleSupabaseUserOptions {
   id?: string;
   email: string;
   hostedDomain?: string | null;
-  includeUserMetadataHd?: boolean;
+  hostedDomainLocation?: HostedDomainLocation;
+  includeUserMetadataCustomClaimsHd?: boolean;
   provider?: string;
 }
 
 /**
  * Supabase User shape returned by auth.getUser() after Google OAuth.
- * The verified Workspace `hd` claim is on identities[].identity_data, not user_metadata.
+ * Live Workspace `hd` is observed on identities[].identity_data.custom_claims.hd.
  */
 export function createGoogleSupabaseUser({
   id = '11111111-2222-3333-4444-555555555555',
   email,
   hostedDomain = 'example.com',
-  includeUserMetadataHd = false,
+  hostedDomainLocation = 'custom_claims',
+  includeUserMetadataCustomClaimsHd = false,
   provider = 'google',
 }: GoogleSupabaseUserOptions): User {
   const identityData: Record<string, unknown> = {
@@ -32,12 +36,20 @@ export function createGoogleSupabaseUser({
     sub: '1234567890',
   };
 
-  if (hostedDomain) {
+  const location =
+    hostedDomain == null ? 'none' : hostedDomainLocation === 'both' ? 'both' : hostedDomainLocation;
+
+  if (hostedDomain && (location === 'top_level' || location === 'both')) {
     identityData.hd = hostedDomain;
+  }
+
+  if (hostedDomain && (location === 'custom_claims' || location === 'both')) {
+    identityData.custom_claims = { hd: hostedDomain };
   }
 
   const userMetadata: Record<string, unknown> = {
     avatar_url: identityData.avatar_url,
+    custom_claims: hostedDomain && includeUserMetadataCustomClaimsHd ? { hd: hostedDomain } : {},
     email,
     email_verified: true,
     full_name: 'Owner Name',
@@ -48,10 +60,6 @@ export function createGoogleSupabaseUser({
     provider_id: identityData.provider_id,
     sub: identityData.sub,
   };
-
-  if (includeUserMetadataHd && hostedDomain) {
-    userMetadata.hd = hostedDomain;
-  }
 
   return {
     id,

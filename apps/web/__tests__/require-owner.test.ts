@@ -53,13 +53,14 @@ describe('require-owner authenticated request validation', () => {
     await expect(getAuthenticatedOwner()).resolves.toBeNull();
   });
 
-  it('does not trust user_metadata.hd when identity_data.hd is absent', async () => {
+  it('does not trust user_metadata.custom_claims.hd when identity claims are absent', async () => {
     getUser.mockResolvedValue({
       data: {
         user: createGoogleSupabaseUser({
           email: 'owner@example.com',
           hostedDomain: null,
-          includeUserMetadataHd: true,
+          hostedDomainLocation: 'none',
+          includeUserMetadataCustomClaimsHd: true,
         }),
       },
       error: null,

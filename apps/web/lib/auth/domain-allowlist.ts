@@ -38,22 +38,48 @@ export function workspaceIdentityFromUser(user: User): WorkspaceIdentity {
   };
 }
 
+function readHostedDomainClaim(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
+function readHostedDomainFromCustomClaims(customClaims: unknown): string | null {
+  if (!customClaims || typeof customClaims !== 'object' || Array.isArray(customClaims)) {
+    return null;
+  }
+
+  return readHostedDomainClaim((customClaims as Record<string, unknown>).hd);
+}
+
+function readHostedDomainFromIdentityData(identityData: unknown): string | null {
+  if (!identityData || typeof identityData !== 'object' || Array.isArray(identityData)) {
+    return null;
+  }
+
+  const data = identityData as Record<string, unknown>;
+  const topLevelHd = readHostedDomainClaim(data.hd);
+  if (topLevelHd) {
+    return topLevelHd;
+  }
+
+  return readHostedDomainFromCustomClaims(data.custom_claims);
+}
+
 /**
  * Google Workspace hosted domain from Supabase's verified Google provider identity.
  *
  * Supabase Auth validates the Google ID token server-side during OAuth and persists the
- * verified `hd` claim on `identities[].identity_data` for provider `google`. That field is
- * returned by `auth.getUser()` and is the enforcement source. `user_metadata.hd` is not
- * trusted because it is not a verified authorization claim.
+ * verified `hd` claim on `identities[].identity_data` for provider `google`, either as
+ * `identity_data.hd` or `identity_data.custom_claims.hd`. That identity data is returned
+ * by `auth.getUser()` and is the enforcement source. `user_metadata` is not trusted.
  */
 export function extractHostedDomain(user: User): string | null {
   const googleIdentity = user.identities?.find((identity) => identity.provider === 'google');
-  const identityData = googleIdentity?.identity_data;
-  if (identityData && typeof identityData.hd === 'string' && identityData.hd.trim()) {
-    return identityData.hd;
-  }
-
-  return null;
+  return readHostedDomainFromIdentityData(googleIdentity?.identity_data);
 }
 
 export function isWorkspaceDomainPermitted(
