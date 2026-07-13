@@ -14,7 +14,6 @@ export const API_DOMAIN_STATUS_MAP = {
     dismissed: 'dismissed',
   },
   role: {
-    primary: 'primary',
-    administrator: 'administrator',
+    owner: 'owner',
   },
 } as const;

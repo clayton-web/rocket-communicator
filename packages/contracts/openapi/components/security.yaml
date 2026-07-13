@@ -4,4 +4,14 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: Placeholder security scheme for contract documentation only (no auth in A2).
+      description: |
+        Authenticated Owner session (implementation deferred to A3).
+        Recipients do not use bearer authentication in version one.
+    capabilityAuth:
+      type: apiKey
+      in: header
+      name: X-Capability-Token
+      description: |
+        Task-specific capability token presented on POST mutations after explicit confirmation.
+        The eventual web route may derive the token from the capability URL instead of a JSON body.
+        GET requests that open a capability link must not mutate task state (D050).

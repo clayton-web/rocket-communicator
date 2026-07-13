@@ -4,6 +4,8 @@ Navigation and ownership map for project documentation. Start here when unsure w
 
 **Highest-level governing document:** [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md)
 
+**Architecture alignment (D048–D054):** Version one uses a single authenticated **Owner**, delegated **Recipients** with no application accounts, and task-specific **capability links** (GET non-mutating; POST after explicit confirmation). “Administrator” is an optional Recipient relationship label only. Prior primary-user / administrator-role documentation is superseded where noted in [DECISIONS.md](DECISIONS.md).
+
 ---
 
 ## Hierarchy (reading order for new contributors)
@@ -142,7 +144,7 @@ Root: [../README.md](../README.md) — entry point and status.
 | **Audience**     | Engineers, security reviewers                                                      |
 | **Maintainer**   | Lead architect                                                                     |
 | **Dependencies** | PRODUCT_SCOPE, ARCHITECTURE, DATA_RETENTION                                        |
-| **Update when**  | Roles, auth, link model, or privacy controls change                                |
+| **Update when**  | Roles, auth, capability link model, or privacy controls change                     |
 
 ### [DECISIONS.md](DECISIONS.md)
 

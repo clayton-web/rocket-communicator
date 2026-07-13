@@ -16,16 +16,15 @@ components:
       required:
         - outcomeType
         - completedAt
-        - completedByUserId
+        - attribution
       properties:
         outcomeType:
           $ref: '#/components/schemas/TaskOutcomeType'
         completedAt:
           type: string
           format: date-time
-        completedByUserId:
-          type: string
-          maxLength: 64
+        attribution:
+          $ref: './capability.yaml#/components/schemas/ActionAttribution'
         note:
           type: string
           maxLength: 2000

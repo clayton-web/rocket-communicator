@@ -25,9 +25,9 @@ import java.io.Serializable
 /**
  * 
  *
- * @param acknowledgement Primary user intent approving the edited suggestion and administrator assignment. Future server logic derives task creation, reminder scheduling, Gmail forwarding, and standard assignment email without client-side side-effect toggles. 
+ * @param acknowledgement Owner intent approving the edited suggestion and Recipient assignment. Future server logic derives task creation, reminder scheduling, Gmail forwarding, capability link issuance, and standard assignment email without client-side side-effect toggles. 
  * @param summaryPoints 
- * @param assigneeUserId Selected assignee for the approved task and assignment.
+ * @param recipientId Selected Recipient for the approved task and assignment.
  * @param priority 
  * @param dueAt 
  */
@@ -35,16 +35,16 @@ import java.io.Serializable
 
 data class ApproveTaskSuggestionRequest (
 
-    /* Primary user intent approving the edited suggestion and administrator assignment. Future server logic derives task creation, reminder scheduling, Gmail forwarding, and standard assignment email without client-side side-effect toggles.  */
+    /* Owner intent approving the edited suggestion and Recipient assignment. Future server logic derives task creation, reminder scheduling, Gmail forwarding, capability link issuance, and standard assignment email without client-side side-effect toggles.  */
     @Json(name = "acknowledgement")
     val acknowledgement: ApproveTaskSuggestionRequest.Acknowledgement,
 
     @Json(name = "summaryPoints")
     val summaryPoints: kotlin.collections.List<TaskSummaryPoint>? = null,
 
-    /* Selected assignee for the approved task and assignment. */
-    @Json(name = "assigneeUserId")
-    val assigneeUserId: kotlin.String? = null,
+    /* Selected Recipient for the approved task and assignment. */
+    @Json(name = "recipientId")
+    val recipientId: kotlin.String? = null,
 
     @Json(name = "priority")
     val priority: TaskPriority? = null,
@@ -58,7 +58,7 @@ data class ApproveTaskSuggestionRequest (
     }
 
     /**
-     * Primary user intent approving the edited suggestion and administrator assignment. Future server logic derives task creation, reminder scheduling, Gmail forwarding, and standard assignment email without client-side side-effect toggles. 
+     * Owner intent approving the edited suggestion and Recipient assignment. Future server logic derives task creation, reminder scheduling, Gmail forwarding, capability link issuance, and standard assignment email without client-side side-effect toggles. 
      *
      * Values: assignment_approved
      */

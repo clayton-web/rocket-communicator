@@ -4,9 +4,9 @@
 ## Properties
 | Name | Type | Description | Notes |
 | ------------ | ------------- | ------------- | ------------- |
-| **userId** | **kotlin.String** |  |  |
+| **ownerId** | **kotlin.String** | Authenticated Owner user identifier. |  |
 | **organizationId** | **kotlin.String** |  |  |
-| **role** | [**UserRole**](UserRole.md) |  |  |
+| **role** | [**AuthenticatedRole**](AuthenticatedRole.md) |  |  |
 | **displayName** | **kotlin.String** |  |  [optional] |
 
 

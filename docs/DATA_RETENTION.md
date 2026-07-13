@@ -22,7 +22,7 @@ This product must not become a permanent communication archive. Retention separa
 | Completed task visibility                | Operational summary and completion outcome                          | Visible 30 days after completion                                                         |
 | Raw voice audio                          | Uploaded recordings                                                 | Delete immediately after successful transcription and validation                         |
 | Transcripts                              | Text from speech                                                    | Treated as task/suggestion content under task retention; not kept as a permanent archive |
-| Forwarded Gmail messages and attachments | Copies in administrator (and Sent) mailboxes                        | **Outside app deletion control** — Workspace/Gmail retention                             |
+| Forwarded Gmail messages and attachments | Copies in Recipient (and Sent) mailboxes                            | **Outside app deletion control** — Workspace/Gmail retention                             |
 | Durable workflow intelligence            | Approved preferences/rules, anonymized patterns, confidence signals | May be retained longer; **no raw message bodies**                                        |
 | Audit metadata                           | Who approved what, when, message ids, reminder attempts             | Minimal metadata retained as required; scrub free-text payloads when content purges      |
 
@@ -68,8 +68,8 @@ Temporary copies stored by the application are deleted according to the applicat
 
 Implications:
 
-- The forwarded email remains in the administrator’s Gmail mailbox.
-- Forwarded attachments remain in the administrator’s Gmail mailbox.
+- The forwarded email remains in the Recipient’s Gmail mailbox.
+- Forwarded attachments remain in the Recipient’s Gmail mailbox.
 - Gmail copies are governed by Google Workspace retention and deletion settings.
 - Deleting application task content does **not** automatically delete the forwarded Gmail message.
 - **Do not claim that all communication content disappears after seven days.**

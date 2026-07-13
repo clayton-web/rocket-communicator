@@ -1,17 +1,45 @@
-import type { OrganizationId, UserId } from './ids.js';
+import type { CapabilityAction, CapabilityStatus } from '../value-objects/capability.js';
+import type { AssignmentId, CapabilityId, OrganizationId, OwnerId, TaskId } from './ids.js';
+import type { UtcInstant } from './timestamps.js';
 
-export type UserRole = 'primary' | 'administrator';
+export type AuthenticatedRole = 'owner';
 
-export interface ActorContext {
-  userId: UserId;
+export interface OwnerActor {
+  kind: 'owner';
+  ownerId: OwnerId;
   organizationId: OrganizationId;
-  role: UserRole;
 }
 
-export function isPrimary(actor: ActorContext): boolean {
-  return actor.role === 'primary';
+export interface CapabilityActor {
+  kind: 'capability';
+  capabilityId: CapabilityId;
+  taskId: TaskId;
+  assignmentId: AssignmentId;
+  intendedRecipientEmail: string;
+  allowedActions: CapabilityAction[];
+  status: CapabilityStatus;
+  expiresAt: UtcInstant;
 }
 
-export function isAdministrator(actor: ActorContext): boolean {
-  return actor.role === 'administrator';
+export interface SystemActor {
+  kind: 'system';
+  systemId: string;
+}
+
+export type Actor = OwnerActor | CapabilityActor | SystemActor;
+
+export function isOwner(actor: Actor): actor is OwnerActor {
+  return actor.kind === 'owner';
+}
+
+export function isCapability(actor: Actor): actor is CapabilityActor {
+  return actor.kind === 'capability';
+}
+
+export function isSystem(actor: Actor): actor is SystemActor {
+  return actor.kind === 'system';
+}
+
+export function ownerActor(ownerId: OwnerId, organizationId: OrganizationId): OwnerActor {
+  return { kind: 'owner', ownerId, organizationId };
 }

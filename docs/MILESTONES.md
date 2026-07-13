@@ -2,7 +2,7 @@
 
 Planning milestones only. No application scaffolding occurs in A0.
 
-**Current milestone: A2 complete** (API contracts and domain model). Next: **A3** (authentication and roles) — not started.
+**Current milestone: A2 complete** (API contracts and domain model). Next: **A3** (Owner authentication) — not started.
 
 Process for all later milestones: [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW.md) · [REVIEW_CHECKLIST.md](REVIEW_CHECKLIST.md) · [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md)
 
@@ -38,23 +38,23 @@ Process for all later milestones: [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW
 - **Recommended Git checkpoint:** `feat: contracts and domain model`
 - **Status:** Complete (OpenAPI contract, generated TS/Kotlin DTOs, pure domain package, tests, CI, documentation). No database, auth, or API handlers.
 
-## A3: Authentication and roles
+## A3: Owner authentication
 
-- **Objective:** Workspace Google sign-in; primary and administrator membership.
-- **Likely scope:** Supabase Auth integration, domain allowlist config, role guards.
-- **Acceptance criteria:** Both roles can authenticate; unauthorized domains rejected; API rejects cross-org access.
+- **Objective:** Workspace Google sign-in for the **single Owner** only (D048); no Recipient application accounts.
+- **Likely scope:** Supabase Auth integration, domain allowlist config, Owner session guards.
+- **Acceptance criteria:** Owner can authenticate; unauthorized domains rejected; session API returns Owner shape; no second application user role.
 - **Major risks:** Misconfigured OAuth clients.
-- **Out of scope:** Gmail link, Android capture.
-- **Recommended Git checkpoint:** `feat: workspace auth and roles`
+- **Out of scope:** Gmail link, Android capture, capability links.
+- **Recommended Git checkpoint:** `feat: owner authentication`
 
-## A4: Task core and minimal administrator web view
+## A4: Task core and minimal Recipient capability web view
 
-- **Objective:** Task CRUD, notes, complete, waiting, snooze; authenticated `/t/[id]` style view.
-- **Likely scope:** Task APIs, minimal UI for primary and admin.
-- **Acceptance criteria:** Admin can open assigned task and complete/wait/note/return/request clarification with audit; cannot create standalone tasks or change rules; admin work requests become Task Suggestions; no unauthenticated mutations.
-- **Major risks:** Building a full dashboard by accident.
+- **Objective:** Task CRUD, notes, complete, waiting, snooze (Owner); minimal Recipient capability web view at `/c/[token]` (or equivalent).
+- **Likely scope:** Owner task APIs, capability token issuance/validation, minimal Recipient GET (non-mutating) + POST-after-confirm UI.
+- **Acceptance criteria:** Recipient can open capability link, view assigned task, and complete/wait/note/return-to-Owner/request clarification with audit; cannot create standalone tasks or change rules; Recipient work requests become Task Suggestions; GET never mutates; no unauthenticated POST mutations.
+- **Major risks:** Building a full dashboard by accident; capability link security gaps.
 - **Out of scope:** AI, Gmail forward, Android.
-- **Recommended Git checkpoint:** `feat: task core and minimal admin task view`
+- **Recommended Git checkpoint:** `feat: task core and recipient capability view`
 
 ## A5: Gmail connection and polling
 
@@ -76,10 +76,10 @@ Process for all later milestones: [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW
 
 ## A7: Gmail forwarding and assignment email
 
-- **Objective:** After one Primary confirmation, assign admin; for Gmail-origin tasks forward original with all attachments and summary header (bundled with create task + schedule reminders per D037); non-email tasks get normal assignment email.
-- **Likely scope:** Mailer, idempotent forward, audit of single bundled approval and Gmail ids, secure links.
-- **Acceptance criteria:** No send without the single confirmation; dialog discloses create task, forward email, forward attachments, schedule reminders; attachments included; duplicate forward prevented; admin from user record not hard-coded.
-- **Major risks:** Attachment size/policy failures; partial forwards.
+- **Objective:** After one Owner confirmation, assign Recipient; for Gmail-origin tasks forward original with all attachments and summary header (bundled with create task + capability link + schedule reminders per D037); non-email tasks get normal assignment email with capability link.
+- **Likely scope:** Mailer, idempotent forward, audit of single bundled approval and Gmail ids, capability link issuance.
+- **Acceptance criteria:** No send without the single confirmation; dialog discloses create task, forward email, forward attachments, schedule reminders, capability link; attachments included; duplicate forward prevented; Recipient from contact record not hard-coded.
+- **Major risks:** Attachment size/policy failures; partial forwards; capability token lifecycle.
 - **Out of scope:** Separate attachment approval UX.
 - **Recommended Git checkpoint:** `feat: assignment email and gmail forward`
 
@@ -87,16 +87,16 @@ Process for all later milestones: [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW
 
 - **Objective:** Deterministic reminders with v1 escalation rule.
 - **Likely scope:** Policies, scheduler, `ReminderAttempt` idempotency, waiting/snooze interactions.
-- **Acceptance criteria:** First overdue admin-only; later may CC primary; duplicates impossible under double schedule; completed stops; waiting pauses.
+- **Acceptance criteria:** First overdue Recipient-only; later may CC Owner; duplicates impossible under double schedule; completed stops; waiting pauses.
 - **Major risks:** Timezone/business-hours bugs.
 - **Out of scope:** AI-controlled sends.
 - **Recommended Git checkpoint:** `feat: reminder and escalation engine`
 
 ## A9: Android authentication and task interface
 
-- **Objective:** Sideloadable app signs in and reviews tasks/suggestions via API.
+- **Objective:** Sideloadable app signs in as Owner and reviews tasks/suggestions via API.
 - **Likely scope:** Compose UI, secure token storage, sync.
-- **Acceptance criteria:** Primary can approve suggestions and manage tasks against staging/prod API.
+- **Acceptance criteria:** Owner can approve suggestions and manage tasks against staging/prod API.
 - **Major risks:** Auth refresh on mobile.
 - **Out of scope:** Notification listener.
 - **Recommended Git checkpoint:** `feat: android auth and task UI`
@@ -123,7 +123,7 @@ Process for all later milestones: [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW
 
 - **Objective:** Record → transcribe → structure → confirm; delete audio on success; voice never creates Tasks directly—follow-ups and new work are Task Suggestions (D038); multi-intent complete + follow-up proposal with assignment confirmation gate (D037).
 - **Likely scope:** Android recorder, upload API, OpenAI transcription, confirmation UI.
-- **Acceptance criteria:** Example multi-intent utterance completes current task and creates follow-up **Task Suggestion** only; admin email not sent without assignment confirmation; audio removed after success.
+- **Acceptance criteria:** Example multi-intent utterance completes current task and creates follow-up **Task Suggestion** only; Recipient email not sent without assignment confirmation; audio removed after success.
 - **Major risks:** Failed transcription retry window; attachment size/policy failures.
 - **Out of scope:** Live-call transcription.
 - **Recommended Git checkpoint:** `feat: voice capture and transcription`
@@ -139,18 +139,18 @@ Process for all later milestones: [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW
 
 ## A14: Learning signals and proposed rules
 
-- **Objective:** Record corrections/patterns; propose rules; never auto-apply in v1.
+- **Objective:** Record corrections/patterns; propose rules; never auto-apply in v1; Owner-only (D054).
 - **Likely scope:** LearningSignal, WorkflowRule proposed/approved flow.
-- **Acceptance criteria:** “Create a rule?” appears from patterns; approval required to activate.
+- **Acceptance criteria:** “Create a rule?” appears from patterns; Owner approval required to activate.
 - **Major risks:** Leaking raw text into durable stores.
-- **Out of scope:** Automatic rule execution.
+- **Out of scope:** Automatic rule execution; Recipient participation in learning.
 - **Recommended Git checkpoint:** `feat: learning signals and proposed rules`
 
 ## A15: Hardening and private deployment
 
 - **Objective:** Production-ready private deploy; sideload release; runbooks; alerts.
-- **Likely scope:** Observability, reauth UX, battery/notification guidance, backup docs.
-- **Acceptance criteria:** Primary + admin can run daily workflow privately; no Play Store requirement.
-- **Major risks:** Device-specific capture gaps.
+- **Likely scope:** Observability, reauth UX, battery/notification guidance, backup docs, capability link hardening.
+- **Acceptance criteria:** Owner + Recipient can run daily workflow privately; no Play Store requirement.
+- **Major risks:** Device-specific capture gaps; capability misuse.
 - **Out of scope:** Play Store listing; Rocket PM; WhatsApp.
 - **Recommended Git checkpoint:** `chore: v1 private deployment hardening`

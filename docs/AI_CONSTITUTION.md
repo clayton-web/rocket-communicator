@@ -86,10 +86,10 @@ Approved autonomous behaviour
 
 ## Recommendations vs automation
 
-| Allowed without creating irreversible external effects    | Requires primary-user approval                         |
+| Allowed without creating irreversible external effects    | Requires Owner approval                                |
 | --------------------------------------------------------- | ------------------------------------------------------ |
 | Relevance skip of obvious junk (heuristic + cheap filter) | Creating an active **Task** from a suggestion          |
-| Creating a **Task Suggestion**                            | Sending administrator assignment email                 |
+| Creating a **Task Suggestion**                            | Sending Recipient assignment email and capability link |
 | Showing recommended assignee/priority/dates               | Gmail forward with attachments                         |
 | Proposing a workflow rule                                 | Activating a workflow rule                             |
 | Structuring a voice draft / Task Suggestion               | Creating a Task from voice without suggestion approval |
@@ -99,13 +99,13 @@ Reminders and retention are **not** AI-controlled sends; they follow determinist
 
 ## Voice and multi-intent structuring
 
-**No voice interaction creates a Task directly (D038).** Voice always produces a proposed action (typically a Task Suggestion) requiring Primary User approval before a Task exists.
+**No voice interaction creates a Task directly (D038).** Voice always produces a proposed action (typically a Task Suggestion) requiring Owner approval before a Task exists.
 
-When speech implies multiple actions (complete, record amount, create follow-up, assign administrator, set due date), the AI produces a **structured proposal**:
+When speech implies multiple actions (complete, record amount, create follow-up, assign Recipient, set due date), the AI produces a **structured proposal**:
 
 - Completing the **current** Task may proceed on user confirmation.
 - Any new follow-up begins as a **Task Suggestion**, not a Task.
-- Administrator assignment email and Gmail forwarding wait for the Primary User’s **single** bundled confirmation when applicable (D037).
+- Recipient assignment email, capability link issuance, and Gmail forwarding wait for the Owner’s **single** bundled confirmation when applicable (D037).
 
 ## Cost and safety controls
 

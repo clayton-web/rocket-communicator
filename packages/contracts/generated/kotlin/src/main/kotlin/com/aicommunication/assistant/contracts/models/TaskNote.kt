@@ -15,6 +15,7 @@
 
 package com.aicommunication.assistant.contracts.models
 
+import com.aicommunication.assistant.contracts.models.ActionAttribution
 
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
@@ -24,7 +25,7 @@ import java.io.Serializable
  * 
  *
  * @param id 
- * @param authorUserId 
+ * @param attribution 
  * @param body 
  * @param createdAt 
  */
@@ -35,8 +36,8 @@ data class TaskNote (
     @Json(name = "id")
     val id: kotlin.String,
 
-    @Json(name = "authorUserId")
-    val authorUserId: kotlin.String,
+    @Json(name = "attribution")
+    val attribution: ActionAttribution,
 
     @Json(name = "body")
     val body: kotlin.String,

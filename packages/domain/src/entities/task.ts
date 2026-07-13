@@ -1,4 +1,4 @@
-import type { OrganizationId, TaskId } from '../types/ids.js';
+import type { OrganizationId, RecipientId, TaskId } from '../types/ids.js';
 import type { UtcInstant } from '../types/timestamps.js';
 import type { ReminderMetadata, RetentionMetadata } from '../value-objects/metadata.js';
 import type { SourceReference } from '../value-objects/source-reference.js';
@@ -39,6 +39,11 @@ export function isActionableTaskStatus(status: TaskStatus): status is Actionable
   return status === 'open' || status === 'in_progress';
 }
 
-export function isAssignedTo(task: Task, userId: string): boolean {
-  return task.assignment?.assigneeUserId === userId;
+export function isAssignedToRecipient(task: Task, recipientId: RecipientId): boolean {
+  return task.assignment?.recipientId === recipientId;
+}
+
+/** @deprecated Use isAssignedToRecipient */
+export function isAssignedTo(task: Task, recipientId: string): boolean {
+  return task.assignment?.recipientId === recipientId;
 }

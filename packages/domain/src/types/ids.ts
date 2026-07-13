@@ -1,16 +1,39 @@
 export type OrganizationId = string & { readonly __brand: 'OrganizationId' };
-export type UserId = string & { readonly __brand: 'UserId' };
+export type OwnerId = string & { readonly __brand: 'OwnerId' };
+export type RecipientId = string & { readonly __brand: 'RecipientId' };
+export type AssignmentId = string & { readonly __brand: 'AssignmentId' };
+export type CapabilityId = string & { readonly __brand: 'CapabilityId' };
 export type TaskId = string & { readonly __brand: 'TaskId' };
 export type TaskSuggestionId = string & { readonly __brand: 'TaskSuggestionId' };
 export type SummaryPointId = string & { readonly __brand: 'SummaryPointId' };
 export type SourceReferenceId = string & { readonly __brand: 'SourceReferenceId' };
 
+/** @deprecated Use OwnerId. Retained for transitional mapping only. */
+export type UserId = OwnerId;
+
 export function asOrganizationId(value: string): OrganizationId {
   return value as OrganizationId;
 }
 
-export function asUserId(value: string): UserId {
-  return value as UserId;
+export function asOwnerId(value: string): OwnerId {
+  return value as OwnerId;
+}
+
+/** @deprecated Use asOwnerId */
+export function asUserId(value: string): OwnerId {
+  return asOwnerId(value);
+}
+
+export function asRecipientId(value: string): RecipientId {
+  return value as RecipientId;
+}
+
+export function asAssignmentId(value: string): AssignmentId {
+  return value as AssignmentId;
+}
+
+export function asCapabilityId(value: string): CapabilityId {
+  return value as CapabilityId;
 }
 
 export function asTaskId(value: string): TaskId {

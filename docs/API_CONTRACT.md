@@ -4,7 +4,7 @@ Canonical HTTP contract for the AI Communication Action Assistant (Milestone A2)
 
 **Source of truth:** `packages/contracts/openapi/` (multi-file OpenAPI 3.1) bundled to `packages/contracts/dist/openapi.bundled.yaml`.
 
-Related: [STATE_MACHINE.md](STATE_MACHINE.md) · [DECISIONS.md](DECISIONS.md) (D007, D044–D047) · [ARCHITECTURE.md](ARCHITECTURE.md)
+Related: [STATE_MACHINE.md](STATE_MACHINE.md) · [DECISIONS.md](DECISIONS.md) (D007, D044–D054) · [ARCHITECTURE.md](ARCHITECTURE.md)
 
 ---
 
@@ -39,7 +39,7 @@ OpenAPI Generator 7.12.0 does not expose a separate transport-neutral Kotlin gen
 
 **Configuration:**
 
-- `library=jvm-okhttp4` (OpenAPI Generator default JVM Kotlin template)
+- `library=jvm-okhttp4` (OpenAPI Generator default JVM template)
 - `serializationLibrary=moshi`
 - `dateLibrary=string`, `serializableModel=true`
 
@@ -57,11 +57,33 @@ OpenAPI Generator 7.12.0 does not expose a separate transport-neutral Kotlin gen
 
 No health endpoint in A2.
 
+## Authentication models
+
+### Owner session (`sessionAuth`)
+
+- **Owner-only** authenticated routes (D048).
+- `GET /api/v1/session` returns the current Owner session shape.
+- All Owner task and suggestion mutations require a valid Owner session.
+- No second application user role exists.
+
+### Recipient capability (`capabilityAuth`)
+
+- Recipients have **no** application accounts (D049).
+- Task-specific capability tokens authorize scoped Recipient actions (D050, D051).
+- Capability routes are separate from Owner session routes.
+- **GET** on capability task views is **non-mutating** (safe for email prefetch).
+- **POST** mutations require explicit confirmation payload acknowledging the action.
+- Audit responses must not imply verified Recipient identity (D052).
+
+Future milestones will add capability endpoints (for example `/api/v1/capabilities/{token}/tasks/{taskId}`) aligned with this model; A2 documents the contract direction only.
+
 ## Endpoints
+
+### Owner session routes
 
 | Method | Path                                              | Purpose                                                    |
 | ------ | ------------------------------------------------- | ---------------------------------------------------------- |
-| GET    | `/api/v1/session`                                 | Current actor session shape (no auth implementation in A2) |
+| GET    | `/api/v1/session`                                 | Current Owner session shape (no auth implementation in A2) |
 | GET    | `/api/v1/task-suggestions`                        | List suggestions (cursor pagination)                       |
 | GET    | `/api/v1/task-suggestions/{suggestionId}`         | Get suggestion                                             |
 | POST   | `/api/v1/task-suggestions/{suggestionId}/approve` | Approve suggestion and assignment intent                   |
@@ -69,28 +91,46 @@ No health endpoint in A2.
 | POST   | `/api/v1/task-suggestions/{suggestionId}/dismiss` | Dismiss suggestion                                         |
 | POST   | `/api/v1/task-suggestions/{suggestionId}/merge`   | Merge into existing task                                   |
 | GET    | `/api/v1/tasks`                                   | List tasks                                                 |
-| POST   | `/api/v1/tasks`                                   | Primary typed task creation                                |
+| POST   | `/api/v1/tasks`                                   | Owner typed task creation                                  |
 | GET    | `/api/v1/tasks/{taskId}`                          | Get task                                                   |
 | POST   | `/api/v1/tasks/{taskId}/start`                    | Start task                                                 |
 | POST   | `/api/v1/tasks/{taskId}/waiting`                  | Mark waiting                                               |
 | POST   | `/api/v1/tasks/{taskId}/resume`                   | Resume from waiting                                        |
 | POST   | `/api/v1/tasks/{taskId}/complete`                 | Complete task (one-tap supported)                          |
 | POST   | `/api/v1/tasks/{taskId}/notes`                    | Add note                                                   |
-| POST   | `/api/v1/tasks/{taskId}/return-to-primary`        | Return assignment to primary                               |
+| POST   | `/api/v1/tasks/{taskId}/return-to-owner`          | Return assignment to Owner                                 |
 | POST   | `/api/v1/tasks/{taskId}/clarification-requests`   | Request clarification                                      |
 
-Excluded from A2: Gmail, forwarding, voice upload, ingestion, workers, learning rules, health.
+### Recipient capability routes (planned; not in A2 OpenAPI yet)
+
+| Method | Path (illustrative)                                                  | Purpose                                  |
+| ------ | -------------------------------------------------------------------- | ---------------------------------------- |
+| GET    | `/api/v1/capabilities/{token}/tasks/{taskId}`                        | Non-mutating task view for Recipient     |
+| POST   | `/api/v1/capabilities/{token}/tasks/{taskId}/complete`               | Complete after explicit confirmation     |
+| POST   | `/api/v1/capabilities/{token}/tasks/{taskId}/waiting`                | Mark waiting after explicit confirmation |
+| POST   | `/api/v1/capabilities/{token}/tasks/{taskId}/notes`                  | Add note after explicit confirmation     |
+| POST   | `/api/v1/capabilities/{token}/tasks/{taskId}/return-to-owner`        | Return to Owner after confirm            |
+| POST   | `/api/v1/capabilities/{token}/tasks/{taskId}/clarification-requests` | Request clarification after confirm      |
+
+Excluded from A2: Gmail, forwarding, voice upload, ingestion, workers, learning rules, health, capability route implementation.
+
+## Return-to-Owner path
+
+- Owner route: `POST /api/v1/tasks/{taskId}/return-to-owner` (session auth).
+- Recipient route: `POST /api/v1/capabilities/{token}/tasks/{taskId}/return-to-owner` (capability auth, POST after confirm).
+- Both reassign the task to the Owner without creating a new Task.
+- Task status is unchanged; only assignment ownership changes.
 
 ## Assignment approval semantics (D037)
 
 `ApproveTaskSuggestionRequest` expresses **user intent** only:
 
 - edited summary points (optional)
-- selected assignee
+- selected assignee (Recipient)
 - priority and due date
 - `acknowledgement: assignment_approved`
 
-It does **not** expose internal side-effect toggles. Future server logic derives task creation, assignment, reminder scheduling, Gmail forwarding (Gmail sources), and standard assignment email (non-Gmail sources).
+It does **not** expose internal side-effect toggles. Future server logic derives task creation, assignment, reminder scheduling, capability link issuance, Gmail forwarding (Gmail sources), and standard assignment email (non-Gmail sources).
 
 ## Concurrency (D045)
 
@@ -107,6 +147,8 @@ Mutations require `If-Match` with the strong ETag.
 | Stale `If-Match`   | 412  | `PRECONDITION_FAILED`   |
 | Domain conflict    | 409  | `DOMAIN_CONFLICT`       |
 
+Capability mutations should also enforce `If-Match` where the Recipient view exposes current task version.
+
 ## Error envelope
 
 ```json
@@ -121,7 +163,7 @@ Mutations require `If-Match` with the strong ETag.
 }
 ```
 
-Codes: `VALIDATION_ERROR`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `INVALID_STATE_TRANSITION`, `PRECONDITION_REQUIRED`, `PRECONDITION_FAILED`, `DOMAIN_CONFLICT`, `RATE_LIMITED`, `DEPENDENCY_UNAVAILABLE`, `INTERNAL_ERROR`.
+Codes: `VALIDATION_ERROR`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `INVALID_STATE_TRANSITION`, `PRECONDITION_REQUIRED`, `PRECONDITION_FAILED`, `DOMAIN_CONFLICT`, `RATE_LIMITED`, `CAPABILITY_EXPIRED`, `CAPABILITY_REVOKED`, `DEPENDENCY_UNAVAILABLE`, `INTERNAL_ERROR`.
 
 ## Pagination
 

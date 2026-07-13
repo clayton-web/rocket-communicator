@@ -15,6 +15,7 @@
 
 package com.aicommunication.assistant.contracts.models
 
+import com.aicommunication.assistant.contracts.models.ActionAttribution
 import com.aicommunication.assistant.contracts.models.FollowUpProposal
 import com.aicommunication.assistant.contracts.models.TaskOutcomeType
 import com.aicommunication.assistant.contracts.models.TaskSummaryPoint
@@ -28,7 +29,7 @@ import java.io.Serializable
  *
  * @param outcomeType 
  * @param completedAt 
- * @param completedByUserId 
+ * @param attribution 
  * @param note 
  * @param summaryPoints 
  * @param followUpProposal 
@@ -43,8 +44,8 @@ data class TaskOutcome (
     @Json(name = "completedAt")
     val completedAt: kotlin.String,
 
-    @Json(name = "completedByUserId")
-    val completedByUserId: kotlin.String,
+    @Json(name = "attribution")
+    val attribution: ActionAttribution,
 
     @Json(name = "note")
     val note: kotlin.String? = null,

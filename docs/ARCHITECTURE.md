@@ -6,25 +6,26 @@ Governed by [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md) and [AI_CONSTITUT
 
 Version one is a private, Android-first system with a thin Next.js backend on Vercel, Supabase PostgreSQL as the system of record, Prisma used only through authorized server APIs, Gmail API for inbox ingest and assignment forwarding, and OpenAI for structured extraction and transcription.
 
-**Design posture:** AI recommends; humans approve; reminders and retention are deterministic and auditable. Temporary communication content is minimized and deleted on schedule. Durable learning excludes raw message bodies. Android notification and call capture are best-effort with mandatory manual/voice fallbacks.
+**Design posture:** AI recommends; the Owner approves; Recipients act via capability links (GET non-mutating, POST after explicit confirmation); reminders and retention are deterministic and auditable. Temporary communication content is minimized and deleted on schedule. Durable learning belongs to the Owner only. Android notification and call capture are best-effort with mandatory manual/voice fallbacks.
 
 **Not in this repository yet:** connected external services, live API route handlers, database schemas applied to a live database, or authentication. A2 provides OpenAPI contracts and pure domain rules under `packages/contracts` and `packages/domain`.
 
 ## Component responsibilities
 
-| Component         | Responsibility                                                                                                             |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| Android app       | Notification capture, call prompts, voice recording, suggestion review, task actions, secure credential storage            |
-| Next.js web + API | Auth callbacks, authorized APIs, minimal admin task pages, Gmail poll workers (Pub/Sub deferred), AI orchestration, mailer |
-| Supabase Postgres | Durable and temporary operational data                                                                                     |
-| Supabase Auth     | Google Workspace sign-in                                                                                                   |
-| Supabase Realtime | Optional live updates to Android/web when online                                                                           |
-| Prisma            | Server-side data access only (never as a substitute for app authorization)                                                 |
-| Gmail API         | Read minimal inbox content; send assignment emails; forward originals with attachments                                     |
-| OpenAI            | Relevance filter, structured summarization/recommendations, transcription, outcome structuring                             |
-| Reminder engine   | Deterministic schedule, idempotent attempts, escalation                                                                    |
-| Retention worker  | 7-day excerpt purge, 30-day task content scrub, immediate audio deletion                                                   |
-| Learning profile  | Preferences, proposed rules, anonymized signals                                                                            |
+| Component         | Responsibility                                                                                                                                |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Android app       | Notification capture, call prompts, voice recording, suggestion review, task actions, secure credential storage (Owner)                       |
+| Next.js web + API | Owner auth callbacks, authorized Owner APIs, Recipient capability task pages, Gmail poll workers (Pub/Sub deferred), AI orchestration, mailer |
+| Supabase Postgres | Durable and temporary operational data                                                                                                        |
+| Supabase Auth     | Google Workspace sign-in for the **Owner only** (D048)                                                                                        |
+| Supabase Realtime | Optional live updates to Android when online                                                                                                  |
+| Prisma            | Server-side data access only (never as a substitute for app authorization)                                                                    |
+| Gmail API         | Read minimal inbox content; send assignment emails; forward originals with attachments                                                        |
+| OpenAI            | Relevance filter, structured summarization/recommendations, transcription, outcome structuring                                                |
+| Reminder engine   | Deterministic schedule, idempotent attempts, escalation                                                                                       |
+| Retention worker  | 7-day excerpt purge, 30-day task content scrub, immediate audio deletion                                                                      |
+| Learning profile  | Owner-scoped preferences, proposed rules, anonymized signals (D054)                                                                           |
+| Capability auth   | Token validation for Recipient actions; scoped permissions per task link (D050, D051)                                                         |
 
 ## Recommended monorepo strategy (future scaffolding)
 
@@ -51,23 +52,23 @@ Neon is **not** used in version one while Supabase provides Postgres.
 - `NotificationListenerService` for Google Messages and call-related notifications (later milestones).
 - Local outbox (Room or equivalent) for offline event/action queues (later).
 - Encrypted storage for tokens (Android Keystore / EncryptedSharedPreferences) (later).
-- Android does **not** write core business records directly to Supabase tables; it calls authorized server APIs.
+- Android does **not** write core business records directly to Supabase tables; it calls authorized Owner session APIs.
 - FCM deferred unless core workflow proves insufficient (email + pull/Realtime first).
 
 ## Web and backend direction
 
 - Next.js (App Router) with TypeScript on Vercel.
-- Authenticated routes for primary and administrator.
-- Minimal task view at secure task URLs (authenticated).
+- Authenticated routes for the **Owner** only (D048).
+- Minimal Recipient task view at capability URLs (`/c/[token]` or equivalent)—no Recipient sign-in.
 - Internal authenticated endpoints for scheduled reminder and retention work.
 - Server-side Zod validation where useful, aligned with the canonical contract.
 
 ## Gmail architecture
 
-- Connect **one** primary Workspace inbox via OAuth; store tokens encrypted server-side.
+- Connect **one** Owner Workspace inbox via OAuth; store tokens encrypted server-side.
 - **Polling-first** is an acceptable initial approach; Pub/Sub watch deferred pending confirmation (see [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md) and [DECISIONS.md](DECISIONS.md)).
 - Fetch minimum thread/message content for AI; avoid attachment bodies in app storage for v1 ingest.
-- On approved administrator assignment for Gmail-origin tasks: **forward** the original message (summary above) including **all attachments** via Gmail API; record forwarded message id; prevent duplicate forwards.
+- On approved Recipient assignment for Gmail-origin tasks: **forward** the original message (summary above) including **all attachments** via Gmail API; record forwarded message id; prevent duplicate forwards.
 - Outbound assignment and reminder mail also use the connected Gmail account.
 - Schema supports future multiple `CommunicationAccount` rows without implementing them in v1.
 
@@ -80,7 +81,7 @@ Separate jobs (cost-tiered):
 3. Recommendations: assignee, priority, due date, follow-up timing.
 4. Transcription (OpenAI).
 5. Completion-outcome structuring.
-6. Periodic learning-rule _suggestions_ (human approve).
+6. Periodic learning-rule _suggestions_ (Owner approve only—D054).
 
 Strict JSON schemas, prompt versioning, confidence metadata, retries with quarantine on persistent invalid output. Recommendations never silently become tasks, assignments, or emails.
 
@@ -88,15 +89,16 @@ Strict JSON schemas, prompt versioning, confidence metadata, retries with quaran
 
 - Suggestions and tasks are distinct entities.
 - Persisted statuses plus derived UI labels (`due soon`, `overdue`).
-- Actions: approve, edit, dismiss, merge, assign, complete, waiting, snooze, notes, voice, follow-up; administrator may also return to primary and request clarification (D039).
-- Assignment email / Gmail forward: one Primary User confirmation for the bundled business action (D037).
+- Owner actions: approve, edit, dismiss, merge, assign, complete, waiting, snooze, notes, voice, follow-up.
+- Recipient actions (via capability link): complete, waiting, notes, return to Owner, request clarification.
+- Assignment email / Gmail forward: one Owner confirmation for the bundled business action (D037).
 - Voice never creates a Task directly; voice yields proposals / Task Suggestions requiring approval (D038).
 
 ## Reminder engine
 
 - Deterministic policies by task type and urgency; timezone `America/Vancouver`.
 - Idempotent `ReminderAttempt` records.
-- First overdue → administrator only; later overdue may CC primary (configurable threshold).
+- First overdue → Recipient only; later overdue may CC Owner (configurable threshold).
 - Waiting pauses; snooze recalculates; completion stops; duplicates prevented.
 
 ## Retention worker
@@ -109,16 +111,18 @@ Strict JSON schemas, prompt versioning, confidence metadata, retries with quaran
 
 ## Learning profile
 
-- Durable preferences and approved rules.
-- Proposed rules from patterns (e.g., repeated admin assignments).
+- Owner-scoped durable preferences and approved rules (D054).
+- Proposed rules from patterns (e.g., repeated Recipient assignments).
 - Anonymized signals and evaluation metadata without raw bodies.
 
 ## Authentication and authorization boundary
 
-- Supabase Auth with Google Workspace; same-organization administrator.
-- Roles: primary and administrator (org membership).
+- **Owner:** Supabase Auth with Google Workspace; single authenticated application user (D048).
+- **Recipient:** no application account; **capability auth** via task-specific tokens (D049, D050, D051).
+- Capability possession authorizes scoped Recipient actions; it is not verified identity (D051).
+- GET on capability routes is non-mutating; POST mutations require explicit confirmation (D050).
 - **Prisma server operations do not inherit the end-user’s Supabase RLS context.**
-- Authenticated server APIs must enforce organization and role checks explicitly.
+- Owner session APIs must enforce Owner identity explicitly; capability APIs must validate token scope, expiry, and task binding.
 - RLS is defence in depth and for explicitly designed direct-client/Realtime paths—not a vague substitute for application authorization.
 
 ## Canonical API contract strategy
@@ -151,22 +155,24 @@ flowchart TB
   subgraph Device["Android device"]
     NL["Notification listener"]
     Voice["Voice capture"]
-    AppUI["Compose UI"]
+    AppUI["Compose UI - Owner"]
   end
 
   subgraph Google["Google Workspace"]
-    Gmail["Primary Gmail inbox"]
-    AdminMail["Administrator mailbox"]
+    Gmail["Owner Gmail inbox"]
+    RecipientMail["Recipient mailbox"]
   end
 
   subgraph Host["Vercel - Next.js"]
-    API["Authorized APIs / task engine"]
+    API["Owner APIs / task engine"]
+    CapAPI["Capability APIs - Recipient"]
+    CapView["Minimal capability web view"]
     AI["AI orchestrator"]
     Mailer["Assignment and forward mailer"]
   end
 
   subgraph Data["Supabase"]
-    Auth["Auth - Google Workspace"]
+    Auth["Auth - Owner only"]
     DB[("PostgreSQL")]
     RT["Realtime optional"]
     Cron["Schedule - reminders and retention"]
@@ -185,8 +191,10 @@ flowchart TB
   API --> AI
   AI --> OpenAI
   API --> Mailer
-  Mailer -->|assignment or forward + attachments| AdminMail
-  AdminMail -->|secure authenticated link| API
+  Mailer -->|assignment or forward + attachments + capability link| RecipientMail
+  RecipientMail -->|capability link GET view| CapView
+  CapView -->|POST after confirm| CapAPI
+  CapAPI --> DB
   Cron --> API
   Cron --> DB
 ```
@@ -200,12 +208,14 @@ flowchart TB
 - Completed-call detection via notifications is **not guaranteed**.
 - Gmail forward may fail for size or policy limits on attachments (behaviour unresolved—see open questions).
 - Application retention does not control Gmail mailbox copies after forwarding.
+- Capability links forwarded to unintended parties are a misuse risk; possession equals authorization (D051).
 
 ## Failure and fallback principles
 
 1. Prefer degrade to manual/voice capture over silent data loss.
 2. Queue and retry transient AI, Gmail, and network failures with audit.
-3. Never send assignment or forward without recorded primary approval.
+3. Never send assignment or forward without recorded Owner approval.
 4. Idempotency keys for forwards, reminders, and event ingest.
 5. Surface reauth and notification-permission health in the Android UI.
 6. Quarantine invalid AI output for human review rather than guessing.
+7. Invalidate or rotate capability tokens when misuse is suspected or assignment is re-forwarded (policy TBD—see open questions).

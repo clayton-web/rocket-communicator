@@ -37,7 +37,7 @@ import java.io.Serializable
  * @param createdAt 
  * @param updatedAt 
  * @param sourceReference 
- * @param proposedAssigneeUserId 
+ * @param proposedRecipientId 
  * @param proposedDueAt 
  * @param proposedPriority 
  * @param voiceOriginated 
@@ -75,8 +75,8 @@ data class TaskSuggestion (
     @Json(name = "sourceReference")
     val sourceReference: SourceReference? = null,
 
-    @Json(name = "proposedAssigneeUserId")
-    val proposedAssigneeUserId: kotlin.String? = null,
+    @Json(name = "proposedRecipientId")
+    val proposedRecipientId: kotlin.String? = null,
 
     @Json(name = "proposedDueAt")
     val proposedDueAt: kotlin.String? = null,

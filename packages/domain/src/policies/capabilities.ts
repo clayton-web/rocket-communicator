@@ -1,10 +1,12 @@
-import type { ActorContext } from '../types/actor.js';
+import type { Actor, CapabilityActor, OwnerActor } from '../types/actor.js';
+import { isCapability, isOwner } from '../types/actor.js';
 import { forbiddenError } from '../errors/domain-errors.js';
 import type { Task } from '../entities/task.js';
-import { isPrimary } from '../types/actor.js';
+import { isTerminalTaskStatus } from '../entities/task.js';
+import type { CapabilityAction } from '../value-objects/capability.js';
+import { assertCapabilityPermitsAction, isCapabilityActive } from './capability.policy.js';
 
-export type CapabilityAction =
-  | 'view_assigned_task'
+export type OwnerAction =
   | 'approve_task_suggestion'
   | 'edit_task_suggestion'
   | 'dismiss_task_suggestion'
@@ -18,15 +20,15 @@ export type CapabilityAction =
   | 'complete_task'
   | 'mark_task_waiting'
   | 'add_task_note'
-  | 'return_task_to_primary'
+  | 'return_task_to_owner'
   | 'request_clarification'
   | 'approve_learning'
   | 'manage_workflow_rules'
   | 'manage_reminder_policies'
   | 'create_automation'
-  | 'assign_unrelated_user';
+  | 'assign_unrelated_recipient';
 
-const PRIMARY_ACTIONS = new Set<CapabilityAction>([
+const OWNER_ACTIONS = new Set<OwnerAction>([
   'approve_task_suggestion',
   'edit_task_suggestion',
   'dismiss_task_suggestion',
@@ -39,7 +41,7 @@ const PRIMARY_ACTIONS = new Set<CapabilityAction>([
   'complete_task',
   'mark_task_waiting',
   'add_task_note',
-  'return_task_to_primary',
+  'return_task_to_owner',
   'request_clarification',
   'approve_learning',
   'manage_workflow_rules',
@@ -47,43 +49,97 @@ const PRIMARY_ACTIONS = new Set<CapabilityAction>([
   'create_automation',
 ]);
 
-const ADMIN_ACTIONS = new Set<CapabilityAction>([
-  'view_assigned_task',
-  'complete_task',
-  'mark_task_waiting',
-  'add_task_note',
-  'return_task_to_primary',
-  'request_clarification',
-]);
+const CAPABILITY_ACTION_MAP: Partial<Record<OwnerAction, CapabilityAction>> = {
+  complete_task: 'complete_task',
+  mark_task_waiting: 'mark_task_waiting',
+  add_task_note: 'add_task_note',
+  return_task_to_owner: 'return_task_to_owner',
+  request_clarification: 'request_clarification',
+};
 
-export function can(actor: ActorContext, action: CapabilityAction, task?: Task): boolean {
+export function canOwner(actor: OwnerActor, action: OwnerAction): boolean {
   if (action === 'create_task_from_voice') {
     return false;
   }
+  return OWNER_ACTIONS.has(action);
+}
 
-  if (actor.role === 'primary') {
-    return PRIMARY_ACTIONS.has(action);
-  }
-
-  if (!ADMIN_ACTIONS.has(action)) {
+export function canCapability(
+  actor: CapabilityActor,
+  action: CapabilityAction,
+  task: Task,
+  now: string,
+): boolean {
+  try {
+    assertCapabilityPermitsAction(actor, action, task, now);
+    return true;
+  } catch {
     return false;
   }
-
-  if (!task?.assignment || task.assignment.assigneeUserId !== actor.userId) {
-    return false;
-  }
-
-  return true;
 }
 
-export function assertCan(actor: ActorContext, action: CapabilityAction, task?: Task): void {
-  if (!can(actor, action, task)) {
-    throw forbiddenError(`Actor is not permitted to ${action}.`);
+export function can(actor: Actor, action: OwnerAction, task?: Task, now?: string): boolean {
+  if (isOwner(actor)) {
+    return canOwner(actor, action);
+  }
+
+  if (isCapability(actor) && task && now) {
+    const capabilityAction = ownerActionToCapabilityAction(action);
+    if (!capabilityAction) {
+      return false;
+    }
+    return canCapability(actor, capabilityAction, task, now);
+  }
+
+  return false;
+}
+
+export function assertCan(actor: Actor, action: OwnerAction, task?: Task, now?: string): void {
+  if (isOwner(actor)) {
+    if (!canOwner(actor, action)) {
+      throw forbiddenError(`Owner is not permitted to ${action}.`);
+    }
+    return;
+  }
+
+  if (isCapability(actor)) {
+    const capabilityAction = ownerActionToCapabilityAction(action);
+    if (!capabilityAction) {
+      throw forbiddenError(`Capability links cannot authorize ${action}.`);
+    }
+    if (!task || !now) {
+      throw forbiddenError('Task context is required for capability authorization.');
+    }
+    assertCapabilityPermitsAction(actor, capabilityAction, task, now);
+    return;
+  }
+
+  throw forbiddenError('System actors have no broad implicit authority in A2.');
+}
+
+export function assertOwner(actor: Actor): asserts actor is OwnerActor {
+  if (!isOwner(actor)) {
+    throw forbiddenError('Owner required.');
   }
 }
 
-export function assertPrimary(actor: ActorContext): void {
-  if (!isPrimary(actor)) {
-    throw forbiddenError('Primary user required.');
-  }
+function ownerActionToCapabilityAction(action: OwnerAction): CapabilityAction | null {
+  return CAPABILITY_ACTION_MAP[action] ?? null;
 }
+
+export function assertGetDoesNotMutate(method: string): void {
+  if (method.toUpperCase() !== 'GET') {
+    return;
+  }
+  // Policy marker: opening a capability link via GET must never mutate task state.
+}
+
+export function isCapabilityActiveForTask(
+  actor: CapabilityActor,
+  task: Task,
+  now: string,
+): boolean {
+  return isCapabilityActive(actor, now) && actor.taskId === task.id;
+}
+
+export { CAPABILITY_ACTION_MAP };

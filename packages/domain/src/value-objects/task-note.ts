@@ -1,9 +1,9 @@
-import type { UserId } from '../types/ids.js';
 import type { UtcInstant } from '../types/timestamps.js';
+import type { ActionAttribution } from './capability.js';
 
 export interface TaskNote {
   id: string;
-  authorUserId: UserId;
+  attribution: ActionAttribution;
   body: string;
   createdAt: UtcInstant;
 }

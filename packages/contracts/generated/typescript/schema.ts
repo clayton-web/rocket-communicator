@@ -133,7 +133,7 @@ export interface paths {
         /** List tasks */
         get: operations["listTasks"];
         put?: never;
-        /** Create a task directly (primary typed creation only) */
+        /** Create a task directly (Owner typed creation only) */
         post: operations["createTask"];
         delete?: never;
         options?: never;
@@ -184,7 +184,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Mark a task waiting */
+        /**
+         * Mark a task waiting
+         * @description Authorized via authenticated Owner session or valid task capability.
+         */
         post: operations["markTaskWaiting"];
         delete?: never;
         options?: never;
@@ -201,7 +204,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Resume a waiting task */
+        /**
+         * Resume a waiting task
+         * @description Authorized via authenticated Owner session or valid task capability.
+         */
         post: operations["resumeTask"];
         delete?: never;
         options?: never;
@@ -218,7 +224,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Complete a task */
+        /**
+         * Complete a task
+         * @description Authorized via authenticated Owner session or valid task capability.
+         */
         post: operations["completeTask"];
         delete?: never;
         options?: never;
@@ -235,7 +244,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Add a note to a task */
+        /**
+         * Add a note to a task
+         * @description Authorized via authenticated Owner session or valid task capability.
+         */
         post: operations["addTaskNote"];
         delete?: never;
         options?: never;
@@ -243,7 +255,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/tasks/{taskId}/return-to-primary": {
+    "/api/v1/tasks/{taskId}/return-to-owner": {
         parameters: {
             query?: never;
             header?: never;
@@ -252,8 +264,13 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Return an assigned task to the primary user */
-        post: operations["returnTaskToPrimary"];
+        /**
+         * Return an assigned task to the Owner
+         * @description Authorized via authenticated Owner session or a valid task capability with
+         *     `return_task_to_owner` scope. Capability possession is authorization, not verified identity.
+         *
+         */
+        post: operations["returnTaskToOwner"];
         delete?: never;
         options?: never;
         head?: never;
@@ -269,7 +286,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Request clarification on a task */
+        /**
+         * Request clarification on a task
+         * @description Authorized via authenticated Owner session or valid task capability.
+         */
         post: operations["requestClarification"];
         delete?: never;
         options?: never;
@@ -314,20 +334,115 @@ export interface components {
             nextCursor?: string | null;
         };
         Session: {
-            userId: string;
+            /** @description Authenticated Owner user identifier. */
+            ownerId: string;
             organizationId: string;
-            role: components["schemas"]["UserRole"];
+            role: components["schemas"]["AuthenticatedRole"];
             displayName?: string;
         };
-        /** @enum {string} */
-        UserRole: "primary" | "administrator";
+        /**
+         * @description The only authenticated application role in version one (D048).
+         * @enum {string}
+         */
+        AuthenticatedRole: "owner";
+        Recipient: {
+            id: string;
+            displayName: string;
+            /** Format: email */
+            email: string;
+            relationshipLabel?: components["schemas"]["RecipientRelationshipLabel"];
+            /** @description Whether the Owner may assign new work to this Recipient. */
+            active: boolean;
+            reminderPreferences?: {
+                /** @default true */
+                emailEnabled: boolean;
+            };
+            /** @description Optional Owner-defined categories for delegation routing. */
+            assignmentCategories?: string[];
+        };
+        /** @description Optional relationship label (for example administrator, agent, contractor, lawyer,
+         *     accountant, tenant, client). Not an application role.
+         *      */
+        RecipientRelationshipLabel: string;
+        /**
+         * @description Actions a task capability link may authorize. Owner-only actions are excluded.
+         * @enum {string}
+         */
+        CapabilityAction: "view_assigned_task" | "complete_task" | "mark_task_waiting" | "add_task_note" | "record_completion_outcome" | "return_task_to_owner" | "request_clarification";
+        /**
+         * @description Lifecycle status of a task capability. Raw token values are never exposed.
+         * @enum {string}
+         */
+        CapabilityStatus: "active" | "revoked" | "expired" | "used";
+        /** @description Allowed actions for a specific task capability link. */
+        CapabilityScope: components["schemas"]["CapabilityAction"][];
+        /**
+         * @description Placeholder for assignment email delivery tracking (implementation deferred).
+         * @enum {string}
+         */
+        AssignmentDeliveryStatus: "pending" | "sent" | "failed";
+        TaskCapability: {
+            /** @description Capability identifier. Raw token is stored only as a secure hash server-side. */
+            id: string;
+            taskId: string;
+            assignmentId: string;
+            recipientId?: string;
+            /**
+             * Format: email
+             * @description Intended recipient at issuance. Not verified actor identity.
+             */
+            intendedRecipientEmail: string;
+            scope: components["schemas"]["CapabilityScope"];
+            status: components["schemas"]["CapabilityStatus"];
+            /** Format: date-time */
+            issuedAt: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /** Format: date-time */
+            revokedAt?: string | null;
+            /** Format: date-time */
+            lastUsedAt?: string | null;
+        };
+        CapabilityAuditContext: {
+            capabilityId: string;
+            assignmentId: string;
+            taskId: string;
+            /**
+             * Format: email
+             * @description Intended recipient for the link. Not verified actor identity.
+             */
+            intendedRecipientEmail: string;
+            action: components["schemas"]["CapabilityAction"];
+            /** Format: date-time */
+            recordedAt: string;
+            note?: string;
+            requestId?: string;
+            correlationId?: string | null;
+            /** @description Human-readable audit wording such as "Action submitted through link sent to recipient@example.com".
+             *     Must not claim a verified person performed the action.
+             *      */
+            attributionLabel?: string;
+        };
+        OwnerAuditContext: {
+            ownerId: string;
+            /** Format: date-time */
+            recordedAt: string;
+            requestId?: string;
+            correlationId?: string | null;
+        };
+        ActionAttribution: {
+            /** @enum {string} */
+            kind: "owner" | "capability";
+            owner?: components["schemas"]["OwnerAuditContext"];
+            capability?: components["schemas"]["CapabilityAuditContext"];
+        };
         TaskSuggestion: {
             id: string;
             organizationId: string;
             status: components["schemas"]["TaskSuggestionStatus"];
             summaryPoints: components["schemas"]["TaskSummaryPoint"][];
             sourceReference?: components["schemas"]["SourceReference"];
-            proposedAssigneeUserId?: string | null;
+            proposedRecipientId?: string | null;
             /** Format: date-time */
             proposedDueAt?: string | null;
             proposedPriority?: components["schemas"]["TaskPriority"];
@@ -346,15 +461,15 @@ export interface components {
         TaskSuggestionStatus: "pending" | "approved" | "dismissed" | "merged";
         ApproveTaskSuggestionRequest: {
             summaryPoints?: components["schemas"]["TaskSummaryPoint"][];
-            /** @description Selected assignee for the approved task and assignment. */
-            assigneeUserId?: string;
+            /** @description Selected Recipient for the approved task and assignment. */
+            recipientId?: string;
             priority?: components["schemas"]["TaskPriority"];
             /** Format: date-time */
             dueAt?: string;
             /**
-             * @description Primary user intent approving the edited suggestion and administrator assignment.
+             * @description Owner intent approving the edited suggestion and Recipient assignment.
              *     Future server logic derives task creation, reminder scheduling, Gmail forwarding,
-             *     and standard assignment email without client-side side-effect toggles.
+             *     capability link issuance, and standard assignment email without client-side side-effect toggles.
              *
              * @enum {string}
              */
@@ -362,7 +477,7 @@ export interface components {
         };
         EditTaskSuggestionRequest: {
             summaryPoints?: components["schemas"]["TaskSummaryPoint"][];
-            proposedAssigneeUserId?: string | null;
+            proposedRecipientId?: string | null;
             /** Format: date-time */
             proposedDueAt?: string | null;
             proposedPriority?: components["schemas"]["TaskPriority"];
@@ -408,7 +523,7 @@ export interface components {
         DerivedTaskUrgency: "due_soon" | "overdue";
         CreateTaskRequest: {
             summaryPoints: components["schemas"]["TaskSummaryPoint"][];
-            assigneeUserId?: string;
+            recipientId?: string;
             /** Format: date-time */
             dueAt?: string;
             priority?: components["schemas"]["TaskPriority"];
@@ -428,29 +543,42 @@ export interface components {
         AddTaskNoteRequest: {
             body: string;
         };
-        ReturnTaskToPrimaryRequest: {
+        ReturnTaskToOwnerRequest: {
             note?: string;
         };
         RequestClarificationRequest: {
             message: string;
         };
         TaskAssignment: {
-            assigneeUserId: string;
+            id: string;
+            /** @description Recipient record identifier. Recipients do not have application accounts. */
+            recipientId: string;
+            /**
+             * Format: email
+             * @description Email snapshot at assignment time for audit and delivery.
+             */
+            intendedRecipientEmail: string;
             /** Format: date-time */
             assignedAt: string;
-            assignedByUserId: string;
+            assignedByOwnerId: string;
             /**
              * Format: date-time
              * @description Timestamp of the single bundled assignment approval (D037).
              */
             assignmentApprovedAt?: string;
+            allowedCapabilityActions: components["schemas"]["CapabilityScope"];
+            /** @description Summary status of the active task capability for this assignment. */
+            capabilityStatus?: components["schemas"]["CapabilityStatus"];
+            deliveryStatus?: components["schemas"]["AssignmentDeliveryStatus"];
+            /** @description Identifier of the active capability. Raw token is never exposed. */
+            activeCapabilityId?: string | null;
         };
         TaskSummaryPoint: components["schemas"]["ConfirmedFactSummaryPoint"] | components["schemas"]["RequestSummaryPoint"] | components["schemas"]["CommitmentSummaryPoint"] | components["schemas"]["AmountSummaryPoint"] | components["schemas"]["DeadlineSummaryPoint"] | components["schemas"]["RiskSummaryPoint"] | components["schemas"]["InferenceSummaryPoint"] | components["schemas"]["MissingInformationSummaryPoint"] | components["schemas"]["NextActionSummaryPoint"];
         TaskOutcome: {
             outcomeType: components["schemas"]["TaskOutcomeType"];
             /** Format: date-time */
             completedAt: string;
-            completedByUserId: string;
+            attribution: components["schemas"]["ActionAttribution"];
             note?: string;
             summaryPoints?: components["schemas"]["TaskSummaryPoint"][];
             followUpProposal?: components["schemas"]["FollowUpProposal"];
@@ -459,7 +587,7 @@ export interface components {
         TaskOutcomeType: "completed" | "spoke_with_contact" | "email_sent" | "text_sent" | "scheduled" | "information_provided" | "no_action_required" | "other";
         TaskNote: {
             id: string;
-            authorUserId: string;
+            attribution: components["schemas"]["ActionAttribution"];
             body: string;
             /** Format: date-time */
             createdAt: string;
@@ -1244,7 +1372,7 @@ export interface operations {
             428: components["responses"]["PreconditionRequired"];
         };
     };
-    returnTaskToPrimary: {
+    returnTaskToOwner: {
         parameters: {
             query?: never;
             header: {
@@ -1261,7 +1389,7 @@ export interface operations {
         };
         requestBody?: {
             content: {
-                "application/json": components["schemas"]["ReturnTaskToPrimaryRequest"];
+                "application/json": components["schemas"]["ReturnTaskToOwnerRequest"];
             };
         };
         responses: {

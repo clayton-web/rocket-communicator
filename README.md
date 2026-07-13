@@ -1,6 +1,6 @@
 # AI Communication Action Assistant
 
-Private, Android-first AI assistant that turns ongoing personal business communications into temporary, actionable work for one primary user and one administrator in the same Google Workspace organization.
+Private, Android-first AI assistant that turns ongoing personal business communications into temporary, actionable work for one **Owner** (authenticated Google Workspace sign-in) and delegated **Recipients** who act via task-specific capability links—no Recipient application accounts.
 
 **Governing document:** [docs/PROJECT_CONSTITUTION.md](docs/PROJECT_CONSTITUTION.md) — highest authority for product behaviour and engineering rules.
 
@@ -52,12 +52,12 @@ The product is **not** a permanent communication archive.
 
 ## Intended users (version one)
 
-| Role              | Primary interface                                                                    |
-| ----------------- | ------------------------------------------------------------------------------------ |
-| **Primary User**  | Android application                                                                  |
-| **Administrator** | Assignment emails, secure authenticated task links, minimal responsive web task view |
+| Role          | Primary interface                                                                                      |
+| ------------- | ------------------------------------------------------------------------------------------------------ |
+| **Owner**     | Android application (single authenticated application user; Google Workspace sign-in)                  |
+| **Recipient** | Assignment emails with task-specific capability links; minimal responsive web task view (no app login) |
 
-Both users belong to the same Google Workspace organization. Definitions: [docs/GLOSSARY.md](docs/GLOSSARY.md).
+Recipients are delegated people identified by email; they have **no** application account. “Administrator” is an optional relationship label for a Recipient, not an application role. Definitions: [docs/GLOSSARY.md](docs/GLOSSARY.md).
 
 ## Repository layout (A1)
 
@@ -153,7 +153,7 @@ Aligned with [docs/PROJECT_CONSTITUTION.md](docs/PROJECT_CONSTITUTION.md):
 1. **Approval-first** — AI recommends; humans authorize consequential actions.
 2. **Privacy by design** — minimize stored communication content; separate temporary data from durable learning.
 3. **Deterministic automation** — reminders, retention, and state transitions are auditable rules, not opaque model decisions.
-4. **Android-first UX** — the phone app is the primary interface; web is minimal for the administrator.
+4. **Android-first UX** — the phone app is the Owner’s primary interface; web is minimal for Recipient capability views.
 5. **Low vendor sprawl** — prefer Supabase + Vercel + Gmail API + OpenAI; do not duplicate databases (no Neon in v1).
 6. **Honest reliability** — treat Android notification and call capture as best-effort; always keep manual and voice fallbacks.
 7. **Contracts over shared types** — OpenAPI is the canonical contract; generate TypeScript and Kotlin clients from OpenAPI (JSON Schema may be derived, not authoritative).
@@ -163,4 +163,4 @@ Aligned with [docs/PROJECT_CONSTITUTION.md](docs/PROJECT_CONSTITUTION.md):
 
 - Local Git repository on branch `main`.
 - Remote hosting (GitHub) is intentionally deferred until you create it.
-- Next milestone after A2: **A3** (authentication and roles)—not started.
+- Next milestone after A2: **A3** (Owner authentication)—not started.

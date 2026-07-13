@@ -4,16 +4,15 @@ components:
       type: object
       required:
         - id
-        - authorUserId
+        - attribution
         - body
         - createdAt
       properties:
         id:
           type: string
           maxLength: 64
-        authorUserId:
-          type: string
-          maxLength: 64
+        attribution:
+          $ref: './capability.yaml#/components/schemas/ActionAttribution'
         body:
           type: string
           maxLength: 2000

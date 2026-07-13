@@ -98,7 +98,7 @@ components:
           maxItems: 20
           items:
             $ref: './summary-point.yaml#/components/schemas/TaskSummaryPoint'
-        assigneeUserId:
+        recipientId:
           type: string
           maxLength: 64
         dueAt:
@@ -145,7 +145,7 @@ components:
           type: string
           minLength: 1
           maxLength: 2000
-    ReturnTaskToPrimaryRequest:
+    ReturnTaskToOwnerRequest:
       type: object
       properties:
         note:

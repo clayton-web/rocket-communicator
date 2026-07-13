@@ -13,7 +13,7 @@ export interface TaskSuggestion {
   status: TaskSuggestionStatus;
   summaryPoints: TaskSummaryPoint[];
   sourceReference?: SourceReference;
-  proposedAssigneeUserId?: string;
+  proposedRecipientId?: string;
   proposedDueAt?: UtcInstant;
   proposedPriority?: 'low' | 'normal' | 'high' | 'urgent';
   voiceOriginated: boolean;

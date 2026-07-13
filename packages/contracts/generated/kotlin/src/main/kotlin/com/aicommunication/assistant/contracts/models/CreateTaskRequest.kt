@@ -27,7 +27,7 @@ import java.io.Serializable
  * 
  *
  * @param summaryPoints 
- * @param assigneeUserId 
+ * @param recipientId 
  * @param dueAt 
  * @param priority 
  * @param sourceReference 
@@ -39,8 +39,8 @@ data class CreateTaskRequest (
     @Json(name = "summaryPoints")
     val summaryPoints: kotlin.collections.List<TaskSummaryPoint>,
 
-    @Json(name = "assigneeUserId")
-    val assigneeUserId: kotlin.String? = null,
+    @Json(name = "recipientId")
+    val recipientId: kotlin.String? = null,
 
     @Json(name = "dueAt")
     val dueAt: kotlin.String? = null,

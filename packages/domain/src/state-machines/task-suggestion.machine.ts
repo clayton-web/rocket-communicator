@@ -1,4 +1,4 @@
-import type { ActorContext } from '../types/actor.js';
+import type { Actor } from '../types/actor.js';
 import { assertCan } from '../policies/capabilities.js';
 import { assertMatchingPrecondition } from '../concurrency/etag.js';
 import { invalidTransition } from '../errors/domain-errors.js';
@@ -14,7 +14,7 @@ import type { UtcInstant } from '../types/timestamps.js';
 import type { TaskId } from '../types/ids.js';
 
 export interface SuggestionMutationContext {
-  actor: ActorContext;
+  actor: Actor;
   ifMatch?: string;
   now: UtcInstant;
 }
@@ -37,7 +37,7 @@ export function approveTaskSuggestion(
   suggestion: TaskSuggestion,
   context: SuggestionMutationContext,
 ): TaskSuggestion {
-  assertCan(context.actor, 'approve_task_suggestion');
+  assertCan(context.actor, 'approve_task_suggestion', undefined, context.now);
   ensurePending(suggestion);
   assertMatchingPrecondition(context.ifMatch, {
     kind: 'task-suggestion',
@@ -57,12 +57,12 @@ export function editTaskSuggestion(
   suggestion: TaskSuggestion,
   context: SuggestionMutationContext & {
     summaryPoints?: TaskSummaryPoint[];
-    proposedAssigneeUserId?: string | null;
+    proposedRecipientId?: string | null;
     proposedDueAt?: UtcInstant | null;
     proposedPriority?: TaskSuggestion['proposedPriority'];
   },
 ): TaskSuggestion {
-  assertCan(context.actor, 'edit_task_suggestion');
+  assertCan(context.actor, 'edit_task_suggestion', undefined, context.now);
   ensurePending(suggestion);
   assertMatchingPrecondition(context.ifMatch, {
     kind: 'task-suggestion',
@@ -75,10 +75,10 @@ export function editTaskSuggestion(
     {
       ...suggestion,
       summaryPoints,
-      proposedAssigneeUserId:
-        context.proposedAssigneeUserId === undefined
-          ? suggestion.proposedAssigneeUserId
-          : (context.proposedAssigneeUserId ?? undefined),
+      proposedRecipientId:
+        context.proposedRecipientId === undefined
+          ? suggestion.proposedRecipientId
+          : (context.proposedRecipientId ?? undefined),
       proposedDueAt:
         context.proposedDueAt === undefined
           ? suggestion.proposedDueAt
@@ -93,7 +93,7 @@ export function dismissTaskSuggestion(
   suggestion: TaskSuggestion,
   context: SuggestionMutationContext,
 ): TaskSuggestion {
-  assertCan(context.actor, 'dismiss_task_suggestion');
+  assertCan(context.actor, 'dismiss_task_suggestion', undefined, context.now);
   ensurePending(suggestion);
   assertMatchingPrecondition(context.ifMatch, {
     kind: 'task-suggestion',
@@ -114,7 +114,7 @@ export function mergeTaskSuggestion(
   suggestion: TaskSuggestion,
   context: SuggestionMutationContext & { targetTaskId: TaskId },
 ): TaskSuggestion {
-  assertCan(context.actor, 'merge_task_suggestion');
+  assertCan(context.actor, 'merge_task_suggestion', undefined, context.now);
   ensurePending(suggestion);
   assertMatchingPrecondition(context.ifMatch, {
     kind: 'task-suggestion',

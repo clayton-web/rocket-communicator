@@ -1,13 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import {
+  asAssignmentId,
+  asCapabilityId,
   asOrganizationId,
+  asOwnerId,
+  asRecipientId,
   asTaskId,
   asTaskSuggestionId,
-  asUserId,
   approveTaskSuggestion,
+  assertGetDoesNotMutate,
   assertMatchingPrecondition,
   assertVoiceCannotCreateTask,
   can,
+  canCapability,
+  capabilityAttributionLabel,
   completeTask,
   computeExcerptPurgeAt,
   computeFailedAudioDeleteAt,
@@ -15,28 +21,37 @@ import {
   dismissTaskSuggestion,
   DomainError,
   formatETag,
+  markTaskWaiting,
   mergeTaskSuggestion,
+  ownerActor,
   parseETag,
   resumeTask,
-  markTaskWaiting,
   startTask,
   toUtcInstant,
   validateSummaryPoints,
-  type ActorContext,
+  type CapabilityActor,
   type Task,
   type TaskSuggestion,
 } from '../src/index.js';
 
-const primary: ActorContext = {
-  userId: asUserId('user_primary'),
-  organizationId: asOrganizationId('org_1'),
-  role: 'primary',
-};
+const owner = ownerActor(asOwnerId('owner_1'), asOrganizationId('org_1'));
 
-const admin: ActorContext = {
-  userId: asUserId('user_admin'),
-  organizationId: asOrganizationId('org_1'),
-  role: 'administrator',
+const capabilityActor: CapabilityActor = {
+  kind: 'capability',
+  capabilityId: asCapabilityId('cap_1'),
+  taskId: asTaskId('task_1'),
+  assignmentId: asAssignmentId('asg_1'),
+  intendedRecipientEmail: 'recipient@example.com',
+  allowedActions: [
+    'view_assigned_task',
+    'complete_task',
+    'mark_task_waiting',
+    'add_task_note',
+    'return_task_to_owner',
+    'request_clarification',
+  ],
+  status: 'active',
+  expiresAt: '2026-07-20T12:00:00.000Z',
 };
 
 const now = '2026-07-13T12:00:00.000Z';
@@ -73,19 +88,23 @@ function baseTask(overrides: Partial<Task> = {}): Task {
     createdAt: now,
     updatedAt: now,
     assignment: {
-      assigneeUserId: asUserId('user_admin'),
+      id: asAssignmentId('asg_1'),
+      recipientId: asRecipientId('rcp_1'),
+      intendedRecipientEmail: 'recipient@example.com',
       assignedAt: now,
-      assignedByUserId: asUserId('user_primary'),
+      assignedByOwnerId: asOwnerId('owner_1'),
+      allowedCapabilityActions: ['complete_task', 'mark_task_waiting', 'add_task_note'],
+      capabilityStatus: 'active',
     },
     ...overrides,
   };
 }
 
 describe('task suggestion machine', () => {
-  it('approves pending suggestions for primary users', () => {
+  it('approves pending suggestions for the Owner', () => {
     const suggestion = baseSuggestion();
     const approved = approveTaskSuggestion(suggestion, {
-      actor: primary,
+      actor: owner,
       ifMatch: formatETag('task-suggestion', suggestion.id, 1),
       now,
     });
@@ -93,21 +112,21 @@ describe('task suggestion machine', () => {
     expect(approved.version).toBe(2);
   });
 
-  it('blocks administrator suggestion approval', () => {
+  it('blocks capability actors from suggestion approval', () => {
     expect(() =>
       approveTaskSuggestion(baseSuggestion(), {
-        actor: admin,
+        actor: capabilityActor,
         ifMatch: formatETag('task-suggestion', 'sug_1', 1),
         now,
       }),
-    ).toThrow(/not permitted/);
+    ).toThrow(/not permitted|Capability links cannot/);
   });
 
-  it('prevents terminal suggestion transitions', () => {
+  it('preserves terminal suggestion transitions', () => {
     const dismissed = { ...baseSuggestion(), status: 'dismissed' as const };
     expect(() =>
       mergeTaskSuggestion(dismissed, {
-        actor: primary,
+        actor: owner,
         ifMatch: formatETag('task-suggestion', dismissed.id, 1),
         now,
         targetTaskId: asTaskId('task_2'),
@@ -120,7 +139,7 @@ describe('task machine', () => {
   it('preserves prior actionable status through waiting and resume', () => {
     const task = baseTask({ status: 'in_progress' });
     const waiting = markTaskWaiting(task, {
-      actor: admin,
+      actor: capabilityActor,
       ifMatch: formatETag('task', task.id, 1),
       now,
       waitingUntil: '2026-07-14T12:00:00.000Z',
@@ -129,35 +148,106 @@ describe('task machine', () => {
     expect(waiting.priorActionableStatus).toBe('in_progress');
 
     const resumed = resumeTask(waiting, {
-      actor: admin,
+      actor: capabilityActor,
       ifMatch: formatETag('task', waiting.id, 2),
       now,
     });
     expect(resumed.status).toBe('in_progress');
   });
 
-  it('supports one-tap completion', () => {
+  it('supports one-tap completion with capability attribution', () => {
     const completed = completeTask(baseTask(), {
-      actor: admin,
+      actor: capabilityActor,
       ifMatch: formatETag('task', 'task_1', 1),
       now,
       outcomeType: 'completed',
     });
     expect(completed.status).toBe('completed');
-    expect(completed.outcome?.outcomeType).toBe('completed');
+    expect(completed.outcome?.attribution.kind).toBe('capability');
+    expect(completed.outcome?.attribution.capability?.intendedRecipientEmail).toBe(
+      'recipient@example.com',
+    );
     expect(completed.outcome?.note).toBeUndefined();
   });
 });
 
-describe('capabilities and voice policy', () => {
-  it('denies administrator actions on unassigned tasks', () => {
-    const unassigned = baseTask({ assignment: undefined });
-    expect(can(admin, 'complete_task', unassigned)).toBe(false);
+describe('owner and capability authorization', () => {
+  it('allows only the Owner as authenticated application actor for owner-only actions', () => {
+    expect(can(owner, 'approve_task_suggestion', undefined, now)).toBe(true);
+    expect(can(capabilityActor, 'approve_task_suggestion', baseTask(), now)).toBe(false);
+    expect(can(capabilityActor, 'manage_workflow_rules', baseTask(), now)).toBe(false);
+  });
+
+  it('permits only scoped capability actions', () => {
+    expect(canCapability(capabilityActor, 'complete_task', baseTask(), now)).toBe(true);
+    expect(canCapability(capabilityActor, 'return_task_to_owner', baseTask(), now)).toBe(true);
+    expect(
+      canCapability(
+        {
+          ...capabilityActor,
+          allowedActions: ['view_assigned_task'],
+        },
+        'complete_task',
+        baseTask(),
+        now,
+      ),
+    ).toBe(false);
+  });
+
+  it('denies expired capabilities', () => {
+    expect(
+      canCapability(
+        { ...capabilityActor, expiresAt: '2026-07-12T00:00:00.000Z' },
+        'complete_task',
+        baseTask(),
+        now,
+      ),
+    ).toBe(false);
+  });
+
+  it('denies revoked capabilities', () => {
+    expect(
+      canCapability({ ...capabilityActor, status: 'revoked' }, 'complete_task', baseTask(), now),
+    ).toBe(false);
+  });
+
+  it('denies wrong-task capabilities', () => {
+    expect(
+      canCapability(
+        { ...capabilityActor, taskId: asTaskId('task_other') },
+        'complete_task',
+        baseTask(),
+        now,
+      ),
+    ).toBe(false);
+  });
+
+  it('denies terminal task capability mutation', () => {
+    expect(
+      canCapability(capabilityActor, 'complete_task', baseTask({ status: 'completed' }), now),
+    ).toBe(false);
+  });
+
+  it('uses capability audit language without verified identity', () => {
+    const label = capabilityAttributionLabel('recipient@example.com', 'complete_task');
+    expect(label).toContain('recipient@example.com');
+    expect(label).not.toMatch(/Sarah completed/);
+  });
+
+  it('treats GET as non-mutating for capability links', () => {
+    expect(() => assertGetDoesNotMutate('GET')).not.toThrow();
+    expect(() => assertGetDoesNotMutate('POST')).not.toThrow();
+  });
+
+  it('denies capability actions on unassigned tasks', () => {
+    expect(can(capabilityActor, 'complete_task', baseTask({ assignment: undefined }), now)).toBe(
+      false,
+    );
   });
 
   it('prevents voice from creating tasks directly', () => {
     expect(() => assertVoiceCannotCreateTask()).toThrow(/cannot create tasks directly/);
-    expect(can(primary, 'create_task_from_voice')).toBe(false);
+    expect(can(owner, 'create_task_from_voice', undefined, now)).toBe(false);
   });
 });
 

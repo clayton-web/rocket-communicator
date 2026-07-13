@@ -10,20 +10,45 @@ components:
     TaskAssignment:
       type: object
       required:
-        - assigneeUserId
+        - id
+        - recipientId
+        - intendedRecipientEmail
         - assignedAt
-        - assignedByUserId
+        - assignedByOwnerId
+        - allowedCapabilityActions
       properties:
-        assigneeUserId:
+        id:
           type: string
           maxLength: 64
+        recipientId:
+          type: string
+          maxLength: 64
+          description: Recipient record identifier. Recipients do not have application accounts.
+        intendedRecipientEmail:
+          type: string
+          format: email
+          maxLength: 254
+          description: Email snapshot at assignment time for audit and delivery.
         assignedAt:
           type: string
           format: date-time
-        assignedByUserId:
+        assignedByOwnerId:
           type: string
           maxLength: 64
         assignmentApprovedAt:
           type: string
           format: date-time
           description: Timestamp of the single bundled assignment approval (D037).
+        allowedCapabilityActions:
+          $ref: './capability.yaml#/components/schemas/CapabilityScope'
+        capabilityStatus:
+          $ref: './capability.yaml#/components/schemas/CapabilityStatus'
+          description: Summary status of the active task capability for this assignment.
+        deliveryStatus:
+          $ref: './capability.yaml#/components/schemas/AssignmentDeliveryStatus'
+        activeCapabilityId:
+          type:
+            - string
+            - 'null'
+          maxLength: 64
+          description: Identifier of the active capability. Raw token is never exposed.

@@ -1,27 +1,28 @@
 components:
   schemas:
-    UserRole:
+    AuthenticatedRole:
       type: string
       enum:
-        - primary
-        - administrator
+        - owner
+      description: The only authenticated application role in version one (D048).
     Session:
       type: object
       required:
-        - userId
+        - ownerId
         - organizationId
         - role
       properties:
-        userId:
+        ownerId:
           type: string
           minLength: 1
           maxLength: 64
+          description: Authenticated Owner user identifier.
         organizationId:
           type: string
           minLength: 1
           maxLength: 64
         role:
-          $ref: '#/components/schemas/UserRole'
+          $ref: '#/components/schemas/AuthenticatedRole'
         displayName:
           type: string
           maxLength: 128

@@ -26,7 +26,7 @@ import java.io.Serializable
  * 
  *
  * @param summaryPoints 
- * @param proposedAssigneeUserId 
+ * @param proposedRecipientId 
  * @param proposedDueAt 
  * @param proposedPriority 
  */
@@ -37,8 +37,8 @@ data class EditTaskSuggestionRequest (
     @Json(name = "summaryPoints")
     val summaryPoints: kotlin.collections.List<TaskSummaryPoint>? = null,
 
-    @Json(name = "proposedAssigneeUserId")
-    val proposedAssigneeUserId: kotlin.String? = null,
+    @Json(name = "proposedRecipientId")
+    val proposedRecipientId: kotlin.String? = null,
 
     @Json(name = "proposedDueAt")
     val proposedDueAt: kotlin.String? = null,

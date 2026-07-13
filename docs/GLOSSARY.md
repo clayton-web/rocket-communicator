@@ -8,19 +8,29 @@ If a document uses a synonym, prefer linking back to these terms rather than inv
 
 ## Roles and people
 
-### Primary User
+### Owner
 
-The main operator of the product. Uses the Android application as the primary interface. Approves task suggestions, administrator assignments, Gmail forwards, and workflow-rule activation.
+The **single authenticated application user** in version one. Signs in with Google Workspace via Supabase Auth. Uses the Android application as the primary interface. Approves task suggestions, Recipient delegations, Gmail forwards, and workflow-rule activation. All durable learning belongs to the Owner (D054).
 
-### Administrator
+There is no separate “administrator” application role—only this one authenticated user account.
 
-The secondary operator in the same Google Workspace organization. Receives assignment emails, opens tasks via secure authenticated links, and uses a minimal web task view. Selected from an authorized Workspace user record—not hard-coded in source. Version one assumes one administrator; schema may allow more later.
+### Recipient
 
-**May (v1):** complete tasks; mark waiting; add notes; return task to primary; request clarification.
+A delegated person who receives assignment emails and acts on assigned tasks through **task-specific capability links**. Recipients have **no** application account and do not sign in (D049).
+
+Capability possession authorizes Recipient actions; it is **not** verified identity (D051). Audit records must not overstate who acted (D052).
+
+**May (v1, via capability link):** complete tasks; mark waiting; add notes; return task to Owner; request clarification.
 
 **May not (v1):** create standalone tasks; approve AI learning; change workflow rules; change reminder policies; create automations.
 
-Administrator work requests become Task Suggestions for Primary User approval (D039).
+Recipient work requests become Task Suggestions for Owner approval.
+
+### Administrator (relationship label)
+
+An **optional label** for a Recipient relationship (for example, a trusted office manager or assistant). It is **not** an application role, permission set, or authentication identity (D053). Documentation and UI may show “Administrator” as a Recipient type when the Owner designates someone in that capacity.
+
+Do not conflate “Administrator” with a second signed-in user or a role guard in the application.
 
 ### Known Contact
 
@@ -48,11 +58,11 @@ The origin class of a communication or task (for example Gmail, Google Messages 
 
 ### Task Suggestion
 
-An AI- or user-drafted candidate for work that is **not** yet an active task. Requires Primary User approval (or dismiss/merge/edit) before a Task is created. Version one must not auto-promote suggestions to tasks. All **voice**-originated new work and follow-ups begin as Task Suggestions (D038). Administrator work requests also become Task Suggestions (D039).
+An AI- or user-drafted candidate for work that is **not** yet an active task. Requires Owner approval (or dismiss/merge/edit) before a Task is created. Version one must not auto-promote suggestions to tasks. All **voice**-originated new work and follow-ups begin as Task Suggestions (D038). Recipient work requests also become Task Suggestions.
 
 ### Task
 
-An approved unit of actionable work with status, summary, assignee, scheduling fields, and audit history. Created from an approved Task Suggestion (or Primary User typed creation flow). **Never** created directly by a voice interaction (D038).
+An approved unit of actionable work with status, summary, assignee, scheduling fields, and audit history. Created from an approved Task Suggestion (or Owner typed creation flow). **Never** created directly by a voice interaction (D038).
 
 ### Summary Point
 
@@ -60,19 +70,19 @@ A single typed bullet in a structured summary (for example fact, inference, miss
 
 ### Assignment
 
-The binding of a Task to an assignee (often the Administrator). For Gmail-origin administrator handoffs, assignment approval and Gmail forwarding are **one** business action with a **single** confirmation disclosing create task, forward original email, forward attachments, and schedule reminders (D037).
+The binding of a Task to an assignee (often a Recipient). For Gmail-origin Recipient handoffs, assignment approval and Gmail forwarding are **one** business action with a **single** confirmation disclosing create task, forward original email, forward attachments, and schedule reminders (D037).
 
 ### Follow-up
 
-A subsequent Task Suggestion (when voice-created) or Task (only after Primary approval) produced because completion or review of a prior Task created further work. Voice-created follow-ups always start as Task Suggestions (D038). Consequential administrator assignment still requires Primary User confirmation (D037 when Gmail-origin).
+A subsequent Task Suggestion (when voice-created) or Task (only after Owner approval) produced because completion or review of a prior Task created further work. Voice-created follow-ups always start as Task Suggestions (D038). Consequential Recipient assignment still requires Owner confirmation (D037 when Gmail-origin).
 
-### Return to Primary
+### Return to Owner
 
-An Administrator action that hands an assigned Task back to the Primary User without creating a new standalone Task (D039).
+A Recipient action (via capability link) that hands an assigned Task back to the Owner without creating a new standalone Task.
 
 ### Clarification Request
 
-An Administrator action asking the Primary User for more information on an assigned Task; does not create a standalone Task (D039).
+A Recipient action asking the Owner for more information on an assigned Task; does not create a standalone Task.
 
 ### Task Outcome
 
@@ -84,7 +94,7 @@ A non-terminal task condition where work is paused until a waiting date/time; re
 
 ### Snooze
 
-An action that recalculates the next follow-up or reminder time without necessarily introducing a separate persisted status; reminders reschedule accordingly. Primary User only in version one (Administrators use Waiting, not Snooze—D039).
+An action that recalculates the next follow-up or reminder time without necessarily introducing a separate persisted status; reminders reschedule accordingly. Owner only in version one (Recipients use Waiting, not Snooze).
 
 ---
 
@@ -112,35 +122,45 @@ Structured metadata expressing how certain the model is about an extraction or r
 
 ### Workflow Intelligence
 
-Durable, minimized knowledge about how the Primary User prefers to work (preferences, approved rules, anonymized patterns). Must not contain raw message bodies.
+Durable, minimized knowledge about how the Owner prefers to work (preferences, approved rules, anonymized patterns). Must not contain raw message bodies. Belongs to the Owner only (D054).
 
 ### Durable Learning
 
-The retention class for Workflow Intelligence and related evaluation signals that may outlive temporary communication content.
+The retention class for Workflow Intelligence and related evaluation signals that may outlive temporary communication content. Owner-scoped only.
 
 ### Learning Signal
 
-An anonymized or minimized event derived from user corrections, dismissals, merges, reassignments, outcomes, or explicit instructions, used to Observe patterns and later Suggest/Recommend rules.
+An anonymized or minimized event derived from Owner corrections, dismissals, merges, reassignments, outcomes, or explicit instructions, used to Observe patterns and later Suggest/Recommend rules.
 
 ### Workflow Rule
 
-A durable if/then style preference (assignment, priority, reminder timing, etc.) that begins as **proposed** and becomes active only after explicit Primary User approval. Version one does not auto-apply rules.
+A durable if/then style preference (assignment, priority, reminder timing, etc.) that begins as **proposed** and becomes active only after explicit Owner approval. Version one does not auto-apply rules.
 
 ### Learning Ladder
 
-The ordered autonomy stages: Observe → Suggest → Recommend → Approval → Trusted automation → Approved autonomous behaviour. Advancement requires explicit user approval at each stage. See [AI_CONSTITUTION.md](AI_CONSTITUTION.md).
+The ordered autonomy stages: Observe → Suggest → Recommend → Approval → Trusted automation → Approved autonomous behaviour. Advancement requires explicit Owner approval at each stage. See [AI_CONSTITUTION.md](AI_CONSTITUTION.md).
 
 ---
 
 ## Security and access
 
-### Secure Link
+### Capability Link
 
-An authenticated URL to a task (or token-assisted deep link that still requires sign-in). Does not authorize unauthenticated mutation.
+A task-specific URL embedding a secret capability token. **GET** requests are non-mutating (view only). **POST** mutations require explicit confirmation in the Recipient web view (D050). Capability possession is authorization—not verified identity (D051).
+
+Tokens are expiring and auditable; store hashes, not raw tokens. Email prefetchers must not trigger state changes.
+
+### Capability Auth
+
+The authorization model for Recipient actions: possession of a valid, unexpired capability token for a specific task grants the scoped permissions encoded in that capability. No Recipient sign-in session exists.
+
+### Secure Link (legacy term)
+
+Deprecated synonym for capability link in older documentation. Prefer **Capability Link**.
 
 ### Audit Event
 
-An append-only record of a security- or workflow-relevant action (approvals, forwards, reminder attempts, retention runs, authz denials). Narrative payloads may be scrubbed when content purges; who/what/when and external ids should remain as required.
+An append-only record of a security- or workflow-relevant action (approvals, forwards, reminder attempts, retention runs, authz denials). For Recipient actions, record capability use and technical metadata without overstating identity (D052). Narrative payloads may be scrubbed when content purges; what/when and external ids should remain as required.
 
 ### Canonical Contract
 
@@ -176,4 +196,4 @@ The first shippable private system bounded by [PRODUCT_SCOPE.md](PRODUCT_SCOPE.m
 
 ### MVP
 
-Minimum viable product as defined in PRODUCT_SCOPE: private sideload Android + backend + minimal admin web loop with approval-first Gmail/Messages/voice flows, reminders, and retention—without Play Store, multi-inbox, or Rocket PM.
+Minimum viable product as defined in PRODUCT_SCOPE: private sideload Android + backend + minimal Recipient capability web loop with approval-first Gmail/Messages/voice flows, reminders, and retention—without Play Store, multi-inbox, or Rocket PM.

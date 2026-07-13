@@ -10,7 +10,7 @@ Related: [AI_CONSTITUTION.md](AI_CONSTITUTION.md) · [ENGINEERING_WORKFLOW.md](E
 
 ## Product mission
 
-Turn ongoing personal business communications into temporary, actionable work—so the primary user always knows what needs action, what matters, who owns it, when to follow up, whether it was done, how it was done, and whether completion created the next action.
+Turn ongoing personal business communications into temporary, actionable work—so the Owner always knows what needs action, what matters, who owns it, when to follow up, whether it was done, how it was done, and whether completion created the next action.
 
 ## Product philosophy
 
@@ -18,7 +18,7 @@ Turn ongoing personal business communications into temporary, actionable work—
 - **Humans own decisions**; AI proposes structured options.
 - Communication content is **temporary**; workflow intelligence is **durable**.
 - Automation earns trust through an explicit ladder of approval—never through silent behaviour change.
-- The Android app is the primary instrument; the administrator path stays deliberately thin (email + secure link + minimal web task view).
+- The Android app is the Owner’s primary instrument; the Recipient path stays deliberately thin (email + capability link + minimal web task view).
 
 ## Long-term vision
 
@@ -27,17 +27,17 @@ A private multi-agent operating system for communication-driven work that:
 - notices what matters with less noise over time
 - recommends assignments, priorities, and follow-ups with explained confidence
 - advances only through user-approved trusted automation
-- expands to additional roles and sources without becoming a permanent message store
+- expands to additional Recipients and sources without becoming a permanent message store
 - remains operable at low cost with a simple architecture
 
-Version one proves the approval-first loop for one primary user and one same-organization administrator.
+Version one proves the approval-first loop for one authenticated Owner and delegated Recipients via capability links.
 
 ## Success definition
 
 The product succeeds when:
 
-1. The primary user trusts suggestions enough to review them quickly, not re-read every message.
-2. Administrator handoffs happen only with explicit approval, with clear audit of who authorized what.
+1. The Owner trusts suggestions enough to review them quickly, not re-read every message.
+2. Recipient handoffs happen only with explicit Owner approval, with clear audit of who authorized what.
 3. Overdue work is followed up deterministically without reminder spam.
 4. Completions capture meaningful outcomes (including voice) and can spawn the next approved action.
 5. Temporary communication data leaves the application on schedule, while durable preferences improve the system.
@@ -48,7 +48,7 @@ The product succeeds when:
 - Permanent storage or search of full communication history
 - Replacing Phone, Google Messages, or Gmail as the user’s primary apps
 - Automatic client-facing replies
-- A full administrator dashboard or CRM in version one
+- A full Recipient dashboard or CRM in version one
 - Silent auto-creation of tasks or silent assignment emails
 - Google Play distribution in version one
 - Integration with Rocket PM in version one

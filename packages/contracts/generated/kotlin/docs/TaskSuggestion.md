@@ -13,7 +13,7 @@
 | **createdAt** | **kotlin.String** |  |  |
 | **updatedAt** | **kotlin.String** |  |  |
 | **sourceReference** | [**SourceReference**](SourceReference.md) |  |  [optional] |
-| **proposedAssigneeUserId** | **kotlin.String** |  |  [optional] |
+| **proposedRecipientId** | **kotlin.String** |  |  [optional] |
 | **proposedDueAt** | **kotlin.String** |  |  [optional] |
 | **proposedPriority** | [**TaskPriority**](TaskPriority.md) |  |  [optional] |
 | **voiceOriginated** | **kotlin.Boolean** |  |  [optional] |

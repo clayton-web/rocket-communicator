@@ -40,19 +40,24 @@ Governing references: [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md) · [AI_
 - [ ] Facts / inference / missing / low-confidence distinguished in outputs
 - [ ] Recommendations include rationale and confidence where applicable
 - [ ] No silent advance of the learning ladder
-- [ ] Task creation and assignment email/forward still require primary approval in v1
+- [ ] Task creation and assignment email/forward still require Owner approval in v1
 - [ ] Durable learning does not store raw message bodies
 - [ ] Invalid model output quarantined rather than guessed
 
 ## Security
 
-- [ ] Server-side organization and role checks on mutating APIs
+- [ ] Server-side Owner session checks on Owner mutating APIs
+- [ ] Capability token validation (scope, expiry, task binding) on Recipient mutating APIs
+- [ ] GET on capability routes is non-mutating; POST requires explicit confirmation (D050)
+- [ ] Capability possession treated as authorization, not verified identity (D051)
+- [ ] Recipient audit events do not overstate identity (D052)
 - [ ] No unauthenticated one-click mutations
-- [ ] Secure task links require Workspace authentication
+- [ ] Capability links use expiring tokens; hashes stored server-side, not raw tokens
+- [ ] Capability link rotation/invalidation considered when assignment is re-forwarded (if policy decided)
 - [ ] Gmail tokens remain server-side and encrypted at rest
 - [ ] Secrets not committed; `.env` patterns respected
-- [ ] Administrator identity not hard-coded in source
-- [ ] Audit events recorded for approvals, forwards, reminders, authz failures
+- [ ] Recipient identity not hard-coded in source
+- [ ] Audit events recorded for approvals, forwards, reminders, capability use, authz failures
 
 ## Privacy
 
@@ -89,7 +94,7 @@ Governing references: [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md) · [AI_
 
 ## UX
 
-- [ ] Android-first flows remain usable; admin path stays minimal
+- [ ] Android-first flows remain usable; Recipient capability path stays minimal
 - [ ] Approval boundaries visible before consequential sends
 - [ ] Manual and voice fallbacks available when capture fails
 - [ ] Best-effort call/notification limitations not over-promised in UI copy
@@ -98,7 +103,7 @@ Governing references: [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md) · [AI_
 ## Technical debt
 
 - [ ] New debt listed explicitly (comment + OPEN_QUESTIONS or milestone note)
-- [ ] No “temporary” hardcoded admin emails or domains
+- [ ] No “temporary” hardcoded Recipient emails or domains
 - [ ] No skipped authorization “to unblock demo”
 - [ ] Generated clients not hand-edited without regenerating from contract
 

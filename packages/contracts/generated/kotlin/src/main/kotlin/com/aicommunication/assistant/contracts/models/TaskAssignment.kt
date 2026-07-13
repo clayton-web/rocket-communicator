@@ -15,6 +15,9 @@
 
 package com.aicommunication.assistant.contracts.models
 
+import com.aicommunication.assistant.contracts.models.AssignmentDeliveryStatus
+import com.aicommunication.assistant.contracts.models.CapabilityAction
+import com.aicommunication.assistant.contracts.models.CapabilityStatus
 
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
@@ -23,27 +26,56 @@ import java.io.Serializable
 /**
  * 
  *
- * @param assigneeUserId 
+ * @param id 
+ * @param recipientId Recipient record identifier. Recipients do not have application accounts.
+ * @param intendedRecipientEmail Email snapshot at assignment time for audit and delivery.
  * @param assignedAt 
- * @param assignedByUserId 
+ * @param assignedByOwnerId 
+ * @param allowedCapabilityActions Allowed actions for a specific task capability link.
  * @param assignmentApprovedAt Timestamp of the single bundled assignment approval (D037).
+ * @param capabilityStatus Summary status of the active task capability for this assignment.
+ * @param deliveryStatus 
+ * @param activeCapabilityId Identifier of the active capability. Raw token is never exposed.
  */
 
 
 data class TaskAssignment (
 
-    @Json(name = "assigneeUserId")
-    val assigneeUserId: kotlin.String,
+    @Json(name = "id")
+    val id: kotlin.String,
+
+    /* Recipient record identifier. Recipients do not have application accounts. */
+    @Json(name = "recipientId")
+    val recipientId: kotlin.String,
+
+    /* Email snapshot at assignment time for audit and delivery. */
+    @Json(name = "intendedRecipientEmail")
+    val intendedRecipientEmail: kotlin.String,
 
     @Json(name = "assignedAt")
     val assignedAt: kotlin.String,
 
-    @Json(name = "assignedByUserId")
-    val assignedByUserId: kotlin.String,
+    @Json(name = "assignedByOwnerId")
+    val assignedByOwnerId: kotlin.String,
+
+    /* Allowed actions for a specific task capability link. */
+    @Json(name = "allowedCapabilityActions")
+    val allowedCapabilityActions: kotlin.collections.Set<CapabilityAction>,
 
     /* Timestamp of the single bundled assignment approval (D037). */
     @Json(name = "assignmentApprovedAt")
-    val assignmentApprovedAt: kotlin.String? = null
+    val assignmentApprovedAt: kotlin.String? = null,
+
+    /* Summary status of the active task capability for this assignment. */
+    @Json(name = "capabilityStatus")
+    val capabilityStatus: CapabilityStatus? = null,
+
+    @Json(name = "deliveryStatus")
+    val deliveryStatus: AssignmentDeliveryStatus? = null,
+
+    /* Identifier of the active capability. Raw token is never exposed. */
+    @Json(name = "activeCapabilityId")
+    val activeCapabilityId: kotlin.String? = null
 
 ) : Serializable {
     companion object {

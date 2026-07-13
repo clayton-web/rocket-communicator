@@ -4,9 +4,9 @@
 ## Properties
 | Name | Type | Description | Notes |
 | ------------ | ------------- | ------------- | ------------- |
-| **acknowledgement** | [**inline**](#Acknowledgement) | Primary user intent approving the edited suggestion and administrator assignment. Future server logic derives task creation, reminder scheduling, Gmail forwarding, and standard assignment email without client-side side-effect toggles.  |  |
+| **acknowledgement** | [**inline**](#Acknowledgement) | Owner intent approving the edited suggestion and Recipient assignment. Future server logic derives task creation, reminder scheduling, Gmail forwarding, capability link issuance, and standard assignment email without client-side side-effect toggles.  |  |
 | **summaryPoints** | [**kotlin.collections.List&lt;TaskSummaryPoint&gt;**](TaskSummaryPoint.md) |  |  [optional] |
-| **assigneeUserId** | **kotlin.String** | Selected assignee for the approved task and assignment. |  [optional] |
+| **recipientId** | **kotlin.String** | Selected Recipient for the approved task and assignment. |  [optional] |
 | **priority** | [**TaskPriority**](TaskPriority.md) |  |  [optional] |
 | **dueAt** | **kotlin.String** |  |  [optional] |
 

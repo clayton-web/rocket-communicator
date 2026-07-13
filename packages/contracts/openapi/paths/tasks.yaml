@@ -26,7 +26,7 @@ paths:
     post:
       operationId: createTask
       tags: [Tasks]
-      summary: Create a task directly (primary typed creation only)
+      summary: Create a task directly (Owner typed creation only)
       requestBody:
         required: true
         content:
@@ -100,6 +100,10 @@ paths:
       operationId: markTaskWaiting
       tags: [Tasks]
       summary: Mark a task waiting
+      description: Authorized via authenticated Owner session or valid task capability.
+      security:
+        - bearerAuth: []
+        - capabilityAuth: []
       parameters:
         - $ref: '../components/parameters.yaml#/components/parameters/TaskId'
         - $ref: '../components/parameters.yaml#/components/parameters/IfMatch'
@@ -133,6 +137,10 @@ paths:
       operationId: resumeTask
       tags: [Tasks]
       summary: Resume a waiting task
+      description: Authorized via authenticated Owner session or valid task capability.
+      security:
+        - bearerAuth: []
+        - capabilityAuth: []
       parameters:
         - $ref: '../components/parameters.yaml#/components/parameters/TaskId'
         - $ref: '../components/parameters.yaml#/components/parameters/IfMatch'
@@ -160,6 +168,10 @@ paths:
       operationId: completeTask
       tags: [Tasks]
       summary: Complete a task
+      description: Authorized via authenticated Owner session or valid task capability.
+      security:
+        - bearerAuth: []
+        - capabilityAuth: []
       parameters:
         - $ref: '../components/parameters.yaml#/components/parameters/TaskId'
         - $ref: '../components/parameters.yaml#/components/parameters/IfMatch'
@@ -193,6 +205,10 @@ paths:
       operationId: addTaskNote
       tags: [Tasks]
       summary: Add a note to a task
+      description: Authorized via authenticated Owner session or valid task capability.
+      security:
+        - bearerAuth: []
+        - capabilityAuth: []
       parameters:
         - $ref: '../components/parameters.yaml#/components/parameters/TaskId'
         - $ref: '../components/parameters.yaml#/components/parameters/IfMatch'
@@ -221,11 +237,17 @@ paths:
           $ref: '../components/responses.yaml#/components/responses/PreconditionFailed'
         '428':
           $ref: '../components/responses.yaml#/components/responses/PreconditionRequired'
-  /api/v1/tasks/{taskId}/return-to-primary:
+  /api/v1/tasks/{taskId}/return-to-owner:
     post:
-      operationId: returnTaskToPrimary
+      operationId: returnTaskToOwner
       tags: [Tasks]
-      summary: Return an assigned task to the primary user
+      summary: Return an assigned task to the Owner
+      description: |
+        Authorized via authenticated Owner session or a valid task capability with
+        `return_task_to_owner` scope. Capability possession is authorization, not verified identity.
+      security:
+        - bearerAuth: []
+        - capabilityAuth: []
       parameters:
         - $ref: '../components/parameters.yaml#/components/parameters/TaskId'
         - $ref: '../components/parameters.yaml#/components/parameters/IfMatch'
@@ -234,7 +256,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '../openapi.yaml#/components/schemas/ReturnTaskToPrimaryRequest'
+              $ref: '../openapi.yaml#/components/schemas/ReturnTaskToOwnerRequest'
       responses:
         '200':
           description: Updated task
@@ -259,6 +281,10 @@ paths:
       operationId: requestClarification
       tags: [Tasks]
       summary: Request clarification on a task
+      description: Authorized via authenticated Owner session or valid task capability.
+      security:
+        - bearerAuth: []
+        - capabilityAuth: []
       parameters:
         - $ref: '../components/parameters.yaml#/components/parameters/TaskId'
         - $ref: '../components/parameters.yaml#/components/parameters/IfMatch'

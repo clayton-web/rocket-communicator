@@ -35,7 +35,7 @@ components:
             $ref: './summary-point.yaml#/components/schemas/TaskSummaryPoint'
         sourceReference:
           $ref: './source-reference.yaml#/components/schemas/SourceReference'
-        proposedAssigneeUserId:
+        proposedRecipientId:
           type:
             - string
             - 'null'
@@ -78,10 +78,10 @@ components:
           maxItems: 20
           items:
             $ref: './summary-point.yaml#/components/schemas/TaskSummaryPoint'
-        assigneeUserId:
+        recipientId:
           type: string
           maxLength: 64
-          description: Selected assignee for the approved task and assignment.
+          description: Selected Recipient for the approved task and assignment.
         priority:
           $ref: './assignment.yaml#/components/schemas/TaskPriority'
         dueAt:
@@ -92,9 +92,9 @@ components:
           enum:
             - assignment_approved
           description: |
-            Primary user intent approving the edited suggestion and administrator assignment.
+            Owner intent approving the edited suggestion and Recipient assignment.
             Future server logic derives task creation, reminder scheduling, Gmail forwarding,
-            and standard assignment email without client-side side-effect toggles.
+            capability link issuance, and standard assignment email without client-side side-effect toggles.
     EditTaskSuggestionRequest:
       type: object
       properties:
@@ -103,7 +103,7 @@ components:
           maxItems: 20
           items:
             $ref: './summary-point.yaml#/components/schemas/TaskSummaryPoint'
-        proposedAssigneeUserId:
+        proposedRecipientId:
           type:
             - string
             - 'null'

@@ -1,0 +1,48 @@
+components:
+  schemas:
+    RecipientRelationshipLabel:
+      type: string
+      maxLength: 64
+      description: |
+        Optional relationship label (for example administrator, agent, contractor, lawyer,
+        accountant, tenant, client). Not an application role.
+      examples:
+        - administrator
+        - contractor
+    Recipient:
+      type: object
+      required:
+        - id
+        - displayName
+        - email
+        - active
+      properties:
+        id:
+          type: string
+          maxLength: 64
+        displayName:
+          type: string
+          maxLength: 128
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        relationshipLabel:
+          $ref: '#/components/schemas/RecipientRelationshipLabel'
+        active:
+          type: boolean
+          description: Whether the Owner may assign new work to this Recipient.
+        reminderPreferences:
+          type: object
+          additionalProperties: false
+          properties:
+            emailEnabled:
+              type: boolean
+              default: true
+        assignmentCategories:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+            maxLength: 64
+          description: Optional Owner-defined categories for delegation routing.

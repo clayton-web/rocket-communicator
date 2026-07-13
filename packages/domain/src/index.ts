@@ -1,21 +1,46 @@
 export type {
   OrganizationId,
-  UserId,
+  OwnerId,
+  RecipientId,
+  AssignmentId,
+  CapabilityId,
   TaskId,
   TaskSuggestionId,
   SummaryPointId,
   SourceReferenceId,
+  UserId,
 } from './types/ids.js';
-export { asOrganizationId, asUserId, asTaskId, asTaskSuggestionId } from './types/ids.js';
-export type { ActorContext, UserRole } from './types/actor.js';
-export { isPrimary, isAdministrator } from './types/actor.js';
+export {
+  asOrganizationId,
+  asOwnerId,
+  asUserId,
+  asRecipientId,
+  asAssignmentId,
+  asCapabilityId,
+  asTaskId,
+  asTaskSuggestionId,
+} from './types/ids.js';
+export type {
+  Actor,
+  OwnerActor,
+  CapabilityActor,
+  SystemActor,
+  AuthenticatedRole,
+} from './types/actor.js';
+export { isOwner, isCapability, isSystem, ownerActor } from './types/actor.js';
 export type { UtcInstant } from './types/timestamps.js';
 export { toUtcInstant, parseUtcInstant, addMilliseconds, MS_PER_DAY } from './types/timestamps.js';
 
+export type { Recipient } from './entities/recipient.js';
 export type { TaskSuggestion, TaskSuggestionStatus } from './entities/task-suggestion.js';
 export { isTerminalSuggestionStatus } from './entities/task-suggestion.js';
 export type { Task, TaskStatus, ActionableTaskStatus } from './entities/task.js';
-export { isTerminalTaskStatus, isActionableTaskStatus, isAssignedTo } from './entities/task.js';
+export {
+  isTerminalTaskStatus,
+  isActionableTaskStatus,
+  isAssignedToRecipient,
+  isAssignedTo,
+} from './entities/task.js';
 
 export type {
   TaskSummaryPoint,
@@ -25,6 +50,20 @@ export type {
 export { MAX_SUMMARY_POINTS } from './value-objects/task-summary-point.js';
 export type { SourceReference, SourceType } from './value-objects/source-reference.js';
 export type { TaskAssignment } from './value-objects/task-assignment.js';
+export type {
+  CapabilityAction,
+  CapabilityStatus,
+  CapabilityScope,
+  AssignmentDeliveryStatus,
+  TaskCapability,
+  CapabilityAuditContext,
+  OwnerAuditContext,
+  ActionAttribution,
+} from './value-objects/capability.js';
+export {
+  capabilityAttributionLabel,
+  formatCapabilityAuditContext,
+} from './value-objects/capability.js';
 export type {
   TaskOutcome,
   TaskOutcomeType,
@@ -77,7 +116,24 @@ export {
 
 export { validateSummaryPoints } from './validation/summary-points.js';
 
-export { can, assertCan, assertPrimary, type CapabilityAction } from './policies/capabilities.js';
+export {
+  can,
+  canOwner,
+  canCapability,
+  assertCan,
+  assertOwner,
+  assertGetDoesNotMutate,
+  isCapabilityActiveForTask,
+  type OwnerAction,
+} from './policies/capabilities.js';
+export {
+  assertCapabilityActive,
+  assertCapabilityBelongsToTask,
+  assertCapabilityActionInScope,
+  assertTaskAllowsCapabilityMutation,
+  assertCapabilityPermitsAction,
+  isCapabilityActive,
+} from './policies/capability.policy.js';
 export {
   assertVoiceCannotCreateTask,
   assertFollowUpRequiresSuggestion,
@@ -98,6 +154,7 @@ export {
   completeTask,
   dismissTask,
   addTaskNote,
+  returnTaskToOwner,
   returnTaskToPrimary,
   requestClarification,
   TERMINAL_TASK_STATUSES,

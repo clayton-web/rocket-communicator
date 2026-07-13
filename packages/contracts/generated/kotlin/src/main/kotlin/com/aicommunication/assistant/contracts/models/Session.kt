@@ -15,7 +15,7 @@
 
 package com.aicommunication.assistant.contracts.models
 
-import com.aicommunication.assistant.contracts.models.UserRole
+import com.aicommunication.assistant.contracts.models.AuthenticatedRole
 
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
@@ -24,7 +24,7 @@ import java.io.Serializable
 /**
  * 
  *
- * @param userId 
+ * @param ownerId Authenticated Owner user identifier.
  * @param organizationId 
  * @param role 
  * @param displayName 
@@ -33,14 +33,15 @@ import java.io.Serializable
 
 data class Session (
 
-    @Json(name = "userId")
-    val userId: kotlin.String,
+    /* Authenticated Owner user identifier. */
+    @Json(name = "ownerId")
+    val ownerId: kotlin.String,
 
     @Json(name = "organizationId")
     val organizationId: kotlin.String,
 
     @Json(name = "role")
-    val role: UserRole,
+    val role: AuthenticatedRole,
 
     @Json(name = "displayName")
     val displayName: kotlin.String? = null

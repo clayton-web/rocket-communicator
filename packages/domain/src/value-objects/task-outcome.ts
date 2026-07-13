@@ -1,6 +1,7 @@
-import type { TaskSummaryPoint } from './task-summary-point.js';
-import type { UserId } from '../types/ids.js';
+import type { OwnerId } from '../types/ids.js';
 import type { UtcInstant } from '../types/timestamps.js';
+import type { ActionAttribution } from './capability.js';
+import type { TaskSummaryPoint } from './task-summary-point.js';
 
 export type TaskOutcomeType =
   | 'completed'
@@ -14,7 +15,7 @@ export type TaskOutcomeType =
 
 export interface FollowUpProposal {
   summaryPoints: TaskSummaryPoint[];
-  proposedAssigneeUserId?: UserId;
+  proposedRecipientId?: string;
   proposedDueAt?: UtcInstant;
   proposedPriority?: 'low' | 'normal' | 'high' | 'urgent';
 }
@@ -22,7 +23,7 @@ export interface FollowUpProposal {
 export interface TaskOutcome {
   outcomeType: TaskOutcomeType;
   completedAt: UtcInstant;
-  completedByUserId: UserId;
+  attribution: ActionAttribution;
   note?: string;
   summaryPoints?: TaskSummaryPoint[];
   followUpProposal?: FollowUpProposal;

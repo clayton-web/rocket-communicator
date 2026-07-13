@@ -15,7 +15,7 @@ tags:
   - name: Session
     description: Authenticated session shape (implementation deferred to A3).
   - name: TaskSuggestions
-    description: Pre-task AI and user proposals requiring primary approval.
+    description: Pre-task AI and user proposals requiring Owner approval.
   - name: Tasks
     description: Approved actionable work items.
 security:
@@ -49,8 +49,8 @@ paths:
     $ref: './paths/tasks.yaml#/paths/~1api~1v1~1tasks~1{taskId}~1complete'
   /api/v1/tasks/{taskId}/notes:
     $ref: './paths/tasks.yaml#/paths/~1api~1v1~1tasks~1{taskId}~1notes'
-  /api/v1/tasks/{taskId}/return-to-primary:
-    $ref: './paths/tasks.yaml#/paths/~1api~1v1~1tasks~1{taskId}~1return-to-primary'
+  /api/v1/tasks/{taskId}/return-to-owner:
+    $ref: './paths/tasks.yaml#/paths/~1api~1v1~1tasks~1{taskId}~1return-to-owner'
   /api/v1/tasks/{taskId}/clarification-requests:
     $ref: './paths/tasks.yaml#/paths/~1api~1v1~1tasks~1{taskId}~1clarification-requests'
 components:
@@ -69,8 +69,28 @@ components:
       $ref: './components/schemas/common.yaml#/components/schemas/CursorPage'
     Session:
       $ref: './components/schemas/session.yaml#/components/schemas/Session'
-    UserRole:
-      $ref: './components/schemas/session.yaml#/components/schemas/UserRole'
+    AuthenticatedRole:
+      $ref: './components/schemas/session.yaml#/components/schemas/AuthenticatedRole'
+    Recipient:
+      $ref: './components/schemas/recipient.yaml#/components/schemas/Recipient'
+    RecipientRelationshipLabel:
+      $ref: './components/schemas/recipient.yaml#/components/schemas/RecipientRelationshipLabel'
+    CapabilityAction:
+      $ref: './components/schemas/capability.yaml#/components/schemas/CapabilityAction'
+    CapabilityStatus:
+      $ref: './components/schemas/capability.yaml#/components/schemas/CapabilityStatus'
+    CapabilityScope:
+      $ref: './components/schemas/capability.yaml#/components/schemas/CapabilityScope'
+    AssignmentDeliveryStatus:
+      $ref: './components/schemas/capability.yaml#/components/schemas/AssignmentDeliveryStatus'
+    TaskCapability:
+      $ref: './components/schemas/capability.yaml#/components/schemas/TaskCapability'
+    CapabilityAuditContext:
+      $ref: './components/schemas/capability.yaml#/components/schemas/CapabilityAuditContext'
+    OwnerAuditContext:
+      $ref: './components/schemas/capability.yaml#/components/schemas/OwnerAuditContext'
+    ActionAttribution:
+      $ref: './components/schemas/capability.yaml#/components/schemas/ActionAttribution'
     TaskSuggestion:
       $ref: './components/schemas/task-suggestion.yaml#/components/schemas/TaskSuggestion'
     TaskSuggestionStatus:
@@ -97,8 +117,8 @@ components:
       $ref: './components/schemas/task.yaml#/components/schemas/CompleteTaskRequest'
     AddTaskNoteRequest:
       $ref: './components/schemas/task.yaml#/components/schemas/AddTaskNoteRequest'
-    ReturnTaskToPrimaryRequest:
-      $ref: './components/schemas/task.yaml#/components/schemas/ReturnTaskToPrimaryRequest'
+    ReturnTaskToOwnerRequest:
+      $ref: './components/schemas/task.yaml#/components/schemas/ReturnTaskToOwnerRequest'
     RequestClarificationRequest:
       $ref: './components/schemas/task.yaml#/components/schemas/RequestClarificationRequest'
     TaskAssignment:
@@ -122,6 +142,8 @@ components:
   securitySchemes:
     bearerAuth:
       $ref: './components/security.yaml#/components/securitySchemes/bearerAuth'
+    capabilityAuth:
+      $ref: './components/security.yaml#/components/securitySchemes/capabilityAuth'
   parameters:
     IfMatch:
       $ref: './components/parameters.yaml#/components/parameters/IfMatch'
