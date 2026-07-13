@@ -42,6 +42,10 @@ components:
       name: cursor
       in: query
       required: false
+      description: |
+        Opaque pagination cursor from a prior response `nextCursor`.
+        For `GET /api/v1/tasks`, the cursor represents composite order
+        `updatedAt` DESC, then `id` DESC.
       schema:
         type: string
         maxLength: 256

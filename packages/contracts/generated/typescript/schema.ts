@@ -130,7 +130,20 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List tasks */
+        /**
+         * List tasks
+         * @description Returns organization-scoped tasks for the authenticated Owner.
+         *
+         *     **Ordering:** `updatedAt` descending, then `id` descending as the deterministic tie-breaker.
+         *
+         *     **Cursor:** Opaque `cursor` / `nextCursor` values encode that composite ordering
+         *     (`updatedAt` DESC, `id` DESC). Pass `nextCursor` as `cursor` to fetch the next page.
+         *
+         *     **Statuses:** All persisted statuses are included, including `dismissed`. There is no
+         *     status filter on this endpoint; a future contracted filter would be required to exclude
+         *     dismissed (or other) statuses.
+         *
+         */
         get: operations["listTasks"];
         put?: never;
         /** Create a task directly (Owner typed creation only) */
@@ -525,6 +538,9 @@ export interface components {
         };
         CursorPage: {
             items: unknown[];
+            /** @description Opaque cursor for the next page, or null when exhausted.
+             *     For task lists, encodes composite order `updatedAt` DESC, `id` DESC.
+             *      */
             nextCursor?: string | null;
         };
         Session: {
@@ -1135,6 +1151,10 @@ export interface components {
         IfMatch: string;
         SuggestionId: string;
         TaskId: string;
+        /** @description Opaque pagination cursor from a prior response `nextCursor`.
+         *     For `GET /api/v1/tasks`, the cursor represents composite order
+         *     `updatedAt` DESC, then `id` DESC.
+         *      */
         Cursor: string;
         Limit: number;
     };
@@ -1168,6 +1188,10 @@ export interface operations {
     listTaskSuggestions: {
         parameters: {
             query?: {
+                /** @description Opaque pagination cursor from a prior response `nextCursor`.
+                 *     For `GET /api/v1/tasks`, the cursor represents composite order
+                 *     `updatedAt` DESC, then `id` DESC.
+                 *      */
                 cursor?: components["parameters"]["Cursor"];
                 limit?: components["parameters"]["Limit"];
             };
@@ -1376,6 +1400,10 @@ export interface operations {
     listTasks: {
         parameters: {
             query?: {
+                /** @description Opaque pagination cursor from a prior response `nextCursor`.
+                 *     For `GET /api/v1/tasks`, the cursor represents composite order
+                 *     `updatedAt` DESC, then `id` DESC.
+                 *      */
                 cursor?: components["parameters"]["Cursor"];
                 limit?: components["parameters"]["Limit"];
             };
@@ -1385,7 +1413,9 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Paginated tasks */
+            /** @description Paginated tasks in `updatedAt` DESC, `id` DESC order. Includes dismissed tasks.
+             *     `nextCursor` is null when no further pages exist.
+             *      */
             200: {
                 headers: {
                     [name: string]: unknown;

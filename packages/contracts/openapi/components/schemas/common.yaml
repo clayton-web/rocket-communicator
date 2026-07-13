@@ -92,3 +92,6 @@ components:
             - string
             - 'null'
           maxLength: 256
+          description: |
+            Opaque cursor for the next page, or null when exhausted.
+            For task lists, encodes composite order `updatedAt` DESC, `id` DESC.

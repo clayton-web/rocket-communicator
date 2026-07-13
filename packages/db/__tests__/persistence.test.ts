@@ -30,6 +30,7 @@ import {
   getTaskSuggestionById,
   listAuditEventsForTask,
   listTaskAssignments,
+  listTasks,
   persistCapabilityAction,
   persistReturnToOwner,
   persistWorkRequest,
@@ -857,5 +858,53 @@ describe('A4 persistence repositories (PGlite)', () => {
 
   it('does not export a DATABASE_URL-bound factory that invents secrets', () => {
     expect(() => createPrismaClient(undefined)).toThrow(/DATABASE_URL/);
+  });
+
+  it('lists organization tasks with deterministic cursor pagination', async () => {
+    const listOrg = 'org_list_only';
+    await upsertRecipient(db.prisma, {
+      organizationId: listOrg,
+      recipient: recipient('rcp_list'),
+    });
+    const t1 = baseTask({
+      id: asTaskId('task_list_1'),
+      organizationId: asOrganizationId(listOrg),
+      assignment: undefined,
+      createdAt: '2026-07-13T10:00:00.000Z',
+      updatedAt: '2026-07-13T10:00:00.000Z',
+    });
+    const t2 = baseTask({
+      id: asTaskId('task_list_2'),
+      organizationId: asOrganizationId(listOrg),
+      assignment: undefined,
+      createdAt: '2026-07-13T11:00:00.000Z',
+      updatedAt: '2026-07-13T11:00:00.000Z',
+    });
+    const t3 = baseTask({
+      id: asTaskId('task_list_3'),
+      organizationId: asOrganizationId(listOrg),
+      assignment: undefined,
+      status: 'dismissed',
+      createdAt: '2026-07-13T12:00:00.000Z',
+      updatedAt: '2026-07-13T12:00:00.000Z',
+    });
+    await createTask(db.prisma, listOrg, t1);
+    await createTask(db.prisma, listOrg, t2);
+    await createTask(db.prisma, listOrg, t3);
+
+    const page1 = await listTasks(db.prisma, { organizationId: listOrg, limit: 2 });
+    expect(page1.items.map((t) => t.id)).toEqual(['task_list_3', 'task_list_2']);
+    expect(page1.nextCursor).toBeTruthy();
+
+    const page2 = await listTasks(db.prisma, {
+      organizationId: listOrg,
+      limit: 2,
+      cursor: page1.nextCursor,
+    });
+    expect(page2.items.map((t) => t.id)).toEqual(['task_list_1']);
+    expect(page2.nextCursor).toBeNull();
+
+    const foreign = await listTasks(db.prisma, { organizationId: orgB, limit: 10 });
+    expect(foreign.items.every((t) => !t.id.startsWith('task_list_'))).toBe(true);
   });
 });

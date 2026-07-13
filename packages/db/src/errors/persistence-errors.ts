@@ -31,3 +31,7 @@ export function optimisticConcurrency(message: string): PersistenceError {
 export function uniqueViolation(message: string): PersistenceError {
   return new PersistenceError('UNIQUE_VIOLATION', message);
 }
+
+export function persistenceValidation(message: string): PersistenceError {
+  return new PersistenceError('VALIDATION', message);
+}

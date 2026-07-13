@@ -24,7 +24,7 @@ import java.io.Serializable
  * 
  *
  * @param items 
- * @param nextCursor 
+ * @param nextCursor Opaque cursor for the next page, or null when exhausted. For task lists, encodes composite order `updatedAt` DESC, `id` DESC. 
  */
 
 
@@ -33,6 +33,7 @@ data class CursorPage (
     @Json(name = "items")
     val items: kotlin.collections.List<kotlin.Any>,
 
+    /* Opaque cursor for the next page, or null when exhausted. For task lists, encodes composite order `updatedAt` DESC, `id` DESC.  */
     @Json(name = "nextCursor")
     val nextCursor: kotlin.String? = null
 

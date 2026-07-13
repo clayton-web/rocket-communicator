@@ -14,6 +14,7 @@ export {
   organizationMismatch,
   optimisticConcurrency,
   uniqueViolation,
+  persistenceValidation,
 } from './errors/persistence-errors.js';
 
 export {
@@ -30,6 +31,7 @@ export {
 export { upsertRecipient, getRecipientById } from './repositories/recipient-repository.js';
 export {
   getTaskById,
+  listTasks,
   createTask,
   updateTaskWithExpectedVersion,
   appendTaskNote,
@@ -37,6 +39,8 @@ export {
   updateActiveAssignmentCapabilityBinding,
   clearAssignment,
   listTaskAssignments,
+  type ListTasksQuery,
+  type ListTasksResult,
 } from './repositories/task-repository.js';
 export {
   createTaskSuggestion,
@@ -61,5 +65,6 @@ export {
 export {
   persistReturnToOwner,
   persistCapabilityAction,
+  persistOwnerTaskMutation,
   persistWorkRequest,
 } from './transactions/a4-transactions.js';

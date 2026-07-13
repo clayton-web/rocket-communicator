@@ -83,6 +83,16 @@ export async function persistCapabilityAction(input: {
 }
 
 /**
+ * Owner session mutation unit of work (task + optional new note + audit).
+ * Same persistence shape as capability-driven mutations; named for Owner task services.
+ */
+export async function persistOwnerTaskMutation(
+  input: Parameters<typeof persistCapabilityAction>[0],
+): Promise<{ task: Task; audit: AuditEventRecord }> {
+  return persistCapabilityAction(input);
+}
+
+/**
  * Atomic work-request: attributed note + pending suggestion + audit (D061).
  */
 export async function persistWorkRequest(input: {

@@ -6,6 +6,7 @@ import {
   notFound,
   optimisticConcurrency,
   organizationMismatch,
+  persistenceValidation,
   uniqueViolation,
 } from '../errors/persistence-errors.js';
 
@@ -37,6 +38,92 @@ export async function getTaskById(
 ): Promise<Task> {
   const row = await loadTaskBundle(db, organizationId, taskId);
   return mapTask(row, row.assignments[0] ?? null, row.notes);
+}
+
+export interface ListTasksQuery {
+  organizationId: string;
+  /** Opaque cursor from a prior page (`nextCursor`). */
+  cursor?: string | null;
+  /** Page size (1–100). Defaults to 25 to match OpenAPI Limit. */
+  limit?: number;
+}
+
+export interface ListTasksResult {
+  items: Task[];
+  nextCursor: string | null;
+}
+
+/**
+ * Organization-scoped task listing.
+ * Order (OpenAPI listTasks): `updatedAt` DESC, then `id` DESC.
+ * Includes all statuses (including `dismissed`); no status filter is contracted.
+ * GET-only — no writes.
+ */
+export async function listTasks(db: Client, query: ListTasksQuery): Promise<ListTasksResult> {
+  const limit = Math.min(Math.max(query.limit ?? 25, 1), 100);
+  const cursor = decodeTaskListCursor(query.cursor);
+
+  const rows = await db.task.findMany({
+    where: {
+      organizationId: query.organizationId,
+      ...(cursor
+        ? {
+            OR: [
+              { updatedAt: { lt: cursor.updatedAt } },
+              {
+                AND: [{ updatedAt: cursor.updatedAt }, { id: { lt: cursor.id } }],
+              },
+            ],
+          }
+        : {}),
+    },
+    orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+    take: limit + 1,
+    include: {
+      assignments: { where: { clearedAt: null }, take: 1 },
+      notes: { orderBy: { createdAt: 'asc' } },
+    },
+  });
+
+  const page = rows.slice(0, limit);
+  const items = page.map((row) => mapTask(row, row.assignments[0] ?? null, row.notes));
+  const last = page[page.length - 1];
+  const nextCursor =
+    rows.length > limit && last
+      ? encodeTaskListCursor({ updatedAt: last.updatedAt, id: last.id })
+      : null;
+
+  return { items, nextCursor };
+}
+
+type TaskListCursor = { updatedAt: Date; id: string };
+
+function encodeTaskListCursor(value: TaskListCursor): string {
+  const payload = `${value.updatedAt.toISOString()}|${value.id}`;
+  return Buffer.from(payload, 'utf8').toString('base64url');
+}
+
+function decodeTaskListCursor(raw: string | null | undefined): TaskListCursor | null {
+  if (!raw) {
+    return null;
+  }
+  let decoded: string;
+  try {
+    decoded = Buffer.from(raw, 'base64url').toString('utf8');
+  } catch {
+    throw persistenceValidation('Task list cursor is invalid.');
+  }
+  const separator = decoded.lastIndexOf('|');
+  if (separator <= 0) {
+    throw persistenceValidation('Task list cursor is invalid.');
+  }
+  const updatedAtIso = decoded.slice(0, separator);
+  const id = decoded.slice(separator + 1);
+  const updatedAt = new Date(updatedAtIso);
+  if (!id || Number.isNaN(updatedAt.getTime())) {
+    throw persistenceValidation('Task list cursor is invalid.');
+  }
+  return { updatedAt, id };
 }
 
 /**

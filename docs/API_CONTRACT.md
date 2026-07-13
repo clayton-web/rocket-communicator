@@ -41,28 +41,28 @@ Owner Session vs Recipient Capability: [SECURITY_AND_PRIVACY.md](SECURITY_AND_PR
 
 ### Owner session routes
 
-| Method | Path                                              | Purpose                       |
-| ------ | ------------------------------------------------- | ----------------------------- |
-| GET    | `/api/v1/session`                                 | Current Owner session (A3)    |
-| GET    | `/api/v1/task-suggestions`                        | List suggestions              |
-| GET    | `/api/v1/task-suggestions/{suggestionId}`         | Get suggestion                |
-| POST   | `/api/v1/task-suggestions/{suggestionId}/approve` | Approve (+ assignment intent) |
-| POST   | `/api/v1/task-suggestions/{suggestionId}/edit`    | Edit pending                  |
-| POST   | `/api/v1/task-suggestions/{suggestionId}/dismiss` | Dismiss                       |
-| POST   | `/api/v1/task-suggestions/{suggestionId}/merge`   | Merge into task               |
-| GET    | `/api/v1/tasks`                                   | List tasks                    |
-| POST   | `/api/v1/tasks`                                   | Create typed task             |
-| GET    | `/api/v1/tasks/{taskId}`                          | Get task                      |
-| POST   | `/api/v1/tasks/{taskId}/start`                    | Start                         |
-| POST   | `/api/v1/tasks/{taskId}/waiting`                  | Waiting                       |
-| POST   | `/api/v1/tasks/{taskId}/resume`                   | Resume                        |
-| POST   | `/api/v1/tasks/{taskId}/complete`                 | Complete                      |
-| POST   | `/api/v1/tasks/{taskId}/notes`                    | Note                          |
-| POST   | `/api/v1/tasks/{taskId}/snooze`                   | Snooze (D060)                 |
-| POST   | `/api/v1/tasks/{taskId}/dismiss`                  | Dismiss (D064)                |
-| POST   | `/api/v1/tasks/{taskId}/return-to-owner`          | Clear assignment to Owner     |
-| POST   | `/api/v1/tasks/{taskId}/clarification-requests`   | Clarification                 |
-| POST   | `/api/v1/tasks/{taskId}/capabilities`             | Issue capability (raw once)   |
+| Method | Path                                              | Purpose                                                      |
+| ------ | ------------------------------------------------- | ------------------------------------------------------------ |
+| GET    | `/api/v1/session`                                 | Current Owner session (A3)                                   |
+| GET    | `/api/v1/task-suggestions`                        | List suggestions                                             |
+| GET    | `/api/v1/task-suggestions/{suggestionId}`         | Get suggestion                                               |
+| POST   | `/api/v1/task-suggestions/{suggestionId}/approve` | Approve (+ assignment intent)                                |
+| POST   | `/api/v1/task-suggestions/{suggestionId}/edit`    | Edit pending                                                 |
+| POST   | `/api/v1/task-suggestions/{suggestionId}/dismiss` | Dismiss                                                      |
+| POST   | `/api/v1/task-suggestions/{suggestionId}/merge`   | Merge into task                                              |
+| GET    | `/api/v1/tasks`                                   | List tasks (`updatedAt` DESC, `id` DESC; includes dismissed) |
+| POST   | `/api/v1/tasks`                                   | Create typed task                                            |
+| GET    | `/api/v1/tasks/{taskId}`                          | Get task                                                     |
+| POST   | `/api/v1/tasks/{taskId}/start`                    | Start                                                        |
+| POST   | `/api/v1/tasks/{taskId}/waiting`                  | Waiting                                                      |
+| POST   | `/api/v1/tasks/{taskId}/resume`                   | Resume                                                       |
+| POST   | `/api/v1/tasks/{taskId}/complete`                 | Complete                                                     |
+| POST   | `/api/v1/tasks/{taskId}/notes`                    | Note                                                         |
+| POST   | `/api/v1/tasks/{taskId}/snooze`                   | Snooze (D060)                                                |
+| POST   | `/api/v1/tasks/{taskId}/dismiss`                  | Dismiss (D064)                                               |
+| POST   | `/api/v1/tasks/{taskId}/return-to-owner`          | Clear assignment to Owner                                    |
+| POST   | `/api/v1/tasks/{taskId}/clarification-requests`   | Clarification                                                |
+| POST   | `/api/v1/tasks/{taskId}/capabilities`             | Issue capability (raw once)                                  |
 
 ### Recipient capability routes
 
@@ -100,5 +100,7 @@ Envelope: `{ "error": { "code", "message", "details?", "requestId", "correlation
 Codes: `VALIDATION_ERROR`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `INVALID_STATE_TRANSITION`, `PRECONDITION_REQUIRED`, `PRECONDITION_FAILED`, `DOMAIN_CONFLICT`, `RATE_LIMITED`, `CAPABILITY_EXPIRED`, `CAPABILITY_REVOKED`, `DEPENDENCY_UNAVAILABLE`, `INTERNAL_ERROR`.
 
 Lists: cursor pagination (`cursor`, `limit` ≤ 100, `items`, `nextCursor`).
+
+**`GET /api/v1/tasks`:** Ordered by `updatedAt` descending, then `id` descending. The opaque cursor encodes that composite order. All statuses are returned, including `dismissed`; excluding dismissed (or filtering by status) requires a future contracted query parameter—none exists today.
 
 Summary points: OpenAPI `TaskSummaryPoint` discriminated union; max 20 per resource. `SourceReference` is origin metadata without secrets or full bodies.

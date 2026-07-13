@@ -4,12 +4,25 @@ paths:
       operationId: listTasks
       tags: [Tasks]
       summary: List tasks
+      description: |
+        Returns organization-scoped tasks for the authenticated Owner.
+
+        **Ordering:** `updatedAt` descending, then `id` descending as the deterministic tie-breaker.
+
+        **Cursor:** Opaque `cursor` / `nextCursor` values encode that composite ordering
+        (`updatedAt` DESC, `id` DESC). Pass `nextCursor` as `cursor` to fetch the next page.
+
+        **Statuses:** All persisted statuses are included, including `dismissed`. There is no
+        status filter on this endpoint; a future contracted filter would be required to exclude
+        dismissed (or other) statuses.
       parameters:
         - $ref: '../components/parameters.yaml#/components/parameters/Cursor'
         - $ref: '../components/parameters.yaml#/components/parameters/Limit'
       responses:
         '200':
-          description: Paginated tasks
+          description: |
+            Paginated tasks in `updatedAt` DESC, `id` DESC order. Includes dismissed tasks.
+            `nextCursor` is null when no further pages exist.
           content:
             application/json:
               schema:
