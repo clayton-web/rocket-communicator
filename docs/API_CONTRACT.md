@@ -66,18 +66,20 @@ Owner Session vs Recipient Capability: [SECURITY_AND_PRIVACY.md](SECURITY_AND_PR
 
 ### Recipient capability routes
 
-| Method | Path                                                                 | Purpose                          |
-| ------ | -------------------------------------------------------------------- | -------------------------------- |
-| GET    | `/api/v1/capabilities/{token}/tasks/{taskId}`                        | Non-mutating view                |
-| POST   | `/api/v1/capabilities/{token}/tasks/{taskId}/waiting`                | Waiting                          |
-| POST   | `/api/v1/capabilities/{token}/tasks/{taskId}/resume`                 | Resume                           |
-| POST   | `/api/v1/capabilities/{token}/tasks/{taskId}/complete`               | Complete                         |
-| POST   | `/api/v1/capabilities/{token}/tasks/{taskId}/notes`                  | Note                             |
-| POST   | `/api/v1/capabilities/{token}/tasks/{taskId}/return-to-owner`        | Return to Owner                  |
-| POST   | `/api/v1/capabilities/{token}/tasks/{taskId}/clarification-requests` | Clarification                    |
-| POST   | `/api/v1/capabilities/{token}/tasks/{taskId}/work-requests`          | Work request → Suggestion (D061) |
+| Method | Path                                                                 | Purpose                                                                    |
+| ------ | -------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| GET    | `/api/v1/capabilities/{token}/tasks/{taskId}`                        | Non-mutating view                                                          |
+| POST   | `/api/v1/capabilities/{token}/tasks/{taskId}/waiting`                | Waiting                                                                    |
+| POST   | `/api/v1/capabilities/{token}/tasks/{taskId}/resume`                 | Resume                                                                     |
+| POST   | `/api/v1/capabilities/{token}/tasks/{taskId}/complete`               | Complete                                                                   |
+| POST   | `/api/v1/capabilities/{token}/tasks/{taskId}/notes`                  | Note                                                                       |
+| POST   | `/api/v1/capabilities/{token}/tasks/{taskId}/return-to-owner`        | Return to Owner                                                            |
+| POST   | `/api/v1/capabilities/{token}/tasks/{taskId}/clarification-requests` | Clarification                                                              |
+| POST   | `/api/v1/capabilities/{token}/tasks/{taskId}/work-requests`          | Work request → pending Suggestion (D061); Owner suggestion review is later |
 
 Return-to-Owner (either surface) clears assignment ownership; Task status unchanged.
+
+Recipient work-request creation is in A4 and creates a pending Task Suggestion only. Owner suggestion review/approval HTTP is not required to complete A4.
 
 ## Assignment approval request semantics (D037)
 
@@ -93,11 +95,27 @@ Mutable Task / TaskSuggestion: integer `version` and strong `etag`. Mutations re
 | Stale `If-Match`   | 412  | `PRECONDITION_FAILED`   |
 | Domain conflict    | 409  | `DOMAIN_CONFLICT`       |
 
+## Recipient capability errors
+
+Public mapping for `/api/v1/capabilities/{token}/…` (internal expiry/revocation categories are never public ErrorCodes):
+
+| Condition                                                      | HTTP | Public `ErrorCode`      |
+| -------------------------------------------------------------- | ---- | ----------------------- |
+| Unknown, malformed, expired, or revoked token                  | 401  | `UNAUTHORIZED`          |
+| Valid token lacking required action scope                      | 403  | `FORBIDDEN`             |
+| Valid token used against the wrong task/resource               | 404  | `NOT_FOUND`             |
+| Valid token; mutation conflicts with task state / domain rules | 409  | `DOMAIN_CONFLICT`       |
+| Invalid body or missing/invalid confirmation                   | 400  | `VALIDATION_ERROR`      |
+| Missing `If-Match`                                             | 428  | `PRECONDITION_REQUIRED` |
+| Malformed, task-mismatched, or stale `If-Match`                | 412  | `PRECONDITION_FAILED`   |
+
+Unknown / revoked / expired / malformed tokens intentionally collapse to **401 `UNAUTHORIZED`** so clients cannot distinguish token existence or lifecycle state.
+
 ## Errors and pagination
 
 Envelope: `{ "error": { "code", "message", "details?", "requestId", "correlationId?" } }`.
 
-Codes: `VALIDATION_ERROR`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `INVALID_STATE_TRANSITION`, `PRECONDITION_REQUIRED`, `PRECONDITION_FAILED`, `DOMAIN_CONFLICT`, `RATE_LIMITED`, `CAPABILITY_EXPIRED`, `CAPABILITY_REVOKED`, `DEPENDENCY_UNAVAILABLE`, `INTERNAL_ERROR`.
+Public codes: `VALIDATION_ERROR`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `INVALID_STATE_TRANSITION`, `PRECONDITION_REQUIRED`, `PRECONDITION_FAILED`, `DOMAIN_CONFLICT`, `RATE_LIMITED`, `DEPENDENCY_UNAVAILABLE`, `INTERNAL_ERROR`.
 
 Lists: cursor pagination (`cursor`, `limit` ≤ 100, `items`, `nextCursor`).
 

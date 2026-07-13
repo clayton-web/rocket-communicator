@@ -27,6 +27,7 @@ Governed by [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md). Definitions: [GL
 - Default expiry seven days; required TTL config; persisted `expiresAt` (D055).
 - Multi-use until invalidation; no A4 `used` transitions (D056).
 - Store hash only; raw secret may return once to Owner; never log raw secret (D063).
+- Public HTTP errors must not reveal whether a token is unknown, expired, revoked, or malformed—those cases collapse to **401 `UNAUTHORIZED`**. Insufficient scope → **403 `FORBIDDEN`**; wrong task binding → **404 `NOT_FOUND`**. See [API_CONTRACT.md](API_CONTRACT.md).
 - Re-forward invalidation: OPEN #21 (A7).
 
 ## Permission matrix (v1)
