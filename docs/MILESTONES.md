@@ -2,7 +2,7 @@
 
 Planning milestones only. No application scaffolding occurs in A0.
 
-**Current milestone: A2 complete** (API contracts and domain model). Next: **A3** (Owner authentication) — not started.
+**Current milestone: A3 complete (Owner authentication).** Next: **A4** (task core and Recipient capability web view) — not started.
 
 Process for all later milestones: [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW.md) · [REVIEW_CHECKLIST.md](REVIEW_CHECKLIST.md) · [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md)
 
@@ -46,6 +46,7 @@ Process for all later milestones: [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW
 - **Major risks:** Misconfigured OAuth clients.
 - **Out of scope:** Gmail link, Android capture, capability links.
 - **Recommended Git checkpoint:** `feat: owner authentication`
+- **Status:** Complete (web-only Supabase Google OAuth, `/login`, `/auth/callback`, `GET /api/v1/session`, `OWNER_ORGANIZATION_ID` + `OWNER_WORKSPACE_DOMAIN` config).
 
 ## A4: Task core and minimal Recipient capability web view
 

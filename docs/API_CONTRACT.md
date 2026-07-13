@@ -59,11 +59,13 @@ No health endpoint in A2.
 
 ## Authentication models
 
-### Owner session (`sessionAuth`)
+### Owner session (`bearerAuth` / Supabase SSR cookies)
 
 - **Owner-only** authenticated routes (D048).
-- `GET /api/v1/session` returns the current Owner session shape.
-- All Owner task and suggestion mutations require a valid Owner session.
+- `GET /api/v1/session` returns the current Owner session shape when a valid Owner session exists (implemented in A3).
+- `organizationId` comes from configured `OWNER_ORGANIZATION_ID`, not from the Google Workspace domain.
+- `OWNER_WORKSPACE_DOMAIN` is used only to reject sign-in for non-permitted Google accounts.
+- All Owner task and suggestion mutations require a valid Owner session (handlers deferred past A3).
 - No second application user role exists.
 
 ### Recipient capability (`capabilityAuth`)
@@ -81,25 +83,25 @@ Future milestones will add capability endpoints (for example `/api/v1/capabiliti
 
 ### Owner session routes
 
-| Method | Path                                              | Purpose                                                    |
-| ------ | ------------------------------------------------- | ---------------------------------------------------------- |
-| GET    | `/api/v1/session`                                 | Current Owner session shape (no auth implementation in A2) |
-| GET    | `/api/v1/task-suggestions`                        | List suggestions (cursor pagination)                       |
-| GET    | `/api/v1/task-suggestions/{suggestionId}`         | Get suggestion                                             |
-| POST   | `/api/v1/task-suggestions/{suggestionId}/approve` | Approve suggestion and assignment intent                   |
-| POST   | `/api/v1/task-suggestions/{suggestionId}/edit`    | Edit pending suggestion                                    |
-| POST   | `/api/v1/task-suggestions/{suggestionId}/dismiss` | Dismiss suggestion                                         |
-| POST   | `/api/v1/task-suggestions/{suggestionId}/merge`   | Merge into existing task                                   |
-| GET    | `/api/v1/tasks`                                   | List tasks                                                 |
-| POST   | `/api/v1/tasks`                                   | Owner typed task creation                                  |
-| GET    | `/api/v1/tasks/{taskId}`                          | Get task                                                   |
-| POST   | `/api/v1/tasks/{taskId}/start`                    | Start task                                                 |
-| POST   | `/api/v1/tasks/{taskId}/waiting`                  | Mark waiting                                               |
-| POST   | `/api/v1/tasks/{taskId}/resume`                   | Resume from waiting                                        |
-| POST   | `/api/v1/tasks/{taskId}/complete`                 | Complete task (one-tap supported)                          |
-| POST   | `/api/v1/tasks/{taskId}/notes`                    | Add note                                                   |
-| POST   | `/api/v1/tasks/{taskId}/return-to-owner`          | Return assignment to Owner                                 |
-| POST   | `/api/v1/tasks/{taskId}/clarification-requests`   | Request clarification                                      |
+| Method | Path                                              | Purpose                                                  |
+| ------ | ------------------------------------------------- | -------------------------------------------------------- |
+| GET    | `/api/v1/session`                                 | Current Owner session shape (A3: Supabase Owner session) |
+| GET    | `/api/v1/task-suggestions`                        | List suggestions (cursor pagination)                     |
+| GET    | `/api/v1/task-suggestions/{suggestionId}`         | Get suggestion                                           |
+| POST   | `/api/v1/task-suggestions/{suggestionId}/approve` | Approve suggestion and assignment intent                 |
+| POST   | `/api/v1/task-suggestions/{suggestionId}/edit`    | Edit pending suggestion                                  |
+| POST   | `/api/v1/task-suggestions/{suggestionId}/dismiss` | Dismiss suggestion                                       |
+| POST   | `/api/v1/task-suggestions/{suggestionId}/merge`   | Merge into existing task                                 |
+| GET    | `/api/v1/tasks`                                   | List tasks                                               |
+| POST   | `/api/v1/tasks`                                   | Owner typed task creation                                |
+| GET    | `/api/v1/tasks/{taskId}`                          | Get task                                                 |
+| POST   | `/api/v1/tasks/{taskId}/start`                    | Start task                                               |
+| POST   | `/api/v1/tasks/{taskId}/waiting`                  | Mark waiting                                             |
+| POST   | `/api/v1/tasks/{taskId}/resume`                   | Resume from waiting                                      |
+| POST   | `/api/v1/tasks/{taskId}/complete`                 | Complete task (one-tap supported)                        |
+| POST   | `/api/v1/tasks/{taskId}/notes`                    | Add note                                                 |
+| POST   | `/api/v1/tasks/{taskId}/return-to-owner`          | Return assignment to Owner                               |
+| POST   | `/api/v1/tasks/{taskId}/clarification-requests`   | Request clarification                                    |
 
 ### Recipient capability routes (planned; not in A2 OpenAPI yet)
 

@@ -3,7 +3,7 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: 'AI Communication Action Assistant',
-  description: 'Repository foundation shell — no product features yet.',
+  description: 'Owner authentication shell for the AI Communication Action Assistant.',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

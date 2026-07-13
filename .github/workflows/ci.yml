@@ -99,17 +99,41 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Generate contracts for domain enum parity tests
+        run: pnpm contracts:generate
+
+      - name: Build domain package for web imports
+        run: pnpm build:domain
+
       - name: Format check
         run: pnpm format:check
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://example.invalid
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: test-anon-key
+          NEXT_PUBLIC_APP_URL: http://localhost:3000
+          OWNER_WORKSPACE_DOMAIN: example.com
+          OWNER_ORGANIZATION_ID: org_ci_test
 
       - name: Lint
         run: pnpm lint
 
       - name: Web tests
         run: pnpm test:web
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://example.invalid
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: test-anon-key
+          NEXT_PUBLIC_APP_URL: http://localhost:3000
+          OWNER_WORKSPACE_DOMAIN: example.com
+          OWNER_ORGANIZATION_ID: org_ci_test
 
       - name: Web production build
         run: pnpm build:web
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://example.invalid
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: test-anon-key
+          NEXT_PUBLIC_APP_URL: http://localhost:3000
+          OWNER_WORKSPACE_DOMAIN: example.com
+          OWNER_ORGANIZATION_ID: org_ci_test
 
   android:
     name: Android ktlint, unit tests, api-contract, debug build

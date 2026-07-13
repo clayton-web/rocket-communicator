@@ -20,15 +20,14 @@ The product is **not** a permanent communication archive.
 
 ## Current status
 
-**Repository foundation (Milestone A1) and API contracts/domain (Milestone A2) are active.**
+**Architecture alignment (Owner / Recipient / capability model) and Milestone A3 (Owner authentication) are committed.**
 
 - Documentation source of truth is in place under `docs/`.
-- pnpm monorepo with empty Next.js and Android Compose shells builds and tests.
+- pnpm monorepo with Next.js web shell and Android Compose shell builds and tests.
 - `packages/contracts` (OpenAPI 3.1) and `packages/domain` (pure TypeScript rules) are implemented.
-- Shared TypeScript ESLint/config packages, Prettier, EditorConfig, and ktlint are configured.
-- GitHub Actions CI workflows include contract, domain, web, and Android checks.
-- **No product runtime features** are implemented (no Gmail, OpenAI, Supabase, auth, notifications, voice, tasks API routes, or workers).
-- **No** `.env.example` yet (no environment variables required).
+- **Owner Google Workspace sign-in (A3):** Supabase Auth via `apps/web` (`/login`, `/auth/callback`, `GET /api/v1/session`). Web-only; no Android auth yet.
+- **Not implemented:** Gmail, OpenAI, task API handlers, capability token storage/pages, database, notifications, voice, workers.
+- Environment template: `apps/web/.env.example` (placeholders only; no secrets committed).
 - No GitHub remote is configured in this workspace pass.
 - Distribution remains private sideload / internal testing (not Play Store).
 
@@ -84,6 +83,16 @@ pnpm verify
 Individual scripts: `format:check`, `lint`, `test:web`, `test:domain`, `test:contracts`, `build:web`, `build:domain`, `contracts:validate`, `contracts:generate`, `contracts:check-drift`, `android:ktlint`, `android:test`, `android:api-contract`, `android:assemble`.
 
 Android instrumentation smoke tests under `androidTest/` are for **local** device/emulator runs only (not A1 CI).
+
+### Owner authentication (A3)
+
+Copy `apps/web/.env.example` to `apps/web/.env.local` and set Supabase + Owner configuration (placeholders only in repo). Configure Google OAuth in Supabase with redirect URL `{NEXT_PUBLIC_APP_URL}/auth/callback`.
+
+```bash
+pnpm --filter @aicaa/web dev
+```
+
+Routes: `/login` (Google sign-in), `/auth/callback` (OAuth callback + domain gate), `GET /api/v1/session` (Owner session JSON).
 
 ## Explicit exclusions (version one)
 

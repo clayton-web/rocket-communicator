@@ -1,9 +1,26 @@
-export default function HomePage() {
+import Link from 'next/link';
+import { getAuthenticatedOwner } from '@/lib/auth/require-owner';
+
+export default async function HomePage() {
+  const owner = await getAuthenticatedOwner();
+
   return (
     <main>
       <h1>AI Communication Action Assistant</h1>
-      <p>Repository foundation is active.</p>
-      <p className="status">No product features are implemented yet.</p>
+      {owner ? (
+        <>
+          <p>Signed in as Owner.</p>
+          <p className="status">Session API: GET /api/v1/session</p>
+          <p>Display name: {owner.session.displayName}</p>
+        </>
+      ) : (
+        <>
+          <p>Owner authentication is available.</p>
+          <p className="status">
+            <Link href="/login">Sign in with Google Workspace</Link>
+          </p>
+        </>
+      )}
     </main>
   );
 }
