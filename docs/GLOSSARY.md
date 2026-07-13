@@ -1,199 +1,151 @@
 # Glossary
 
-Canonical definitions for project terminology. Use these spellings and meanings in all docs and future code names where practical.
-
-If a document uses a synonym, prefer linking back to these terms rather than inventing a parallel vocabulary.
+Canonical definitions. Other documents use these meanings; they do not redefine them.
 
 ---
 
-## Roles and people
+## Roles and access
+
+### Authenticated User
+
+In version one: the **Owner** only. There is no second application login.
 
 ### Owner
 
-The **single authenticated application user** in version one. Signs in with Google Workspace via Supabase Auth. Uses the Android application as the primary interface. Approves task suggestions, Recipient delegations, Gmail forwards, and workflow-rule activation. All durable learning belongs to the Owner (D054).
-
-There is no separate “administrator” application role—only this one authenticated user account.
+The single authenticated application user. Signs in with Google Workspace via Supabase Auth. Primary interface: Android. Approves suggestions, assignments/forwards, and durable learning (D054).
 
 ### Recipient
 
-A delegated person who receives assignment emails and acts on assigned tasks through **task-specific capability links**. Recipients have **no** application account and do not sign in (D049).
+A delegated person identified by email. Receives assignment emails and acts through capability links. **No** application account or Session (D049).
 
-Capability possession authorizes Recipient actions; it is **not** verified identity (D051). Audit records must not overstate who acted (D052).
+**May (via capability):** view assigned task; complete; waiting/resume; notes; return to Owner; request clarification; submit work request → Task Suggestion.
 
-**May (v1, via capability link):** complete tasks; mark waiting; add notes; return task to Owner; request clarification.
-
-**May not (v1):** create standalone tasks; approve AI learning; change workflow rules; change reminder policies; create automations.
-
-Recipient work requests become Task Suggestions for Owner approval.
+**May not:** create standalone tasks; approve learning; change rules/policies; create automations; snooze.
 
 ### Administrator (relationship label)
 
-An **optional label** for a Recipient relationship (for example, a trusted office manager or assistant). It is **not** an application role, permission set, or authentication identity (D053). Documentation and UI may show “Administrator” as a Recipient type when the Owner designates someone in that capacity.
+Optional Recipient label (D053). Not an application role, permission set, or authentication identity.
 
-Do not conflate “Administrator” with a second signed-in user or a role guard in the application.
+### Actor
+
+The party responsible for a transition or audit record: Owner (session), capability (link holder), or system. Does not imply personal identity for capability actions.
+
+### Session
+
+Owner authentication state after Google Workspace sign-in. Recipients have no Session.
+
+### Authentication
+
+Verifying the Owner’s identity (Supabase Auth). Recipients are not authenticated.
+
+### Authorization
+
+What an Actor is allowed to do. Owner: session + server checks. Recipient: Capability possession and scope (D051).
 
 ### Known Contact
 
-A phone number or contact the application treats as recognized for completed-call prompting: an on-device contact match, a user-selected contact, and/or a number previously marked for follow-up tracking. Unknown completed calls must not always prompt.
+Phone number treated as recognized for completed-call prompts (contact match, Owner-selected, or tracked). Unknown completed calls do not always prompt.
 
 ---
 
-## Communication and capture
-
-### Communication Event
-
-A minimized application record of an inbound communication signal (for example Gmail message metadata and truncated excerpt, or a Google Messages / call notification payload). Temporary. Used to drive relevance filtering and task suggestions. Not a permanent archive entry.
-
-### Temporary Communication
-
-Application-stored communication content (excerpts, short-lived capture payloads) subject to deletion under the retention policy (notably the seven-day rule after complete or dismiss). Distinct from copies that remain in Gmail after forwarding.
-
-### Source Type
-
-The origin class of a communication or task (for example Gmail, Google Messages notification, missed call, completed call, voice, manual).
-
----
-
-## Tasks and suggestions
+## Work objects
 
 ### Task Suggestion
 
-An AI- or user-drafted candidate for work that is **not** yet an active task. Requires Owner approval (or dismiss/merge/edit) before a Task is created. Version one must not auto-promote suggestions to tasks. All **voice**-originated new work and follow-ups begin as Task Suggestions (D038). Recipient work requests also become Task Suggestions.
+Candidate work that is **not** yet a Task. Requires Owner approve/edit/dismiss/merge. Voice-originated work starts here (D038). Recipient work requests become Suggestions.
 
 ### Task
 
-An approved unit of actionable work with status, summary, assignee, scheduling fields, and audit history. Created from an approved Task Suggestion (or Owner typed creation flow). **Never** created directly by a voice interaction (D038).
-
-### Summary Point
-
-A single typed bullet in a structured summary (for example fact, inference, missing, request, commitment, amount, deadline, risk, next action). The atomic unit of summary quality.
+Approved actionable work with status, summary, assignment attribute, scheduling, and audit. Never created directly by voice (D038).
 
 ### Assignment
 
-The binding of a Task to an assignee (often a Recipient). For Gmail-origin Recipient handoffs, assignment approval and Gmail forwarding are **one** business action with a **single** confirmation disclosing create task, forward original email, forward attachments, and schedule reminders (D037).
+Persisted binding of a Task to a Recipient (and intended email), including allowed Recipient actions for that handoff. Assignment is an **attribute of the Task**, not a Task status ([STATE_MACHINE.md](STATE_MACHINE.md)). A Task may have historical assignment rows over time; at most one assignment is active.
+
+For Gmail-origin handoffs, approval of assignment and Gmail forward is one confirmation (D037).
+
+Assignment ≠ Capability: assignment records who should receive work and which actions are allowed; a Capability is the issued authorization grant for an active assignment.
+
+### Capability
+
+Server-side authorization grant bound to a Task and Assignment: scope (Capability Scope), status, issue/expiry times, and lookup hash of the secret. Multi-use until invalidation (D056). Possession of the matching secret authorizes actions; it does not prove who clicked the link (D051).
+
+### Capability Scope
+
+The set of Recipient actions a Capability permits. Derived from (and never broader than) the active Assignment’s allowed actions.
+
+### Capability Link
+
+Task-specific URL carrying the capability secret (`/c/{token}`). GET is non-mutating; POST mutations require explicit confirmation (D050, D059).
+
+### Capability Auth
+
+Authorization model for Recipient actions via a valid Capability—not a sign-in mechanism.
+
+### Summary Point
+
+Typed bullet in a structured summary (fact, inference, missing, request, etc.).
 
 ### Follow-up
 
-A subsequent Task Suggestion (when voice-created) or Task (only after Owner approval) produced because completion or review of a prior Task created further work. Voice-created follow-ups always start as Task Suggestions (D038). Consequential Recipient assignment still requires Owner confirmation (D037 when Gmail-origin).
+Later Suggestion or Task created because prior work produced further action. Voice follow-ups start as Suggestions (D038).
 
-### Return to Owner
+### Return to Owner / Clarification Request
 
-A Recipient action (via capability link) that hands an assigned Task back to the Owner without creating a new standalone Task.
-
-### Clarification Request
-
-A Recipient action asking the Owner for more information on an assigned Task; does not create a standalone Task.
+Recipient capability actions that hand work back or ask the Owner for information without creating a standalone Task.
 
 ### Task Outcome
 
-Structured record of how a Task was completed (preset and/or notes/voice-derived fields), including optional extracted facts such as amounts or commitments stated by the user.
+Structured completion record (presets and/or notes).
 
-### Waiting State
+### Waiting / Snooze
 
-A non-terminal task condition where work is paused until a waiting date/time; reminders are paused until that time elapses or the state changes.
-
-### Snooze
-
-An action that recalculates the next follow-up or reminder time without necessarily introducing a separate persisted status; reminders reschedule accordingly. Owner only in version one (Recipients use Waiting, not Snooze).
+Waiting: pauses reminders until a time. Snooze: Owner-only recalculation of next reminder (Recipients use Waiting).
 
 ---
 
-## Reminders
+## Communication
 
-### Reminder
+### Communication Event / Temporary Communication / Source Type
 
-A scheduled notification (version one: email) that an assignment still needs attention, produced by deterministic policy—not by ad-hoc AI sends.
+Minimized inbound signal record; temporary stored content under retention; origin class (Gmail, Messages, call, voice, manual).
 
-### Reminder Policy
+---
 
-Configurable rules that determine initial and overdue reminder timing by task type/urgency, escalation behaviour, and business-hours/timezone handling (`America/Vancouver` for version-one planning).
+## Reminders and retention
 
-### Reminder Attempt
+### Reminder / Reminder Policy / Reminder Attempt
 
-An auditable, idempotent record of a single reminder send effort (stage, recipients, success/failure, provider identifiers).
+Scheduled email attention (v1); deterministic policy; idempotent send record.
+
+### Retention / Tombstone
+
+Scheduled delete/scrub of application data; minimal metadata after scrub. Duration after purge: OPEN #12. Does not delete Gmail forwarded copies.
 
 ---
 
 ## AI and learning
 
-### AI Confidence
+### AI Confidence / Workflow Intelligence / Durable Learning / Learning Signal / Workflow Rule / Learning Ladder
 
-Structured metadata expressing how certain the model is about an extraction or recommendation. Low confidence should surface uncertainty or request clarification—not invent values.
-
-### Workflow Intelligence
-
-Durable, minimized knowledge about how the Owner prefers to work (preferences, approved rules, anonymized patterns). Must not contain raw message bodies. Belongs to the Owner only (D054).
-
-### Durable Learning
-
-The retention class for Workflow Intelligence and related evaluation signals that may outlive temporary communication content. Owner-scoped only.
-
-### Learning Signal
-
-An anonymized or minimized event derived from Owner corrections, dismissals, merges, reassignments, outcomes, or explicit instructions, used to Observe patterns and later Suggest/Recommend rules.
-
-### Workflow Rule
-
-A durable if/then style preference (assignment, priority, reminder timing, etc.) that begins as **proposed** and becomes active only after explicit Owner approval. Version one does not auto-apply rules.
-
-### Learning Ladder
-
-The ordered autonomy stages: Observe → Suggest → Recommend → Approval → Trusted automation → Approved autonomous behaviour. Advancement requires explicit Owner approval at each stage. See [AI_CONSTITUTION.md](AI_CONSTITUTION.md).
+Model certainty metadata; Owner durable preferences without raw bodies (D054); retention class for that knowledge; minimized learning events; proposed if/then rules needing Owner approval; Observe→… ladder in [AI_CONSTITUTION.md](AI_CONSTITUTION.md).
 
 ---
 
-## Security and access
+## Contracts and audit
 
-### Capability Link
+### Canonical Contract / OpenAPI
 
-A task-specific URL embedding a secret capability token. **GET** requests are non-mutating (view only). **POST** mutations require explicit confirmation in the Recipient web view (D050). Capability possession is authorization—not verified identity (D051).
-
-Tokens are expiring and auditable; store hashes, not raw tokens. Email prefetchers must not trigger state changes.
-
-### Capability Auth
-
-The authorization model for Recipient actions: possession of a valid, unexpired capability token for a specific task grants the scoped permissions encoded in that capability. No Recipient sign-in session exists.
-
-### Secure Link (legacy term)
-
-Deprecated synonym for capability link in older documentation. Prefer **Capability Link**.
-
-### Audit Event
-
-An append-only record of a security- or workflow-relevant action (approvals, forwards, reminder attempts, retention runs, authz denials). For Recipient actions, record capability use and technical metadata without overstating identity (D052). Narrative payloads may be scrubbed when content purges; what/when and external ids should remain as required.
-
-### Canonical Contract
-
-The single source-of-truth API description: **OpenAPI**. TypeScript and Kotlin models/clients are generated from OpenAPI. JSON Schema may be generated from OpenAPI where useful but is **not** the source of truth (D007). Kotlin does not share Zod/TypeScript types directly.
-
-### OpenAPI
-
-The Canonical Contract format for this project’s HTTP APIs and shared models.
+OpenAPI is the sole HTTP contract source of truth (D007). TypeScript/Kotlin are generated from it.
 
 ### State Machine
 
-The documented set of persisted task/suggestion statuses and allowed transitions, plus derived UI labels (such as overdue) computed from timestamps and status.
+Persisted statuses and transitions; derived urgency labels. See [STATE_MACHINE.md](STATE_MACHINE.md).
 
----
+### Audit Event
 
-## Retention
+Append-only security/workflow record. For capability actions: truthful capability attribution without claiming verified personal identity (D052, D057).
 
-### Retention
+### Version One / MVP
 
-Policy and machinery that delete or scrub application data on schedule (seven-day excerpts, thirty-day completed visibility, immediate successful-audio deletion), without deleting forwarded Gmail mailbox copies.
-
-### Tombstone
-
-Minimal metadata retained after task content scrub (identifiers, timestamps, actors, action types, external Gmail ids) so audit and integrity survive content deletion. Exact duration after purge remains an open question.
-
----
-
-## Product shorthand
-
-### Version One / v1
-
-The first shippable private system bounded by [PRODUCT_SCOPE.md](PRODUCT_SCOPE.md) inclusions/exclusions and MVP completion definition.
-
-### MVP
-
-Minimum viable product as defined in PRODUCT_SCOPE: private sideload Android + backend + minimal Recipient capability web loop with approval-first Gmail/Messages/voice flows, reminders, and retention—without Play Store, multi-inbox, or Rocket PM.
+Ship boundaries in [PRODUCT_SCOPE.md](PRODUCT_SCOPE.md).

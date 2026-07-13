@@ -12,7 +12,7 @@ AI extracts **operational meaning** into strict structured, point-form outputs a
 
 ## AI must NEVER
 
-- Invent **facts** not supported by the provided source text or user utterance
+- Invent **facts** not supported by the provided source text or Owner utterance
 - Invent **deadlines**
 - Invent **contacts**
 - Invent **commitments** or promises
@@ -28,7 +28,7 @@ If a value is not present or clearly implied with labeled inference, the AI must
 - **Identify uncertainty** — call out low-confidence interpretation explicitly
 - **Explain recommendations** — assignee, priority, due date, and follow-up timing include brief rationale grounded in extracted points
 - **Provide confidence** — structured confidence metadata on extractions and recommendations
-- **Ask for clarification when confidence is low** — prefer user confirmation or “missing information” over silent fill-in
+- **Ask for clarification when confidence is low** — prefer Owner confirmation or “missing information” over silent fill-in
 
 ## Output contract
 
@@ -43,7 +43,7 @@ If a value is not present or clearly implied with labeled inference, the AI must
 
 - Summary preferences (what to emphasize, how to phrase points)
 - Workflow patterns (how work moves through states)
-- Delegation patterns (who typically receives which work)
+- Delegation patterns (which Recipient receives which work)
 - Reminder timing preferences (as signals to **propose** policy changes—not to send reminders directly)
 - Writing style for summaries and outcome structuring
 
@@ -57,7 +57,7 @@ Learning records must not retain raw message bodies. See [DATA_RETENTION.md](DAT
 
 ## Learning ladder
 
-Every advance to a more autonomous stage requires **explicit user approval**. No stage is skipped silently.
+Every advance to a more autonomous stage requires **explicit Owner approval**. No stage is skipped silently.
 
 ```text
 Observe
@@ -82,7 +82,7 @@ Approved autonomous behaviour
 | **Trusted automation**            | User-approved rules may auto-apply within narrow bounds                  | **Not enabled** in version one; architecture must allow later |
 | **Approved autonomous behaviour** | Broader unattended action within documented policy                       | Future only; never default                                    |
 
-**State clearly:** Every stage requires explicit user approval before advancing. Version one stops at **Approval** for task creation, assignment email/forward, rule activation, and consequential follow-up assignment.
+**State clearly:** Every stage requires explicit Owner approval before advancing. Version one stops at **Approval** for task creation, assignment email/forward, rule activation, and consequential follow-up assignment.
 
 ## Recommendations vs automation
 
@@ -99,11 +99,11 @@ Reminders and retention are **not** AI-controlled sends; they follow determinist
 
 ## Voice and multi-intent structuring
 
-**No voice interaction creates a Task directly (D038).** Voice always produces a proposed action (typically a Task Suggestion) requiring Owner approval before a Task exists.
+**No voice interaction creates a Task directly (D038).** Voice always produces a proposed action (a Task Suggestion unless confirming an action on an existing Task) requiring Owner approval before a new Task exists.
 
 When speech implies multiple actions (complete, record amount, create follow-up, assign Recipient, set due date), the AI produces a **structured proposal**:
 
-- Completing the **current** Task may proceed on user confirmation.
+- Completing the **current** Task may proceed on Owner confirmation.
 - Any new follow-up begins as a **Task Suggestion**, not a Task.
 - Recipient assignment email, capability link issuance, and Gmail forwarding wait for the Owner’s **single** bundled confirmation when applicable (D037).
 

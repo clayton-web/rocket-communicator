@@ -1,8 +1,8 @@
 # State machine
 
-Persisted states, transitions, and capability rules codified in `packages/domain` (Milestone A2).
+Persisted states and transitions (`packages/domain`). Related: [API_CONTRACT.md](API_CONTRACT.md) · [GLOSSARY.md](GLOSSARY.md) · [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md) · [DECISIONS.md](DECISIONS.md)
 
-Related: [API_CONTRACT.md](API_CONTRACT.md) · [WORKFLOWS.md](WORKFLOWS.md) · [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md) · [DECISIONS.md](DECISIONS.md) D048–D054
+**Mental model:** Task status is independent of Assignment. Assignment binds Recipient + allowed actions. Capability authorizes those actions via a Capability Link. See Glossary.
 
 ---
 
@@ -35,7 +35,7 @@ AI and voice create suggestions, never tasks (D038).
 
 `open` · `in_progress` · `waiting` · `completed` · `dismissed`
 
-**Assignment is an attribute**, not a state (`TaskAssignment` on the task).
+**Assignment is an attribute**, not a Task status (`TaskAssignment`). At most one Assignment is active; historical rows may exist. Capability grants attach to a specific Assignment—not to “whoever is assigned” generically.
 
 ### Derived (never persisted)
 
@@ -67,17 +67,11 @@ Snooze does **not** change persisted `TaskStatus`. It recalculates reminder timi
 
 Physical task deletion is out of scope. Abandoned work uses **dismiss** (`dismissed` terminal status).
 
-### Recipient capability constraints (D050, D051, D056, D058, D061)
+### Recipient capability actions
 
-May on assigned tasks (valid capability token, multi-use until invalidation): complete, waiting, resume, notes (typed), return to Owner, request clarification (typed), submit work request → pending Task Suggestion.
+Allowed/denied actions and identity rules: [GLOSSARY.md](GLOSSARY.md) · [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md). Transitions above. Multi-use until invalidation (D056). Typed notes/clarification in A4 (D058). Work request → pending Suggestion (D061).
 
-May not: approve suggestions, create standalone tasks, dismiss tasks, snooze, change policies, influence learning.
-
-Capability possession is authorization, not verified identity. Audit must not overstate who acted (D052, D057).
-
-**Return to Owner** changes assignment to the Owner; task status is unchanged.
-
-**Request clarification** does not automatically change task status.
+**Return to Owner** clears Assignment; Task status unchanged. **Request clarification** does not automatically change Task status.
 
 ## Completion (one-tap)
 

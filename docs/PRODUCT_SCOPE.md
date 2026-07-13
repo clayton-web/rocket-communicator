@@ -1,222 +1,46 @@
 # Product scope
 
-Governed by [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md). AI behaviour: [AI_CONSTITUTION.md](AI_CONSTITUTION.md). Terms: [GLOSSARY.md](GLOSSARY.md).
+Governed by [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md). Terms: [GLOSSARY.md](GLOSSARY.md). AI law: [AI_CONSTITUTION.md](AI_CONSTITUTION.md).
 
-## Product objective
+## Objective
 
-Build a private, Android-first AI Communication Action Assistant that:
+Private Android-first assistant that captures Owner communications, proposes Task Suggestions, requires Owner approval before Tasks and Recipient handoffs, delivers work via Capability Links, runs deterministic reminders, records outcomes, and learns Owner preferences—without a permanent communication archive.
 
-- captures ongoing communications from the Owner’s Android phone and one Gmail inbox
-- identifies communications that may require action
-- generates high-quality point-form task suggestions
-- requires Owner approval before creating tasks
-- requires Owner approval before delegating work to a Recipient
-- emails approved assignments to Recipients with task-specific capability links
-- monitors assignments and sends reasonable follow-up reminders
-- allows tasks to be completed with typed or spoken outcome notes
-- learns durable workflow preferences without retaining a permanent communication archive
+## Roles
 
-The product’s main purpose is to answer: what needs action, what matters, who owns it, when to follow up, whether it was completed, how it was completed, and whether completion created another action.
+Roles and permissions: [GLOSSARY.md](GLOSSARY.md) (Owner, Recipient, Administrator label). Security matrix: [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md).
 
-## User roles
+Android is the Owner’s primary interface (capture, review, voice). Web serves Owner auth/APIs and the minimal Recipient capability view.
 
-### Owner
+## Included communication sources (v1)
 
-- The **single authenticated application user** (Google Workspace sign-in via Supabase Auth) (D048).
-- Uses the Android application as the main interface.
-- Reviews AI-generated task suggestions.
-- Approves, edits, dismisses, or merges suggestions before tasks exist.
-- Approves Recipient delegations before assignment emails (including Gmail forwards) are sent.
-- Records voice notes and completion outcomes.
-- Receives escalations when Recipient tasks remain overdue (after the configured overdue threshold).
-- Owns all durable learning and workflow-rule approval (D054).
+| Source | Notes |
+| ------ | ----- |
+| One Google Workspace Gmail inbox | Gmail API |
+| Google Messages notifications | Best-effort |
+| Missed-call notifications | Expected; device-dependent |
+| Known Contact completed-call prompts | Best-effort |
+| Manual / spoken capture | Always available |
 
-### Recipient
+## Excluded (v1)
 
-- A delegated person identified by email; **no** application account (D049).
-- Receives task assignments through email with a task-specific **capability link**.
-- Opens the capability link to view the task and act via a minimal responsive web task view (not a full dashboard in version one).
-- **May (via capability link):** complete tasks; mark waiting; add notes; return task to Owner; request clarification.
-- **May not:** create standalone tasks; approve AI learning; change workflow rules; change reminder policies; create automations.
-- Recipient-generated work requests become **Task Suggestions** for Owner approval.
-- Capability possession authorizes actions; it is not verified identity (D051). GET is non-mutating; POST requires explicit confirmation (D050).
+WhatsApp, Messenger, Signal; call recording / live-call transcription; historical SMS import; replacing Messages or Phone; automatic client replies; multiple Gmail accounts; Play Store; Rocket PM; Neon; FCM unless later justified; permanent archive; full Recipient dashboard; second Authenticated User.
 
-### Administrator (relationship label only)
+## Product rules (cite decisions)
 
-“Administrator” is an **optional Recipient relationship label** (for example, a trusted office manager)—**not** an application role (D053). The Owner may designate a Recipient with this label; permissions come from the capability link, not from a second sign-in identity.
+- Suggestions require Owner approve/edit/dismiss/merge before a Task exists (D008). No auto-create Tasks in v1.
+- Recipient assignment requires Owner approval. Gmail-origin assign + forward + attachments + reminders = one confirmation (D037). Recipient email from Owner-managed records / secure config—not hard-coded.
+- Capability Links required for Recipient actions; GET non-mutating; POST after confirm (D050). Details: SECURITY.
+- Non-Gmail tasks: assignment email with summary + Capability Link (no Gmail forward).
+- Voice never creates Tasks directly (D038); audio retention D041.
+- Summaries are structured typed points (facts vs inference vs missing), not prose.
+- Reminders: first overdue → Recipient; later may CC Owner; waiting pauses; snooze Owner-only; AI recommends timing, rules send.
+- Learning Owner-only (D054); propose rules, never silently apply.
 
-Version one designs for **one** primary Recipient delegation pattern while preserving schema expansion for additional Recipients later.
+## Future-ready (not v1 features)
 
-## Android-first rationale
+Schema/architecture may later support multiple Recipients, additional sources, trusted auto-rules after approval, and Play Store—without implementing them in v1.
 
-The Android application is part of the MVP and is the primary interface because:
+## MVP complete when
 
-- communication capture (notifications, call prompts, voice) happens on the device
-- suggestion review and approval should be fast and interrupt-driven
-- voice throughout the workflow is a first-class input mode
-- the Recipient path can remain email-plus-capability-link without requiring Recipient sign-in or a full product surface
-
-A web interface may exist for Owner authentication, APIs, and the minimal Recipient capability task view, but it does not replace the Android app for the Owner.
-
-## Communication sources
-
-### Included in version one
-
-| Source                                    | Notes                                                       |
-| ----------------------------------------- | ----------------------------------------------------------- |
-| One primary Google Workspace Gmail inbox  | Gmail API; schema may allow future accounts                 |
-| Google Messages notifications             | Best-effort via NotificationListenerService                 |
-| Missed-call notifications                 | Expected prompts; still device-dependent                    |
-| Post-call prompts for a Known Contact     | Best-effort; not universal (see [GLOSSARY.md](GLOSSARY.md)) |
-| Manually dictated tasks                   | Always available                                            |
-| Spoken task notes and completion outcomes | Always available                                            |
-
-### Excluded from version one
-
-- WhatsApp, Facebook Messenger, Signal
-- Call recording; live-call transcription
-- Historical SMS import
-- Replacing Google Messages or the default Phone application
-- Automatic client-facing replies
-- Multiple Gmail accounts
-- Google Play Store distribution
-- Rocket PM integration
-
-## Task suggestion and approval model
-
-AI-detected actions become **task suggestions**, not tasks.
-
-The Owner may:
-
-- approve
-- edit
-- dismiss
-- merge with an existing task
-- change assignee, due date, and follow-up timing
-- provide correction feedback
-
-**Version one must not auto-create tasks**, even for “trusted” categories. Future automation may propose rules; applying them requires explicit Owner approval.
-
-## Recipient assignment model
-
-- AI may recommend a Recipient as assignee.
-- The Owner must approve the assignment.
-- For Gmail-origin assignments, **assignment approval and Gmail forwarding are one business action** with a **single confirmation** that discloses: create task, forward original email, forward attachments, and schedule reminders (D037).
-- Assignment email / forward is sent **only after** that confirmation.
-- The Recipient is identified by email from Owner-managed contact records (not hard-coded in source).
-- Task-specific **capability links** are required; unauthenticated one-click mutations are excluded. GET never mutates; POST after explicit confirmation (D050).
-- Sensitive details may remain behind the capability link when appropriate for **non-forward** assignment emails.
-
-## Email forwarding requirements (Gmail-origin assignments)
-
-When an approved task originates from Gmail and is assigned to a Recipient:
-
-1. The system forwards the **original email** through the Owner’s connected Gmail account.
-2. An AI-generated point-form task summary is placed **above** the forwarded email.
-3. The forward includes requested action, due date, priority, capability link, original sender and subject, original body, and **all original attachments**.
-4. There is **no** separate attachment-approval step.
-5. The entire assignment and forwarding action is **one** Owner confirmation (D037)—not a separate forward approval.
-6. Duplicate forwarding must be prevented.
-7. The system records who approved the bundled action and when, plus the Gmail identifier of the forwarded message.
-
-For **non-email** tasks, send a normal assignment email with the structured summary and capability link (no Gmail forward).
-
-**Retention consequence:** application copies may be deleted under app policy, but the forwarded message and attachments remain in the Recipient’s Gmail mailbox under their retention. See [DATA_RETENTION.md](DATA_RETENTION.md).
-
-## Voice requirements
-
-Voice input should support proposing or structuring:
-
-- a new task (as a **Task Suggestion**, never a Task directly)
-- a note
-- a call outcome
-- task completion (on an existing Task)
-- a follow-up (**Task Suggestion** only until Owner approval)
-- a due date
-- a summary correction
-- a workflow preference
-
-**No voice interaction creates a Task directly (D038).** Voice always produces a proposed action requiring Owner approval before a Task exists (except confirming completion/notes on an already approved Task).
-
-Multi-intent utterances (for example, complete + capture amount + propose follow-up assignment) must produce a **structured proposal**: completion may apply to the current Task on confirm; follow-ups begin as Task Suggestions; Recipient assignment email waits for the single assignment confirmation (D037).
-
-Raw audio is deleted after successful transcription and validation. Failed transcription audio may be retained encrypted for up to 48 hours for retry, then deleted (D041).
-
-## Summary-quality requirements
-
-Summary quality is a primary product feature. Summaries are concise point-form and extract operational meaning—not mere shortening.
-
-Where available, extract:
-
-- contact; company or organization; property; transaction or file
-- communication source
-- what happened; request being made
-- confirmed facts; financial amounts; dates and deadlines; commitments
-- risks or sensitivities; missing information
-- next action; suggested assignee; suggested priority; suggested due date; suggested follow-up timing
-
-Clearly distinguish:
-
-- confirmed facts
-- inference
-- missing information
-- low-confidence interpretation
-
-Structured schema output is required; unstructured prose is not the product contract.
-
-## Reminder and escalation requirements
-
-- Monitor assignments until completed, dismissed, or validly waiting.
-- First overdue reminder → Recipient only.
-- After the first overdue reminder, later overdue reminders may copy the Owner.
-- Escalation threshold is configurable.
-- Completed tasks stop reminders; waiting pauses until waiting date; snooze recalculates timing.
-- Prevent duplicate reminder emails; audit every attempt.
-- AI may recommend timing; **deterministic rules** control actual sends.
-
-## Learning goals
-
-Version one records feedback and may **propose** workflow rules. It must not silently change business rules. Learning belongs to the Owner only (D054); Recipients cannot approve or influence durable learning.
-
-Learn from edits, reassignments, dismissals, merges, completion outcomes, follow-up timing changes, and explicit spoken instructions—without storing raw message bodies in durable learning records.
-
-## Version-one inclusions
-
-- Android app as primary Owner UX (planned; not scaffolded in A0)
-- Minimal Recipient capability web task view
-- One Gmail inbox + Google Messages + call prompts (best-effort) + manual/voice
-- Approval-first suggestions and assignments
-- Gmail forward-with-attachments for approved email assignments
-- Reminder/escalation engine
-- Retention workers per confirmed policy
-- Learning signals and proposed rules (no auto-apply; Owner-only)
-
-## Version-one exclusions
-
-Listed under communication sources and product exclusions above, plus: full Recipient dashboard, multi-Recipient runtime beyond schema readiness, Neon alongside Supabase, FCM unless later justified, permanent archives, Play Store packaging, second authenticated application user.
-
-## Future expansion boundaries
-
-Architecture should allow later:
-
-- trusted auto-creation / auto-assignment after explicit rule approval
-- multiple Recipients and capability scopes
-- additional messaging sources
-- better assignment and priority recommendations
-- Play Store distribution
-
-Automatic decisions begin as recommendations until confidence and approval mechanisms exist.
-
-## MVP completion definition
-
-MVP is complete when the Owner can privately sideload an Android app that, together with the backend and minimal Recipient capability web view:
-
-1. Ingests Gmail and (where available) Google Messages into suggestions.
-2. Requires approval to create tasks and to assign/forward to a Recipient.
-3. Forwards Gmail originals with all attachments after assignment approval (with audit).
-4. Supports missed-call prompts and voice-driven complete + follow-up proposals (assignment still approved).
-5. Runs deterministic reminders with the v1 escalation rule.
-6. Enforces 7-day excerpt and 30-day completed-task visibility policies in the application.
-7. Records learning signals without a permanent communication archive.
-
-Play Store, multi-inbox, WhatsApp, and Rocket PM integration are out of MVP.
+Privately sideloaded Android + backend + Recipient capability web loop can: ingest Gmail/Messages into suggestions; require approval to create/assign/forward; forward Gmail with attachments after approval; support call prompts and voice proposals; run deterministic reminders; enforce 7-day/30-day application retention; record learning signals without a permanent archive.

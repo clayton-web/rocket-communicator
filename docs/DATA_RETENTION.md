@@ -28,7 +28,7 @@ This product must not become a permanent communication archive. Retention separa
 
 ## Temporary communication excerpts
 
-- Store the minimum text needed for suggestion quality and short-term user review.
+- Store the minimum text needed for suggestion quality and short-term Owner review.
 - Do not store full attachment binaries in the application for version-one ingest.
 - **Delete seven days after** the related task is completed **or** the suggestion is dismissed.
 - During the completed-task 30-day visibility window, the **excerpt still follows the seven-day rule** and should already be gone after day seven.
@@ -82,7 +82,7 @@ May be retained longer:
 - approved assignment rules
 - approved priority rules
 - approved reminder rules
-- user corrections (structured, minimized)
+- Owner corrections (structured, minimized)
 - anonymized operational patterns
 - non-content confidence and evaluation signals
 
