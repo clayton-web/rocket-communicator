@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "pnpm generate && tsc -p tsconfig.build.json",
+    "build": "pnpm generate && tsc -p tsconfig.build.json && node ./scripts/copy-generated.mjs",
     "generate": "prisma generate",
     "lint": "eslint .",
     "test": "pnpm --filter @aicaa/domain build && pnpm generate && vitest run",
@@ -21,15 +21,15 @@
   },
   "dependencies": {
     "@aicaa/domain": "workspace:*",
-    "@prisma/client": "6.19.3"
+    "@electric-sql/pglite": "^0.3.4",
+    "@prisma/client": "6.19.3",
+    "pglite-prisma-adapter": "^0.6.1"
   },
   "devDependencies": {
     "@aicaa/eslint-config": "workspace:*",
     "@aicaa/typescript-config": "workspace:*",
-    "@electric-sql/pglite": "^0.3.4",
     "@types/node": "^22.13.10",
     "eslint": "^9.22.0",
-    "pglite-prisma-adapter": "^0.6.1",
     "prisma": "6.19.3",
     "typescript": "^5.8.2",
     "vitest": "^3.0.9"

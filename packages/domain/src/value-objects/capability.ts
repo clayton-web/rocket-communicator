@@ -95,7 +95,7 @@ export interface CapabilityAuditOptions {
 }
 
 export function capabilityAttributionLabel(email: string, action: CapabilityAction): string {
-  return `Action submitted through link sent to ${email} (${action.replaceAll('_', ' ')})`;
+  return `Action performed through capability link assigned to ${email} (${action.replaceAll('_', ' ')})`;
 }
 
 export function formatCapabilityAuditContext(

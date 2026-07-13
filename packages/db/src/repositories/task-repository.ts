@@ -229,6 +229,41 @@ export async function createActiveAssignment(
 }
 
 /**
+ * Update capability binding fields on the active assignment only.
+ * Does not create, delete, or repurpose assignment rows.
+ */
+export async function updateActiveAssignmentCapabilityBinding(
+  db: Client,
+  organizationId: string,
+  taskId: string,
+  binding: {
+    activeCapabilityId: string | null;
+    capabilityStatus: 'active' | 'revoked' | 'expired' | null;
+    allowedCapabilityActions?: unknown;
+  },
+): Promise<void> {
+  const data: {
+    activeCapabilityId: string | null;
+    capabilityStatus: 'active' | 'revoked' | 'expired' | null;
+    allowedCapabilityActions?: Prisma.InputJsonValue;
+  } = {
+    activeCapabilityId: binding.activeCapabilityId,
+    capabilityStatus: binding.capabilityStatus,
+  };
+  if (binding.allowedCapabilityActions !== undefined) {
+    data.allowedCapabilityActions = asJson(binding.allowedCapabilityActions);
+  }
+
+  const result = await db.taskAssignment.updateMany({
+    where: { taskId, organizationId, clearedAt: null },
+    data,
+  });
+  if (result.count !== 1) {
+    throw notFound(`Active assignment for task ${taskId} not found.`);
+  }
+}
+
+/**
  * Clear the single active assignment for a task. Historical rows are never deleted.
  */
 export async function clearAssignment(

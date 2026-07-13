@@ -2,21 +2,22 @@
   "name": "@aicaa/web",
   "version": "0.0.0",
   "private": true,
-  "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint .",
-    "test": "vitest run"
-  },
   "dependencies": {
     "@aicaa/contracts": "workspace:*",
+    "@aicaa/db": "workspace:*",
     "@aicaa/domain": "workspace:*",
     "@supabase/ssr": "0.6.1",
     "@supabase/supabase-js": "2.50.0",
     "next": "16.2.10",
     "react": "19.0.0",
     "react-dom": "19.0.0"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "test": "pnpm --filter @aicaa/domain build && pnpm --filter @aicaa/db build && vitest run"
   },
   "devDependencies": {
     "@aicaa/eslint-config": "workspace:*",

@@ -69,6 +69,36 @@ export async function getCapabilityById(
   return mapCapability(row);
 }
 
+/**
+ * Lookup by token hash only. Token hash is globally unique; organization is recovered from the row.
+ * Returns null when unknown (callers must not distinguish miss from soft denials in responses).
+ */
+export async function findCapabilityByTokenHash(
+  db: Client,
+  tokenHash: string,
+): Promise<(PersistedCapability & { organizationId: string }) | null> {
+  const row = await db.taskCapability.findUnique({
+    where: { tokenHash },
+  });
+  if (!row) {
+    return null;
+  }
+  return { ...mapCapability(row), organizationId: row.organizationId };
+}
+
+/** Active capabilities bound to a specific assignment (for one-active-link enforcement). */
+export async function findActiveCapabilitiesForAssignment(
+  db: Client,
+  organizationId: string,
+  assignmentId: string,
+): Promise<PersistedCapability[]> {
+  const rows = await db.taskCapability.findMany({
+    where: { organizationId, assignmentId, status: 'active' },
+    orderBy: { issuedAt: 'asc' },
+  });
+  return rows.map(mapCapability);
+}
+
 export async function revokeCapabilityRecord(
   db: Client,
   organizationId: string,

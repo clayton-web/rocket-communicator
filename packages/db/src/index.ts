@@ -5,7 +5,7 @@ export {
   type DbClient,
   type DbTransaction,
 } from './client/create-prisma-client.js';
-// createTestDatabase is test-only (PGlite); import from relative path in Vitest suites.
+// createTestDatabase (PGlite) is exported for in-process tests; not for persistent DBs.
 
 export {
   PersistenceError,
@@ -34,6 +34,7 @@ export {
   updateTaskWithExpectedVersion,
   appendTaskNote,
   createActiveAssignment,
+  updateActiveAssignmentCapabilityBinding,
   clearAssignment,
   listTaskAssignments,
 } from './repositories/task-repository.js';
@@ -44,10 +45,13 @@ export {
 export {
   createCapability,
   getCapabilityById,
+  findCapabilityByTokenHash,
+  findActiveCapabilitiesForAssignment,
   revokeCapabilityRecord,
   markCapabilityExpiredRecord,
   type PersistedCapability,
 } from './repositories/capability-repository.js';
+export { createTestDatabase, type TestDatabase } from './client/create-test-database.js';
 export {
   createAuditEvent,
   listAuditEventsForTask,

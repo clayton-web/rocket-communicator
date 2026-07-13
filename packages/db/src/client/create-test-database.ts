@@ -31,7 +31,9 @@ export async function createTestDatabase(): Promise<TestDatabase> {
   const pglite = new PGlite();
   await applyMigrations(pglite);
   const adapter = new PrismaPGlite(pglite);
-  const prisma = new PrismaClient({ adapter });
+  // pglite-prisma-adapter and @prisma/client may resolve slightly different adapter-utils
+  // minor versions in the monorepo; runtime compatibility is validated by Vitest.
+  const prisma = new PrismaClient({ adapter: adapter as never });
   await prisma.$connect();
 
   return {

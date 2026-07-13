@@ -16,7 +16,8 @@ Optional live DB: set `DATABASE_URL` and run Prisma CLI commands against your in
 ## Security posture
 
 - Raw capability secrets are **never** stored (`token_hash` only — D063).
-- Token generation/hashing/validation is **Phase 3**, not this package.
+- Token generation/hashing/validation is **Phase 3** and lives in `apps/web/lib/capability` (server-only). This package stores `token_hash` only and provides lookup by hash.
+- Create in-process Postgres for ordinary tests with `createTestDatabase()` (PGlite).
 - RLS is enabled without policies (deny-by-default for PostgREST roles). Authorization remains application-level Owner session + capability checks.
 - Physical task DELETE is not offered; use `dismissed` status (D064).
 
