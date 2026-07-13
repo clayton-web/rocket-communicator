@@ -33,12 +33,12 @@ Every consequential business action that creates Tasks, Assignments, forwards, o
      - Forward original email
      - Forward attachments
      - Schedule reminders
-  3. On single confirmation: create/activate Task and Assignment; compose forward via Gmail API with AI point-form summary **above** original; include original sender, subject, body, **all attachments**; include secure authenticated task link; schedule reminders per policy.
+  3. On single confirmation: create/activate Task and Assignment; compose forward via Gmail API with AI point-form summary **above** original; forward the **full email context/thread available to the application** with original sender, subject, body, and **all attachments** without intentional redaction (D042); include secure authenticated task link; schedule reminders per policy.
   4. Send forward once; store Gmail id of forwarded message; mark forward complete (idempotent).
 - **Approval boundaries:** Assignment approval and Gmail forwarding are **one** business action—**one confirmation only**. No separate attachment approval. No hard-coded admin address.
 - **Stored information:** Assignment, single approval actor/time, forwarded message id, summary snapshot used in header.
 - **Side effects:** Copy appears in administrator Gmail (and likely primary Sent); reminders armed; app retention does not delete that mailbox copy.
-- **Failure behaviour:** If send/forward fails, task may remain approved/assigned pending retry; do not claim success; handle partial attachment failure per open question policy when decided.
+- **Failure behaviour:** If send/forward fails, task may remain approved/assigned pending retry; do not claim success; partial forward failure must never be reported as complete success (D042); handle partial attachment failure per open question policy when decided.
 - **Audit events:** `assignment.approved`, `gmail.forward.requested`, `gmail.forward.succeeded|failed`, `email.sent`, `reminder.scheduled`.
 
 ---
@@ -47,10 +47,12 @@ Every consequential business action that creates Tasks, Assignments, forwards, o
 
 - **Trigger:** NotificationListenerService receives a Google Messages notification with usable content.
 - **Steps:**
-  1. Dedupe by hash; upload event via API.
+  1. Dedupe by hash; upload event via API when ingestion is implemented.
   2. Respect contact/source exclusions.
-  3. Relevance + extraction → suggestion (subject to open question on automatic AI before approval).
-  4. Show on Android for review.
+  3. After Primary enables Google Messages as an approved source (D043), notification content may be sent to the backend for AI analysis.
+  4. AI analysis may produce a `TaskSuggestion`; task creation still requires Primary approval.
+  5. The application may prepare an SMS response draft for Primary review and open it in Google Messages for user send (no direct SMS send in v1).
+  6. Show suggestion on Android for review.
 - **Approval boundaries:** Suggestion only until primary approves task creation.
 - **Stored information:** Minimized notification excerpt, package, timestamp, suggestion.
 - **Side effects:** None outbound.

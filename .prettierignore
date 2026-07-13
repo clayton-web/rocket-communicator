@@ -6,3 +6,5 @@ coverage
 pnpm-lock.yaml
 apps/android/local.properties
 apps/android/**/build
+packages/contracts/generated
+packages/contracts/dist

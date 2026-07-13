@@ -1,0 +1,189 @@
+paths:
+  /api/v1/task-suggestions:
+    get:
+      operationId: listTaskSuggestions
+      tags: [TaskSuggestions]
+      summary: List task suggestions
+      parameters:
+        - $ref: '../components/parameters.yaml#/components/parameters/Cursor'
+        - $ref: '../components/parameters.yaml#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Paginated task suggestions
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '../openapi.yaml#/components/schemas/CursorPage'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: '../openapi.yaml#/components/schemas/TaskSuggestion'
+        '401':
+          $ref: '../components/responses.yaml#/components/responses/Unauthorized'
+  /api/v1/task-suggestions/{suggestionId}:
+    get:
+      operationId: getTaskSuggestion
+      tags: [TaskSuggestions]
+      summary: Get a task suggestion
+      parameters:
+        - $ref: '../components/parameters.yaml#/components/parameters/SuggestionId'
+      responses:
+        '200':
+          description: Task suggestion
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/TaskSuggestion'
+        '401':
+          $ref: '../components/responses.yaml#/components/responses/Unauthorized'
+        '404':
+          $ref: '../components/responses.yaml#/components/responses/NotFound'
+  /api/v1/task-suggestions/{suggestionId}/approve:
+    post:
+      operationId: approveTaskSuggestion
+      tags: [TaskSuggestions]
+      summary: Approve a task suggestion and assignment intent
+      parameters:
+        - $ref: '../components/parameters.yaml#/components/parameters/SuggestionId'
+        - $ref: '../components/parameters.yaml#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/ApproveTaskSuggestionRequest'
+      responses:
+        '200':
+          description: Approved suggestion and created task
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [suggestion, task]
+                properties:
+                  suggestion:
+                    $ref: '../openapi.yaml#/components/schemas/TaskSuggestion'
+                  task:
+                    $ref: '../openapi.yaml#/components/schemas/Task'
+        '400':
+          $ref: '../components/responses.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: '../components/responses.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '../components/responses.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: '../components/responses.yaml#/components/responses/NotFound'
+        '412':
+          $ref: '../components/responses.yaml#/components/responses/PreconditionFailed'
+        '428':
+          $ref: '../components/responses.yaml#/components/responses/PreconditionRequired'
+        '409':
+          $ref: '../components/responses.yaml#/components/responses/Conflict'
+  /api/v1/task-suggestions/{suggestionId}/edit:
+    post:
+      operationId: editTaskSuggestion
+      tags: [TaskSuggestions]
+      summary: Edit a pending task suggestion
+      parameters:
+        - $ref: '../components/parameters.yaml#/components/parameters/SuggestionId'
+        - $ref: '../components/parameters.yaml#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/EditTaskSuggestionRequest'
+      responses:
+        '200':
+          description: Updated suggestion
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/TaskSuggestion'
+        '400':
+          $ref: '../components/responses.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: '../components/responses.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '../components/responses.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: '../components/responses.yaml#/components/responses/NotFound'
+        '412':
+          $ref: '../components/responses.yaml#/components/responses/PreconditionFailed'
+        '428':
+          $ref: '../components/responses.yaml#/components/responses/PreconditionRequired'
+  /api/v1/task-suggestions/{suggestionId}/dismiss:
+    post:
+      operationId: dismissTaskSuggestion
+      tags: [TaskSuggestions]
+      summary: Dismiss a task suggestion
+      parameters:
+        - $ref: '../components/parameters.yaml#/components/parameters/SuggestionId'
+        - $ref: '../components/parameters.yaml#/components/parameters/IfMatch'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/DismissTaskSuggestionRequest'
+      responses:
+        '200':
+          description: Dismissed suggestion
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/TaskSuggestion'
+        '400':
+          $ref: '../components/responses.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: '../components/responses.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '../components/responses.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: '../components/responses.yaml#/components/responses/NotFound'
+        '412':
+          $ref: '../components/responses.yaml#/components/responses/PreconditionFailed'
+        '428':
+          $ref: '../components/responses.yaml#/components/responses/PreconditionRequired'
+  /api/v1/task-suggestions/{suggestionId}/merge:
+    post:
+      operationId: mergeTaskSuggestion
+      tags: [TaskSuggestions]
+      summary: Merge a suggestion into an existing task
+      parameters:
+        - $ref: '../components/parameters.yaml#/components/parameters/SuggestionId'
+        - $ref: '../components/parameters.yaml#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/MergeTaskSuggestionRequest'
+      responses:
+        '200':
+          description: Merged suggestion
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/TaskSuggestion'
+        '400':
+          $ref: '../components/responses.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: '../components/responses.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '../components/responses.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: '../components/responses.yaml#/components/responses/NotFound'
+        '409':
+          $ref: '../components/responses.yaml#/components/responses/Conflict'
+        '412':
+          $ref: '../components/responses.yaml#/components/responses/PreconditionFailed'
+        '428':
+          $ref: '../components/responses.yaml#/components/responses/PreconditionRequired'

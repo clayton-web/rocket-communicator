@@ -1,0 +1,11 @@
+
+# ListTaskSuggestions200Response
+
+## Properties
+| Name | Type | Description | Notes |
+| ------------ | ------------- | ------------- | ------------- |
+| **items** | [**kotlin.collections.List&lt;TaskSuggestion&gt;**](TaskSuggestion.md) |  |  |
+| **nextCursor** | **kotlin.String** |  |  [optional] |
+
+
+

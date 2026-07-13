@@ -8,7 +8,7 @@ Version one is a private, Android-first system with a thin Next.js backend on Ve
 
 **Design posture:** AI recommends; humans approve; reminders and retention are deterministic and auditable. Temporary communication content is minimized and deleted on schedule. Durable learning excludes raw message bodies. Android notification and call capture are best-effort with mandatory manual/voice fallbacks.
 
-**Not in this repository yet:** application shells, dependencies, schemas applied to a live database, or connected external services. This document records the intended architecture for later milestones.
+**Not in this repository yet:** connected external services, live API route handlers, database schemas applied to a live database, or authentication. A2 provides OpenAPI contracts and pure domain rules under `packages/contracts` and `packages/domain`.
 
 ## Component responsibilities
 
@@ -32,9 +32,9 @@ A single Git repository (this project) should later contain:
 
 - `apps/android` — Kotlin + Jetpack Compose
 - `apps/web` — Next.js + TypeScript
-- `packages/contracts` — canonical **OpenAPI** specification (source of truth)
-- `packages/db` — Prisma schema and client (server use)
-- `packages/domain` — state machine, retention, reminder policy
+- `packages/contracts` — canonical **OpenAPI** specification (source of truth; A2)
+- `packages/domain` — state machines, retention, reminder metadata helpers, capability policy (A2)
+- `packages/db` — Prisma schema and client (server use; later milestone)
 - `packages/ai` — prompt versions and validators
 
 **Do not** share Zod types directly with Kotlin. Generate TypeScript and Kotlin models/clients from OpenAPI. JSON Schema may be generated from OpenAPI where useful; it is **not** the source of truth. Contract tests belong in CI.

@@ -1,0 +1,28 @@
+{
+  "name": "@aicaa/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lint": "redocly lint openapi/openapi.yaml",
+    "bundle": "redocly bundle openapi/openapi.yaml -o dist/openapi.bundled.yaml",
+    "generate:typescript": "openapi-typescript",
+    "generate:kotlin": "node scripts/generate-kotlin.mjs",
+    "generate": "pnpm bundle && pnpm generate:typescript && pnpm generate:kotlin",
+    "validate": "pnpm lint && pnpm bundle",
+    "test": "vitest run",
+    "check-drift": "node scripts/check-drift.mjs"
+  },
+  "exports": {
+    "./schema": "./generated/typescript/schema.ts"
+  },
+  "devDependencies": {
+    "@openapitools/openapi-generator-cli": "2.18.4",
+    "@redocly/cli": "1.34.3",
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "openapi-typescript": "7.6.1",
+    "vitest": "^3.0.9",
+    "yaml": "^2.7.0"
+  }
+}

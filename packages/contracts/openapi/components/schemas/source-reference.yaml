@@ -1,0 +1,94 @@
+components:
+  schemas:
+    SourceType:
+      type: string
+      enum:
+        - gmail
+        - google_messages
+        - missed_call
+        - completed_call
+        - manual
+        - voice
+    ExternalIdentifier:
+      type: object
+      required:
+        - provider
+        - idType
+        - id
+      properties:
+        provider:
+          type: string
+          maxLength: 32
+        idType:
+          type: string
+          maxLength: 32
+          description: Provider-specific identifier type such as message, thread, or notification.
+        id:
+          type: string
+          maxLength: 256
+    TemporaryExcerptRef:
+      type: object
+      required:
+        - excerptId
+      properties:
+        excerptId:
+          type: string
+          maxLength: 64
+        byteLength:
+          type: integer
+          minimum: 0
+        contentClassification:
+          type: string
+          enum:
+            - temporary_communication
+    SourceSpanRef:
+      type: object
+      required:
+        - excerptId
+      properties:
+        excerptId:
+          type: string
+          maxLength: 64
+        startOffset:
+          type: integer
+          minimum: 0
+        endOffset:
+          type: integer
+          minimum: 0
+    SourceReference:
+      type: object
+      required:
+        - id
+        - sourceType
+        - dedupeKey
+        - capturedAt
+      properties:
+        id:
+          type: string
+          maxLength: 64
+        sourceType:
+          $ref: '#/components/schemas/SourceType'
+        dedupeKey:
+          type: string
+          maxLength: 128
+          description: Opaque hashed deduplication key. Must not contain provider secrets.
+        externalIds:
+          type: array
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/ExternalIdentifier'
+        title:
+          type: string
+          maxLength: 256
+        excerptRef:
+          $ref: '#/components/schemas/TemporaryExcerptRef'
+        link:
+          type: string
+          format: uri
+          maxLength: 2048
+        capturedAt:
+          type: string
+          format: date-time
+        contactHint:
+          type: string
+          maxLength: 128

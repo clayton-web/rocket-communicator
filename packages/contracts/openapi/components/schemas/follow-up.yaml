@@ -1,0 +1,21 @@
+components:
+  schemas:
+    FollowUpProposal:
+      type: object
+      required:
+        - summaryPoints
+      properties:
+        summaryPoints:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items:
+            $ref: './summary-point.yaml#/components/schemas/TaskSummaryPoint'
+        proposedAssigneeUserId:
+          type: string
+          maxLength: 64
+        proposedDueAt:
+          type: string
+          format: date-time
+        proposedPriority:
+          $ref: './assignment.yaml#/components/schemas/TaskPriority'

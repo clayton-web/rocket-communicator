@@ -1,0 +1,30 @@
+
+# ErrorCode
+
+## Enum
+
+
+    * `VALIDATION_ERROR` (value: `"VALIDATION_ERROR"`)
+
+    * `UNAUTHORIZED` (value: `"UNAUTHORIZED"`)
+
+    * `FORBIDDEN` (value: `"FORBIDDEN"`)
+
+    * `NOT_FOUND` (value: `"NOT_FOUND"`)
+
+    * `INVALID_STATE_TRANSITION` (value: `"INVALID_STATE_TRANSITION"`)
+
+    * `PRECONDITION_REQUIRED` (value: `"PRECONDITION_REQUIRED"`)
+
+    * `PRECONDITION_FAILED` (value: `"PRECONDITION_FAILED"`)
+
+    * `DOMAIN_CONFLICT` (value: `"DOMAIN_CONFLICT"`)
+
+    * `RATE_LIMITED` (value: `"RATE_LIMITED"`)
+
+    * `DEPENDENCY_UNAVAILABLE` (value: `"DEPENDENCY_UNAVAILABLE"`)
+
+    * `INTERNAL_ERROR` (value: `"INTERNAL_ERROR"`)
+
+
+

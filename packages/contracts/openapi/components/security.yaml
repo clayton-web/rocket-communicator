@@ -1,0 +1,7 @@
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Placeholder security scheme for contract documentation only (no auth in A2).

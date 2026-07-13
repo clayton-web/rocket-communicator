@@ -1,0 +1,11 @@
+
+# CursorPage
+
+## Properties
+| Name | Type | Description | Notes |
+| ------------ | ------------- | ------------- | ------------- |
+| **items** | [**kotlin.collections.List&lt;kotlin.Any&gt;**](kotlin.Any.md) |  |  |
+| **nextCursor** | **kotlin.String** |  |  [optional] |
+
+
+

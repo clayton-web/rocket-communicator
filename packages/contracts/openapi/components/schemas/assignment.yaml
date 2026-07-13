@@ -1,0 +1,29 @@
+components:
+  schemas:
+    TaskPriority:
+      type: string
+      enum:
+        - low
+        - normal
+        - high
+        - urgent
+    TaskAssignment:
+      type: object
+      required:
+        - assigneeUserId
+        - assignedAt
+        - assignedByUserId
+      properties:
+        assigneeUserId:
+          type: string
+          maxLength: 64
+        assignedAt:
+          type: string
+          format: date-time
+        assignedByUserId:
+          type: string
+          maxLength: 64
+        assignmentApprovedAt:
+          type: string
+          format: date-time
+          description: Timestamp of the single bundled assignment approval (D037).

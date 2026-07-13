@@ -1,0 +1,45 @@
+components:
+  schemas:
+    ReminderMetadata:
+      type: object
+      properties:
+        nextReminderAt:
+          type:
+            - string
+            - 'null'
+          format: date-time
+        paused:
+          type: boolean
+          default: false
+        pausedReason:
+          type:
+            - string
+            - 'null'
+          enum:
+            - waiting
+            - completed
+            - dismissed
+    RetentionMetadata:
+      type: object
+      properties:
+        excerptPurgeAt:
+          type:
+            - string
+            - 'null'
+          format: date-time
+        visibleUntil:
+          type:
+            - string
+            - 'null'
+          format: date-time
+        contentScrubAt:
+          type:
+            - string
+            - 'null'
+          format: date-time
+        failedAudioDeleteAt:
+          type:
+            - string
+            - 'null'
+          format: date-time
+          description: Latest delete time for failed transcription audio (48-hour window, D041).

@@ -1,0 +1,8 @@
+{
+  "error": {
+    "code": "PRECONDITION_REQUIRED",
+    "message": "If-Match header is required for this mutation.",
+    "requestId": "550e8400-e29b-41d4-a716-446655440001",
+    "correlationId": null
+  }
+}

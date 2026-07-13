@@ -1,0 +1,134 @@
+components:
+  schemas:
+    TaskSuggestionStatus:
+      type: string
+      enum:
+        - pending
+        - approved
+        - dismissed
+        - merged
+    TaskSuggestion:
+      type: object
+      required:
+        - id
+        - organizationId
+        - status
+        - summaryPoints
+        - version
+        - etag
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          maxLength: 64
+        organizationId:
+          type: string
+          maxLength: 64
+        status:
+          $ref: '#/components/schemas/TaskSuggestionStatus'
+        summaryPoints:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items:
+            $ref: './summary-point.yaml#/components/schemas/TaskSummaryPoint'
+        sourceReference:
+          $ref: './source-reference.yaml#/components/schemas/SourceReference'
+        proposedAssigneeUserId:
+          type:
+            - string
+            - 'null'
+          maxLength: 64
+        proposedDueAt:
+          type:
+            - string
+            - 'null'
+          format: date-time
+        proposedPriority:
+          $ref: './assignment.yaml#/components/schemas/TaskPriority'
+        voiceOriginated:
+          type: boolean
+          default: false
+        mergedIntoTaskId:
+          type:
+            - string
+            - 'null'
+          maxLength: 64
+        retention:
+          $ref: './reminder-retention.yaml#/components/schemas/RetentionMetadata'
+        version:
+          type: integer
+          minimum: 1
+        etag:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ApproveTaskSuggestionRequest:
+      type: object
+      required:
+        - acknowledgement
+      properties:
+        summaryPoints:
+          type: array
+          maxItems: 20
+          items:
+            $ref: './summary-point.yaml#/components/schemas/TaskSummaryPoint'
+        assigneeUserId:
+          type: string
+          maxLength: 64
+          description: Selected assignee for the approved task and assignment.
+        priority:
+          $ref: './assignment.yaml#/components/schemas/TaskPriority'
+        dueAt:
+          type: string
+          format: date-time
+        acknowledgement:
+          type: string
+          enum:
+            - assignment_approved
+          description: |
+            Primary user intent approving the edited suggestion and administrator assignment.
+            Future server logic derives task creation, reminder scheduling, Gmail forwarding,
+            and standard assignment email without client-side side-effect toggles.
+    EditTaskSuggestionRequest:
+      type: object
+      properties:
+        summaryPoints:
+          type: array
+          maxItems: 20
+          items:
+            $ref: './summary-point.yaml#/components/schemas/TaskSummaryPoint'
+        proposedAssigneeUserId:
+          type:
+            - string
+            - 'null'
+          maxLength: 64
+        proposedDueAt:
+          type:
+            - string
+            - 'null'
+          format: date-time
+        proposedPriority:
+          $ref: './assignment.yaml#/components/schemas/TaskPriority'
+    DismissTaskSuggestionRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          maxLength: 500
+    MergeTaskSuggestionRequest:
+      type: object
+      required:
+        - targetTaskId
+      properties:
+        targetTaskId:
+          type: string
+          maxLength: 64
+        appendSummaryPoints:
+          type: boolean
+          default: true

@@ -1,0 +1,89 @@
+components:
+  responses:
+    BadRequest:
+      description: Validation error or invalid state transition
+      content:
+        application/json:
+          schema:
+            $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+          examples:
+            validation:
+              value:
+                error:
+                  code: VALIDATION_ERROR
+                  message: summaryPoints must contain at least one item.
+                  details:
+                    - field: summaryPoints
+                      message: Array must contain at least 1 element.
+                  requestId: 550e8400-e29b-41d4-a716-446655440000
+                  correlationId: null
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Actor lacks capability
+      content:
+        application/json:
+          schema:
+            $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+    PreconditionRequired:
+      description: Missing If-Match header
+      content:
+        application/json:
+          schema:
+            $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+          examples:
+            preconditionRequired:
+              value:
+                error:
+                  code: PRECONDITION_REQUIRED
+                  message: If-Match header is required for this mutation.
+                  requestId: 550e8400-e29b-41d4-a716-446655440001
+                  correlationId: null
+    PreconditionFailed:
+      description: Stale If-Match ETag
+      content:
+        application/json:
+          schema:
+            $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+          examples:
+            preconditionFailed:
+              value:
+                error:
+                  code: PRECONDITION_FAILED
+                  message: The resource has changed since the provided ETag.
+                  requestId: 550e8400-e29b-41d4-a716-446655440002
+                  correlationId: null
+    Conflict:
+      description: Domain conflict unrelated to HTTP precondition
+      content:
+        application/json:
+          schema:
+            $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+    TooManyRequests:
+      description: Rate limited
+      content:
+        application/json:
+          schema:
+            $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+    ServiceUnavailable:
+      description: Temporary dependency failure
+      content:
+        application/json:
+          schema:
+            $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '../openapi.yaml#/components/schemas/ErrorResponse'

@@ -1,0 +1,191 @@
+components:
+  schemas:
+    Sensitivity:
+      type: string
+      enum:
+        - normal
+        - financial
+        - legal
+        - personal
+    SummaryPointKind:
+      type: string
+      enum:
+        - confirmed_fact
+        - request
+        - commitment
+        - amount
+        - deadline
+        - risk
+        - inference
+        - missing_information
+        - next_action
+    SummaryPointBase:
+      type: object
+      required:
+        - id
+        - kind
+        - label
+        - order
+      properties:
+        id:
+          type: string
+          maxLength: 64
+        kind:
+          $ref: '#/components/schemas/SummaryPointKind'
+        label:
+          type: string
+          maxLength: 120
+        order:
+          type: integer
+          minimum: 0
+          maximum: 19
+        sensitivity:
+          $ref: '#/components/schemas/Sensitivity'
+        sourceSpanRef:
+          $ref: './source-reference.yaml#/components/schemas/SourceSpanRef'
+    ConfirmedFactSummaryPoint:
+      allOf:
+        - $ref: '#/components/schemas/SummaryPointBase'
+        - type: object
+          required:
+            - value
+          properties:
+            kind:
+              const: confirmed_fact
+            value:
+              type: string
+              maxLength: 500
+    RequestSummaryPoint:
+      allOf:
+        - $ref: '#/components/schemas/SummaryPointBase'
+        - type: object
+          required:
+            - value
+          properties:
+            kind:
+              const: request
+            value:
+              type: string
+              maxLength: 500
+    CommitmentSummaryPoint:
+      allOf:
+        - $ref: '#/components/schemas/SummaryPointBase'
+        - type: object
+          required:
+            - value
+          properties:
+            kind:
+              const: commitment
+            value:
+              type: string
+              maxLength: 500
+    RiskSummaryPoint:
+      allOf:
+        - $ref: '#/components/schemas/SummaryPointBase'
+        - type: object
+          required:
+            - value
+          properties:
+            kind:
+              const: risk
+            value:
+              type: string
+              maxLength: 500
+    NextActionSummaryPoint:
+      allOf:
+        - $ref: '#/components/schemas/SummaryPointBase'
+        - type: object
+          required:
+            - value
+          properties:
+            kind:
+              const: next_action
+            value:
+              type: string
+              maxLength: 500
+    MissingInformationSummaryPoint:
+      allOf:
+        - $ref: '#/components/schemas/SummaryPointBase'
+        - type: object
+          required:
+            - missingItem
+          properties:
+            kind:
+              const: missing_information
+            missingItem:
+              type: string
+              maxLength: 500
+    InferenceSummaryPoint:
+      allOf:
+        - $ref: '#/components/schemas/SummaryPointBase'
+        - type: object
+          required:
+            - value
+            - confidence
+          properties:
+            kind:
+              const: inference
+            value:
+              type: string
+              maxLength: 500
+            confidence:
+              type: number
+              minimum: 0
+              maximum: 1
+    AmountSummaryPoint:
+      allOf:
+        - $ref: '#/components/schemas/SummaryPointBase'
+        - type: object
+          required:
+            - amount
+            - currency
+          properties:
+            kind:
+              const: amount
+            amount:
+              type: number
+            currency:
+              type: string
+              pattern: '^[A-Z]{3}$'
+    DeadlineSummaryPoint:
+      allOf:
+        - $ref: '#/components/schemas/SummaryPointBase'
+        - type: object
+          required:
+            - kind
+          properties:
+            kind:
+              const: deadline
+            dueAt:
+              type: string
+              format: date-time
+            localDate:
+              type: string
+              format: date
+            timezone:
+              type: string
+              maxLength: 64
+              description: IANA timezone when localDate is used.
+    TaskSummaryPoint:
+      oneOf:
+        - $ref: '#/components/schemas/ConfirmedFactSummaryPoint'
+        - $ref: '#/components/schemas/RequestSummaryPoint'
+        - $ref: '#/components/schemas/CommitmentSummaryPoint'
+        - $ref: '#/components/schemas/AmountSummaryPoint'
+        - $ref: '#/components/schemas/DeadlineSummaryPoint'
+        - $ref: '#/components/schemas/RiskSummaryPoint'
+        - $ref: '#/components/schemas/InferenceSummaryPoint'
+        - $ref: '#/components/schemas/MissingInformationSummaryPoint'
+        - $ref: '#/components/schemas/NextActionSummaryPoint'
+      discriminator:
+        propertyName: kind
+        mapping:
+          confirmed_fact: '#/components/schemas/ConfirmedFactSummaryPoint'
+          request: '#/components/schemas/RequestSummaryPoint'
+          commitment: '#/components/schemas/CommitmentSummaryPoint'
+          amount: '#/components/schemas/AmountSummaryPoint'
+          deadline: '#/components/schemas/DeadlineSummaryPoint'
+          risk: '#/components/schemas/RiskSummaryPoint'
+          inference: '#/components/schemas/InferenceSummaryPoint'
+          missing_information: '#/components/schemas/MissingInformationSummaryPoint'
+          next_action: '#/components/schemas/NextActionSummaryPoint'

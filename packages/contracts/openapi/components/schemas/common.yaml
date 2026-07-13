@@ -1,0 +1,94 @@
+components:
+  schemas:
+    ErrorCode:
+      type: string
+      enum:
+        - VALIDATION_ERROR
+        - UNAUTHORIZED
+        - FORBIDDEN
+        - NOT_FOUND
+        - INVALID_STATE_TRANSITION
+        - PRECONDITION_REQUIRED
+        - PRECONDITION_FAILED
+        - DOMAIN_CONFLICT
+        - RATE_LIMITED
+        - DEPENDENCY_UNAVAILABLE
+        - INTERNAL_ERROR
+    ErrorDetail:
+      type: object
+      required:
+        - field
+        - message
+      properties:
+        field:
+          type: string
+          maxLength: 128
+        message:
+          type: string
+          maxLength: 256
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+            - requestId
+          properties:
+            code:
+              $ref: '#/components/schemas/ErrorCode'
+            message:
+              type: string
+              maxLength: 512
+            details:
+              type: array
+              maxItems: 20
+              items:
+                $ref: '#/components/schemas/ErrorDetail'
+            requestId:
+              type: string
+              format: uuid
+            correlationId:
+              type:
+                - string
+                - 'null'
+              format: uuid
+    VersionedResource:
+      type: object
+      required:
+        - version
+        - etag
+      properties:
+        version:
+          type: integer
+          minimum: 1
+        etag:
+          type: string
+          description: Strong HTTP ETag value including quotes.
+    Timestamps:
+      type: object
+      required:
+        - createdAt
+        - updatedAt
+      properties:
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    CursorPage:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+        nextCursor:
+          type:
+            - string
+            - 'null'
+          maxLength: 256

@@ -135,7 +135,7 @@ Voice input should support proposing or structuring:
 
 Multi-intent utterances (for example, complete + capture amount + propose follow-up assignment) must produce a **structured proposal**: completion may apply to the current Task on confirm; follow-ups begin as Task Suggestions; administrator assignment email waits for the single assignment confirmation (D037).
 
-Raw audio is deleted after successful transcription and validation. Failed-transcription retention is unresolved (see [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md)).
+Raw audio is deleted after successful transcription and validation. Failed transcription audio may be retained encrypted for up to 48 hours for retry, then deleted (D041).
 
 ## Summary-quality requirements
 

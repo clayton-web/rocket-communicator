@@ -20,13 +20,14 @@ The product is **not** a permanent communication archive.
 
 ## Current status
 
-**Repository foundation (Milestone A1) is active.**
+**Repository foundation (Milestone A1) and API contracts/domain (Milestone A2) are active.**
 
 - Documentation source of truth is in place under `docs/`.
 - pnpm monorepo with empty Next.js and Android Compose shells builds and tests.
+- `packages/contracts` (OpenAPI 3.1) and `packages/domain` (pure TypeScript rules) are implemented.
 - Shared TypeScript ESLint/config packages, Prettier, EditorConfig, and ktlint are configured.
-- GitHub Actions CI workflows are present for local/remote smoke checks.
-- **No product features** are implemented (no Gmail, OpenAI, Supabase, auth, notifications, voice, tasks, or APIs).
+- GitHub Actions CI workflows include contract, domain, web, and Android checks.
+- **No product runtime features** are implemented (no Gmail, OpenAI, Supabase, auth, notifications, voice, tasks API routes, or workers).
 - **No** `.env.example` yet (no environment variables required).
 - No GitHub remote is configured in this workspace pass.
 - Distribution remains private sideload / internal testing (not Play Store).
@@ -63,13 +64,15 @@ Both users belong to the same Google Workspace organization. Definitions: [docs/
 ```text
 apps/android/     Kotlin + Jetpack Compose shell (minSdk 31)
 apps/web/         Next.js App Router shell
+packages/contracts/   OpenAPI 3.1 source, bundled artifact, generated TS/Kotlin DTOs
+packages/domain/    Pure TypeScript state machines, policies, retention rules
 packages/eslint-config/
 packages/typescript-config/
 docs/             Product and engineering source of truth
 .github/workflows/ci.yml
 ```
 
-Future packages (`contracts`, `domain`, `db`, `ai`, `ui`) are intentionally **not** created until later milestones.
+Future packages (`db`, `ai`, `ui`) are intentionally **not** created until later milestones.
 
 ## Local verification
 
@@ -78,7 +81,7 @@ pnpm install
 pnpm verify
 ```
 
-Individual scripts: `format:check`, `lint`, `test:web`, `build:web`, `android:ktlint`, `android:test`, `android:assemble`.
+Individual scripts: `format:check`, `lint`, `test:web`, `test:domain`, `test:contracts`, `build:web`, `build:domain`, `contracts:validate`, `contracts:generate`, `contracts:check-drift`, `android:ktlint`, `android:test`, `android:api-contract`, `android:assemble`.
 
 Android instrumentation smoke tests under `androidTest/` are for **local** device/emulator runs only (not A1 CI).
 
@@ -139,6 +142,8 @@ Review gate: [docs/REVIEW_CHECKLIST.md](docs/REVIEW_CHECKLIST.md).
 | [docs/SECURITY_AND_PRIVACY.md](docs/SECURITY_AND_PRIVACY.md) | AuthZ, privacy, secure links                            |
 | [docs/DECISIONS.md](docs/DECISIONS.md)                       | Decision register                                       |
 | [docs/MILESTONES.md](docs/MILESTONES.md)                     | Phased milestones (A0–A15)                              |
+| [docs/API_CONTRACT.md](docs/API_CONTRACT.md)                 | OpenAPI ownership, endpoints, errors, concurrency       |
+| [docs/STATE_MACHINE.md](docs/STATE_MACHINE.md)               | Persisted states, transitions, derived urgency          |
 | [docs/OPEN_QUESTIONS.md](docs/OPEN_QUESTIONS.md)             | Unresolved decisions                                    |
 
 ## Development principles
@@ -158,4 +163,4 @@ Aligned with [docs/PROJECT_CONSTITUTION.md](docs/PROJECT_CONSTITUTION.md):
 
 - Local Git repository on branch `main`.
 - Remote hosting (GitHub) is intentionally deferred until you create it.
-- Next milestone after A1 commit: **A2** (API contracts and domain model)—not started.
+- Next milestone after A2: **A3** (authentication and roles)—not started.

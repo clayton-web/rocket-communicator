@@ -1,0 +1,22 @@
+components:
+  schemas:
+    TaskNote:
+      type: object
+      required:
+        - id
+        - authorUserId
+        - body
+        - createdAt
+      properties:
+        id:
+          type: string
+          maxLength: 64
+        authorUserId:
+          type: string
+          maxLength: 64
+        body:
+          type: string
+          maxLength: 2000
+        createdAt:
+          type: string
+          format: date-time

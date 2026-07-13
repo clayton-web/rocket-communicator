@@ -1,0 +1,289 @@
+paths:
+  /api/v1/tasks:
+    get:
+      operationId: listTasks
+      tags: [Tasks]
+      summary: List tasks
+      parameters:
+        - $ref: '../components/parameters.yaml#/components/parameters/Cursor'
+        - $ref: '../components/parameters.yaml#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Paginated tasks
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '../openapi.yaml#/components/schemas/CursorPage'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: '../openapi.yaml#/components/schemas/Task'
+        '401':
+          $ref: '../components/responses.yaml#/components/responses/Unauthorized'
+    post:
+      operationId: createTask
+      tags: [Tasks]
+      summary: Create a task directly (primary typed creation only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/CreateTaskRequest'
+      responses:
+        '201':
+          description: Created task
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/Task'
+        '400':
+          $ref: '../components/responses.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: '../components/responses.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '../components/responses.yaml#/components/responses/Forbidden'
+  /api/v1/tasks/{taskId}:
+    get:
+      operationId: getTask
+      tags: [Tasks]
+      summary: Get a task
+      parameters:
+        - $ref: '../components/parameters.yaml#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: Task
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/Task'
+        '401':
+          $ref: '../components/responses.yaml#/components/responses/Unauthorized'
+        '404':
+          $ref: '../components/responses.yaml#/components/responses/NotFound'
+  /api/v1/tasks/{taskId}/start:
+    post:
+      operationId: startTask
+      tags: [Tasks]
+      summary: Mark a task in progress
+      parameters:
+        - $ref: '../components/parameters.yaml#/components/parameters/TaskId'
+        - $ref: '../components/parameters.yaml#/components/parameters/IfMatch'
+      responses:
+        '200':
+          description: Updated task
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/Task'
+        '400':
+          $ref: '../components/responses.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: '../components/responses.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '../components/responses.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: '../components/responses.yaml#/components/responses/NotFound'
+        '412':
+          $ref: '../components/responses.yaml#/components/responses/PreconditionFailed'
+        '428':
+          $ref: '../components/responses.yaml#/components/responses/PreconditionRequired'
+  /api/v1/tasks/{taskId}/waiting:
+    post:
+      operationId: markTaskWaiting
+      tags: [Tasks]
+      summary: Mark a task waiting
+      parameters:
+        - $ref: '../components/parameters.yaml#/components/parameters/TaskId'
+        - $ref: '../components/parameters.yaml#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/MarkTaskWaitingRequest'
+      responses:
+        '200':
+          description: Updated task
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/Task'
+        '400':
+          $ref: '../components/responses.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: '../components/responses.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '../components/responses.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: '../components/responses.yaml#/components/responses/NotFound'
+        '412':
+          $ref: '../components/responses.yaml#/components/responses/PreconditionFailed'
+        '428':
+          $ref: '../components/responses.yaml#/components/responses/PreconditionRequired'
+  /api/v1/tasks/{taskId}/resume:
+    post:
+      operationId: resumeTask
+      tags: [Tasks]
+      summary: Resume a waiting task
+      parameters:
+        - $ref: '../components/parameters.yaml#/components/parameters/TaskId'
+        - $ref: '../components/parameters.yaml#/components/parameters/IfMatch'
+      responses:
+        '200':
+          description: Updated task
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/Task'
+        '400':
+          $ref: '../components/responses.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: '../components/responses.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '../components/responses.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: '../components/responses.yaml#/components/responses/NotFound'
+        '412':
+          $ref: '../components/responses.yaml#/components/responses/PreconditionFailed'
+        '428':
+          $ref: '../components/responses.yaml#/components/responses/PreconditionRequired'
+  /api/v1/tasks/{taskId}/complete:
+    post:
+      operationId: completeTask
+      tags: [Tasks]
+      summary: Complete a task
+      parameters:
+        - $ref: '../components/parameters.yaml#/components/parameters/TaskId'
+        - $ref: '../components/parameters.yaml#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/CompleteTaskRequest'
+      responses:
+        '200':
+          description: Completed task
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/Task'
+        '400':
+          $ref: '../components/responses.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: '../components/responses.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '../components/responses.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: '../components/responses.yaml#/components/responses/NotFound'
+        '412':
+          $ref: '../components/responses.yaml#/components/responses/PreconditionFailed'
+        '428':
+          $ref: '../components/responses.yaml#/components/responses/PreconditionRequired'
+  /api/v1/tasks/{taskId}/notes:
+    post:
+      operationId: addTaskNote
+      tags: [Tasks]
+      summary: Add a note to a task
+      parameters:
+        - $ref: '../components/parameters.yaml#/components/parameters/TaskId'
+        - $ref: '../components/parameters.yaml#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/AddTaskNoteRequest'
+      responses:
+        '200':
+          description: Updated task
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/Task'
+        '400':
+          $ref: '../components/responses.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: '../components/responses.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '../components/responses.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: '../components/responses.yaml#/components/responses/NotFound'
+        '412':
+          $ref: '../components/responses.yaml#/components/responses/PreconditionFailed'
+        '428':
+          $ref: '../components/responses.yaml#/components/responses/PreconditionRequired'
+  /api/v1/tasks/{taskId}/return-to-primary:
+    post:
+      operationId: returnTaskToPrimary
+      tags: [Tasks]
+      summary: Return an assigned task to the primary user
+      parameters:
+        - $ref: '../components/parameters.yaml#/components/parameters/TaskId'
+        - $ref: '../components/parameters.yaml#/components/parameters/IfMatch'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/ReturnTaskToPrimaryRequest'
+      responses:
+        '200':
+          description: Updated task
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/Task'
+        '400':
+          $ref: '../components/responses.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: '../components/responses.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '../components/responses.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: '../components/responses.yaml#/components/responses/NotFound'
+        '412':
+          $ref: '../components/responses.yaml#/components/responses/PreconditionFailed'
+        '428':
+          $ref: '../components/responses.yaml#/components/responses/PreconditionRequired'
+  /api/v1/tasks/{taskId}/clarification-requests:
+    post:
+      operationId: requestClarification
+      tags: [Tasks]
+      summary: Request clarification on a task
+      parameters:
+        - $ref: '../components/parameters.yaml#/components/parameters/TaskId'
+        - $ref: '../components/parameters.yaml#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/RequestClarificationRequest'
+      responses:
+        '200':
+          description: Updated task
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/Task'
+        '400':
+          $ref: '../components/responses.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: '../components/responses.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '../components/responses.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: '../components/responses.yaml#/components/responses/NotFound'
+        '412':
+          $ref: '../components/responses.yaml#/components/responses/PreconditionFailed'
+        '428':
+          $ref: '../components/responses.yaml#/components/responses/PreconditionRequired'

@@ -1,0 +1,55 @@
+{
+  "id": "sug_01JEXAMPLE",
+  "organizationId": "org_01JEXAMPLE",
+  "status": "pending",
+  "summaryPoints": [
+    {
+      "id": "pt_1",
+      "kind": "confirmed_fact",
+      "label": "Request",
+      "order": 0,
+      "value": "Client asked for updated inspection report."
+    },
+    {
+      "id": "pt_2",
+      "kind": "next_action",
+      "label": "Next action",
+      "order": 1,
+      "value": "Send report to client."
+    }
+  ],
+  "sourceReference": {
+    "id": "src_01JEXAMPLE",
+    "sourceType": "gmail",
+    "dedupeKey": "sha256:gmail:msg_abc123",
+    "externalIds": [
+      {
+        "provider": "gmail",
+        "idType": "message",
+        "id": "msg_abc123"
+      }
+    ],
+    "title": "Inspection report follow-up",
+    "excerptRef": {
+      "excerptId": "ex_01JEXAMPLE",
+      "byteLength": 240,
+      "contentClassification": "temporary_communication"
+    },
+    "capturedAt": "2026-07-13T18:00:00.000Z"
+  },
+  "proposedAssigneeUserId": "user_admin_01",
+  "proposedDueAt": "2026-07-15T18:00:00.000Z",
+  "proposedPriority": "normal",
+  "voiceOriginated": false,
+  "mergedIntoTaskId": null,
+  "retention": {
+    "excerptPurgeAt": null,
+    "visibleUntil": null,
+    "contentScrubAt": null,
+    "failedAudioDeleteAt": null
+  },
+  "version": 1,
+  "etag": "\"task-suggestion-sug_01JEXAMPLE-v1\"",
+  "createdAt": "2026-07-13T18:05:00.000Z",
+  "updatedAt": "2026-07-13T18:05:00.000Z"
+}

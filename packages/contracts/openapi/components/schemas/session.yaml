@@ -1,0 +1,27 @@
+components:
+  schemas:
+    UserRole:
+      type: string
+      enum:
+        - primary
+        - administrator
+    Session:
+      type: object
+      required:
+        - userId
+        - organizationId
+        - role
+      properties:
+        userId:
+          type: string
+          minLength: 1
+          maxLength: 64
+        organizationId:
+          type: string
+          minLength: 1
+          maxLength: 64
+        role:
+          $ref: '#/components/schemas/UserRole'
+        displayName:
+          type: string
+          maxLength: 128

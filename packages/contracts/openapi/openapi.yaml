@@ -1,0 +1,156 @@
+openapi: 3.1.0
+info:
+  title: AI Communication Action Assistant API
+  version: 0.1.0
+  license:
+    name: UNLICENSED
+    identifier: UNLICENSED
+  description: |
+    Canonical HTTP contract for the AI Communication Action Assistant.
+    OpenAPI is the source of truth (D007). No runtime server is implemented in A2.
+servers:
+  - url: https://api.example.invalid
+    description: Placeholder server URL for contract generation only
+tags:
+  - name: Session
+    description: Authenticated session shape (implementation deferred to A3).
+  - name: TaskSuggestions
+    description: Pre-task AI and user proposals requiring primary approval.
+  - name: Tasks
+    description: Approved actionable work items.
+security:
+  - bearerAuth: []
+paths:
+  /api/v1/session:
+    $ref: './paths/session.yaml#/paths/~1api~1v1~1session'
+  /api/v1/task-suggestions:
+    $ref: './paths/task-suggestions.yaml#/paths/~1api~1v1~1task-suggestions'
+  /api/v1/task-suggestions/{suggestionId}:
+    $ref: './paths/task-suggestions.yaml#/paths/~1api~1v1~1task-suggestions~1{suggestionId}'
+  /api/v1/task-suggestions/{suggestionId}/approve:
+    $ref: './paths/task-suggestions.yaml#/paths/~1api~1v1~1task-suggestions~1{suggestionId}~1approve'
+  /api/v1/task-suggestions/{suggestionId}/edit:
+    $ref: './paths/task-suggestions.yaml#/paths/~1api~1v1~1task-suggestions~1{suggestionId}~1edit'
+  /api/v1/task-suggestions/{suggestionId}/dismiss:
+    $ref: './paths/task-suggestions.yaml#/paths/~1api~1v1~1task-suggestions~1{suggestionId}~1dismiss'
+  /api/v1/task-suggestions/{suggestionId}/merge:
+    $ref: './paths/task-suggestions.yaml#/paths/~1api~1v1~1task-suggestions~1{suggestionId}~1merge'
+  /api/v1/tasks:
+    $ref: './paths/tasks.yaml#/paths/~1api~1v1~1tasks'
+  /api/v1/tasks/{taskId}:
+    $ref: './paths/tasks.yaml#/paths/~1api~1v1~1tasks~1{taskId}'
+  /api/v1/tasks/{taskId}/start:
+    $ref: './paths/tasks.yaml#/paths/~1api~1v1~1tasks~1{taskId}~1start'
+  /api/v1/tasks/{taskId}/waiting:
+    $ref: './paths/tasks.yaml#/paths/~1api~1v1~1tasks~1{taskId}~1waiting'
+  /api/v1/tasks/{taskId}/resume:
+    $ref: './paths/tasks.yaml#/paths/~1api~1v1~1tasks~1{taskId}~1resume'
+  /api/v1/tasks/{taskId}/complete:
+    $ref: './paths/tasks.yaml#/paths/~1api~1v1~1tasks~1{taskId}~1complete'
+  /api/v1/tasks/{taskId}/notes:
+    $ref: './paths/tasks.yaml#/paths/~1api~1v1~1tasks~1{taskId}~1notes'
+  /api/v1/tasks/{taskId}/return-to-primary:
+    $ref: './paths/tasks.yaml#/paths/~1api~1v1~1tasks~1{taskId}~1return-to-primary'
+  /api/v1/tasks/{taskId}/clarification-requests:
+    $ref: './paths/tasks.yaml#/paths/~1api~1v1~1tasks~1{taskId}~1clarification-requests'
+components:
+  schemas:
+    ErrorResponse:
+      $ref: './components/schemas/common.yaml#/components/schemas/ErrorResponse'
+    ErrorCode:
+      $ref: './components/schemas/common.yaml#/components/schemas/ErrorCode'
+    ErrorDetail:
+      $ref: './components/schemas/common.yaml#/components/schemas/ErrorDetail'
+    VersionedResource:
+      $ref: './components/schemas/common.yaml#/components/schemas/VersionedResource'
+    Timestamps:
+      $ref: './components/schemas/common.yaml#/components/schemas/Timestamps'
+    CursorPage:
+      $ref: './components/schemas/common.yaml#/components/schemas/CursorPage'
+    Session:
+      $ref: './components/schemas/session.yaml#/components/schemas/Session'
+    UserRole:
+      $ref: './components/schemas/session.yaml#/components/schemas/UserRole'
+    TaskSuggestion:
+      $ref: './components/schemas/task-suggestion.yaml#/components/schemas/TaskSuggestion'
+    TaskSuggestionStatus:
+      $ref: './components/schemas/task-suggestion.yaml#/components/schemas/TaskSuggestionStatus'
+    ApproveTaskSuggestionRequest:
+      $ref: './components/schemas/task-suggestion.yaml#/components/schemas/ApproveTaskSuggestionRequest'
+    EditTaskSuggestionRequest:
+      $ref: './components/schemas/task-suggestion.yaml#/components/schemas/EditTaskSuggestionRequest'
+    DismissTaskSuggestionRequest:
+      $ref: './components/schemas/task-suggestion.yaml#/components/schemas/DismissTaskSuggestionRequest'
+    MergeTaskSuggestionRequest:
+      $ref: './components/schemas/task-suggestion.yaml#/components/schemas/MergeTaskSuggestionRequest'
+    Task:
+      $ref: './components/schemas/task.yaml#/components/schemas/Task'
+    TaskStatus:
+      $ref: './components/schemas/task.yaml#/components/schemas/TaskStatus'
+    DerivedTaskUrgency:
+      $ref: './components/schemas/task.yaml#/components/schemas/DerivedTaskUrgency'
+    CreateTaskRequest:
+      $ref: './components/schemas/task.yaml#/components/schemas/CreateTaskRequest'
+    MarkTaskWaitingRequest:
+      $ref: './components/schemas/task.yaml#/components/schemas/MarkTaskWaitingRequest'
+    CompleteTaskRequest:
+      $ref: './components/schemas/task.yaml#/components/schemas/CompleteTaskRequest'
+    AddTaskNoteRequest:
+      $ref: './components/schemas/task.yaml#/components/schemas/AddTaskNoteRequest'
+    ReturnTaskToPrimaryRequest:
+      $ref: './components/schemas/task.yaml#/components/schemas/ReturnTaskToPrimaryRequest'
+    RequestClarificationRequest:
+      $ref: './components/schemas/task.yaml#/components/schemas/RequestClarificationRequest'
+    TaskAssignment:
+      $ref: './components/schemas/assignment.yaml#/components/schemas/TaskAssignment'
+    TaskSummaryPoint:
+      $ref: './components/schemas/summary-point.yaml#/components/schemas/TaskSummaryPoint'
+    TaskOutcome:
+      $ref: './components/schemas/outcome.yaml#/components/schemas/TaskOutcome'
+    TaskOutcomeType:
+      $ref: './components/schemas/outcome.yaml#/components/schemas/TaskOutcomeType'
+    TaskNote:
+      $ref: './components/schemas/note.yaml#/components/schemas/TaskNote'
+    SourceReference:
+      $ref: './components/schemas/source-reference.yaml#/components/schemas/SourceReference'
+    FollowUpProposal:
+      $ref: './components/schemas/follow-up.yaml#/components/schemas/FollowUpProposal'
+    ReminderMetadata:
+      $ref: './components/schemas/reminder-retention.yaml#/components/schemas/ReminderMetadata'
+    RetentionMetadata:
+      $ref: './components/schemas/reminder-retention.yaml#/components/schemas/RetentionMetadata'
+  securitySchemes:
+    bearerAuth:
+      $ref: './components/security.yaml#/components/securitySchemes/bearerAuth'
+  parameters:
+    IfMatch:
+      $ref: './components/parameters.yaml#/components/parameters/IfMatch'
+    SuggestionId:
+      $ref: './components/parameters.yaml#/components/parameters/SuggestionId'
+    TaskId:
+      $ref: './components/parameters.yaml#/components/parameters/TaskId'
+    Cursor:
+      $ref: './components/parameters.yaml#/components/parameters/Cursor'
+    Limit:
+      $ref: './components/parameters.yaml#/components/parameters/Limit'
+  responses:
+    BadRequest:
+      $ref: './components/responses.yaml#/components/responses/BadRequest'
+    Unauthorized:
+      $ref: './components/responses.yaml#/components/responses/Unauthorized'
+    Forbidden:
+      $ref: './components/responses.yaml#/components/responses/Forbidden'
+    NotFound:
+      $ref: './components/responses.yaml#/components/responses/NotFound'
+    PreconditionRequired:
+      $ref: './components/responses.yaml#/components/responses/PreconditionRequired'
+    PreconditionFailed:
+      $ref: './components/responses.yaml#/components/responses/PreconditionFailed'
+    Conflict:
+      $ref: './components/responses.yaml#/components/responses/Conflict'
+    TooManyRequests:
+      $ref: './components/responses.yaml#/components/responses/TooManyRequests'
+    ServiceUnavailable:
+      $ref: './components/responses.yaml#/components/responses/ServiceUnavailable'
+    InternalError:
+      $ref: './components/responses.yaml#/components/responses/InternalError'

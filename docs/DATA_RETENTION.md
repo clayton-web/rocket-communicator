@@ -52,7 +52,7 @@ While a task is not completed or dismissed, operational fields remain available 
 ## Raw voice audio
 
 - Delete raw audio **immediately** after successful transcription and validation.
-- Failed transcription retention is **unresolved** and must not be silently assumed; see [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md).
+- On failed transcription, audio may be retained **encrypted for up to 48 hours** for retry, then deleted (D041). No indefinite retention.
 
 ## Transcripts
 
@@ -126,12 +126,3 @@ Independent of the seven-day excerpt timer.
 ## Gmail retention boundary
 
 Application deletion ≠ mailbox deletion. Document this in user-facing settings/help when the product ships.
-
-## Unresolved: failed-transcription audio retention
-
-Options under discussion (not decided):
-
-- Encrypted retry retention up to 24 hours, then delete
-- Immediate deletion even on failure
-
-Track in [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md); do not implement a silent default in documentation as if approved.

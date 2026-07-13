@@ -1,0 +1,38 @@
+components:
+  schemas:
+    TaskOutcomeType:
+      type: string
+      enum:
+        - completed
+        - spoke_with_contact
+        - email_sent
+        - text_sent
+        - scheduled
+        - information_provided
+        - no_action_required
+        - other
+    TaskOutcome:
+      type: object
+      required:
+        - outcomeType
+        - completedAt
+        - completedByUserId
+      properties:
+        outcomeType:
+          $ref: '#/components/schemas/TaskOutcomeType'
+        completedAt:
+          type: string
+          format: date-time
+        completedByUserId:
+          type: string
+          maxLength: 64
+        note:
+          type: string
+          maxLength: 2000
+        summaryPoints:
+          type: array
+          maxItems: 20
+          items:
+            $ref: './summary-point.yaml#/components/schemas/TaskSummaryPoint'
+        followUpProposal:
+          $ref: './follow-up.yaml#/components/schemas/FollowUpProposal'

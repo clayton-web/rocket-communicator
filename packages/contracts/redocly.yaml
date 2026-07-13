@@ -1,0 +1,14 @@
+extends:
+  - recommended
+
+apis:
+  main:
+    root: openapi/openapi.yaml
+    x-openapi-ts:
+      output: generated/typescript/schema.ts
+
+rules:
+  no-unused-components: warn
+  operation-operationId-unique: error
+  path-params-defined: error
+  security-defined: off

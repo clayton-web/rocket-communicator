@@ -2,7 +2,7 @@
 
 Planning milestones only. No application scaffolding occurs in A0.
 
-**Current milestone: A1 complete** (repository foundation). Next: **A2** (API contracts and domain model) — not started.
+**Current milestone: A2 complete** (API contracts and domain model). Next: **A3** (authentication and roles) — not started.
 
 Process for all later milestones: [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW.md) · [REVIEW_CHECKLIST.md](REVIEW_CHECKLIST.md) · [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md)
 
@@ -30,12 +30,13 @@ Process for all later milestones: [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW
 
 ## A2: API contracts and domain model
 
-- **Objective:** Canonical OpenAPI contract, Prisma draft model, domain state machine docs-as-code stubs.
-- **Likely scope:** `packages/contracts` (OpenAPI source of truth), `packages/db`, `packages/domain`; generators for TS/Kotlin from OpenAPI; optional JSON Schema derived from OpenAPI.
-- **Acceptance criteria:** Schemas validate sample payloads; state transitions unit-tested; no production migrations required yet if still local-only.
-- **Major risks:** Premature tables that fight retention design.
-- **Out of scope:** Live Supabase project requirement beyond local planning (connection still later).
+- **Objective:** Canonical OpenAPI contract and pure domain rules (state machines, policies, retention calculations) without persistence or integrations.
+- **Likely scope:** `packages/contracts` (OpenAPI source of truth, bundled artifact, generated TS/Kotlin DTOs), `packages/domain` (pure TypeScript domain logic), `apps/android/api-contract` (Kotlin DTO compile module); generators for TS/Kotlin from OpenAPI; `docs/API_CONTRACT.md`, `docs/STATE_MACHINE.md`.
+- **Acceptance criteria:** OpenAPI lints and bundles; examples validate; generated outputs committed with CI drift check; domain transition and policy tests pass; no database, auth, or API route implementation.
+- **Major risks:** OpenAPI/domain enum drift; over-scoping endpoints before integrations exist.
+- **Out of scope:** `packages/db`, Prisma, migrations, Supabase, auth, Gmail, AI, workers, API handlers, feature UI.
 - **Recommended Git checkpoint:** `feat: contracts and domain model`
+- **Status:** Complete (OpenAPI contract, generated TS/Kotlin DTOs, pure domain package, tests, CI, documentation). No database, auth, or API handlers.
 
 ## A3: Authentication and roles
 
@@ -123,7 +124,7 @@ Process for all later milestones: [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW
 - **Objective:** Record → transcribe → structure → confirm; delete audio on success; voice never creates Tasks directly—follow-ups and new work are Task Suggestions (D038); multi-intent complete + follow-up proposal with assignment confirmation gate (D037).
 - **Likely scope:** Android recorder, upload API, OpenAI transcription, confirmation UI.
 - **Acceptance criteria:** Example multi-intent utterance completes current task and creates follow-up **Task Suggestion** only; admin email not sent without assignment confirmation; audio removed after success.
-- **Major risks:** Failed transcription policy still open.
+- **Major risks:** Failed transcription retry window; attachment size/policy failures.
 - **Out of scope:** Live-call transcription.
 - **Recommended Git checkpoint:** `feat: voice capture and transcription`
 

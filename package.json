@@ -8,15 +8,23 @@
   "scripts": {
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "lint": "pnpm --filter @aicaa/web lint",
-    "test": "pnpm --filter @aicaa/web test",
+    "lint": "pnpm --filter @aicaa/web lint && pnpm --filter @aicaa/domain lint",
+    "test": "pnpm test:web && pnpm test:domain && pnpm test:contracts",
     "test:web": "pnpm --filter @aicaa/web test",
-    "build": "pnpm --filter @aicaa/web build",
+    "test:domain": "pnpm --filter @aicaa/domain test",
+    "test:contracts": "pnpm --filter @aicaa/contracts test",
+    "build": "pnpm build:domain && pnpm build:web",
     "build:web": "pnpm --filter @aicaa/web build",
+    "build:domain": "pnpm --filter @aicaa/domain build",
+    "contracts:validate": "pnpm --filter @aicaa/contracts validate",
+    "contracts:bundle": "pnpm --filter @aicaa/contracts bundle",
+    "contracts:generate": "pnpm --filter @aicaa/contracts generate",
+    "contracts:check-drift": "pnpm --filter @aicaa/contracts check-drift",
     "android:ktlint": "cd apps/android && ./gradlew ktlintCheck",
     "android:test": "cd apps/android && ./gradlew testDebugUnitTest",
     "android:assemble": "cd apps/android && ./gradlew assembleDebug",
-    "verify": "pnpm format:check && pnpm lint && pnpm test:web && pnpm build:web && pnpm android:ktlint && pnpm android:test && pnpm android:assemble"
+    "android:api-contract": "cd apps/android && ./gradlew :api-contract:compileDebugKotlin",
+    "verify": "pnpm format:check && pnpm lint && pnpm contracts:validate && pnpm contracts:generate && pnpm contracts:check-drift && pnpm test && pnpm build:web && pnpm build:domain && pnpm android:ktlint && pnpm android:test && pnpm android:api-contract && pnpm android:assemble"
   },
   "devDependencies": {
     "prettier": "^3.5.3"

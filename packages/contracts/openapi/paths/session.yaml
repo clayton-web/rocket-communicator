@@ -1,0 +1,15 @@
+paths:
+  /api/v1/session:
+    get:
+      operationId: getSession
+      tags: [Session]
+      summary: Get current authenticated session
+      responses:
+        '200':
+          description: Current session
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/Session'
+        '401':
+          $ref: '../components/responses.yaml#/components/responses/Unauthorized'

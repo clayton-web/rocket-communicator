@@ -17,3 +17,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "aicaa-android"
 include(":app")
+include(":api-contract")

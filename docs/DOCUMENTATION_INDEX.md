@@ -94,6 +94,26 @@ Root: [../README.md](../README.md) — entry point and status.
 | **Dependencies** | DECISIONS, PRODUCT_SCOPE, AI_CONSTITUTION               |
 | **Update when**  | Stack, boundaries, or component responsibilities change |
 
+### [API_CONTRACT.md](API_CONTRACT.md)
+
+|                  |                                                                   |
+| ---------------- | ----------------------------------------------------------------- |
+| **Purpose**      | OpenAPI ownership, endpoints, errors, concurrency, codegen policy |
+| **Audience**     | Engineers implementing clients and future API handlers            |
+| **Maintainer**   | Lead engineer                                                     |
+| **Dependencies** | ARCHITECTURE, DECISIONS, STATE_MACHINE                            |
+| **Update when**  | Contract paths, schemas, or generation policy change              |
+
+### [STATE_MACHINE.md](STATE_MACHINE.md)
+
+|                  |                                                                |
+| ---------------- | -------------------------------------------------------------- |
+| **Purpose**      | Persisted suggestion/task states, transitions, derived urgency |
+| **Audience**     | Engineers and QA                                               |
+| **Maintainer**   | Lead engineer                                                  |
+| **Dependencies** | WORKFLOWS, SECURITY_AND_PRIVACY, packages/domain               |
+| **Update when**  | State transitions or capability rules change                   |
+
 ### [WORKFLOWS.md](WORKFLOWS.md)
 
 |                  |                                                                                    |
