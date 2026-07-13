@@ -20,14 +20,14 @@ The product is **not** a permanent communication archive.
 
 ## Current status
 
-**Architecture alignment and Milestone A3 (Owner authentication) are complete and verified. A4 Phase 0 (decisions D055–D064 and contract alignment) is recorded; A4 runtime is not started.**
+**Architecture alignment, Milestone A3 (Owner authentication), A4 Phase 0 (contracts), and A4 Phase 1 (domain) are complete. A4 Phase 2 introduces `packages/db` (Prisma persistence foundation); API/capability runtime is not started.**
 
 - Documentation source of truth is in place under `docs/`.
 - pnpm monorepo with Next.js web shell and Android Compose shell builds and tests.
-- `packages/contracts` (OpenAPI 3.1) and `packages/domain` (pure TypeScript rules) are implemented.
+- `packages/contracts` (OpenAPI 3.1), `packages/domain` (pure TypeScript rules), and `packages/db` (Prisma schema/migrations/repositories) are implemented.
 - **Owner Google Workspace sign-in (A3):** Supabase Auth via `apps/web` (`/login`, `/auth/callback`, `GET /api/v1/session`). Web-only; no Android auth yet.
-- **Not implemented:** Gmail, OpenAI, task API handlers, capability token storage/pages, database, notifications, voice, workers.
-- Environment template: `apps/web/.env.example` (placeholders only; no secrets committed).
+- **Not implemented:** Gmail, OpenAI, task API handlers, capability token issuance/validation/pages, notifications, voice, workers.
+- Environment template: `apps/web/.env.example` and `packages/db/.env.example` (placeholders only; no secrets committed).
 - No GitHub remote is configured in this workspace pass.
 - Distribution remains private sideload / internal testing (not Play Store).
 
@@ -64,14 +64,15 @@ Recipients are delegated people identified by email; they have **no** applicatio
 apps/android/     Kotlin + Jetpack Compose shell (minSdk 31)
 apps/web/         Next.js App Router shell
 packages/contracts/   OpenAPI 3.1 source, bundled artifact, generated TS/Kotlin DTOs
-packages/domain/    Pure TypeScript state machines, policies, retention rules
+packages/domain/      Pure TypeScript state machines, policies, retention rules
+packages/db/          Prisma schema, migrations, repositories (server-side only)
 packages/eslint-config/
 packages/typescript-config/
 docs/             Product and engineering source of truth
 .github/workflows/ci.yml
 ```
 
-Future packages (`db`, `ai`, `ui`) are intentionally **not** created until later milestones.
+Future packages (`ai`, `ui`) are intentionally deferred.
 
 ## Local verification
 

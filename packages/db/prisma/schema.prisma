@@ -1,0 +1,237 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Recipient contact record for an Owner organization. Not an application account (D049).
+model Recipient {
+  id                 String   @id @db.VarChar(64)
+  organizationId     String   @map("organization_id") @db.VarChar(64)
+  displayName        String   @map("display_name") @db.VarChar(256)
+  email              String   @db.VarChar(320)
+  relationshipLabel  String?  @map("relationship_label") @db.VarChar(64)
+  active             Boolean  @default(true)
+  reminderPreferences Json?   @map("reminder_preferences")
+  assignmentCategories Json?  @map("assignment_categories")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  assignments TaskAssignment[]
+  capabilities TaskCapability[]
+
+  @@unique([organizationId, email])
+  @@index([organizationId])
+  @@map("recipients")
+}
+
+model Task {
+  id                    String    @id @db.VarChar(64)
+  organizationId        String    @map("organization_id") @db.VarChar(64)
+  status                TaskStatus
+  priorActionableStatus TaskStatus? @map("prior_actionable_status")
+  summaryPoints         Json      @map("summary_points")
+  sourceReference       Json?     @map("source_reference")
+  dueAt                 DateTime? @map("due_at") @db.Timestamptz(3)
+  waitingUntil          DateTime? @map("waiting_until") @db.Timestamptz(3)
+  priority              TaskPriority?
+  outcome               Json?
+  reminder              Json
+  retention             Json
+  version               Int       @default(1)
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  assignments  TaskAssignment[]
+  notes        TaskNote[]
+  capabilities TaskCapability[]
+  suggestionsMerged TaskSuggestion[] @relation("MergedIntoTask")
+
+  @@index([organizationId, status])
+  @@index([organizationId, updatedAt])
+  @@map("tasks")
+}
+
+/// Assignment history for a task. Multiple rows per task over time are allowed.
+/// At most one active assignment (`clearedAt` IS NULL) is enforced by a partial unique
+/// index in migration SQL (not expressible accurately in Prisma schema metadata).
+model TaskAssignment {
+  id                      String    @id @db.VarChar(64)
+  organizationId          String    @map("organization_id") @db.VarChar(64)
+  taskId                  String    @map("task_id") @db.VarChar(64)
+  recipientId             String    @map("recipient_id") @db.VarChar(64)
+  intendedRecipientEmail  String    @map("intended_recipient_email") @db.VarChar(320)
+  assignedAt              DateTime  @map("assigned_at") @db.Timestamptz(3)
+  assignedByOwnerId       String    @map("assigned_by_owner_id") @db.VarChar(64)
+  assignmentApprovedAt    DateTime? @map("assignment_approved_at") @db.Timestamptz(3)
+  allowedCapabilityActions Json     @map("allowed_capability_actions")
+  capabilityStatus        CapabilityStatus? @map("capability_status")
+  deliveryStatus          AssignmentDeliveryStatus? @map("delivery_status")
+  activeCapabilityId      String?   @map("active_capability_id") @db.VarChar(64)
+  /// Null while assignment is current; set when returned/cleared. Cleared rows are immutable history.
+  clearedAt               DateTime? @map("cleared_at") @db.Timestamptz(3)
+  createdAt               DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt               DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  task         Task      @relation(fields: [taskId], references: [id], onDelete: Restrict)
+  recipient    Recipient @relation(fields: [recipientId], references: [id], onDelete: Restrict)
+  capabilities TaskCapability[]
+
+  @@index([taskId])
+  @@index([organizationId])
+  @@index([recipientId])
+  @@map("task_assignments")
+}
+
+model TaskNote {
+  id             String   @id @db.VarChar(64)
+  organizationId String   @map("organization_id") @db.VarChar(64)
+  taskId         String   @map("task_id") @db.VarChar(64)
+  body           String   @db.VarChar(2000)
+  /// ActionAttribution JSON (owner | capability). Must not claim verified Recipient identity.
+  attribution    Json
+  createdAt      DateTime @map("created_at") @db.Timestamptz(3)
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, taskId])
+  @@index([taskId, createdAt])
+  @@map("task_notes")
+}
+
+model TaskSuggestion {
+  id                  String               @id @db.VarChar(64)
+  organizationId      String               @map("organization_id") @db.VarChar(64)
+  status              TaskSuggestionStatus
+  summaryPoints       Json                 @map("summary_points")
+  sourceReference     Json?                @map("source_reference")
+  proposedRecipientId String?              @map("proposed_recipient_id") @db.VarChar(64)
+  proposedDueAt       DateTime?            @map("proposed_due_at") @db.Timestamptz(3)
+  proposedPriority    TaskPriority?        @map("proposed_priority")
+  voiceOriginated     Boolean              @default(false) @map("voice_originated")
+  /// Optional originating task for Recipient work requests (D061).
+  originTaskId        String?              @map("origin_task_id") @db.VarChar(64)
+  mergedIntoTaskId    String?              @map("merged_into_task_id") @db.VarChar(64)
+  retention           Json
+  version             Int                  @default(1)
+  createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  mergedIntoTask Task? @relation("MergedIntoTask", fields: [mergedIntoTaskId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status])
+  @@index([organizationId, originTaskId])
+  @@map("task_suggestions")
+}
+
+/// Capability authorization record. Stores token HASH only — never raw secrets (D063).
+model TaskCapability {
+  id                     String           @id @db.VarChar(64)
+  organizationId         String           @map("organization_id") @db.VarChar(64)
+  taskId                 String           @map("task_id") @db.VarChar(64)
+  assignmentId           String           @map("assignment_id") @db.VarChar(64)
+  recipientId            String?          @map("recipient_id") @db.VarChar(64)
+  intendedRecipientEmail String           @map("intended_recipient_email") @db.VarChar(320)
+  scope                  Json
+  status                 CapabilityStatus
+  /// SHA-256 (or stronger) hex/base64url fingerprint of the raw secret. Unique.
+  tokenHash              String           @unique @map("token_hash") @db.VarChar(128)
+  issuedAt               DateTime         @map("issued_at") @db.Timestamptz(3)
+  /// Explicit persisted expiry (D055).
+  expiresAt              DateTime         @map("expires_at") @db.Timestamptz(3)
+  revokedAt              DateTime?        @map("revoked_at") @db.Timestamptz(3)
+  revocationReason       String?          @map("revocation_reason") @db.VarChar(256)
+  /// Optional activity stamp; does not imply CapabilityStatus.used (D056).
+  lastUsedAt             DateTime?        @map("last_used_at") @db.Timestamptz(3)
+  createdAt              DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt              DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  task       Task           @relation(fields: [taskId], references: [id], onDelete: Restrict)
+  assignment TaskAssignment @relation(fields: [assignmentId], references: [id], onDelete: Restrict)
+  recipient  Recipient?     @relation(fields: [recipientId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, taskId])
+  @@index([organizationId, status, expiresAt])
+  @@index([assignmentId])
+  @@map("task_capabilities")
+}
+
+/// A4 audit events (D057). No raw IP / full user-agent columns.
+model AuditEvent {
+  id                     String            @id @db.VarChar(64)
+  organizationId         String            @map("organization_id") @db.VarChar(64)
+  actorKind              AuditActorKind    @map("actor_kind")
+  ownerId                String?           @map("owner_id") @db.VarChar(64)
+  capabilityId           String?           @map("capability_id") @db.VarChar(64)
+  assignmentId           String?           @map("assignment_id") @db.VarChar(64)
+  taskId                 String?           @map("task_id") @db.VarChar(64)
+  suggestionId           String?           @map("suggestion_id") @db.VarChar(64)
+  intendedRecipientEmail String?           @map("intended_recipient_email") @db.VarChar(320)
+  action                 String            @db.VarChar(64)
+  outcome                AuditOutcome
+  resourceVersion        Int?              @map("resource_version")
+  taskStatus             String?           @map("task_status") @db.VarChar(32)
+  note                   String?           @db.VarChar(2000)
+  requestId              String?           @map("request_id") @db.VarChar(64)
+  correlationId          String?           @map("correlation_id") @db.VarChar(64)
+  /// Human-readable label; must not claim verified Recipient identity (D051/D052).
+  attributionLabel       String?           @map("attribution_label") @db.VarChar(256)
+  recordedAt             DateTime          @map("recorded_at") @db.Timestamptz(3)
+
+  @@index([organizationId, recordedAt])
+  @@index([organizationId, taskId])
+  @@index([organizationId, capabilityId])
+  @@index([requestId])
+  @@map("audit_events")
+}
+
+enum TaskStatus {
+  open
+  in_progress
+  waiting
+  completed
+  dismissed
+}
+
+enum TaskSuggestionStatus {
+  pending
+  approved
+  dismissed
+  merged
+}
+
+enum TaskPriority {
+  low
+  normal
+  high
+  urgent
+}
+
+/// A4 must not invent transitions into `used` (D056). Enum value reserved for future Decision only.
+enum CapabilityStatus {
+  active
+  revoked
+  expired
+  used
+}
+
+enum AssignmentDeliveryStatus {
+  pending
+  sent
+  failed
+}
+
+enum AuditActorKind {
+  owner
+  capability
+}
+
+enum AuditOutcome {
+  succeeded
+  denied
+  failed
+}

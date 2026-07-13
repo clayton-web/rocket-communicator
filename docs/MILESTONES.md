@@ -2,7 +2,7 @@
 
 Planning milestones only. No application scaffolding occurs in A0.
 
-**Current milestone: A4 Phase 0 complete (decisions and contract alignment).** Next: **A4 domain alignment**, then `packages/db` / Prisma, then Owner and Recipient runtime (not started).
+**Current milestone: A4 Phase 2 (persistence foundation) in progress on top of Phase 0–1.** Next after Phase 2 approval: capability token runtime / Owner-Recipient APIs (Phase 3+), not started.
 
 Process for all later milestones: [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW.md) · [REVIEW_CHECKLIST.md](REVIEW_CHECKLIST.md) · [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md)
 
@@ -56,7 +56,7 @@ Process for all later milestones: [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW
 - **Major risks:** Building a full dashboard by accident; capability link security gaps.
 - **Out of scope:** AI, Gmail forward, Android; raw IP / full user-agent retention; Recipient voice notes.
 - **Recommended Git checkpoint:** `feat: task core and recipient capability view`
-- **Status:** Phase 0 complete — D055–D064 recorded; OpenAPI/docs aligned for separate Owner vs capability surfaces, snooze, and work-request→suggestion. Runtime, domain machine completion for snooze/work-request persistence, and `packages/db` are **not** started.
+- **Status:** Phase 0 (D055–D064 + OpenAPI) and Phase 1 (domain machines) complete. Phase 2 introduces `packages/db` / Prisma persistence foundation (schema, migrations, repositories, transactions). Token issuance/validation, Owner/Recipient API routes, and `/c/[token]` UI are **not** started.
 - **Binding A4 decisions:** D055 (7-day expiry + persisted `expiresAt`), D056 (multi-use until invalidation; no A4 `used` semantics), D057 (A4 audit fields; IP/UA deferred), D058 (typed Recipient notes), D059 (separate auth surfaces; `GET /c/[token]` non-mutating), D060 (Owner snooze contracted before runtime), D061 (work-request→suggestion contracted before runtime), D062 (Prisma after Phase 0 + domain alignment), D063 (one-time raw link to Owner; hash stored), D064 (dismiss, not delete). OPEN #21 remains deferred to A7.
 
 ## A5: Gmail connection and polling

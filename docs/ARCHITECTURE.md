@@ -8,7 +8,7 @@ Version one is a private, Android-first system with a thin Next.js backend on Ve
 
 **Design posture:** AI recommends; the Owner approves; Recipients act via capability links (GET non-mutating, POST after explicit confirmation); reminders and retention are deterministic and auditable. Temporary communication content is minimized and deleted on schedule. Durable learning belongs to the Owner only. Android notification and call capture are best-effort with mandatory manual/voice fallbacks.
 
-**Not in this repository yet:** live task/capability API handlers, database schemas applied to a live database (`packages/db` pending A4 after Phase 0). A3 provides Owner authentication. A2 provides OpenAPI contracts and pure domain rules under `packages/contracts` and `packages/domain`. A4 Phase 0 recorded D055–D064 and aligned OpenAPI for separate Owner vs capability surfaces.
+**A3 provides Owner authentication. A2 provides OpenAPI contracts and pure domain rules. A4 Phase 0–1 recorded decisions/contracts and completed domain behaviour. A4 Phase 2 introduces `packages/db` (Prisma). Live task/capability API handlers are not started.**
 
 ## Component responsibilities
 

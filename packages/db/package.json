@@ -1,0 +1,37 @@
+{
+  "name": "@aicaa/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "pnpm generate && tsc -p tsconfig.build.json",
+    "generate": "prisma generate",
+    "lint": "eslint .",
+    "test": "pnpm --filter @aicaa/domain build && pnpm generate && vitest run",
+    "validate": "DATABASE_URL=\"postgresql://prisma:prisma@127.0.0.1:5432/prisma?schema=public\" prisma validate",
+    "migrate:dev": "prisma migrate dev",
+    "migrate:deploy": "prisma migrate deploy",
+    "migrate:status": "prisma migrate status"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@aicaa/domain": "workspace:*",
+    "@prisma/client": "6.19.3"
+  },
+  "devDependencies": {
+    "@aicaa/eslint-config": "workspace:*",
+    "@aicaa/typescript-config": "workspace:*",
+    "@electric-sql/pglite": "^0.3.4",
+    "@types/node": "^22.13.10",
+    "eslint": "^9.22.0",
+    "pglite-prisma-adapter": "^0.6.1",
+    "prisma": "6.19.3",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.9"
+  }
+}
