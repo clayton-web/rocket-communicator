@@ -5,13 +5,8 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: |
-        Authenticated Owner session (implementation deferred to A3).
-        Recipients do not use bearer authentication in version one.
-    capabilityAuth:
-      type: apiKey
-      in: header
-      name: X-Capability-Token
-      description: |
-        Task-specific capability token presented on POST mutations after explicit confirmation.
-        The eventual web route may derive the token from the capability URL instead of a JSON body.
-        GET requests that open a capability link must not mutate task state (D050).
+        Authenticated Owner session (Supabase JWT / SSR cookies in A3+).
+        Recipients do not use bearer authentication (D048, D049, D059).
+        Recipient capability routes use the `{token}` path parameter instead;
+        OpenAPI cannot express path-based apiKey schemes, so those routes set
+        `security: []` and document authorization on the CapabilityToken parameter.

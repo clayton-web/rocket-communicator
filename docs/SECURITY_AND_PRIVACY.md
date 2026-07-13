@@ -68,12 +68,16 @@ Recipient-generated work requests become Task Suggestions for Owner approval.
 
 ## Capability links
 
-- Task-specific URLs embed secret capability tokens.
-- **GET** is non-mutating (view only)—safe for email prefetchers (D050).
-- **POST** mutations require explicit confirmation in the Recipient web UI.
-- Tokens are expiring and auditable; store hashes, not raw tokens.
+- Task-specific URLs embed secret capability tokens (`/c/[token]` browser view).
+- **GET** is non-mutating (view only)—safe for email prefetchers (D050, D059).
+- **POST** mutations require explicit confirmation in the Recipient web UI and use **separate** capability API routes (D059).
+- Tokens are expiring (default **seven days** after issuance; required TTL config; persisted `expiresAt`) and auditable (D055).
+- Multi-use for permitted actions until expiry, revocation, assignment replacement/removal, or other terminal invalidation (D056). Do not invent A4 `used` transitions.
+- Store hashes, not raw tokens; raw secret may be returned once to the Owner for manual A4 verification and must never be logged (D063).
 - Capability possession authorizes actions; audit must not overstate identity (D051, D052).
-- Rotate or invalidate tokens when assignment is re-forwarded or misuse is suspected (policy TBD—see open questions).
+- A4 audit fields: capability ID, bound resource IDs, action, timestamp, request ID, outcome, state/version context, truthful attribution; raw IP and full user-agent deferred (D057).
+- Recipient notes and clarification are typed-only in A4 (D058).
+- Rotate or invalidate tokens when assignment is re-forwarded or misuse is suspected (OPEN #21 deferred to A7).
 
 ## Why unauthenticated one-click completion is excluded
 
@@ -119,6 +123,7 @@ Log at least:
 - authz failures and capability-link use (with D052-compliant wording)
 - Gmail reauth events
 - Recipient return-to-Owner and clarification requests (capability id / technical metadata—not overstated identity)
+- A4 minimum capability audit fields per D057 (no raw IP / full user-agent until decided)
 - Recipient work requests that create Task Suggestions
 
 ## Secret management

@@ -8,8 +8,10 @@ export type CapabilityAction =
   | 'add_task_note'
   | 'record_completion_outcome'
   | 'return_task_to_owner'
-  | 'request_clarification';
+  | 'request_clarification'
+  | 'submit_work_request';
 
+/** Lifecycle status. A4 must not invent transitions into `used` (D056). */
 export type CapabilityStatus = 'active' | 'revoked' | 'expired' | 'used';
 
 export type CapabilityScope = CapabilityAction[];
@@ -37,6 +39,9 @@ export interface CapabilityAuditContext {
   intendedRecipientEmail: string;
   action: CapabilityAction;
   recordedAt: UtcInstant;
+  outcome: 'succeeded' | 'denied' | 'failed';
+  resourceVersion?: number;
+  taskStatus?: string;
   note?: string;
   requestId?: string;
   correlationId?: string | null;
@@ -62,6 +67,7 @@ export function formatCapabilityAuditContext(
   actor: CapabilityActorContext,
   action: CapabilityAction,
   recordedAt: UtcInstant,
+  outcome: CapabilityAuditContext['outcome'] = 'succeeded',
 ): CapabilityAuditContext {
   return {
     capabilityId: actor.capabilityId,
@@ -70,6 +76,7 @@ export function formatCapabilityAuditContext(
     intendedRecipientEmail: actor.intendedRecipientEmail,
     action,
     recordedAt,
+    outcome,
     attributionLabel: capabilityAttributionLabel(actor.intendedRecipientEmail, action),
   };
 }

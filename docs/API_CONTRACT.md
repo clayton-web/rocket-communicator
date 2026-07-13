@@ -4,7 +4,7 @@ Canonical HTTP contract for the AI Communication Action Assistant (Milestone A2)
 
 **Source of truth:** `packages/contracts/openapi/` (multi-file OpenAPI 3.1) bundled to `packages/contracts/dist/openapi.bundled.yaml`.
 
-Related: [STATE_MACHINE.md](STATE_MACHINE.md) · [DECISIONS.md](DECISIONS.md) (D007, D044–D054) · [ARCHITECTURE.md](ARCHITECTURE.md)
+Related: [STATE_MACHINE.md](STATE_MACHINE.md) · [DECISIONS.md](DECISIONS.md) (D007, D044–D064) · [ARCHITECTURE.md](ARCHITECTURE.md)
 
 ---
 
@@ -61,60 +61,69 @@ No health endpoint in A2.
 
 ### Owner session (`bearerAuth` / Supabase SSR cookies)
 
-- **Owner-only** authenticated routes (D048).
+- **Owner-only** authenticated routes (D048, D059).
 - `GET /api/v1/session` returns the current Owner session shape when a valid Owner session exists (implemented in A3).
 - `organizationId` comes from configured `OWNER_ORGANIZATION_ID`, not from the Google Workspace domain.
 - `OWNER_WORKSPACE_DOMAIN` is used only to reject sign-in for non-permitted Google accounts.
-- All Owner task and suggestion mutations require a valid Owner session (handlers deferred past A3).
+- Owner task and suggestion mutations require a valid Owner session (handlers deferred to A4 runtime).
+- Owner task routes **do not** accept capability tokens (separate surfaces — D059).
 - No second application user role exists.
 
-### Recipient capability (`capabilityAuth`)
+### Recipient capability (path `{token}` / `CapabilityToken`)
 
 - Recipients have **no** application accounts (D049).
 - Task-specific capability tokens authorize scoped Recipient actions (D050, D051).
-- Capability routes are separate from Owner session routes.
-- **GET** on capability task views is **non-mutating** (safe for email prefetch).
-- **POST** mutations require explicit confirmation payload acknowledging the action.
-- Audit responses must not imply verified Recipient identity (D052).
-
-Future milestones will add capability endpoints (for example `/api/v1/capabilities/{token}/tasks/{taskId}`) aligned with this model; A2 documents the contract direction only.
+- Capability routes are **separate** from Owner session routes (D059). Authorization is the capability path `{token}` (OpenAPI `CapabilityToken` parameter; routes set `security: []` because OpenAPI cannot model path-based apiKey schemes).
+- Browser surface: `GET /c/[token]` is **strictly non-mutating** (safe for email prefetch) (D050, D059).
+- **POST** mutations require explicit confirmation acknowledging the action (D050).
+- Default expiry is seven days after issuance with required server TTL config and persisted `expiresAt` (D055).
+- Tokens remain **multi-use** for permitted actions until expiry, revocation, assignment replacement/removal, or other terminal invalidation (D056). `CapabilityStatus.used` has **no A4 transition semantics**.
+- Raw capability secret may be returned **once** to the authenticated Owner for manual verification; store only a hash; never log the raw secret (D063).
+- Audit responses and records must not imply verified Recipient identity (D051, D052, D057).
 
 ## Endpoints
 
 ### Owner session routes
 
-| Method | Path                                              | Purpose                                                  |
-| ------ | ------------------------------------------------- | -------------------------------------------------------- |
-| GET    | `/api/v1/session`                                 | Current Owner session shape (A3: Supabase Owner session) |
-| GET    | `/api/v1/task-suggestions`                        | List suggestions (cursor pagination)                     |
-| GET    | `/api/v1/task-suggestions/{suggestionId}`         | Get suggestion                                           |
-| POST   | `/api/v1/task-suggestions/{suggestionId}/approve` | Approve suggestion and assignment intent                 |
-| POST   | `/api/v1/task-suggestions/{suggestionId}/edit`    | Edit pending suggestion                                  |
-| POST   | `/api/v1/task-suggestions/{suggestionId}/dismiss` | Dismiss suggestion                                       |
-| POST   | `/api/v1/task-suggestions/{suggestionId}/merge`   | Merge into existing task                                 |
-| GET    | `/api/v1/tasks`                                   | List tasks                                               |
-| POST   | `/api/v1/tasks`                                   | Owner typed task creation                                |
-| GET    | `/api/v1/tasks/{taskId}`                          | Get task                                                 |
-| POST   | `/api/v1/tasks/{taskId}/start`                    | Start task                                               |
-| POST   | `/api/v1/tasks/{taskId}/waiting`                  | Mark waiting                                             |
-| POST   | `/api/v1/tasks/{taskId}/resume`                   | Resume from waiting                                      |
-| POST   | `/api/v1/tasks/{taskId}/complete`                 | Complete task (one-tap supported)                        |
-| POST   | `/api/v1/tasks/{taskId}/notes`                    | Add note                                                 |
-| POST   | `/api/v1/tasks/{taskId}/return-to-owner`          | Return assignment to Owner                               |
-| POST   | `/api/v1/tasks/{taskId}/clarification-requests`   | Request clarification                                    |
+| Method | Path                                              | Purpose                                                   |
+| ------ | ------------------------------------------------- | --------------------------------------------------------- |
+| GET    | `/api/v1/session`                                 | Current Owner session shape (A3: Supabase Owner session)  |
+| GET    | `/api/v1/task-suggestions`                        | List suggestions (cursor pagination)                      |
+| GET    | `/api/v1/task-suggestions/{suggestionId}`         | Get suggestion                                            |
+| POST   | `/api/v1/task-suggestions/{suggestionId}/approve` | Approve suggestion and assignment intent                  |
+| POST   | `/api/v1/task-suggestions/{suggestionId}/edit`    | Edit pending suggestion                                   |
+| POST   | `/api/v1/task-suggestions/{suggestionId}/dismiss` | Dismiss suggestion                                        |
+| POST   | `/api/v1/task-suggestions/{suggestionId}/merge`   | Merge into existing task                                  |
+| GET    | `/api/v1/tasks`                                   | List tasks                                                |
+| POST   | `/api/v1/tasks`                                   | Owner typed task creation                                 |
+| GET    | `/api/v1/tasks/{taskId}`                          | Get task                                                  |
+| POST   | `/api/v1/tasks/{taskId}/start`                    | Start task                                                |
+| POST   | `/api/v1/tasks/{taskId}/waiting`                  | Mark waiting (Owner session only)                         |
+| POST   | `/api/v1/tasks/{taskId}/resume`                   | Resume from waiting (Owner session only)                  |
+| POST   | `/api/v1/tasks/{taskId}/complete`                 | Complete task (Owner session only)                        |
+| POST   | `/api/v1/tasks/{taskId}/notes`                    | Add note (Owner session only; typed)                      |
+| POST   | `/api/v1/tasks/{taskId}/snooze`                   | Snooze reminders (Owner only — D060)                      |
+| POST   | `/api/v1/tasks/{taskId}/dismiss`                  | Dismiss task (Owner only — D064; no physical delete)      |
+| POST   | `/api/v1/tasks/{taskId}/return-to-owner`          | Return assignment to Owner (Owner session)                |
+| POST   | `/api/v1/tasks/{taskId}/clarification-requests`   | Request clarification (Owner session; typed)              |
+| POST   | `/api/v1/tasks/{taskId}/capabilities`             | Issue capability for current assignment (raw secret once) |
 
-### Recipient capability routes (planned; not in A2 OpenAPI yet)
+### Recipient capability routes (OpenAPI; A4 contracted)
 
-| Method | Path (illustrative)                                                  | Purpose                                  |
-| ------ | -------------------------------------------------------------------- | ---------------------------------------- |
-| GET    | `/api/v1/capabilities/{token}/tasks/{taskId}`                        | Non-mutating task view for Recipient     |
-| POST   | `/api/v1/capabilities/{token}/tasks/{taskId}/complete`               | Complete after explicit confirmation     |
-| POST   | `/api/v1/capabilities/{token}/tasks/{taskId}/waiting`                | Mark waiting after explicit confirmation |
-| POST   | `/api/v1/capabilities/{token}/tasks/{taskId}/notes`                  | Add note after explicit confirmation     |
-| POST   | `/api/v1/capabilities/{token}/tasks/{taskId}/return-to-owner`        | Return to Owner after confirm            |
-| POST   | `/api/v1/capabilities/{token}/tasks/{taskId}/clarification-requests` | Request clarification after confirm      |
+| Method | Path                                                                 | Purpose                                              |
+| ------ | -------------------------------------------------------------------- | ---------------------------------------------------- |
+| GET    | `/api/v1/capabilities/{token}/tasks/{taskId}`                        | Non-mutating task view for Recipient                 |
+| POST   | `/api/v1/capabilities/{token}/tasks/{taskId}/waiting`                | Mark waiting after explicit confirmation             |
+| POST   | `/api/v1/capabilities/{token}/tasks/{taskId}/resume`                 | Resume waiting after explicit confirmation           |
+| POST   | `/api/v1/capabilities/{token}/tasks/{taskId}/complete`               | Complete after explicit confirmation                 |
+| POST   | `/api/v1/capabilities/{token}/tasks/{taskId}/notes`                  | Add typed note after explicit confirmation           |
+| POST   | `/api/v1/capabilities/{token}/tasks/{taskId}/return-to-owner`        | Return to Owner after confirm                        |
+| POST   | `/api/v1/capabilities/{token}/tasks/{taskId}/clarification-requests` | Request typed clarification after confirm            |
+| POST   | `/api/v1/capabilities/{token}/tasks/{taskId}/work-requests`          | Submit work request → pending Task Suggestion (D061) |
 
-Excluded from A2: Gmail, forwarding, voice upload, ingestion, workers, learning rules, health, capability route implementation.
+Browser page `GET /c/[token]` is the human-facing non-mutating view; it must not change task, assignment, or capability state. Mutations are explicit POSTs under `/api/v1/capabilities/{token}/…` (or form posts targeting those APIs) after confirmation (D059).
+
+Excluded from A4 runtime so far: Gmail, forwarding, voice upload, ingestion, workers, learning rules, health. Physical task deletion is forbidden (D064).
 
 ## Return-to-Owner path
 

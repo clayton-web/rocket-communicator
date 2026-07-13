@@ -7,17 +7,20 @@ info:
     identifier: UNLICENSED
   description: |
     Canonical HTTP contract for the AI Communication Action Assistant.
-    OpenAPI is the source of truth (D007). No runtime server is implemented in A2.
+    OpenAPI is the source of truth (D007). A3 Owner authentication is implemented.
+    A4 Phase 0 contracts separate Owner and capability authorization surfaces (D059).
 servers:
   - url: https://api.example.invalid
     description: Placeholder server URL for contract generation only
 tags:
   - name: Session
-    description: Authenticated session shape (implementation deferred to A3).
+    description: Authenticated Owner session shape (A3).
   - name: TaskSuggestions
     description: Pre-task AI and user proposals requiring Owner approval.
   - name: Tasks
-    description: Approved actionable work items.
+    description: Owner-authorized actionable work items.
+  - name: Capabilities
+    description: Recipient capability-token routes (separate from Owner session APIs).
 security:
   - bearerAuth: []
 paths:
@@ -49,10 +52,32 @@ paths:
     $ref: './paths/tasks.yaml#/paths/~1api~1v1~1tasks~1{taskId}~1complete'
   /api/v1/tasks/{taskId}/notes:
     $ref: './paths/tasks.yaml#/paths/~1api~1v1~1tasks~1{taskId}~1notes'
+  /api/v1/tasks/{taskId}/snooze:
+    $ref: './paths/tasks.yaml#/paths/~1api~1v1~1tasks~1{taskId}~1snooze'
+  /api/v1/tasks/{taskId}/dismiss:
+    $ref: './paths/tasks.yaml#/paths/~1api~1v1~1tasks~1{taskId}~1dismiss'
   /api/v1/tasks/{taskId}/return-to-owner:
     $ref: './paths/tasks.yaml#/paths/~1api~1v1~1tasks~1{taskId}~1return-to-owner'
   /api/v1/tasks/{taskId}/clarification-requests:
     $ref: './paths/tasks.yaml#/paths/~1api~1v1~1tasks~1{taskId}~1clarification-requests'
+  /api/v1/tasks/{taskId}/capabilities:
+    $ref: './paths/tasks.yaml#/paths/~1api~1v1~1tasks~1{taskId}~1capabilities'
+  /api/v1/capabilities/{token}/tasks/{taskId}:
+    $ref: './paths/capabilities.yaml#/paths/~1api~1v1~1capabilities~1{token}~1tasks~1{taskId}'
+  /api/v1/capabilities/{token}/tasks/{taskId}/waiting:
+    $ref: './paths/capabilities.yaml#/paths/~1api~1v1~1capabilities~1{token}~1tasks~1{taskId}~1waiting'
+  /api/v1/capabilities/{token}/tasks/{taskId}/resume:
+    $ref: './paths/capabilities.yaml#/paths/~1api~1v1~1capabilities~1{token}~1tasks~1{taskId}~1resume'
+  /api/v1/capabilities/{token}/tasks/{taskId}/complete:
+    $ref: './paths/capabilities.yaml#/paths/~1api~1v1~1capabilities~1{token}~1tasks~1{taskId}~1complete'
+  /api/v1/capabilities/{token}/tasks/{taskId}/notes:
+    $ref: './paths/capabilities.yaml#/paths/~1api~1v1~1capabilities~1{token}~1tasks~1{taskId}~1notes'
+  /api/v1/capabilities/{token}/tasks/{taskId}/return-to-owner:
+    $ref: './paths/capabilities.yaml#/paths/~1api~1v1~1capabilities~1{token}~1tasks~1{taskId}~1return-to-owner'
+  /api/v1/capabilities/{token}/tasks/{taskId}/clarification-requests:
+    $ref: './paths/capabilities.yaml#/paths/~1api~1v1~1capabilities~1{token}~1tasks~1{taskId}~1clarification-requests'
+  /api/v1/capabilities/{token}/tasks/{taskId}/work-requests:
+    $ref: './paths/capabilities.yaml#/paths/~1api~1v1~1capabilities~1{token}~1tasks~1{taskId}~1work-requests'
 components:
   schemas:
     ErrorResponse:
@@ -121,6 +146,20 @@ components:
       $ref: './components/schemas/task.yaml#/components/schemas/ReturnTaskToOwnerRequest'
     RequestClarificationRequest:
       $ref: './components/schemas/task.yaml#/components/schemas/RequestClarificationRequest'
+    SnoozeTaskRequest:
+      $ref: './components/schemas/task.yaml#/components/schemas/SnoozeTaskRequest'
+    DismissTaskRequest:
+      $ref: './components/schemas/task.yaml#/components/schemas/DismissTaskRequest'
+    IssueTaskCapabilityRequest:
+      $ref: './components/schemas/task.yaml#/components/schemas/IssueTaskCapabilityRequest'
+    IssuedCapabilityLink:
+      $ref: './components/schemas/capability.yaml#/components/schemas/IssuedCapabilityLink'
+    SubmitWorkRequestRequest:
+      $ref: './components/schemas/capability.yaml#/components/schemas/SubmitWorkRequestRequest'
+    SubmitWorkRequestResponse:
+      $ref: './components/schemas/capability.yaml#/components/schemas/SubmitWorkRequestResponse'
+    CapabilityConfirmation:
+      $ref: './components/schemas/capability.yaml#/components/schemas/CapabilityConfirmation'
     TaskAssignment:
       $ref: './components/schemas/assignment.yaml#/components/schemas/TaskAssignment'
     TaskSummaryPoint:
@@ -142,9 +181,9 @@ components:
   securitySchemes:
     bearerAuth:
       $ref: './components/security.yaml#/components/securitySchemes/bearerAuth'
-    capabilityAuth:
-      $ref: './components/security.yaml#/components/securitySchemes/capabilityAuth'
   parameters:
+    CapabilityToken:
+      $ref: './components/parameters.yaml#/components/parameters/CapabilityToken'
     IfMatch:
       $ref: './components/parameters.yaml#/components/parameters/IfMatch'
     SuggestionId:

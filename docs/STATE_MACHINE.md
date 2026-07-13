@@ -59,13 +59,21 @@ Entering `waiting` stores `priorActionableStatus` (`open` or `in_progress`). `re
 | open / in_progress / waiting | dismissed          | yes             | no                                         |
 | completed / dismissed        | —                  | terminal        | terminal                                   |
 
-### Recipient capability constraints (D050, D051)
+### Owner snooze (D060)
 
-May on assigned tasks (valid capability token): complete, waiting, notes, return to Owner, request clarification.
+Snooze does **not** change persisted `TaskStatus`. It recalculates reminder timing for actionable Owner-managed tasks (`open` / `in_progress` only; not while `waiting`, `completed`, or `dismissed`). Recipients cannot snooze.
+
+### Lifecycle deletion (D064)
+
+Physical task deletion is out of scope. Abandoned work uses **dismiss** (`dismissed` terminal status).
+
+### Recipient capability constraints (D050, D051, D056, D058, D061)
+
+May on assigned tasks (valid capability token, multi-use until invalidation): complete, waiting, resume, notes (typed), return to Owner, request clarification (typed), submit work request → pending Task Suggestion.
 
 May not: approve suggestions, create standalone tasks, dismiss tasks, snooze, change policies, influence learning.
 
-Capability possession is authorization, not verified identity. Audit must not overstate who acted (D052).
+Capability possession is authorization, not verified identity. Audit must not overstate who acted (D052, D057).
 
 **Return to Owner** changes assignment to the Owner; task status is unchanged.
 

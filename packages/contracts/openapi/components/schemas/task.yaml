@@ -160,3 +160,27 @@ components:
           type: string
           minLength: 1
           maxLength: 2000
+    SnoozeTaskRequest:
+      type: object
+      required:
+        - nextReminderAt
+      properties:
+        nextReminderAt:
+          type: string
+          format: date-time
+          description: Owner-requested next reminder instant after snooze (D060).
+        reason:
+          type: string
+          maxLength: 500
+    DismissTaskRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          maxLength: 500
+    IssueTaskCapabilityRequest:
+      type: object
+      properties:
+        scope:
+          $ref: './capability.yaml#/components/schemas/CapabilityScope'
+          description: Optional override of default Recipient scope for the assignment.

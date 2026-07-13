@@ -30,6 +30,9 @@ import java.io.Serializable
  * @param intendedRecipientEmail Intended recipient for the link. Not verified actor identity.
  * @param action 
  * @param recordedAt 
+ * @param outcome Result of the authorization/mutation attempt for audit (D057).
+ * @param resourceVersion Task version observed or written for state/version context (D057).
+ * @param taskStatus Task status context for audit (D057).
  * @param note 
  * @param requestId 
  * @param correlationId 
@@ -58,6 +61,18 @@ data class CapabilityAuditContext (
     @Json(name = "recordedAt")
     val recordedAt: kotlin.String,
 
+    /* Result of the authorization/mutation attempt for audit (D057). */
+    @Json(name = "outcome")
+    val outcome: CapabilityAuditContext.Outcome,
+
+    /* Task version observed or written for state/version context (D057). */
+    @Json(name = "resourceVersion")
+    val resourceVersion: kotlin.Int? = null,
+
+    /* Task status context for audit (D057). */
+    @Json(name = "taskStatus")
+    val taskStatus: kotlin.String? = null,
+
     @Json(name = "note")
     val note: kotlin.String? = null,
 
@@ -76,6 +91,17 @@ data class CapabilityAuditContext (
         private const val serialVersionUID: Long = 123
     }
 
+    /**
+     * Result of the authorization/mutation attempt for audit (D057).
+     *
+     * Values: succeeded,denied,failed
+     */
+    @JsonClass(generateAdapter = false)
+    enum class Outcome(val value: kotlin.String) {
+        @Json(name = "succeeded") succeeded("succeeded"),
+        @Json(name = "denied") denied("denied"),
+        @Json(name = "failed") failed("failed");
+    }
 
 }
 

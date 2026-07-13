@@ -184,10 +184,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Mark a task waiting
-         * @description Authorized via authenticated Owner session or valid task capability.
-         */
+        /** Mark a task waiting */
         post: operations["markTaskWaiting"];
         delete?: never;
         options?: never;
@@ -204,10 +201,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Resume a waiting task
-         * @description Authorized via authenticated Owner session or valid task capability.
-         */
+        /** Resume a waiting task */
         post: operations["resumeTask"];
         delete?: never;
         options?: never;
@@ -224,10 +218,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Complete a task
-         * @description Authorized via authenticated Owner session or valid task capability.
-         */
+        /** Complete a task */
         post: operations["completeTask"];
         delete?: never;
         options?: never;
@@ -244,11 +235,48 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Add a note to a task
-         * @description Authorized via authenticated Owner session or valid task capability.
-         */
+        /** Add a note to a task */
         post: operations["addTaskNote"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{taskId}/snooze": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Snooze task reminders (Owner only)
+         * @description Recalculates reminder timing without changing TaskStatus (D060).
+         */
+        post: operations["snoozeTask"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{taskId}/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dismiss a task (Owner only)
+         * @description Terminal lifecycle without physical deletion (D064).
+         */
+        post: operations["dismissTask"];
         delete?: never;
         options?: never;
         head?: never;
@@ -264,12 +292,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Return an assigned task to the Owner
-         * @description Authorized via authenticated Owner session or a valid task capability with
-         *     `return_task_to_owner` scope. Capability possession is authorization, not verified identity.
-         *
-         */
+        /** Return an assigned task to the Owner */
         post: operations["returnTaskToOwner"];
         delete?: never;
         options?: never;
@@ -286,11 +309,182 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Request clarification on a task
-         * @description Authorized via authenticated Owner session or valid task capability.
-         */
+        /** Request clarification on a task */
         post: operations["requestClarification"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{taskId}/capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Issue a capability link for the current assignment
+         * @description Returns the raw capability secret once to the authenticated Owner for manual verification (D063).
+         *     Persist only a secure hash. Default expiry is seven days unless configuration overrides (D055).
+         *
+         */
+        post: operations["issueTaskCapability"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/capabilities/{token}/tasks/{taskId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Non-mutating Recipient task view
+         * @description GET must not mutate task, assignment, or capability state (D050, D059).
+         *     Knowledge of `{token}` authorizes view when the capability is active and in scope.
+         *
+         */
+        get: operations["getCapabilityTask"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/capabilities/{token}/tasks/{taskId}/waiting": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark waiting via capability (POST after confirm) */
+        post: operations["markCapabilityTaskWaiting"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/capabilities/{token}/tasks/{taskId}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resume waiting via capability (POST after confirm) */
+        post: operations["resumeCapabilityTask"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/capabilities/{token}/tasks/{taskId}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Complete via capability (POST after confirm) */
+        post: operations["completeCapabilityTask"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/capabilities/{token}/tasks/{taskId}/notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add typed note via capability (POST after confirm)
+         * @description Typed-only in A4 (D058).
+         */
+        post: operations["addCapabilityTaskNote"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/capabilities/{token}/tasks/{taskId}/return-to-owner": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Return assignment to Owner via capability (POST after confirm) */
+        post: operations["returnCapabilityTaskToOwner"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/capabilities/{token}/tasks/{taskId}/clarification-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Request typed clarification via capability (POST after confirm)
+         * @description Typed-only in A4 (D058).
+         */
+        post: operations["requestCapabilityClarification"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/capabilities/{token}/tasks/{taskId}/work-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit typed work request as a pending Task Suggestion
+         * @description Creates a pending Task Suggestion for Owner approval (D061). Does not create a Task.
+         *     Typed-only in A4 (D058). Multi-use capability remains valid after success (D056).
+         *
+         */
+        post: operations["submitCapabilityWorkRequest"];
         delete?: never;
         options?: never;
         head?: never;
@@ -368,9 +562,13 @@ export interface components {
          * @description Actions a task capability link may authorize. Owner-only actions are excluded.
          * @enum {string}
          */
-        CapabilityAction: "view_assigned_task" | "complete_task" | "mark_task_waiting" | "add_task_note" | "record_completion_outcome" | "return_task_to_owner" | "request_clarification";
+        CapabilityAction: "view_assigned_task" | "complete_task" | "mark_task_waiting" | "add_task_note" | "record_completion_outcome" | "return_task_to_owner" | "request_clarification" | "submit_work_request";
         /**
          * @description Lifecycle status of a task capability. Raw token values are never exposed.
+         *     A4 treats active capabilities as multi-use until expiry, revocation, assignment
+         *     replacement/removal, or other terminal invalidation (D056). The `used` enum value
+         *     is reserved and must not be assigned transition semantics in A4 without a Decision.
+         *
          * @enum {string}
          */
         CapabilityStatus: "active" | "revoked" | "expired" | "used";
@@ -415,6 +613,15 @@ export interface components {
             action: components["schemas"]["CapabilityAction"];
             /** Format: date-time */
             recordedAt: string;
+            /**
+             * @description Result of the authorization/mutation attempt for audit (D057).
+             * @enum {string}
+             */
+            outcome: "succeeded" | "denied" | "failed";
+            /** @description Task version observed or written for state/version context (D057). */
+            resourceVersion?: number;
+            /** @description Task status context for audit (D057). */
+            taskStatus?: string;
             note?: string;
             requestId?: string;
             correlationId?: string | null;
@@ -548,6 +755,54 @@ export interface components {
         };
         RequestClarificationRequest: {
             message: string;
+        };
+        SnoozeTaskRequest: {
+            /**
+             * Format: date-time
+             * @description Owner-requested next reminder instant after snooze (D060).
+             */
+            nextReminderAt: string;
+            reason?: string;
+        };
+        DismissTaskRequest: {
+            reason?: string;
+        };
+        IssueTaskCapabilityRequest: {
+            /** @description Optional override of default Recipient scope for the assignment. */
+            scope?: components["schemas"]["CapabilityScope"];
+        };
+        IssuedCapabilityLink: {
+            capabilityId: string;
+            taskId: string;
+            assignmentId: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /** @description Raw capability secret returned once to the authenticated Owner for manual verification (D063).
+             *     Never persisted in plaintext; never write this value to application logs.
+             *      */
+            token: string;
+            /** @description Relative browser path such as /c/{token} for Owner-assisted A4 testing. */
+            capabilityPath: string;
+        };
+        SubmitWorkRequestRequest: {
+            /** @description Typed Recipient work request body (D058). */
+            message: string;
+            /**
+             * @description Explicit POST confirmation that the Recipient intends to submit the work request (D050).
+             * @enum {string}
+             */
+            confirmation: "confirmed";
+        };
+        SubmitWorkRequestResponse: {
+            suggestion: components["schemas"]["TaskSuggestion"];
+            task?: components["schemas"]["Task"];
+        };
+        CapabilityConfirmation: {
+            /**
+             * @description Explicit Recipient POST confirmation (D050).
+             * @enum {string}
+             */
+            confirmation: "confirmed";
         };
         TaskAssignment: {
             id: string;
@@ -867,6 +1122,12 @@ export interface components {
         };
     };
     parameters: {
+        /** @description Raw capability secret authorizing scoped Recipient access (D050, D059).
+         *     This path parameter is the Recipient authorization surface (not bearerAuth).
+         *     Capability routes set `security: []` because OpenAPI cannot model path-based
+         *     apiKey schemes. Store only a hash server-side; never log the raw secret (D063).
+         *      */
+        CapabilityToken: string;
         /**
          * @description Strong ETag from the current resource version.
          * @example "task-01JXYZ-v3"
@@ -1372,6 +1633,82 @@ export interface operations {
             428: components["responses"]["PreconditionRequired"];
         };
     };
+    snoozeTask: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Strong ETag from the current resource version.
+                 * @example "task-01JXYZ-v3"
+                 */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                taskId: components["parameters"]["TaskId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SnoozeTaskRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated task */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            412: components["responses"]["PreconditionFailed"];
+            428: components["responses"]["PreconditionRequired"];
+        };
+    };
+    dismissTask: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Strong ETag from the current resource version.
+                 * @example "task-01JXYZ-v3"
+                 */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                taskId: components["parameters"]["TaskId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["DismissTaskRequest"];
+            };
+        };
+        responses: {
+            /** @description Dismissed task */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            412: components["responses"]["PreconditionFailed"];
+            428: components["responses"]["PreconditionRequired"];
+        };
+    };
     returnTaskToOwner: {
         parameters: {
             query?: never;
@@ -1438,6 +1775,384 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Task"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            412: components["responses"]["PreconditionFailed"];
+            428: components["responses"]["PreconditionRequired"];
+        };
+    };
+    issueTaskCapability: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Strong ETag from the current resource version.
+                 * @example "task-01JXYZ-v3"
+                 */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                taskId: components["parameters"]["TaskId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["IssueTaskCapabilityRequest"];
+            };
+        };
+        responses: {
+            /** @description Capability issued; raw token returned once */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssuedCapabilityLink"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            412: components["responses"]["PreconditionFailed"];
+            428: components["responses"]["PreconditionRequired"];
+        };
+    };
+    getCapabilityTask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Raw capability secret authorizing scoped Recipient access (D050, D059).
+                 *     This path parameter is the Recipient authorization surface (not bearerAuth).
+                 *     Capability routes set `security: []` because OpenAPI cannot model path-based
+                 *     apiKey schemes. Store only a hash server-side; never log the raw secret (D063).
+                 *      */
+                token: components["parameters"]["CapabilityToken"];
+                taskId: components["parameters"]["TaskId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Task view for the capability holder */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    markCapabilityTaskWaiting: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Strong ETag from the current resource version.
+                 * @example "task-01JXYZ-v3"
+                 */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                /** @description Raw capability secret authorizing scoped Recipient access (D050, D059).
+                 *     This path parameter is the Recipient authorization surface (not bearerAuth).
+                 *     Capability routes set `security: []` because OpenAPI cannot model path-based
+                 *     apiKey schemes. Store only a hash server-side; never log the raw secret (D063).
+                 *      */
+                token: components["parameters"]["CapabilityToken"];
+                taskId: components["parameters"]["TaskId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MarkTaskWaitingRequest"] & components["schemas"]["CapabilityConfirmation"];
+            };
+        };
+        responses: {
+            /** @description Updated task */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            412: components["responses"]["PreconditionFailed"];
+            428: components["responses"]["PreconditionRequired"];
+        };
+    };
+    resumeCapabilityTask: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Strong ETag from the current resource version.
+                 * @example "task-01JXYZ-v3"
+                 */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                /** @description Raw capability secret authorizing scoped Recipient access (D050, D059).
+                 *     This path parameter is the Recipient authorization surface (not bearerAuth).
+                 *     Capability routes set `security: []` because OpenAPI cannot model path-based
+                 *     apiKey schemes. Store only a hash server-side; never log the raw secret (D063).
+                 *      */
+                token: components["parameters"]["CapabilityToken"];
+                taskId: components["parameters"]["TaskId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CapabilityConfirmation"];
+            };
+        };
+        responses: {
+            /** @description Updated task */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            412: components["responses"]["PreconditionFailed"];
+            428: components["responses"]["PreconditionRequired"];
+        };
+    };
+    completeCapabilityTask: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Strong ETag from the current resource version.
+                 * @example "task-01JXYZ-v3"
+                 */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                /** @description Raw capability secret authorizing scoped Recipient access (D050, D059).
+                 *     This path parameter is the Recipient authorization surface (not bearerAuth).
+                 *     Capability routes set `security: []` because OpenAPI cannot model path-based
+                 *     apiKey schemes. Store only a hash server-side; never log the raw secret (D063).
+                 *      */
+                token: components["parameters"]["CapabilityToken"];
+                taskId: components["parameters"]["TaskId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompleteTaskRequest"] & components["schemas"]["CapabilityConfirmation"];
+            };
+        };
+        responses: {
+            /** @description Completed task */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            412: components["responses"]["PreconditionFailed"];
+            428: components["responses"]["PreconditionRequired"];
+        };
+    };
+    addCapabilityTaskNote: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Strong ETag from the current resource version.
+                 * @example "task-01JXYZ-v3"
+                 */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                /** @description Raw capability secret authorizing scoped Recipient access (D050, D059).
+                 *     This path parameter is the Recipient authorization surface (not bearerAuth).
+                 *     Capability routes set `security: []` because OpenAPI cannot model path-based
+                 *     apiKey schemes. Store only a hash server-side; never log the raw secret (D063).
+                 *      */
+                token: components["parameters"]["CapabilityToken"];
+                taskId: components["parameters"]["TaskId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddTaskNoteRequest"] & components["schemas"]["CapabilityConfirmation"];
+            };
+        };
+        responses: {
+            /** @description Updated task */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            412: components["responses"]["PreconditionFailed"];
+            428: components["responses"]["PreconditionRequired"];
+        };
+    };
+    returnCapabilityTaskToOwner: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Strong ETag from the current resource version.
+                 * @example "task-01JXYZ-v3"
+                 */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                /** @description Raw capability secret authorizing scoped Recipient access (D050, D059).
+                 *     This path parameter is the Recipient authorization surface (not bearerAuth).
+                 *     Capability routes set `security: []` because OpenAPI cannot model path-based
+                 *     apiKey schemes. Store only a hash server-side; never log the raw secret (D063).
+                 *      */
+                token: components["parameters"]["CapabilityToken"];
+                taskId: components["parameters"]["TaskId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReturnTaskToOwnerRequest"] & components["schemas"]["CapabilityConfirmation"];
+            };
+        };
+        responses: {
+            /** @description Updated task */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            412: components["responses"]["PreconditionFailed"];
+            428: components["responses"]["PreconditionRequired"];
+        };
+    };
+    requestCapabilityClarification: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Strong ETag from the current resource version.
+                 * @example "task-01JXYZ-v3"
+                 */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                /** @description Raw capability secret authorizing scoped Recipient access (D050, D059).
+                 *     This path parameter is the Recipient authorization surface (not bearerAuth).
+                 *     Capability routes set `security: []` because OpenAPI cannot model path-based
+                 *     apiKey schemes. Store only a hash server-side; never log the raw secret (D063).
+                 *      */
+                token: components["parameters"]["CapabilityToken"];
+                taskId: components["parameters"]["TaskId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RequestClarificationRequest"] & components["schemas"]["CapabilityConfirmation"];
+            };
+        };
+        responses: {
+            /** @description Updated task */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            412: components["responses"]["PreconditionFailed"];
+            428: components["responses"]["PreconditionRequired"];
+        };
+    };
+    submitCapabilityWorkRequest: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Strong ETag from the current resource version.
+                 * @example "task-01JXYZ-v3"
+                 */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                /** @description Raw capability secret authorizing scoped Recipient access (D050, D059).
+                 *     This path parameter is the Recipient authorization surface (not bearerAuth).
+                 *     Capability routes set `security: []` because OpenAPI cannot model path-based
+                 *     apiKey schemes. Store only a hash server-side; never log the raw secret (D063).
+                 *      */
+                token: components["parameters"]["CapabilityToken"];
+                taskId: components["parameters"]["TaskId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubmitWorkRequestRequest"];
+            };
+        };
+        responses: {
+            /** @description Pending Task Suggestion created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubmitWorkRequestResponse"];
                 };
             };
             400: components["responses"]["BadRequest"];

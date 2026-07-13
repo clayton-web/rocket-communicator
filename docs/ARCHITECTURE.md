@@ -8,7 +8,7 @@ Version one is a private, Android-first system with a thin Next.js backend on Ve
 
 **Design posture:** AI recommends; the Owner approves; Recipients act via capability links (GET non-mutating, POST after explicit confirmation); reminders and retention are deterministic and auditable. Temporary communication content is minimized and deleted on schedule. Durable learning belongs to the Owner only. Android notification and call capture are best-effort with mandatory manual/voice fallbacks.
 
-**Not in this repository yet:** connected external services, live API route handlers, database schemas applied to a live database, or authentication. A2 provides OpenAPI contracts and pure domain rules under `packages/contracts` and `packages/domain`.
+**Not in this repository yet:** live task/capability API handlers, database schemas applied to a live database (`packages/db` pending A4 after Phase 0). A3 provides Owner authentication. A2 provides OpenAPI contracts and pure domain rules under `packages/contracts` and `packages/domain`. A4 Phase 0 recorded D055–D064 and aligned OpenAPI for separate Owner vs capability surfaces.
 
 ## Component responsibilities
 
@@ -35,7 +35,7 @@ A single Git repository (this project) should later contain:
 - `apps/web` — Next.js + TypeScript
 - `packages/contracts` — canonical **OpenAPI** specification (source of truth; A2)
 - `packages/domain` — state machines, retention, reminder metadata helpers, capability policy (A2)
-- `packages/db` — Prisma schema and client (server use; later milestone)
+- `packages/db` — Prisma schema and client (server use; introduced after A4 Phase 0 + domain alignment per D062)
 - `packages/ai` — prompt versions and validators
 
 **Do not** share Zod types directly with Kotlin. Generate TypeScript and Kotlin models/clients from OpenAPI. JSON Schema may be generated from OpenAPI where useful; it is **not** the source of truth. Contract tests belong in CI.
@@ -59,9 +59,12 @@ Neon is **not** used in version one while Supabase provides Postgres.
 
 - Next.js (App Router) with TypeScript on Vercel.
 - Authenticated routes for the **Owner** only (D048).
-- Minimal Recipient task view at capability URLs (`/c/[token]` or equivalent)—no Recipient sign-in.
+- Minimal Recipient task view at capability URLs (`/c/[token]`)—no Recipient sign-in; GET non-mutating (D050, D059).
+- Recipient mutations use **separate** capability API routes (`/api/v1/capabilities/{token}/…`), not Owner session paths (D059).
 - Internal authenticated endpoints for scheduled reminder and retention work.
 - Server-side Zod validation where useful, aligned with the canonical contract.
+- Capability secrets: hash at rest; optional one-time reveal to Owner for A4 manual verification (D063); default seven-day expiry with persisted `expiresAt` (D055); multi-use until invalidation (D056).
+- Persistence: Prisma via `packages/db` after Phase 0 / domain alignment (D062); no physical task deletion—dismiss instead (D064).
 
 ## Gmail architecture
 

@@ -10,6 +10,7 @@ components:
         - record_completion_outcome
         - return_task_to_owner
         - request_clarification
+        - submit_work_request
       description: Actions a task capability link may authorize. Owner-only actions are excluded.
     CapabilityStatus:
       type: string
@@ -18,11 +19,15 @@ components:
         - revoked
         - expired
         - used
-      description: Lifecycle status of a task capability. Raw token values are never exposed.
+      description: |
+        Lifecycle status of a task capability. Raw token values are never exposed.
+        A4 treats active capabilities as multi-use until expiry, revocation, assignment
+        replacement/removal, or other terminal invalidation (D056). The `used` enum value
+        is reserved and must not be assigned transition semantics in A4 without a Decision.
     CapabilityScope:
       type: array
       minItems: 1
-      maxItems: 7
+      maxItems: 8
       uniqueItems: true
       items:
         $ref: '#/components/schemas/CapabilityAction'
@@ -93,6 +98,7 @@ components:
         - intendedRecipientEmail
         - action
         - recordedAt
+        - outcome
       properties:
         capabilityId:
           type: string
@@ -113,6 +119,21 @@ components:
         recordedAt:
           type: string
           format: date-time
+        outcome:
+          type: string
+          enum:
+            - succeeded
+            - denied
+            - failed
+          description: Result of the authorization/mutation attempt for audit (D057).
+        resourceVersion:
+          type: integer
+          minimum: 1
+          description: Task version observed or written for state/version context (D057).
+        taskStatus:
+          type: string
+          maxLength: 64
+          description: Task status context for audit (D057).
         note:
           type: string
           maxLength: 2000
@@ -130,6 +151,74 @@ components:
           description: |
             Human-readable audit wording such as "Action submitted through link sent to recipient@example.com".
             Must not claim a verified person performed the action.
+    IssuedCapabilityLink:
+      type: object
+      required:
+        - capabilityId
+        - taskId
+        - assignmentId
+        - expiresAt
+        - token
+        - capabilityPath
+      properties:
+        capabilityId:
+          type: string
+          maxLength: 64
+        taskId:
+          type: string
+          maxLength: 64
+        assignmentId:
+          type: string
+          maxLength: 64
+        expiresAt:
+          type: string
+          format: date-time
+        token:
+          type: string
+          minLength: 32
+          maxLength: 256
+          description: |
+            Raw capability secret returned once to the authenticated Owner for manual verification (D063).
+            Never persisted in plaintext; never write this value to application logs.
+        capabilityPath:
+          type: string
+          maxLength: 512
+          description: Relative browser path such as /c/{token} for Owner-assisted A4 testing.
+    SubmitWorkRequestRequest:
+      type: object
+      required:
+        - message
+        - confirmation
+      properties:
+        message:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          description: Typed Recipient work request body (D058).
+        confirmation:
+          type: string
+          enum:
+            - confirmed
+          description: Explicit POST confirmation that the Recipient intends to submit the work request (D050).
+    SubmitWorkRequestResponse:
+      type: object
+      required:
+        - suggestion
+      properties:
+        suggestion:
+          $ref: './task-suggestion.yaml#/components/schemas/TaskSuggestion'
+        task:
+          $ref: './task.yaml#/components/schemas/Task'
+    CapabilityConfirmation:
+      type: object
+      required:
+        - confirmation
+      properties:
+        confirmation:
+          type: string
+          enum:
+            - confirmed
+          description: Explicit Recipient POST confirmation (D050).
     OwnerAuditContext:
       type: object
       required:

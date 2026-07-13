@@ -14,6 +14,7 @@ import {
   pauseRemindersForWaiting,
   resumeReminders,
   stopReminders,
+  recalculateReminderAfterSnooze,
 } from '../reminders/calculators.js';
 import type {
   FollowUpProposal,
@@ -183,6 +184,33 @@ export function dismissTask(task: Task, context: TaskMutationContext): Task {
       status: 'dismissed',
       retention: buildDismissalRetention(context.now),
       reminder: stopReminders('dismissed'),
+    },
+    context.now,
+  );
+}
+
+/**
+ * Owner-only snooze: recalculates reminder timing without changing TaskStatus (D060).
+ * Not available while waiting or terminal.
+ */
+export function snoozeTask(
+  task: Task,
+  context: TaskMutationContext,
+  nextReminderAt: UtcInstant,
+): Task {
+  assertCan(context.actor, 'snooze_task', task, context.now);
+  ensureNotTerminal(task);
+  withPrecondition(task, context.ifMatch);
+  if (task.status !== 'open' && task.status !== 'in_progress') {
+    throw invalidTransition(`Task in status ${task.status} cannot be snoozed.`);
+  }
+  if (!isOwner(context.actor)) {
+    throw invalidTransition('Only the Owner may snooze a task.');
+  }
+  return bumpVersion(
+    {
+      ...task,
+      reminder: recalculateReminderAfterSnooze(nextReminderAt),
     },
     context.now,
   );

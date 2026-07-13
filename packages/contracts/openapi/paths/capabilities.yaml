@@ -1,61 +1,19 @@
 paths:
-  /api/v1/tasks:
+  /api/v1/capabilities/{token}/tasks/{taskId}:
     get:
-      operationId: listTasks
-      tags: [Tasks]
-      summary: List tasks
+      operationId: getCapabilityTask
+      tags: [Capabilities]
+      summary: Non-mutating Recipient task view
+      description: |
+        GET must not mutate task, assignment, or capability state (D050, D059).
+        Knowledge of `{token}` authorizes view when the capability is active and in scope.
+      security: []
       parameters:
-        - $ref: '../components/parameters.yaml#/components/parameters/Cursor'
-        - $ref: '../components/parameters.yaml#/components/parameters/Limit'
-      responses:
-        '200':
-          description: Paginated tasks
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '../openapi.yaml#/components/schemas/CursorPage'
-                  - type: object
-                    properties:
-                      items:
-                        type: array
-                        items:
-                          $ref: '../openapi.yaml#/components/schemas/Task'
-        '401':
-          $ref: '../components/responses.yaml#/components/responses/Unauthorized'
-    post:
-      operationId: createTask
-      tags: [Tasks]
-      summary: Create a task directly (Owner typed creation only)
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '../openapi.yaml#/components/schemas/CreateTaskRequest'
-      responses:
-        '201':
-          description: Created task
-          content:
-            application/json:
-              schema:
-                $ref: '../openapi.yaml#/components/schemas/Task'
-        '400':
-          $ref: '../components/responses.yaml#/components/responses/BadRequest'
-        '401':
-          $ref: '../components/responses.yaml#/components/responses/Unauthorized'
-        '403':
-          $ref: '../components/responses.yaml#/components/responses/Forbidden'
-  /api/v1/tasks/{taskId}:
-    get:
-      operationId: getTask
-      tags: [Tasks]
-      summary: Get a task
-      parameters:
+        - $ref: '../components/parameters.yaml#/components/parameters/CapabilityToken'
         - $ref: '../components/parameters.yaml#/components/parameters/TaskId'
       responses:
         '200':
-          description: Task
+          description: Task view for the capability holder
           headers:
             ETag:
               schema:
@@ -66,41 +24,18 @@ paths:
                 $ref: '../openapi.yaml#/components/schemas/Task'
         '401':
           $ref: '../components/responses.yaml#/components/responses/Unauthorized'
-        '404':
-          $ref: '../components/responses.yaml#/components/responses/NotFound'
-  /api/v1/tasks/{taskId}/start:
-    post:
-      operationId: startTask
-      tags: [Tasks]
-      summary: Mark a task in progress
-      parameters:
-        - $ref: '../components/parameters.yaml#/components/parameters/TaskId'
-        - $ref: '../components/parameters.yaml#/components/parameters/IfMatch'
-      responses:
-        '200':
-          description: Updated task
-          content:
-            application/json:
-              schema:
-                $ref: '../openapi.yaml#/components/schemas/Task'
-        '400':
-          $ref: '../components/responses.yaml#/components/responses/BadRequest'
-        '401':
-          $ref: '../components/responses.yaml#/components/responses/Unauthorized'
         '403':
           $ref: '../components/responses.yaml#/components/responses/Forbidden'
         '404':
           $ref: '../components/responses.yaml#/components/responses/NotFound'
-        '412':
-          $ref: '../components/responses.yaml#/components/responses/PreconditionFailed'
-        '428':
-          $ref: '../components/responses.yaml#/components/responses/PreconditionRequired'
-  /api/v1/tasks/{taskId}/waiting:
+  /api/v1/capabilities/{token}/tasks/{taskId}/waiting:
     post:
-      operationId: markTaskWaiting
-      tags: [Tasks]
-      summary: Mark a task waiting
+      operationId: markCapabilityTaskWaiting
+      tags: [Capabilities]
+      summary: Mark waiting via capability (POST after confirm)
+      security: []
       parameters:
+        - $ref: '../components/parameters.yaml#/components/parameters/CapabilityToken'
         - $ref: '../components/parameters.yaml#/components/parameters/TaskId'
         - $ref: '../components/parameters.yaml#/components/parameters/IfMatch'
       requestBody:
@@ -108,7 +43,9 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '../openapi.yaml#/components/schemas/MarkTaskWaitingRequest'
+              allOf:
+                - $ref: '../openapi.yaml#/components/schemas/MarkTaskWaitingRequest'
+                - $ref: '../openapi.yaml#/components/schemas/CapabilityConfirmation'
       responses:
         '200':
           description: Updated task
@@ -128,39 +65,14 @@ paths:
           $ref: '../components/responses.yaml#/components/responses/PreconditionFailed'
         '428':
           $ref: '../components/responses.yaml#/components/responses/PreconditionRequired'
-  /api/v1/tasks/{taskId}/resume:
+  /api/v1/capabilities/{token}/tasks/{taskId}/resume:
     post:
-      operationId: resumeTask
-      tags: [Tasks]
-      summary: Resume a waiting task
+      operationId: resumeCapabilityTask
+      tags: [Capabilities]
+      summary: Resume waiting via capability (POST after confirm)
+      security: []
       parameters:
-        - $ref: '../components/parameters.yaml#/components/parameters/TaskId'
-        - $ref: '../components/parameters.yaml#/components/parameters/IfMatch'
-      responses:
-        '200':
-          description: Updated task
-          content:
-            application/json:
-              schema:
-                $ref: '../openapi.yaml#/components/schemas/Task'
-        '400':
-          $ref: '../components/responses.yaml#/components/responses/BadRequest'
-        '401':
-          $ref: '../components/responses.yaml#/components/responses/Unauthorized'
-        '403':
-          $ref: '../components/responses.yaml#/components/responses/Forbidden'
-        '404':
-          $ref: '../components/responses.yaml#/components/responses/NotFound'
-        '412':
-          $ref: '../components/responses.yaml#/components/responses/PreconditionFailed'
-        '428':
-          $ref: '../components/responses.yaml#/components/responses/PreconditionRequired'
-  /api/v1/tasks/{taskId}/complete:
-    post:
-      operationId: completeTask
-      tags: [Tasks]
-      summary: Complete a task
-      parameters:
+        - $ref: '../components/parameters.yaml#/components/parameters/CapabilityToken'
         - $ref: '../components/parameters.yaml#/components/parameters/TaskId'
         - $ref: '../components/parameters.yaml#/components/parameters/IfMatch'
       requestBody:
@@ -168,7 +80,44 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '../openapi.yaml#/components/schemas/CompleteTaskRequest'
+              $ref: '../openapi.yaml#/components/schemas/CapabilityConfirmation'
+      responses:
+        '200':
+          description: Updated task
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/Task'
+        '400':
+          $ref: '../components/responses.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: '../components/responses.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '../components/responses.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: '../components/responses.yaml#/components/responses/NotFound'
+        '412':
+          $ref: '../components/responses.yaml#/components/responses/PreconditionFailed'
+        '428':
+          $ref: '../components/responses.yaml#/components/responses/PreconditionRequired'
+  /api/v1/capabilities/{token}/tasks/{taskId}/complete:
+    post:
+      operationId: completeCapabilityTask
+      tags: [Capabilities]
+      summary: Complete via capability (POST after confirm)
+      security: []
+      parameters:
+        - $ref: '../components/parameters.yaml#/components/parameters/CapabilityToken'
+        - $ref: '../components/parameters.yaml#/components/parameters/TaskId'
+        - $ref: '../components/parameters.yaml#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../openapi.yaml#/components/schemas/CompleteTaskRequest'
+                - $ref: '../openapi.yaml#/components/schemas/CapabilityConfirmation'
       responses:
         '200':
           description: Completed task
@@ -188,12 +137,15 @@ paths:
           $ref: '../components/responses.yaml#/components/responses/PreconditionFailed'
         '428':
           $ref: '../components/responses.yaml#/components/responses/PreconditionRequired'
-  /api/v1/tasks/{taskId}/notes:
+  /api/v1/capabilities/{token}/tasks/{taskId}/notes:
     post:
-      operationId: addTaskNote
-      tags: [Tasks]
-      summary: Add a note to a task
+      operationId: addCapabilityTaskNote
+      tags: [Capabilities]
+      summary: Add typed note via capability (POST after confirm)
+      description: Typed-only in A4 (D058).
+      security: []
       parameters:
+        - $ref: '../components/parameters.yaml#/components/parameters/CapabilityToken'
         - $ref: '../components/parameters.yaml#/components/parameters/TaskId'
         - $ref: '../components/parameters.yaml#/components/parameters/IfMatch'
       requestBody:
@@ -201,7 +153,9 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '../openapi.yaml#/components/schemas/AddTaskNoteRequest'
+              allOf:
+                - $ref: '../openapi.yaml#/components/schemas/AddTaskNoteRequest'
+                - $ref: '../openapi.yaml#/components/schemas/CapabilityConfirmation'
       responses:
         '200':
           description: Updated task
@@ -221,45 +175,14 @@ paths:
           $ref: '../components/responses.yaml#/components/responses/PreconditionFailed'
         '428':
           $ref: '../components/responses.yaml#/components/responses/PreconditionRequired'
-  /api/v1/tasks/{taskId}/return-to-owner:
+  /api/v1/capabilities/{token}/tasks/{taskId}/return-to-owner:
     post:
-      operationId: returnTaskToOwner
-      tags: [Tasks]
-      summary: Return an assigned task to the Owner
+      operationId: returnCapabilityTaskToOwner
+      tags: [Capabilities]
+      summary: Return assignment to Owner via capability (POST after confirm)
+      security: []
       parameters:
-        - $ref: '../components/parameters.yaml#/components/parameters/TaskId'
-        - $ref: '../components/parameters.yaml#/components/parameters/IfMatch'
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              $ref: '../openapi.yaml#/components/schemas/ReturnTaskToOwnerRequest'
-      responses:
-        '200':
-          description: Updated task
-          content:
-            application/json:
-              schema:
-                $ref: '../openapi.yaml#/components/schemas/Task'
-        '400':
-          $ref: '../components/responses.yaml#/components/responses/BadRequest'
-        '401':
-          $ref: '../components/responses.yaml#/components/responses/Unauthorized'
-        '403':
-          $ref: '../components/responses.yaml#/components/responses/Forbidden'
-        '404':
-          $ref: '../components/responses.yaml#/components/responses/NotFound'
-        '412':
-          $ref: '../components/responses.yaml#/components/responses/PreconditionFailed'
-        '428':
-          $ref: '../components/responses.yaml#/components/responses/PreconditionRequired'
-  /api/v1/tasks/{taskId}/clarification-requests:
-    post:
-      operationId: requestClarification
-      tags: [Tasks]
-      summary: Request clarification on a task
-      parameters:
+        - $ref: '../components/parameters.yaml#/components/parameters/CapabilityToken'
         - $ref: '../components/parameters.yaml#/components/parameters/TaskId'
         - $ref: '../components/parameters.yaml#/components/parameters/IfMatch'
       requestBody:
@@ -267,7 +190,9 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '../openapi.yaml#/components/schemas/RequestClarificationRequest'
+              allOf:
+                - $ref: '../openapi.yaml#/components/schemas/ReturnTaskToOwnerRequest'
+                - $ref: '../openapi.yaml#/components/schemas/CapabilityConfirmation'
       responses:
         '200':
           description: Updated task
@@ -287,13 +212,15 @@ paths:
           $ref: '../components/responses.yaml#/components/responses/PreconditionFailed'
         '428':
           $ref: '../components/responses.yaml#/components/responses/PreconditionRequired'
-  /api/v1/tasks/{taskId}/snooze:
+  /api/v1/capabilities/{token}/tasks/{taskId}/clarification-requests:
     post:
-      operationId: snoozeTask
-      tags: [Tasks]
-      summary: Snooze task reminders (Owner only)
-      description: Recalculates reminder timing without changing TaskStatus (D060).
+      operationId: requestCapabilityClarification
+      tags: [Capabilities]
+      summary: Request typed clarification via capability (POST after confirm)
+      description: Typed-only in A4 (D058).
+      security: []
       parameters:
+        - $ref: '../components/parameters.yaml#/components/parameters/CapabilityToken'
         - $ref: '../components/parameters.yaml#/components/parameters/TaskId'
         - $ref: '../components/parameters.yaml#/components/parameters/IfMatch'
       requestBody:
@@ -301,7 +228,9 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '../openapi.yaml#/components/schemas/SnoozeTaskRequest'
+              allOf:
+                - $ref: '../openapi.yaml#/components/schemas/RequestClarificationRequest'
+                - $ref: '../openapi.yaml#/components/schemas/CapabilityConfirmation'
       responses:
         '200':
           description: Updated task
@@ -321,64 +250,32 @@ paths:
           $ref: '../components/responses.yaml#/components/responses/PreconditionFailed'
         '428':
           $ref: '../components/responses.yaml#/components/responses/PreconditionRequired'
-  /api/v1/tasks/{taskId}/dismiss:
+  /api/v1/capabilities/{token}/tasks/{taskId}/work-requests:
     post:
-      operationId: dismissTask
-      tags: [Tasks]
-      summary: Dismiss a task (Owner only)
-      description: Terminal lifecycle without physical deletion (D064).
-      parameters:
-        - $ref: '../components/parameters.yaml#/components/parameters/TaskId'
-        - $ref: '../components/parameters.yaml#/components/parameters/IfMatch'
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              $ref: '../openapi.yaml#/components/schemas/DismissTaskRequest'
-      responses:
-        '200':
-          description: Dismissed task
-          content:
-            application/json:
-              schema:
-                $ref: '../openapi.yaml#/components/schemas/Task'
-        '400':
-          $ref: '../components/responses.yaml#/components/responses/BadRequest'
-        '401':
-          $ref: '../components/responses.yaml#/components/responses/Unauthorized'
-        '403':
-          $ref: '../components/responses.yaml#/components/responses/Forbidden'
-        '404':
-          $ref: '../components/responses.yaml#/components/responses/NotFound'
-        '412':
-          $ref: '../components/responses.yaml#/components/responses/PreconditionFailed'
-        '428':
-          $ref: '../components/responses.yaml#/components/responses/PreconditionRequired'
-  /api/v1/tasks/{taskId}/capabilities:
-    post:
-      operationId: issueTaskCapability
-      tags: [Tasks]
-      summary: Issue a capability link for the current assignment
+      operationId: submitCapabilityWorkRequest
+      tags: [Capabilities]
+      summary: Submit typed work request as a pending Task Suggestion
       description: |
-        Returns the raw capability secret once to the authenticated Owner for manual verification (D063).
-        Persist only a secure hash. Default expiry is seven days unless configuration overrides (D055).
+        Creates a pending Task Suggestion for Owner approval (D061). Does not create a Task.
+        Typed-only in A4 (D058). Multi-use capability remains valid after success (D056).
+      security: []
       parameters:
+        - $ref: '../components/parameters.yaml#/components/parameters/CapabilityToken'
         - $ref: '../components/parameters.yaml#/components/parameters/TaskId'
         - $ref: '../components/parameters.yaml#/components/parameters/IfMatch'
       requestBody:
-        required: false
+        required: true
         content:
           application/json:
             schema:
-              $ref: '../openapi.yaml#/components/schemas/IssueTaskCapabilityRequest'
+              $ref: '../openapi.yaml#/components/schemas/SubmitWorkRequestRequest'
       responses:
         '201':
-          description: Capability issued; raw token returned once
+          description: Pending Task Suggestion created
           content:
             application/json:
               schema:
-                $ref: '../openapi.yaml#/components/schemas/IssuedCapabilityLink'
+                $ref: '../openapi.yaml#/components/schemas/SubmitWorkRequestResponse'
         '400':
           $ref: '../components/responses.yaml#/components/responses/BadRequest'
         '401':

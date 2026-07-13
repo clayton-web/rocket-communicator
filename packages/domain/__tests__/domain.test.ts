@@ -26,6 +26,7 @@ import {
   ownerActor,
   parseETag,
   resumeTask,
+  snoozeTask,
   startTask,
   toUtcInstant,
   validateSummaryPoints,
@@ -168,6 +169,36 @@ describe('task machine', () => {
       'recipient@example.com',
     );
     expect(completed.outcome?.note).toBeUndefined();
+  });
+
+  it('allows Owner snooze without changing task status', () => {
+    const task = baseTask({ status: 'in_progress' });
+    const snoozed = snoozeTask(
+      task,
+      {
+        actor: owner,
+        ifMatch: formatETag('task', task.id, 1),
+        now,
+      },
+      '2026-07-15T09:00:00.000Z',
+    );
+    expect(snoozed.status).toBe('in_progress');
+    expect(snoozed.reminder?.nextReminderAt).toBe('2026-07-15T09:00:00.000Z');
+    expect(snoozed.reminder?.paused).toBe(false);
+  });
+
+  it('blocks capability actors from snoozing', () => {
+    expect(() =>
+      snoozeTask(
+        baseTask({ status: 'open' }),
+        {
+          actor: capabilityActor,
+          ifMatch: formatETag('task', 'task_1', 1),
+          now,
+        },
+        '2026-07-15T09:00:00.000Z',
+      ),
+    ).toThrow(/Capability links cannot authorize snooze_task/i);
   });
 });
 

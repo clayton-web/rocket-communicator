@@ -18,5 +18,7 @@
 
     * `request_clarification` (value: `"request_clarification"`)
 
+    * `submit_work_request` (value: `"submit_work_request"`)
+
 
 

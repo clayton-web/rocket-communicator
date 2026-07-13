@@ -2,7 +2,7 @@
 
 Planning milestones only. No application scaffolding occurs in A0.
 
-**Current milestone: A3 complete (Owner authentication).** Next: **A4** (task core and Recipient capability web view) — not started.
+**Current milestone: A4 Phase 0 complete (decisions and contract alignment).** Next: **A4 domain alignment**, then `packages/db` / Prisma, then Owner and Recipient runtime (not started).
 
 Process for all later milestones: [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW.md) · [REVIEW_CHECKLIST.md](REVIEW_CHECKLIST.md) · [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md)
 
@@ -52,10 +52,12 @@ Process for all later milestones: [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW
 
 - **Objective:** Task CRUD, notes, complete, waiting, snooze (Owner); minimal Recipient capability web view at `/c/[token]` (or equivalent).
 - **Likely scope:** Owner task APIs, capability token issuance/validation, minimal Recipient GET (non-mutating) + POST-after-confirm UI.
-- **Acceptance criteria:** Recipient can open capability link, view assigned task, and complete/wait/note/return-to-Owner/request clarification with audit; cannot create standalone tasks or change rules; Recipient work requests become Task Suggestions; GET never mutates; no unauthenticated POST mutations.
+- **Acceptance criteria:** Recipient can open capability link, view assigned task, and complete/wait/note/return-to-Owner/request clarification with audit; cannot create standalone tasks or change rules; Recipient work requests become Task Suggestions; GET never mutates; no unauthenticated POST mutations; Owner snooze supported; no physical task deletion (dismiss only).
 - **Major risks:** Building a full dashboard by accident; capability link security gaps.
-- **Out of scope:** AI, Gmail forward, Android.
+- **Out of scope:** AI, Gmail forward, Android; raw IP / full user-agent retention; Recipient voice notes.
 - **Recommended Git checkpoint:** `feat: task core and recipient capability view`
+- **Status:** Phase 0 complete — D055–D064 recorded; OpenAPI/docs aligned for separate Owner vs capability surfaces, snooze, and work-request→suggestion. Runtime, domain machine completion for snooze/work-request persistence, and `packages/db` are **not** started.
+- **Binding A4 decisions:** D055 (7-day expiry + persisted `expiresAt`), D056 (multi-use until invalidation; no A4 `used` semantics), D057 (A4 audit fields; IP/UA deferred), D058 (typed Recipient notes), D059 (separate auth surfaces; `GET /c/[token]` non-mutating), D060 (Owner snooze contracted before runtime), D061 (work-request→suggestion contracted before runtime), D062 (Prisma after Phase 0 + domain alignment), D063 (one-time raw link to Owner; hash stored), D064 (dismiss, not delete). OPEN #21 remains deferred to A7.
 
 ## A5: Gmail connection and polling
 

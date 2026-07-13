@@ -22,7 +22,7 @@ import com.squareup.moshi.JsonClass
 /**
  * Actions a task capability link may authorize. Owner-only actions are excluded.
  *
- * Values: view_assigned_task,complete_task,mark_task_waiting,add_task_note,record_completion_outcome,return_task_to_owner,request_clarification
+ * Values: view_assigned_task,complete_task,mark_task_waiting,add_task_note,record_completion_outcome,return_task_to_owner,request_clarification,submit_work_request
  */
 
 @JsonClass(generateAdapter = false)
@@ -47,7 +47,10 @@ enum class CapabilityAction(val value: kotlin.String) {
     return_task_to_owner("return_task_to_owner"),
 
     @Json(name = "request_clarification")
-    request_clarification("request_clarification");
+    request_clarification("request_clarification"),
+
+    @Json(name = "submit_work_request")
+    submit_work_request("submit_work_request");
 
     /**
      * Override [toString()] to avoid using the enum variable name as the value, and instead use

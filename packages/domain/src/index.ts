@@ -153,6 +153,7 @@ export {
   resumeTask,
   completeTask,
   dismissTask,
+  snoozeTask,
   addTaskNote,
   returnTaskToOwner,
   returnTaskToPrimary,

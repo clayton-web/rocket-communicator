@@ -20,7 +20,7 @@ The product is **not** a permanent communication archive.
 
 ## Current status
 
-**Architecture alignment (Owner / Recipient / capability model) and Milestone A3 (Owner authentication) are committed.**
+**Architecture alignment and Milestone A3 (Owner authentication) are complete and verified. A4 Phase 0 (decisions D055–D064 and contract alignment) is recorded; A4 runtime is not started.**
 
 - Documentation source of truth is in place under `docs/`.
 - pnpm monorepo with Next.js web shell and Android Compose shell builds and tests.

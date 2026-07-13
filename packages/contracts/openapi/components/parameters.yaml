@@ -9,6 +9,19 @@ components:
         type: string
         pattern: '^"(task|task-suggestion)-[^"]+-v[0-9]+"$'
       example: '"task-01JXYZ-v3"'
+    CapabilityToken:
+      name: token
+      in: path
+      required: true
+      description: |
+        Raw capability secret authorizing scoped Recipient access (D050, D059).
+        This path parameter is the Recipient authorization surface (not bearerAuth).
+        Capability routes set `security: []` because OpenAPI cannot model path-based
+        apiKey schemes. Store only a hash server-side; never log the raw secret (D063).
+      schema:
+        type: string
+        minLength: 32
+        maxLength: 256
     SuggestionId:
       name: suggestionId
       in: path
