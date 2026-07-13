@@ -8,31 +8,50 @@ export interface AuthConfig {
   ownerOrganizationId: string;
 }
 
-function requireEnv(name: string): string {
-  const value = process.env[name]?.trim();
-  if (!value) {
+function requireConfiguredEnv(value: string | undefined, name: string): string {
+  const trimmed = value?.trim();
+  if (!trimmed) {
     throw new AuthConfigError(`${name} is required.`);
   }
-  return value;
+  return trimmed;
 }
 
-export function getAuthConfig(): AuthConfig {
-  return {
-    supabaseUrl: requireEnv('NEXT_PUBLIC_SUPABASE_URL'),
-    supabaseAnonKey: requireEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY'),
-    appUrl: requireEnv('NEXT_PUBLIC_APP_URL').replace(/\/$/, ''),
-    ownerWorkspaceDomain: requireEnv('OWNER_WORKSPACE_DOMAIN'),
-    ownerOrganizationId: requireEnv('OWNER_ORGANIZATION_ID'),
-  };
+function normalizeAppUrl(appUrl: string): string {
+  return appUrl.replace(/\/$/, '');
 }
 
 export function getPublicAuthConfig(): Pick<
   AuthConfig,
   'supabaseUrl' | 'supabaseAnonKey' | 'appUrl'
 > {
+  // NEXT_PUBLIC_* must use static process.env access so Next.js can inline them in client bundles.
   return {
-    supabaseUrl: requireEnv('NEXT_PUBLIC_SUPABASE_URL'),
-    supabaseAnonKey: requireEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY'),
-    appUrl: requireEnv('NEXT_PUBLIC_APP_URL').replace(/\/$/, ''),
+    supabaseUrl: requireConfiguredEnv(
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+      'NEXT_PUBLIC_SUPABASE_URL',
+    ),
+    supabaseAnonKey: requireConfiguredEnv(
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+      'NEXT_PUBLIC_SUPABASE_ANON_KEY',
+    ),
+    appUrl: normalizeAppUrl(
+      requireConfiguredEnv(process.env.NEXT_PUBLIC_APP_URL, 'NEXT_PUBLIC_APP_URL'),
+    ),
+  };
+}
+
+export function getAuthConfig(): AuthConfig {
+  const publicConfig = getPublicAuthConfig();
+
+  return {
+    ...publicConfig,
+    ownerWorkspaceDomain: requireConfiguredEnv(
+      process.env.OWNER_WORKSPACE_DOMAIN,
+      'OWNER_WORKSPACE_DOMAIN',
+    ),
+    ownerOrganizationId: requireConfiguredEnv(
+      process.env.OWNER_ORGANIZATION_ID,
+      'OWNER_ORGANIZATION_ID',
+    ),
   };
 }
