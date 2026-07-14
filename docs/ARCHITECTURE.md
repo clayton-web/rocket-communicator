@@ -12,15 +12,15 @@ Assignment binds a Task to a Recipient. A Capability is the authorization grant 
 
 ## Package layout
 
-| Path                                                    | Responsibility                                                                                                                       |
-| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `apps/android`                                          | Kotlin + Jetpack Compose Owner UX (auth/task UI in later milestones; A1 shell + A2 api-contract module exist)                        |
-| `apps/web`                                              | Next.js App Router: Owner session APIs; Owner task HTTP, capability runtime, and Recipient capability pages remain A4 remaining work |
-| `packages/contracts`                                    | Canonical OpenAPI 3.1; generated TypeScript and Kotlin DTOs (D007)                                                                   |
-| `packages/domain`                                       | Pure TypeScript state machines, policies, retention helpers—no I/O                                                                   |
-| `packages/db`                                           | Prisma schema, migrations, repositories, transactions (server-only; D006, D062)                                                      |
-| `packages/eslint-config` / `packages/typescript-config` | Shared tooling                                                                                                                       |
-| `packages/ai` / `packages/ui`                           | Deferred                                                                                                                             |
+| Path                                                    | Responsibility                                                                                                               |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `apps/android`                                          | Kotlin + Jetpack Compose Owner UX (auth/task UI in later milestones; A1 shell + A2 api-contract module exist)                |
+| `apps/web`                                              | Next.js App Router: Owner session APIs; Owner task HTTP; capability runtime; Recipient capability APIs and `/c/[token]` page |
+| `packages/contracts`                                    | Canonical OpenAPI 3.1; generated TypeScript and Kotlin DTOs (D007)                                                           |
+| `packages/domain`                                       | Pure TypeScript state machines, policies, retention helpers—no I/O                                                           |
+| `packages/db`                                           | Prisma schema, migrations, repositories, transactions (server-only; D006, D062)                                              |
+| `packages/eslint-config` / `packages/typescript-config` | Shared tooling                                                                                                               |
+| `packages/ai` / `packages/ui`                           | Deferred                                                                                                                     |
 
 Do not share Zod types with Kotlin. Generate clients from OpenAPI. Neon is not used in v1 (D005).
 

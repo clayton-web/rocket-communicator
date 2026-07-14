@@ -1,6 +1,6 @@
 # Milestones
 
-**Current:** A4 in progress. Owner capability runtime and Owner task HTTP are done. Next: Recipient capability APIs and `/c/[token]`.
+**Current:** A4 complete (automated verification). Live Supabase migration deployment and manual Owner↔Recipient E2E remain operator runbook steps before production use. Next: A5 Gmail connection and polling.
 
 Process: [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW.md) · [REVIEW_CHECKLIST.md](REVIEW_CHECKLIST.md)
 
@@ -24,31 +24,15 @@ Process: [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW.md) · [REVIEW_CHECKLIST
 
 **Status:** Complete. Web-only Supabase Google OAuth for the single Owner (D048): `/login`, `/auth/callback`, `GET /api/v1/session`, `OWNER_ORGANIZATION_ID` + `OWNER_WORKSPACE_DOMAIN`.
 
-### A4 Phase 0–2
-
-**Status:** Complete. Phase 0: D055–D064 + OpenAPI alignment. Phase 1: domain machines. Phase 2: `packages/db` persistence foundation.
-
-### A4 Phase 3–4C (Owner)
-
-**Status:** Complete. Capability token runtime (issue/validate/revoke/expiry); Owner task application services; Owner task HTTP; Owner capability issuance HTTP.
-
----
-
-## In progress
-
 ### A4 — Task core and Recipient capability web view
 
-**Objective:** Capability issuance/validation; Owner task APIs; Recipient capability HTTP; minimal non-mutating GET + POST-after-confirm UI at `/c/[token]`.
+**Status:** Complete (automated). Product implementation finished; `pnpm test`, `pnpm build`, contract checks, and `pnpm verify` pass.
 
-**Completed so far:** Capability token runtime; Owner task HTTP; Owner capability issuance HTTP.
+**Not yet done (operator):** live Supabase migration has not been applied; live Google Workspace / Supabase end-to-end verification remains pending. Do not treat this as production-verified.
 
-**Remaining:** Recipient capability APIs; `/c/[token]` Recipient page and confirmation UI; final A4 verification.
-
-**Out of scope for A4:** AI, Gmail forward, Android task UI; Owner suggestion review/approval HTTP (later suggestion workflow); raw IP / full UA retention (D057); Recipient voice (D058 → A12).
+**Out of scope for A4 (unchanged):** AI, Gmail forward, Android task UI; Owner suggestion review/approval HTTP (later suggestion workflow); raw IP / full UA retention (D057); Recipient voice (D058 → A12).
 
 **Binding decisions:** D055–D064. OPEN #21 deferred to A7.
-
-**Checkpoint:** `feat: task core and recipient capability view`
 
 ---
 

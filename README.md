@@ -12,12 +12,12 @@ Not a permanent communication archive.
 
 ## Current status
 
-| Area                    | Status                                                         |
-| ----------------------- | -------------------------------------------------------------- |
-| A3 Owner authentication | Complete (`apps/web` Google Workspace + Supabase)              |
-| A4 Phase 0–2            | Complete (decisions/OpenAPI alignment, domain, `packages/db`)  |
-| A4 remaining            | Capability runtime, Owner/Recipient task HTTP, `/c/[token]` UI |
-| Later                   | Gmail, AI, Android auth, notifications, voice, workers         |
+| Area                    | Status                                                                                           |
+| ----------------------- | ------------------------------------------------------------------------------------------------ |
+| A3 Owner authentication | Complete (`apps/web` Google Workspace + Supabase)                                                |
+| A4 task + capability    | Complete (automated): Owner/Recipient task + capability HTTP, `/c/[token]` UI                    |
+| Live DB / E2E           | Operator follow-up: migrate Supabase + run live Owner↔Recipient checklist (not yet claimed here) |
+| Later                   | Gmail, AI, Android auth, notifications, voice, workers                                           |
 
 Terms: [docs/GLOSSARY.md](docs/GLOSSARY.md). Plan: [docs/MILESTONES.md](docs/MILESTONES.md).
 
