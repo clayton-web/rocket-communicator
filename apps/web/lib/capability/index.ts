@@ -93,3 +93,6 @@ export {
 
 export { requireCapabilityConfirmation } from './confirm';
 export { parseWorkRequestBody } from './validate-request';
+
+export { loadCapabilityPageView, type CapabilityPageView } from './page-load';
+export { deriveAvailableRecipientActions, type RecipientUiAction } from './available-actions';

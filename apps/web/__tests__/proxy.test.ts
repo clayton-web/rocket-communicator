@@ -24,11 +24,20 @@ describe('proxy entry point', () => {
     ]);
   });
 
-  it('refreshes the session via auth.getUser()', async () => {
+  it('refreshes the session via auth.getUser() for non-capability pages', async () => {
     const request = new NextRequest('http://localhost:3000/');
     const response = await proxy(request);
 
     expect(getUser).toHaveBeenCalledOnce();
     expect(response.status).toBe(200);
+  });
+
+  it('skips session refresh for /c/[token] and sets bearer-link protections', async () => {
+    const response = await proxy(new NextRequest('http://localhost:3000/c/token-value'));
+
+    expect(getUser).not.toHaveBeenCalled();
+    expect(response.headers.get('cache-control')).toMatch(/no-store/);
+    expect(response.headers.get('referrer-policy')).toBe('no-referrer');
+    expect(response.headers.get('x-robots-tag')).toMatch(/noindex/);
   });
 });
