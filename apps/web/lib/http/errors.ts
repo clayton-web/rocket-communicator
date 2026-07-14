@@ -5,6 +5,10 @@ import { PersistenceError } from '@aicaa/db';
 import { AuthConfigError } from '@/lib/auth/errors';
 import { jsonErrorResponse, unauthorizedResponse } from '@/lib/auth/http';
 import { CapabilityTokenError, type CapabilityTokenErrorCode } from '@/lib/capability/errors';
+import {
+  RecipientCapabilityServiceError,
+  type RecipientCapabilityServiceErrorCode,
+} from '@/lib/capability/recipient-errors';
 import { TaskServiceError, type TaskServiceErrorCode } from '@/lib/tasks/errors';
 
 type ErrorResponse = components['schemas']['ErrorResponse'];
@@ -125,6 +129,106 @@ function sanitizeCapabilityMessage(error: CapabilityTokenError): string {
     default:
       return 'An unexpected error occurred.';
   }
+}
+
+function httpStatusForRecipientCode(code: RecipientCapabilityServiceErrorCode): number {
+  switch (code) {
+    case 'UNAUTHORIZED':
+      return 401;
+    case 'FORBIDDEN':
+      return 403;
+    case 'NOT_FOUND':
+      return 404;
+    case 'VALIDATION_ERROR':
+      return 400;
+    case 'INVALID_STATE_TRANSITION':
+    case 'DOMAIN_CONFLICT':
+    case 'PERSISTENCE_CONFLICT':
+      return 409;
+    case 'PRECONDITION_REQUIRED':
+      return 428;
+    case 'PRECONDITION_FAILED':
+      return 412;
+    default:
+      return 500;
+  }
+}
+
+/**
+ * Public Recipient capability ErrorCodes (docs/API_CONTRACT.md).
+ * Internal CAPABILITY_EXPIRED / CAPABILITY_REVOKED never leave the service layer.
+ * Domain/task-state conflicts collapse to DOMAIN_CONFLICT.
+ */
+function contractCodeForRecipientCode(code: RecipientCapabilityServiceErrorCode): ErrorCode {
+  switch (code) {
+    case 'UNAUTHORIZED':
+      return 'UNAUTHORIZED';
+    case 'FORBIDDEN':
+      return 'FORBIDDEN';
+    case 'NOT_FOUND':
+      return 'NOT_FOUND';
+    case 'VALIDATION_ERROR':
+      return 'VALIDATION_ERROR';
+    case 'INVALID_STATE_TRANSITION':
+    case 'DOMAIN_CONFLICT':
+    case 'PERSISTENCE_CONFLICT':
+      return 'DOMAIN_CONFLICT';
+    case 'PRECONDITION_REQUIRED':
+      return 'PRECONDITION_REQUIRED';
+    case 'PRECONDITION_FAILED':
+      return 'PRECONDITION_FAILED';
+    default:
+      return 'INTERNAL_ERROR';
+  }
+}
+
+function sanitizeRecipientMessage(
+  code: RecipientCapabilityServiceErrorCode,
+  message: string,
+): string {
+  switch (code) {
+    case 'UNAUTHORIZED':
+      return 'Capability token is invalid.';
+    case 'FORBIDDEN':
+      return 'Capability token does not authorize this action.';
+    case 'NOT_FOUND':
+      return 'Resource not found.';
+    case 'PRECONDITION_REQUIRED':
+      return 'If-Match header is required for this mutation.';
+    case 'PRECONDITION_FAILED':
+      return 'The resource has changed since the provided ETag.';
+    case 'VALIDATION_ERROR':
+      return message;
+    case 'INVALID_STATE_TRANSITION':
+    case 'DOMAIN_CONFLICT':
+    case 'PERSISTENCE_CONFLICT':
+      return 'The request conflicts with the current task state.';
+    default:
+      return 'An unexpected error occurred.';
+  }
+}
+
+/** Map Recipient capability application failures to the public HTTP error envelope. */
+export function mapRecipientCapabilityRouteError(error: unknown): NextResponse<ErrorResponse> {
+  if (error instanceof RecipientCapabilityServiceError) {
+    return jsonErrorResponseWithDetails(
+      contractCodeForRecipientCode(error.code),
+      sanitizeRecipientMessage(error.code, error.message),
+      httpStatusForRecipientCode(error.code),
+      error.code === 'VALIDATION_ERROR' ? error.details : undefined,
+    );
+  }
+  if (error instanceof CapabilityTokenError) {
+    // Config/load failures only — runtime authz errors are already mapped by services.
+    if (error.code === 'MISSING_CONFIGURATION' || error.code === 'INVALID_TTL_CONFIGURATION') {
+      return jsonErrorResponse('INTERNAL_ERROR', 'An unexpected error occurred.', 500);
+    }
+    return jsonErrorResponse('UNAUTHORIZED', 'Capability token is invalid.', 401);
+  }
+  if (error instanceof PersistenceError) {
+    return jsonErrorResponse('INTERNAL_ERROR', 'An unexpected error occurred.', 500);
+  }
+  return jsonErrorResponse('INTERNAL_ERROR', 'An unexpected error occurred.', 500);
 }
 
 /** Map Owner task / capability application failures to the contracted HTTP error envelope. */

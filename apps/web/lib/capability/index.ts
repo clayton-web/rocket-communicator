@@ -84,3 +84,12 @@ export {
   type RecipientCapabilityMutationBase,
   type RecipientCapabilityMutationResult,
 } from './mutations';
+
+export {
+  runRecipientCapabilityRoute,
+  requireRecipientCapabilityContext,
+  type RecipientCapabilityRouteContext,
+} from './route-context';
+
+export { requireCapabilityConfirmation } from './confirm';
+export { parseWorkRequestBody } from './validate-request';
