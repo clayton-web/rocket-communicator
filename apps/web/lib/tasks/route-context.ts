@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { getAuthenticatedOwner, type AuthenticatedOwner } from '@/lib/auth/require-owner';
+import { logDatabaseRuntimeFailure } from '@/lib/db/diagnostics';
 import { getDb } from '@/lib/db/server';
 import { mapOwnerTaskRouteError, unauthorizedResponse } from '@/lib/http/errors';
 import type { DbClient } from '@aicaa/db';
@@ -44,17 +45,29 @@ export async function requireOwnerTaskContext(
   };
 }
 
+function routePathname(request: Request): string {
+  return new URL(request.url).pathname;
+}
+
 export async function runOwnerTaskRoute(
   request: Request,
   handler: (context: OwnerTaskRouteContext) => Promise<Response>,
 ): Promise<Response> {
+  const pathname = routePathname(request);
+  let requestId: string | undefined;
+
   try {
     const auth = await requireOwnerTaskContext(request);
     if (!auth.ok) {
       return auth.response;
     }
+    requestId = auth.context.requestId;
     return await handler(auth.context);
   } catch (error) {
+    logDatabaseRuntimeFailure(error, {
+      routePathname: pathname,
+      requestId,
+    });
     return mapOwnerTaskRouteError(error);
   }
 }

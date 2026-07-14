@@ -1,0 +1,265 @@
+// @vitest-environment node
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Prisma, PersistenceError } from '@aicaa/db';
+import { asOrganizationId, asOwnerId, ownerActor } from '@aicaa/domain';
+import { TaskServiceError } from '@/lib/tasks/errors';
+import {
+  ENABLE_DB_RUNTIME_DIAGNOSTICS_ENV,
+  buildDatabaseRuntimeFailureLogPayload,
+  classifyDatabaseRuntimeFailure,
+  isDatabaseRuntimeDiagnosticsEnabled,
+  logDatabaseRuntimeFailure,
+  serializeDatabaseRuntimeFailureLogPayload,
+  shouldLogDatabaseRuntimeFailure,
+} from '@/lib/db/diagnostics';
+import { mapOwnerTaskRouteError } from '@/lib/http/errors';
+import { setDbForTests } from '@/lib/db/server';
+
+vi.mock('@/lib/auth/require-owner', () => ({
+  getAuthenticatedOwner: vi.fn(),
+}));
+
+import { getAuthenticatedOwner } from '@/lib/auth/require-owner';
+import { GET as listTasks } from '@/app/api/v1/tasks/route';
+
+const FORBIDDEN_LOG_FRAGMENTS = [
+  'postgresql://',
+  'password',
+  'tokenHash',
+  'pepper',
+  '"stack"',
+  'at Object.',
+  'DATABASE_URL is required',
+  'User:password@',
+];
+
+const owner = ownerActor(asOwnerId('owner_diag'), asOrganizationId('org_diag'));
+
+function authOwner() {
+  vi.mocked(getAuthenticatedOwner).mockResolvedValue({
+    user: { id: owner.ownerId } as never,
+    actor: owner,
+    session: {
+      ownerId: owner.ownerId,
+      organizationId: owner.organizationId,
+      role: 'owner',
+      displayName: 'Owner',
+    },
+  });
+}
+
+function assertSafeSerializedLog(serialized: string) {
+  const lower = serialized.toLowerCase();
+  for (const fragment of FORBIDDEN_LOG_FRAGMENTS) {
+    expect(lower).not.toContain(fragment.toLowerCase());
+  }
+  expect(serialized).not.toMatch(/\n\s+at /);
+}
+
+describe('database runtime diagnostics', () => {
+  const originalEnv = { ...process.env };
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    process.env = { ...originalEnv };
+    setDbForTests(undefined);
+    authOwner();
+  });
+
+  afterEach(() => {
+    consoleErrorSpy.mockRestore();
+    process.env = { ...originalEnv };
+    setDbForTests(undefined);
+    vi.clearAllMocks();
+  });
+
+  it('disables runtime diagnostics by default', () => {
+    delete process.env.DATABASE_URL;
+    delete process.env[ENABLE_DB_RUNTIME_DIAGNOSTICS_ENV];
+
+    expect(isDatabaseRuntimeDiagnosticsEnabled()).toBe(false);
+
+    const error = new Error('DATABASE_URL is required to create the Prisma client.');
+    expect(logDatabaseRuntimeFailure(error)).toBeUndefined();
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+  });
+
+  it('enables runtime diagnostics only when ENABLE_DB_RUNTIME_DIAGNOSTICS=true', () => {
+    delete process.env.DATABASE_URL;
+    process.env[ENABLE_DB_RUNTIME_DIAGNOSTICS_ENV] = 'true';
+
+    expect(isDatabaseRuntimeDiagnosticsEnabled()).toBe(true);
+
+    const payload = logDatabaseRuntimeFailure(
+      new Error('DATABASE_URL is required to create the Prisma client.'),
+      { routePathname: '/api/v1/tasks', requestId: 'req_diag_flag' },
+    );
+    expect(payload?.category).toBe('DATABASE_URL_MISSING');
+    expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+    assertSafeSerializedLog(String(consoleErrorSpy.mock.calls[0]?.[0]));
+  });
+
+  it('does not enable runtime diagnostics for other flag values', () => {
+    delete process.env.DATABASE_URL;
+    process.env[ENABLE_DB_RUNTIME_DIAGNOSTICS_ENV] = '1';
+
+    expect(isDatabaseRuntimeDiagnosticsEnabled()).toBe(false);
+    expect(
+      logDatabaseRuntimeFailure(
+        new Error('DATABASE_URL is required to create the Prisma client.'),
+      ),
+    ).toBeUndefined();
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+  });
+
+  it('classifies missing DATABASE_URL as DATABASE_URL_MISSING', () => {
+    delete process.env.DATABASE_URL;
+    const error = new Error('DATABASE_URL is required to create the Prisma client.');
+
+    expect(classifyDatabaseRuntimeFailure(error)).toBe('DATABASE_URL_MISSING');
+    expect(shouldLogDatabaseRuntimeFailure(error)).toBe(true);
+  });
+
+  it('classifies Prisma initialization errors without logging message or stack', () => {
+    process.env.DATABASE_URL = 'postgresql://USER:PASSWORD@HOST:5432/DATABASE';
+    process.env[ENABLE_DB_RUNTIME_DIAGNOSTICS_ENV] = 'true';
+    const error = new Prisma.PrismaClientInitializationError(
+      'secret connection detail message',
+      '6.19.3',
+      'P1001',
+    );
+
+    expect(classifyDatabaseRuntimeFailure(error)).toBe('DATABASE_UNREACHABLE');
+
+    const payload = logDatabaseRuntimeFailure(error, {
+      routePathname: '/api/v1/tasks',
+      requestId: 'req_diag_1',
+    });
+    expect(payload).toBeDefined();
+    expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+
+    const serialized = String(consoleErrorSpy.mock.calls[0]?.[0]);
+    assertSafeSerializedLog(serialized);
+    expect(serialized).toContain('DATABASE_UNREACHABLE');
+    expect(serialized).toContain('PrismaClientInitializationError');
+    expect(serialized).not.toContain('secret connection detail message');
+  });
+
+  it('maps Prisma auth and TLS codes to safe categories', () => {
+    process.env.DATABASE_URL = 'postgresql://USER:PASSWORD@HOST:5432/DATABASE';
+
+    const authError = new Prisma.PrismaClientKnownRequestError('auth detail', {
+      code: 'P1000',
+      clientVersion: '6.19.3',
+    });
+    const tlsError = new Prisma.PrismaClientKnownRequestError('tls detail', {
+      code: 'P1011',
+      clientVersion: '6.19.3',
+    });
+
+    expect(classifyDatabaseRuntimeFailure(authError)).toBe('DATABASE_AUTHENTICATION_FAILED');
+    expect(classifyDatabaseRuntimeFailure(tlsError)).toBe('DATABASE_TLS_OR_DNS');
+  });
+
+  it('maps unknown database-related errors to UNKNOWN_DATABASE_ERROR', () => {
+    process.env.DATABASE_URL = 'postgresql://USER:PASSWORD@HOST:5432/DATABASE';
+    const error = new Error('generic');
+
+    expect(classifyDatabaseRuntimeFailure(error)).toBe('UNKNOWN_DATABASE_ERROR');
+    expect(shouldLogDatabaseRuntimeFailure(error)).toBe(false);
+  });
+
+  it('serializes only the allowed diagnostic payload shape', () => {
+    delete process.env.DATABASE_URL;
+    const payload = buildDatabaseRuntimeFailureLogPayload(
+      new Error('DATABASE_URL is required to create the Prisma client.'),
+      {
+        routePathname: '/api/v1/tasks',
+        requestId: 'req_diag_2',
+      },
+    );
+
+    expect(payload).toEqual({
+      event: 'database_runtime_failure',
+      category: 'DATABASE_URL_MISSING',
+      prismaErrorClass: 'Error',
+      prismaErrorCode: undefined,
+      nodeErrorCode: undefined,
+      clientVersion: undefined,
+      routePathname: '/api/v1/tasks',
+      deploymentRuntime: expect.any(String),
+      databaseUrlPresent: false,
+      requestId: 'req_diag_2',
+      timestamp: expect.any(String),
+    });
+
+    const serialized = serializeDatabaseRuntimeFailureLogPayload(payload);
+    assertSafeSerializedLog(serialized);
+    const parsed = JSON.parse(serialized) as Record<string, unknown>;
+    expect(Object.keys(parsed).sort()).toEqual(
+      [
+        'category',
+        'databaseUrlPresent',
+        'deploymentRuntime',
+        'event',
+        'prismaErrorClass',
+        'requestId',
+        'routePathname',
+        'timestamp',
+      ].sort(),
+    );
+    expect(parsed).not.toHaveProperty('message');
+    expect(parsed).not.toHaveProperty('stack');
+  });
+
+  it('keeps public Owner route response generic 500 INTERNAL_ERROR', async () => {
+    delete process.env.DATABASE_URL;
+    delete process.env[ENABLE_DB_RUNTIME_DIAGNOSTICS_ENV];
+
+    const response = await listTasks(new Request('http://localhost/api/v1/tasks'));
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(body).toEqual({
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'An unexpected error occurred.',
+        requestId: expect.any(String),
+        correlationId: null,
+      },
+    });
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+  });
+
+  it('logs sanitized diagnostics on Owner route only when diagnostics are enabled', async () => {
+    delete process.env.DATABASE_URL;
+    process.env[ENABLE_DB_RUNTIME_DIAGNOSTICS_ENV] = 'true';
+
+    const response = await listTasks(new Request('http://localhost/api/v1/tasks'));
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(body.error.code).toBe('INTERNAL_ERROR');
+    expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+    assertSafeSerializedLog(String(consoleErrorSpy.mock.calls[0]?.[0]));
+  });
+
+  it('does not log expected TaskServiceError responses', () => {
+    const error = new TaskServiceError('NOT_FOUND', 'Task not found.');
+
+    expect(shouldLogDatabaseRuntimeFailure(error)).toBe(false);
+    expect(logDatabaseRuntimeFailure(error)).toBeUndefined();
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+
+    const response = mapOwnerTaskRouteError(error);
+    expect(response.status).toBe(404);
+  });
+
+  it('classifies invalid DATABASE_URL format when present but non-postgres', () => {
+    process.env.DATABASE_URL = 'not-a-valid-database-url';
+    const error = new Prisma.PrismaClientInitializationError('init', '6.19.3', 'P1001');
+
+    expect(classifyDatabaseRuntimeFailure(error)).toBe('DATABASE_URL_INVALID_FORMAT');
+  });
+});
