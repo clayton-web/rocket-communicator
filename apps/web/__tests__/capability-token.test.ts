@@ -16,10 +16,9 @@ describe('capability token primitives', () => {
     expect(token).toMatch(/^[A-Za-z0-9_-]+$/);
     expect(token.length).toBeGreaterThanOrEqual(43); // 32 bytes base64url without padding
     expect(Buffer.from(token, 'base64url').length).toBe(CAPABILITY_TOKEN_BYTES);
+    // Opaque random payload: only alphabet/length assertions here.
+    // Absence of embedded claims is enforced by generation API (no claim inputs) + redaction tests.
     expect(token).not.toMatch(/[@.]/);
-    expect(token.toLowerCase()).not.toContain('task');
-    expect(token.toLowerCase()).not.toContain('scope');
-    expect(token).not.toContain('2026');
   });
 
   it('produces distinct tokens across repeated issuance', () => {
