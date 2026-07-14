@@ -24,6 +24,12 @@ export {
   type CapabilityTokenErrorCode,
 } from './errors';
 
+export {
+  RecipientCapabilityServiceError,
+  recipientCapabilityServiceError,
+  type RecipientCapabilityServiceErrorCode,
+} from './recipient-errors';
+
 export { assertNoRawCapabilityToken, redactCapabilitySecrets } from './redact';
 export { buildCapabilityPath, buildCapabilityUrl } from './urls';
 
@@ -55,3 +61,26 @@ export {
   returnToOwnerWithCapabilityInvalidation,
   revokeCapabilityForOwner,
 } from './lifecycle';
+
+export {
+  mapTaskToDto,
+  mapSuggestionToDto,
+  mapWorkRequestResponse,
+  type TaskDto,
+  type TaskSuggestionDto,
+  type SubmitWorkRequestResponseDto,
+} from './map-to-dto';
+
+export { getCapabilityTask, type GetCapabilityTaskCommand } from './queries';
+
+export {
+  markCapabilityTaskWaiting,
+  resumeCapabilityTask,
+  completeCapabilityTask,
+  addCapabilityTaskNote,
+  requestCapabilityClarification,
+  returnCapabilityTaskToOwner,
+  submitCapabilityWorkRequest,
+  type RecipientCapabilityMutationBase,
+  type RecipientCapabilityMutationResult,
+} from './mutations';
