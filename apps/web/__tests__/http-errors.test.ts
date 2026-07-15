@@ -213,7 +213,9 @@ describe('safe HTTP error mapping', () => {
     const body = await response.json();
 
     expectGenericJson500(response, body);
-    expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+    expect(consoleErrorSpy.mock.calls.length).toBeGreaterThanOrEqual(1);
+    const serializedLogs = consoleErrorSpy.mock.calls.map((call) => String(call[0])).join('\n');
+    expect(serializedLogs).toContain('db_runtime_stage');
   });
 
   it('logs diagnostics for genuine PersistenceError shape when enabled', () => {

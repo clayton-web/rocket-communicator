@@ -1,4 +1,9 @@
 import type { DbClient } from '@aicaa/db';
+import {
+  classifyDbRuntimeStageFailure,
+  logDbRuntimeStage,
+  logDbRuntimeStageFailure,
+} from '@/lib/db/stage-diagnostics';
 import { loadDbRuntime } from './runtime-db';
 
 let client: DbClient | undefined;
@@ -9,7 +14,14 @@ let client: DbClient | undefined;
  */
 export function getDb(): DbClient {
   if (!client) {
-    client = loadDbRuntime().createPrismaClient();
+    logDbRuntimeStage('PRISMA_CLIENT_CONSTRUCTION_START');
+    try {
+      client = loadDbRuntime().createPrismaClient();
+      logDbRuntimeStage('PRISMA_CLIENT_CONSTRUCTED');
+    } catch (error) {
+      logDbRuntimeStageFailure(error, classifyDbRuntimeStageFailure(error));
+      throw error;
+    }
   }
   return client;
 }

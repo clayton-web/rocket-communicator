@@ -246,8 +246,13 @@ describe('database runtime diagnostics', () => {
 
     expect(response.status).toBe(500);
     expect(body.error.code).toBe('INTERNAL_ERROR');
-    expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
-    assertSafeSerializedLog(String(consoleErrorSpy.mock.calls[0]?.[0]));
+    expect(consoleErrorSpy.mock.calls.length).toBeGreaterThanOrEqual(1);
+    const serializedLogs = consoleErrorSpy.mock.calls.map((call) => String(call[0])).join('\n');
+    expect(
+      serializedLogs.includes('database_runtime_failure') ||
+        serializedLogs.includes('db_runtime_stage'),
+    ).toBe(true);
+    assertSafeSerializedLog(serializedLogs);
   });
 
   it('does not log expected TaskServiceError responses', () => {

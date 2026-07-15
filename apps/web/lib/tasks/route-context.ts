@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { getAuthenticatedOwner, type AuthenticatedOwner } from '@/lib/auth/require-owner';
 import { logDatabaseRuntimeFailure } from '@/lib/db/diagnostics';
 import { getDb } from '@/lib/db/server';
+import { setDbStageContext } from '@/lib/db/stage-context';
 import { mapOwnerTaskRouteError, unauthorizedResponse } from '@/lib/http/errors';
 import type { DbClient } from '@aicaa/db';
 import type { OwnerActor } from '@aicaa/domain';
@@ -33,13 +34,16 @@ export async function requireOwnerTaskContext(
   if (!authenticated) {
     return { ok: false, response: unauthorizedResponse() };
   }
+  const requestId = randomUUID();
+  const routePathname = new URL(request.url).pathname;
+  setDbStageContext({ routePathname, requestId });
   return {
     ok: true,
     context: {
       owner: authenticated.actor,
       db: getDb(),
       now: new Date().toISOString(),
-      requestId: randomUUID(),
+      requestId,
       authenticated,
     },
   };
@@ -69,5 +73,7 @@ export async function runOwnerTaskRoute(
       requestId,
     });
     return mapOwnerTaskRouteError(error);
+  } finally {
+    setDbStageContext(undefined);
   }
 }

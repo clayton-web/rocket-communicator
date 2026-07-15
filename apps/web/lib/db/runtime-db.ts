@@ -1,5 +1,10 @@
 import 'server-only';
 import { createRequire } from 'node:module';
+import {
+  classifyDbModuleRequireFailure,
+  logDbRuntimeStage,
+  logDbRuntimeStageFailure,
+} from '@/lib/db/stage-diagnostics';
 
 export type DbRuntimeModule = typeof import('@aicaa/db');
 
@@ -89,13 +94,35 @@ export function loadDbRuntime(): DbRuntimeModule {
     return cachedRuntime;
   }
 
+  logDbRuntimeStage('DB_RUNTIME_LOAD_START');
+
   let loaded: unknown;
   try {
     loaded = requireDbModule();
-  } catch {
+  } catch (error) {
+    logDbRuntimeStageFailure(error, classifyDbModuleRequireFailure(error), {
+      moduleLoaded: false,
+      exportsValidated: false,
+    });
     throw new DbRuntimeConfigurationError();
   }
 
-  cachedRuntime = validateRuntimeModule(loaded);
+  logDbRuntimeStage('DB_RUNTIME_MODULE_LOADED', { moduleLoaded: true });
+
+  try {
+    cachedRuntime = validateRuntimeModule(loaded);
+  } catch (error) {
+    logDbRuntimeStageFailure(error, 'DB_EXPORTS_MISSING', {
+      moduleLoaded: true,
+      exportsValidated: false,
+    });
+    throw error;
+  }
+
+  logDbRuntimeStage('DB_RUNTIME_EXPORTS_VALIDATED', {
+    moduleLoaded: true,
+    exportsValidated: true,
+  });
+
   return cachedRuntime;
 }
