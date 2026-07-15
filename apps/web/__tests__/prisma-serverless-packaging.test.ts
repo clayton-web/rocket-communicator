@@ -214,6 +214,18 @@ describe('Prisma serverless packaging configuration', () => {
     expect(bridge.exportNames).toEqual(REQUIRED_RUNTIME_EXPORTS);
   });
 
+  it('does not compile undeclared Export alias bindings in bridge chunks when built', () => {
+    const nextDir = path.join(webRoot, '.next');
+    if (!fs.existsSync(nextDir)) {
+      return;
+    }
+
+    const { chunkPath } = assertCompiledBridgeNamespace(webRoot);
+    const bridgeContent = fs.readFileSync(chunkPath, 'utf8');
+    expect(bridgeContent).not.toMatch(/createPrismaClient:createPrismaClientExport/);
+    expect(bridgeContent).toMatch(/createPrismaClient:\w+\.createPrismaClient/);
+  });
+
   it('does not compile Turbopack dynamic runtime import stubs in bridge chunks when built', () => {
     const nextDir = path.join(webRoot, '.next');
     if (!fs.existsSync(nextDir)) {

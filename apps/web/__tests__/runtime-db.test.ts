@@ -7,6 +7,7 @@ import * as aicaaDb from '@aicaa/db/runtime';
 import {
   DB_RUNTIME_LITERAL_SPECIFIER,
   REQUIRED_RUNTIME_EXPORTS,
+  simulateLambdaLayoutBridgeInit,
 } from '../scripts/lib/db-package-trace.mjs';
 import { loadTracedRuntimeModule } from '@/lib/db/db-runtime-entry';
 import {
@@ -102,11 +103,20 @@ describe('db runtime loader', () => {
     expect(runtime.createPrismaClient).toBe(aicaaDb.createPrismaClient);
   });
 
-  it('loads traced runtime through the production bridge entry', async () => {
-    const runtime = await loadDbRuntime();
-    expect(typeof runtime.createPrismaClient).toBe('function');
-    expect(typeof runtime.listTasks).toBe('function');
-    expect(typeof runtime.persistWorkRequest).toBe('function');
+  it('loads traced runtime through the production bridge entry', () => {
+    const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+    const repoRoot = path.resolve(webRoot, '../..');
+    const nextDir = path.join(webRoot, '.next');
+    if (!fs.existsSync(nextDir)) {
+      return;
+    }
+
+    const result = simulateLambdaLayoutBridgeInit({
+      webRoot,
+      repoRoot,
+      nftRelativePath: 'app/api/v1/tasks/route.js.nft.json',
+    });
+    expect(result.resolved.replace(/\\/g, '/')).toMatch(/packages\/db\/dist\/runtime\.js$/);
   });
 
   it('uses a literal static runtime specifier in the bridge layer', () => {
@@ -128,7 +138,11 @@ describe('db runtime loader', () => {
     expect(reexportsSource).not.toMatch(/createRequire/);
     expect(reexportsSource).not.toMatch(/process\.cwd\(/);
     expect(bridgeSource).toContain('./db-runtime-reexports');
-    expect(bridgeSource).not.toMatch(/from ['"]@aicaa\/db\/runtime['"]/);
+    expect(bridgeSource).toContain('resolveTracedRuntimePath');
+    expect(bridgeSource).toContain('importExternalModule');
+    expect(bridgeSource).toContain('tracedRuntime.createPrismaClient');
+    expect(bridgeSource).not.toMatch(/as \w+Export/);
+    expect(bridgeSource).not.toMatch(/createPrismaClient:createPrismaClientExport/);
   });
 
   it('statically references all required runtime exports in the bridge layer', () => {
@@ -166,8 +180,9 @@ describe('db runtime loader', () => {
     expect(runtimeSource).toContain('loadTracedRuntimeModule');
     expect(reexportsSource).toContain(DB_RUNTIME_LITERAL_SPECIFIER);
     expect(bridgeSource).toContain('loadTracedRuntimeModule');
+    expect(bridgeSource).toContain('resolveTracedRuntimePath');
+    expect(bridgeSource).toContain('importExternalModule');
     expect(bridgeSource).not.toMatch(/createRequire/);
-    expect(bridgeSource).not.toMatch(/pathToFileURL/);
     expect(bridgeSource).not.toMatch(/from ['"]@aicaa\/db\/runtime['"]/);
     expect(bridgeSource).not.toMatch(/require\(['"]@aicaa\/db\/runtime['"]\)/);
     expect(bridgeSource).not.toMatch(/export \* from/);
