@@ -80,7 +80,7 @@ describe('built runtime entry', () => {
     expect(loaded.createTestDatabase).toBeUndefined();
   });
 
-  it('loads @aicaa/domain transitively when requiring @aicaa/db/runtime', () => {
+  it('loads domain runtime transitively through a relative import when requiring @aicaa/db/runtime', () => {
     const runtimeJs = path.join(packageRoot, 'dist/runtime.js');
     if (!fs.existsSync(runtimeJs)) {
       return;
@@ -89,7 +89,11 @@ describe('built runtime entry', () => {
     const mapperJs = path.join(packageRoot, 'dist/mappers/domain-mappers.js');
     expect(fs.existsSync(mapperJs)).toBe(true);
     const mapperContent = fs.readFileSync(mapperJs, 'utf8');
-    expect(mapperContent).toContain('@aicaa/domain');
+    expect(mapperContent).not.toContain('@aicaa/domain');
+    expect(mapperContent).toContain('../../../domain/dist/index.js');
+    expect(
+      fs.existsSync(path.resolve(path.dirname(mapperJs), '../../../domain/dist/index.js')),
+    ).toBe(true);
 
     const req = createRequire(runtimeJs);
     const loaded = req('@aicaa/db/runtime') as Record<string, unknown>;

@@ -25,6 +25,9 @@ export const DOMAIN_NODE_MODULES_DIST_INDEX_RELATIVE =
   'apps/web/node_modules/@aicaa/domain/dist/index.js';
 export const DOMAIN_FUNCTION_ROOT_DIST_INDEX_RELATIVE =
   'node_modules/@aicaa/domain/dist/index.js';
+export const DOMAIN_MAPPERS_RELATIVE = 'packages/db/dist/mappers/domain-mappers.js';
+export const DOMAIN_RELATIVE_IMPORT_SPECIFIER = '../../../domain/dist/index.js';
+export const DOMAIN_RELATIVE_INDEX_RELATIVE = 'packages/domain/dist/index.js';
 export const FORBIDDEN_RUNTIME_PACKAGE_REQUIRE = 'require("@aicaa/db/runtime")';
 export const FORBIDDEN_RUNTIME_PACKAGE_REQUIRE_ALT = "require('@aicaa/db/runtime')";
 
@@ -388,34 +391,47 @@ function copyFileOrSymlink(src, dest) {
   fs.copyFileSync(src, dest);
 }
 
-function materializeTracedDomainPackageAtFunctionRoot(layoutRoot) {
-  const dest = path.join(layoutRoot, 'node_modules/@aicaa/domain');
-  if (fs.existsSync(path.join(dest, 'dist', 'index.js'))) {
-    return dest;
-  }
+export function assertNoPackageNameDomainImportsInDbDist(repoRoot) {
+  const distDir = path.join(repoRoot, 'packages/db/dist');
+  const offenders = [];
 
-  const sources = [
-    path.join(layoutRoot, 'apps/web/node_modules/@aicaa/domain'),
-    path.join(layoutRoot, 'packages/domain'),
-  ];
-
-  let source;
-  for (const candidate of sources) {
-    if (fs.existsSync(path.join(candidate, 'dist', 'index.js'))) {
-      source = candidate;
-      break;
+  for (const jsFile of listDistJsFiles(distDir)) {
+    const content = fs.readFileSync(jsFile, 'utf8');
+    if (/from\s+['"]@aicaa\/domain['"]/.test(content)) {
+      offenders.push(path.relative(repoRoot, jsFile));
     }
   }
 
-  if (!source) {
+  if (offenders.length > 0) {
     throw new Error(
-      'isolated layout missing traced @aicaa/domain sources required for function-root node_modules',
+      `packages/db/dist still contains runtime @aicaa/domain imports: ${offenders.join(', ')}`,
+    );
+  }
+}
+
+export function assertDomainMappersUsesRelativeDomainImport(repoRoot) {
+  const mapperJs = path.join(repoRoot, DOMAIN_MAPPERS_RELATIVE);
+  if (!fs.existsSync(mapperJs)) {
+    throw new Error(`missing ${DOMAIN_MAPPERS_RELATIVE} — run pnpm build:db`);
+  }
+
+  const content = fs.readFileSync(mapperJs, 'utf8');
+  if (content.includes('@aicaa/domain')) {
+    throw new Error(`${DOMAIN_MAPPERS_RELATIVE} still references @aicaa/domain`);
+  }
+  if (!content.includes(DOMAIN_RELATIVE_IMPORT_SPECIFIER)) {
+    throw new Error(
+      `${DOMAIN_MAPPERS_RELATIVE} is missing relative domain import ${DOMAIN_RELATIVE_IMPORT_SPECIFIER}`,
     );
   }
 
-  fs.mkdirSync(path.dirname(dest), { recursive: true });
-  fs.cpSync(source, dest, { recursive: true, dereference: true });
-  return dest;
+  const resolvedDomainIndex = path.resolve(
+    path.dirname(mapperJs),
+    DOMAIN_RELATIVE_IMPORT_SPECIFIER,
+  );
+  if (!fs.existsSync(resolvedDomainIndex)) {
+    throw new Error(`relative domain import does not resolve to ${DOMAIN_RELATIVE_INDEX_RELATIVE}`);
+  }
 }
 
 export function materializeNftLayout({
@@ -473,8 +489,6 @@ export function materializeNftLayout({
       }
     }
   }
-
-  materializeTracedDomainPackageAtFunctionRoot(layoutRoot);
 
   return { layoutRoot, routeJs };
 }
@@ -552,11 +566,11 @@ export function simulateRuntimeImportFailureWithoutDomainDist({
     includeWorkspaceSymlinks: false,
   });
 
-  const domainDistPath = path.join(layoutRoot, 'node_modules/@aicaa/domain/dist');
+  const domainDistPath = path.join(layoutRoot, 'packages/domain/dist');
 
   try {
     if (!fs.existsSync(domainDistPath)) {
-      throw new Error('isolated layout missing node_modules/@aicaa/domain/dist');
+      throw new Error('isolated layout missing packages/domain/dist');
     }
     fs.rmSync(domainDistPath, { recursive: true, force: true });
 
@@ -585,12 +599,12 @@ try {
 
     const output = proc.stdout.trim();
     if (output === 'UNEXPECTED_SUCCESS') {
-      throw new Error('runtime import unexpectedly succeeded without node_modules/@aicaa/domain/dist');
+      throw new Error('runtime import unexpectedly succeeded without packages/domain/dist');
     }
 
     const parsed = JSON.parse(output);
-    if (parsed.code !== 'ERR_MODULE_NOT_FOUND' || !parsed.message.includes(DOMAIN_PACKAGE_LITERAL)) {
-      throw new Error(`expected ERR_MODULE_NOT_FOUND for ${DOMAIN_PACKAGE_LITERAL}, got ${output}`);
+    if (parsed.code !== 'ERR_MODULE_NOT_FOUND') {
+      throw new Error(`expected ERR_MODULE_NOT_FOUND after removing packages/domain/dist, got ${output}`);
     }
 
     return parsed;
@@ -815,16 +829,18 @@ function assertIsolatedLayout() {
   }
 }
 
-async function assertDomainPackageResolvesFromLayout() {
-  const mapperPath = path.join(layoutRoot, 'packages/db/dist/mappers/domain-mappers.js');
-  const resolved = await import.meta.resolve('@aicaa/domain', pathToFileURL(mapperPath).href);
-  const resolvedPath = path.resolve(fileURLToPath(resolved));
-  const resolvedLayoutRoot = fs.realpathSync.native
-    ? fs.realpathSync.native(layoutRoot)
-    : fs.realpathSync(layoutRoot);
-  const relative = path.relative(resolvedLayoutRoot, resolvedPath);
-  if (relative === '' || relative.startsWith('..') || path.isAbsolute(relative)) {
-    throw new Error('domain package resolved outside isolated layout: ' + resolvedPath);
+function assertDomainRelativeImportInLayout() {
+  const mapperPath = path.join(layoutRoot, ${JSON.stringify(DOMAIN_MAPPERS_RELATIVE)});
+  const content = fs.readFileSync(mapperPath, 'utf8');
+  if (content.includes('@aicaa/domain')) {
+    throw new Error('domain-mappers still contains @aicaa/domain package import');
+  }
+  if (!content.includes(${JSON.stringify(DOMAIN_RELATIVE_IMPORT_SPECIFIER)})) {
+    throw new Error('domain-mappers missing relative domain import');
+  }
+  const domainIndex = path.join(layoutRoot, ${JSON.stringify(DOMAIN_RELATIVE_INDEX_RELATIVE)});
+  if (!fs.existsSync(domainIndex)) {
+    throw new Error('layout missing packages/domain/dist/index.js');
   }
 }
 
@@ -849,8 +865,8 @@ for (const exportName of ${JSON.stringify(REQUIRED_RUNTIME_EXPORTS)}) {
 if (typeof runtimeModule.createTestDatabase !== 'undefined') {
   throw new Error('loaded runtime unexpectedly exports createTestDatabase');
 }
-await assertDomainPackageResolvesFromLayout();
-console.log('DOMAIN_PACKAGE_RESOLVED_OK');
+assertDomainRelativeImportInLayout();
+console.log('DOMAIN_RELATIVE_IMPORT_OK');
 console.log('RUNTIME_LOAD_OK');
 
 const bridgeChunkPath = path.join(layoutWeb, '.next', bridgeChunkRelativePath);
@@ -950,7 +966,7 @@ export function simulateLambdaLayoutBridgeInit({
     if (
       !output.includes('ISOLATED_LAYOUT_OK') ||
       !output.includes('ROUTE_IMPORT_OK') ||
-      !output.includes('DOMAIN_PACKAGE_RESOLVED_OK') ||
+      !output.includes('DOMAIN_RELATIVE_IMPORT_OK') ||
       !output.includes('RUNTIME_LOAD_OK') ||
       !output.includes('COMPILED_BRIDGE_LOAD_OK')
     ) {

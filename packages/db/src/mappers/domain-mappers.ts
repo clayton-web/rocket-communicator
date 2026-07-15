@@ -23,7 +23,7 @@ import {
   asTaskId,
   asTaskSuggestionId,
   toUtcInstant,
-} from '@aicaa/domain';
+} from '../../../domain/dist/index.js';
 import type {
   AuditEvent as PrismaAuditEvent,
   Recipient as PrismaRecipient,

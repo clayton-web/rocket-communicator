@@ -8,13 +8,16 @@ import {
   DB_BACKED_ROUTE_NFTS,
   DB_RUNTIME_RELATIVE,
   DOMAIN_NODE_MODULES_DIST_INDEX_RELATIVE,
-  DOMAIN_FUNCTION_ROOT_DIST_INDEX_RELATIVE,
+  DOMAIN_RELATIVE_IMPORT_SPECIFIER,
+  DOMAIN_RELATIVE_INDEX_RELATIVE,
   PGLITE_MARKERS,
   REQUIRED_RUNTIME_EXPORTS,
   RHEL_ENGINE,
   assertBuiltOutputUsesRuntimeBridge,
   assertCompiledBridgeNamespace,
+  assertDomainMappersUsesRelativeDomainImport,
   assertIsolatedNftLayoutOutsideRepo,
+  assertNoPackageNameDomainImportsInDbDist,
   assertNftIncludesDbPackageRuntime,
   assertNftIncludesResolvableDomainPackage,
   findCompiledBridgeExportNames,
@@ -164,6 +167,21 @@ describe('Prisma serverless packaging configuration', () => {
     }
   });
 
+  it('emits a relative domain import in domain-mappers.js without package-name runtime imports', () => {
+    expect(() => assertNoPackageNameDomainImportsInDbDist(repoRoot)).not.toThrow();
+    expect(() => assertDomainMappersUsesRelativeDomainImport(repoRoot)).not.toThrow();
+
+    const mapperJs = path.join(repoRoot, 'packages/db/dist/mappers/domain-mappers.js');
+    const content = fs.readFileSync(mapperJs, 'utf8');
+    expect(content).not.toContain('@aicaa/domain');
+    expect(content).toContain(DOMAIN_RELATIVE_IMPORT_SPECIFIER);
+    expect(
+      fs.existsSync(
+        path.resolve(path.dirname(mapperJs), DOMAIN_RELATIVE_IMPORT_SPECIFIER),
+      ),
+    ).toBe(true);
+  });
+
   it('materializes isolated NFT layouts outside the repository when built', () => {
     if (!fs.existsSync(tasksNftPath)) {
       return;
@@ -180,11 +198,12 @@ describe('Prisma serverless packaging configuration', () => {
       expect(() => assertIsolatedNftLayoutOutsideRepo(layoutRoot, repoRoot)).not.toThrow();
       expect(layoutRoot.startsWith(repoRoot)).toBe(false);
       expect(
-        fs.existsSync(path.join(layoutRoot, DOMAIN_FUNCTION_ROOT_DIST_INDEX_RELATIVE)),
+        fs.existsSync(path.join(layoutRoot, DOMAIN_RELATIVE_INDEX_RELATIVE)),
       ).toBe(true);
       expect(
         fs.existsSync(path.join(layoutRoot, DOMAIN_NODE_MODULES_DIST_INDEX_RELATIVE)),
       ).toBe(true);
+      expect(fs.existsSync(path.join(layoutRoot, 'node_modules/@aicaa/domain'))).toBe(false);
     } finally {
       fs.rmSync(layoutRoot, { recursive: true, force: true });
     }
@@ -201,7 +220,6 @@ describe('Prisma serverless packaging configuration', () => {
       nftRelativePath: 'app/api/v1/tasks/route.js.nft.json',
     });
     expect(failure.code).toBe('ERR_MODULE_NOT_FOUND');
-    expect(failure.message).toContain('@aicaa/domain');
   });
 
   it('resolves traced packages/db runtime from simulated task-route layout without workspace symlinks when built', () => {

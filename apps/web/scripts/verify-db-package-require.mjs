@@ -12,6 +12,8 @@ import {
   DB_BACKED_API_ROUTE_NFTS,
   DB_RUNTIME_RELATIVE,
   assertBuiltOutputUsesRuntimeBridge,
+  assertDomainMappersUsesRelativeDomainImport,
+  assertNoPackageNameDomainImportsInDbDist,
   assertRuntimeGraphExcludesPglite,
   getRequiredDbPackageRuntimeFiles,
   getRequiredDomainPackageRuntimeFiles,
@@ -43,9 +45,11 @@ function main() {
   const required = getRequiredDbPackageRuntimeFiles(repoRoot);
   const domainRequired = getRequiredDomainPackageRuntimeFiles(repoRoot);
   assertRuntimeGraphExcludesPglite(required.importGraphJs, repoRoot);
+  assertNoPackageNameDomainImportsInDbDist(repoRoot);
+  assertDomainMappersUsesRelativeDomainImport(repoRoot);
 
-  if (!required.packageImports.includes('@aicaa/domain')) {
-    fail('production runtime graph does not import @aicaa/domain');
+  if (required.packageImports.includes('@aicaa/domain')) {
+    fail('production runtime graph still contains package-name @aicaa/domain import');
   }
   if (required.importGraphJs.some((filePath) => filePath.includes('create-test-database.js'))) {
     fail('production runtime graph includes create-test-database.js');
