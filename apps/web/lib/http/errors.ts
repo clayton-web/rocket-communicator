@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import type { components } from '@aicaa/contracts/schema';
 import { jsonErrorResponse, unauthorizedResponse } from '@/lib/auth/http';
+import { attachOwnerTaskDbDiagnosticHeaders } from '@/lib/db/stage-response-headers';
 import type { CapabilityTokenErrorCode } from '@/lib/capability/errors';
 import type { RecipientCapabilityServiceErrorCode } from '@/lib/capability/recipient-errors';
 import {
@@ -47,6 +48,10 @@ export function jsonErrorResponseWithDetails(
 
 function genericInternalErrorResponse(): NextResponse<ErrorResponse> {
   return jsonErrorResponse('INTERNAL_ERROR', 'An unexpected error occurred.', 500);
+}
+
+function ownerTaskUnexpectedInternalErrorResponse(): NextResponse<ErrorResponse> {
+  return attachOwnerTaskDbDiagnosticHeaders(genericInternalErrorResponse());
 }
 
 function httpStatusForTaskCode(code: TaskServiceErrorCode): number {
@@ -240,7 +245,7 @@ function mapOwnerPersistenceErrorToHttpResponse(
       412,
     );
   }
-  return genericInternalErrorResponse();
+  return ownerTaskUnexpectedInternalErrorResponse();
 }
 
 /** Map Recipient capability application failures to the public HTTP error envelope. */
@@ -285,7 +290,7 @@ export function mapOwnerTaskRouteError(error: unknown): NextResponse<ErrorRespon
     if (isTaskServiceError(error)) {
       const code = readTaskServiceErrorCode(error);
       if (!code) {
-        return genericInternalErrorResponse();
+        return ownerTaskUnexpectedInternalErrorResponse();
       }
       return jsonErrorResponseWithDetails(
         contractCodeForTaskCode(code),
@@ -297,7 +302,7 @@ export function mapOwnerTaskRouteError(error: unknown): NextResponse<ErrorRespon
     if (isCapabilityTokenError(error)) {
       const code = readCapabilityTokenErrorCode(error);
       if (!code) {
-        return genericInternalErrorResponse();
+        return ownerTaskUnexpectedInternalErrorResponse();
       }
       return jsonErrorResponseWithDetails(
         contractCodeForCapabilityCode(code),
@@ -312,9 +317,9 @@ export function mapOwnerTaskRouteError(error: unknown): NextResponse<ErrorRespon
     if (isAuthConfigError(error)) {
       return jsonErrorResponse('INTERNAL_ERROR', 'Authentication is not configured.', 500);
     }
-    return genericInternalErrorResponse();
+    return ownerTaskUnexpectedInternalErrorResponse();
   } catch {
-    return genericInternalErrorResponse();
+    return ownerTaskUnexpectedInternalErrorResponse();
   }
 }
 

@@ -4,7 +4,7 @@ import {
   logDbRuntimeStage,
   logDbRuntimeStageFailure,
 } from '@/lib/db/stage-diagnostics';
-import { loadDbRuntime } from './runtime-db';
+import { DbRuntimeConfigurationError, loadDbRuntime } from './runtime-db';
 
 let client: DbClient | undefined;
 
@@ -19,7 +19,9 @@ export function getDb(): DbClient {
       client = loadDbRuntime().createPrismaClient();
       logDbRuntimeStage('PRISMA_CLIENT_CONSTRUCTED');
     } catch (error) {
-      logDbRuntimeStageFailure(error, classifyDbRuntimeStageFailure(error));
+      if (!(error instanceof DbRuntimeConfigurationError)) {
+        logDbRuntimeStageFailure(error, classifyDbRuntimeStageFailure(error));
+      }
       throw error;
     }
   }

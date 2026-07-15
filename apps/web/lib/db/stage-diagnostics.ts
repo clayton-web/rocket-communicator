@@ -5,7 +5,7 @@ import {
   safeReadProperty,
   type DatabaseRuntimeFailureCategory,
 } from '@/lib/db/diagnostics';
-import { getDbStageContext } from '@/lib/db/stage-context';
+import { getDbStageContext, updateDbStageContext, type DbStageContext } from '@/lib/db/stage-context';
 
 function safeReadString(value: unknown, key: string): string | undefined {
   const candidate = safeReadProperty(value, key);
@@ -131,8 +131,42 @@ function serializePayload(payload: DbRuntimeStageLogPayload): string {
   }
 }
 
+function persistStageState(
+  patch: Pick<
+    DbStageContext,
+    'lastStage' | 'failureCategory' | 'errorName' | 'prismaErrorCode' | 'nodeErrorCode'
+  >,
+): void {
+  try {
+    if (!getDbStageContext()) {
+      return;
+    }
+    updateDbStageContext(patch);
+  } catch {
+    // Stage state must never affect request handling.
+  }
+}
+
 function emitStagePayload(payload: DbRuntimeStageLogPayload): void {
   try {
+    if (payload.stage === 'DB_RUNTIME_FAILURE') {
+      persistStageState({
+        lastStage: 'DB_RUNTIME_FAILURE',
+        failureCategory: payload.category,
+        errorName: payload.errorName,
+        prismaErrorCode: payload.prismaErrorCode,
+        nodeErrorCode: payload.nodeErrorCode,
+      });
+    } else {
+      persistStageState({
+        lastStage: payload.stage,
+        failureCategory: undefined,
+        errorName: undefined,
+        prismaErrorCode: undefined,
+        nodeErrorCode: undefined,
+      });
+    }
+
     if (!isDatabaseRuntimeDiagnosticsEnabled()) {
       return;
     }
