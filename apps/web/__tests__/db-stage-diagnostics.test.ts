@@ -253,7 +253,7 @@ describe('db runtime stage diagnostics', () => {
     }
   });
 
-  it('logs construction failure at getDb without mutating thrown error type', () => {
+  it('logs construction failure at getDb without mutating thrown error type', async () => {
     process.env[ENABLE_DB_RUNTIME_DIAGNOSTICS_ENV] = 'true';
     process.env.DATABASE_URL = 'postgresql://user:secret@db.example.com:5432/app';
 
@@ -266,7 +266,7 @@ describe('db runtime stage diagnostics', () => {
     });
     setDbRuntimeForTests({ ...aicaaDb, createPrismaClient });
 
-    expect(() => getDb()).toThrow(initError);
+    await expect(getDb()).rejects.toThrow(initError);
     const payload = findStageLog(consoleErrorSpy, 'DB_RUNTIME_FAILURE');
     expect(payload.stage).toBe('DB_RUNTIME_FAILURE');
     expect(payload.category).toBe('DATABASE_UNREACHABLE');

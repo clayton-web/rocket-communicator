@@ -29,7 +29,7 @@ export async function revokeCapabilityForOwner(input: {
   requestId?: string;
   auditId?: string;
 }): Promise<{ capability: TaskCapability; audit: AuditEventRecord }> {
-  const dbRuntime = loadDbRuntime();
+  const dbRuntime = await loadDbRuntime();
   const existing = await dbRuntime.getCapabilityById(
     input.db,
     input.owner.organizationId,
@@ -89,7 +89,7 @@ export async function persistCapabilityExpiryIfNeeded(input: {
   capabilityId: string;
   now: UtcInstant;
 }): Promise<TaskCapability | null> {
-  const dbRuntime = loadDbRuntime();
+  const dbRuntime = await loadDbRuntime();
   const existing = await dbRuntime.getCapabilityById(input.db, input.organizationId, input.capabilityId);
   const domain = omitTokenHash(existing);
   if (domain.status === 'revoked' || domain.status === 'expired') {
@@ -117,7 +117,7 @@ export async function invalidateCapabilityOnAssignmentChangePersisted(input: {
   now: UtcInstant;
   reason?: string;
 }): Promise<PersistedCapability> {
-  const dbRuntime = loadDbRuntime();
+  const dbRuntime = await loadDbRuntime();
   const existing = await dbRuntime.getCapabilityById(input.db, input.organizationId, input.capabilityId);
   invalidateCapabilityOnAssignmentChange(omitTokenHash(existing), input.now);
   return dbRuntime.revokeCapabilityRecord(
@@ -142,5 +142,5 @@ export async function returnToOwnerWithCapabilityInvalidation(
       'Return-to-Owner requires the capability id to invalidate.',
     );
   }
-  return loadDbRuntime().persistReturnToOwner(input);
+  return (await loadDbRuntime()).persistReturnToOwner(input);
 }

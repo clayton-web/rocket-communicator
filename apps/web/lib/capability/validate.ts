@@ -54,7 +54,7 @@ export async function validateCapabilityToken(
   }
 
   const tokenHash = hashCapabilityToken(command.rawToken, pepper);
-  const { findCapabilityByTokenHash, getTaskById } = loadDbRuntime();
+  const { findCapabilityByTokenHash, getTaskById } = await loadDbRuntime();
   const found = await findCapabilityByTokenHash(command.db, tokenHash);
   if (!found) {
     throw capabilityTokenError('INVALID_CAPABILITY', 'Capability token is invalid.');

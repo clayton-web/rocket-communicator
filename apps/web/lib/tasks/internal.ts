@@ -138,7 +138,7 @@ function sanitizePersistenceMessage(code: PersistenceErrorCode): string {
 
 export async function loadOwnerTask(db: DbClient, owner: OwnerActor, taskId: string) {
   try {
-    const { getTaskById } = loadDbRuntime();
+    const { getTaskById } = await loadDbRuntime();
     return await getTaskById(db, owner.organizationId, taskId);
   } catch (error) {
     mapDomainOrPersistenceError(error);
@@ -182,7 +182,7 @@ export async function listTasksFromDb(
 ): ReturnType<DbRuntimeModule['listTasks']> {
   logDbRuntimeStage('PRISMA_QUERY_START', { queryOperation: 'listTasks' });
   try {
-    const { listTasks } = loadDbRuntime();
+    const { listTasks } = await loadDbRuntime();
     const result = await listTasks(db, query);
     logDbRuntimeStage('PRISMA_QUERY_SUCCEEDED', { queryOperation: 'listTasks' });
     return result;

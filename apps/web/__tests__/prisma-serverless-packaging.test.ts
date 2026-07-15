@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   DB_BACKED_ROUTE_NFTS,
+  DB_RUNTIME_BRIDGE_EXPORTS,
   DB_RUNTIME_RELATIVE,
   PGLITE_MARKERS,
   RHEL_ENGINE,
@@ -16,6 +17,7 @@ import {
   getRequiredDbPackageRuntimeFiles,
   getRequiredDomainPackageRuntimeFiles,
   nftIncludesRepoFile,
+  simulateLambdaLayoutBridgeInit,
   simulateRouteRuntimeRequire,
   walkDbPackageRuntimeJsFiles,
 } from '../scripts/lib/db-package-trace.mjs';
@@ -28,6 +30,7 @@ const generatedClientDir = path.join(repoRoot, 'packages/db/dist/generated/clien
 const verifyScriptPath = path.join(webRoot, 'scripts/verify-prisma-serverless-trace.mjs');
 const verifyDbRuntimeScriptPath = path.join(webRoot, 'scripts/verify-db-runtime-resolution.mjs');
 const verifyDbPackageRequirePath = path.join(webRoot, 'scripts/verify-db-package-require.mjs');
+const verifyLambdaLayoutBridgePath = path.join(webRoot, 'scripts/verify-lambda-layout-bridge.mjs');
 const tasksNftPath = path.join(webRoot, '.next/server/app/api/v1/tasks/route.js.nft.json');
 
 const FORBIDDEN_TRACE_GLOBS = [
@@ -199,7 +202,7 @@ describe('Prisma serverless packaging configuration', () => {
     expect(combined).not.toContain('requireImpl("@aicaa/db/runtime")');
   });
 
-  it('registers every required runtime export in the compiled bridge namespace when built', () => {
+  it('registers lazy bridge exports in the compiled bridge namespace when built', () => {
     const nextDir = path.join(webRoot, '.next');
     if (!fs.existsSync(nextDir)) {
       return;
@@ -207,9 +210,53 @@ describe('Prisma serverless packaging configuration', () => {
 
     expect(() => assertCompiledBridgeNamespace(webRoot)).not.toThrow();
     const bridge = findCompiledBridgeExportNames(webRoot);
-    expect(bridge.exportNames).toContain('createPrismaClient');
-    expect(bridge.exportNames).toContain('listTasks');
-    expect(bridge.exportNames).not.toContain('createTestDatabase');
+    expect(bridge.lazy).toBe(true);
+    expect(bridge.exportNames).toEqual(DB_RUNTIME_BRIDGE_EXPORTS);
+  });
+
+  it('does not compile CommonJS require() of traced ESM runtime.js when built', () => {
+    const nextDir = path.join(webRoot, '.next');
+    if (!fs.existsSync(nextDir)) {
+      return;
+    }
+
+    const combined = fs
+      .readdirSync(path.join(webRoot, '.next/server/chunks'))
+      .filter((name) => name.endsWith('.js') && !name.endsWith('.js.map'))
+      .map((name) => fs.readFileSync(path.join(webRoot, '.next/server/chunks', name), 'utf8'))
+      .join('\n');
+
+    expect(combined).not.toMatch(/require\([^)]*packages\/db\/dist\/runtime\.js/);
+    expect(combined).not.toMatch(/createRequire\)\([^)]*\)\([^)]*runtime\.js/);
+    expect(combined).toMatch(/import\(/);
+  });
+
+  it('loads traced runtime from simulated Vercel Lambda layout when built', () => {
+    const nextDir = path.join(webRoot, '.next');
+    if (!fs.existsSync(nextDir)) {
+      return;
+    }
+
+    const result = simulateLambdaLayoutBridgeInit({
+      webRoot,
+      repoRoot,
+      nftRelativePath: 'app/api/v1/tasks/route.js.nft.json',
+    });
+    expect(result.resolved.replace(/\\/g, '/')).toMatch(/packages\/db\/dist\/runtime\.js$/);
+  });
+
+  it('passes post-build lambda layout bridge verification when .next output exists', () => {
+    const nextDir = path.join(webRoot, '.next');
+    if (!fs.existsSync(nextDir)) {
+      return;
+    }
+
+    const output = execFileSync(process.execPath, [verifyLambdaLayoutBridgePath], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    expect(output.trim()).toMatch(/^verify-lambda-layout-bridge: ok/);
   });
 
   it('passes post-build package require simulation when .next output exists', () => {

@@ -55,7 +55,7 @@ export async function requireRecipientCapabilityContext(
     return {
       ok: true,
       context: {
-        db: getDb(),
+        db: await getDb(),
         pepper: config.pepper,
         now: new Date().toISOString(),
         requestId: randomUUID(),

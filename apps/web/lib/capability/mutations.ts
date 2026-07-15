@@ -67,7 +67,7 @@ async function runRecipientMutation(
   },
 ): Promise<RecipientCapabilityMutationResult> {
   try {
-    const dbRuntime = loadDbRuntime();
+    const dbRuntime = await loadDbRuntime();
     const expectedVersion = requireExpectedVersion(command.expectedVersion);
     const ctx = await validateRecipientCapability({
       db: command.db,
@@ -225,7 +225,7 @@ export async function returnCapabilityTaskToOwner(
   command: RecipientCapabilityMutationBase & { note?: string },
 ): Promise<RecipientCapabilityMutationResult> {
   try {
-    const dbRuntime = loadDbRuntime();
+    const dbRuntime = await loadDbRuntime();
     const expectedVersion = requireExpectedVersion(command.expectedVersion);
     const ctx = await validateRecipientCapability({
       db: command.db,
@@ -306,7 +306,7 @@ export async function submitCapabilityWorkRequest(
   audit: AuditEventRecord;
 }> {
   try {
-    const dbRuntime = loadDbRuntime();
+    const dbRuntime = await loadDbRuntime();
     const expectedVersion = requireExpectedVersion(command.expectedVersion);
     const ctx = await validateRecipientCapability({
       db: command.db,

@@ -248,7 +248,7 @@ async function persistExpiredStatusBestEffort(input: {
   try {
     const pepper = assertValidCapabilityPepper(input.pepper, 'pepper');
     const tokenHash = hashCapabilityToken(input.rawToken.trim(), pepper);
-    const { findCapabilityByTokenHash } = loadDbRuntime();
+    const { findCapabilityByTokenHash } = await loadDbRuntime();
     const found = await findCapabilityByTokenHash(input.db, tokenHash);
     if (!found || found.status === 'revoked' || found.status === 'expired') {
       return;

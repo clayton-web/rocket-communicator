@@ -170,7 +170,7 @@ async function persistIssuance(
   const ttlMs = assertValidCapabilityTtlMs(command.ttlMs);
   const pepper = assertValidCapabilityPepper(command.pepper, 'pepper');
   const owner = ownerActor(command.owner.ownerId, command.owner.organizationId);
-  const dbRuntime = loadDbRuntime();
+  const dbRuntime = await loadDbRuntime();
 
   let current: Task;
   try {
@@ -372,7 +372,7 @@ async function revokeActiveCapabilitiesInTransaction(
   now: UtcInstant,
   reason: string,
 ): Promise<string[]> {
-  const { findActiveCapabilitiesForAssignment, revokeCapabilityRecord } = loadDbRuntime();
+  const { findActiveCapabilitiesForAssignment, revokeCapabilityRecord } = await loadDbRuntime();
   const actives = await findActiveCapabilitiesForAssignment(tx, organizationId, assignmentId);
   const revokedIds: string[] = [];
   for (const active of actives) {

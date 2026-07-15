@@ -41,7 +41,7 @@ export async function requireOwnerTaskContext(
     ok: true,
     context: {
       owner: authenticated.actor,
-      db: getDb(),
+      db: await getDb(),
       now: new Date().toISOString(),
       requestId,
       authenticated,

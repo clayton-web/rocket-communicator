@@ -36,7 +36,7 @@ export async function loadCapabilityPageView(
 
     const { pepper } = getCapabilityTokenConfig();
     const ctx = await validateCapabilityToken({
-      db: getDb(),
+      db: await getDb(),
       rawToken: token,
       pepper,
       now,

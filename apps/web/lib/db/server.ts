@@ -12,11 +12,12 @@ let client: DbClient | undefined;
  * Request-scoped Prisma client for Owner task HTTP routes (DATABASE_URL).
  * Tests should mock this module and inject PGlite via createTestDatabase().
  */
-export function getDb(): DbClient {
+export async function getDb(): Promise<DbClient> {
   if (!client) {
     logDbRuntimeStage('PRISMA_CLIENT_CONSTRUCTION_START');
     try {
-      client = loadDbRuntime().createPrismaClient();
+      const runtime = await loadDbRuntime();
+      client = runtime.createPrismaClient();
       logDbRuntimeStage('PRISMA_CLIENT_CONSTRUCTED');
     } catch (error) {
       if (!(error instanceof DbRuntimeConfigurationError)) {

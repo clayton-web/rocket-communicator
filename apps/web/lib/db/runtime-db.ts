@@ -4,9 +4,9 @@ import {
   logDbRuntimeStage,
   logDbRuntimeStageFailure,
 } from '@/lib/db/stage-diagnostics';
-import * as dbRuntimeEntry from './db-runtime-entry';
+import { loadTracedRuntimeModule } from './db-runtime-entry';
 
-export type DbRuntimeModule = typeof dbRuntimeEntry;
+export type DbRuntimeModule = Awaited<ReturnType<typeof loadTracedRuntimeModule>>;
 
 const REQUIRED_EXPORTS = [
   'createPrismaClient',
@@ -31,6 +31,7 @@ const REQUIRED_EXPORTS = [
 
 let cachedRuntime: DbRuntimeModule | undefined;
 let testRuntimeOverride: DbRuntimeModule | undefined;
+let runtimePromise: Promise<DbRuntimeModule> | undefined;
 
 export class DbRuntimeConfigurationError extends Error {
   constructor() {
@@ -64,23 +65,21 @@ function validateRuntimeModule(runtime: unknown): DbRuntimeModule {
 export function resetDbRuntimeForTests(): void {
   cachedRuntime = undefined;
   testRuntimeOverride = undefined;
+  runtimePromise = undefined;
 }
 
 /** Test-only injection for Vitest and other non-serverless runtimes. */
 export function setDbRuntimeForTests(runtime: DbRuntimeModule | undefined): void {
   testRuntimeOverride = runtime ? validateRuntimeModule(runtime) : undefined;
   cachedRuntime = testRuntimeOverride;
+  runtimePromise = undefined;
 }
 
-function loadProductionRuntimeModule(): unknown {
-  return dbRuntimeEntry;
+async function loadProductionRuntimeModule(): Promise<unknown> {
+  return loadTracedRuntimeModule();
 }
 
-/**
- * Load the traced packages/db runtime via the app-local bridge.
- * Must remain the only production code path that resolves DB runtime values.
- */
-export function loadDbRuntime(): DbRuntimeModule {
+async function loadAndValidateRuntime(): Promise<DbRuntimeModule> {
   if (testRuntimeOverride) {
     return testRuntimeOverride;
   }
@@ -93,7 +92,7 @@ export function loadDbRuntime(): DbRuntimeModule {
 
   let loaded: unknown;
   try {
-    loaded = loadProductionRuntimeModule();
+    loaded = await loadProductionRuntimeModule();
   } catch (error) {
     logDbRuntimeStageFailure(error, classifyDbModuleRequireFailure(error), {
       moduleLoaded: false,
@@ -120,4 +119,27 @@ export function loadDbRuntime(): DbRuntimeModule {
   });
 
   return cachedRuntime;
+}
+
+/**
+ * Load the traced packages/db runtime via the app-local bridge.
+ * Must remain the only production code path that resolves DB runtime values.
+ */
+export async function loadDbRuntime(): Promise<DbRuntimeModule> {
+  if (testRuntimeOverride) {
+    return testRuntimeOverride;
+  }
+
+  if (cachedRuntime) {
+    return cachedRuntime;
+  }
+
+  if (!runtimePromise) {
+    runtimePromise = loadAndValidateRuntime().catch((error) => {
+      runtimePromise = undefined;
+      throw error;
+    });
+  }
+
+  return runtimePromise;
 }

@@ -1,19 +1,21 @@
 import 'server-only';
-import { createRequire } from 'node:module';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 /**
  * Production DB runtime bridge.
  *
- * Resolved at runtime via createRequire into traced packages/db/dist output.
+ * Resolved at runtime via dynamic import into traced packages/db/dist output.
  * Production Lambda code must not resolve the workspace package name at runtime.
+ *
+ * Runtime loading is deferred until loadTracedRuntimeModule() is called so route
+ * module import cannot throw before application error handling runs.
  */
 const TRACED_RUNTIME_RELATIVE = path.join('packages', 'db', 'dist', 'runtime.js');
 
-export function resolveTracedRuntimePath(moduleUrl: string): string {
-  let dir = path.dirname(fileURLToPath(moduleUrl));
+function walkUpForTracedRuntime(startDir: string): string | undefined {
+  let dir = startDir;
   for (let depth = 0; depth < 24; depth += 1) {
     const candidate = path.join(dir, TRACED_RUNTIME_RELATIVE);
     if (fs.existsSync(candidate)) {
@@ -25,36 +27,37 @@ export function resolveTracedRuntimePath(moduleUrl: string): string {
     }
     dir = parent;
   }
+  return undefined;
+}
+
+export function resolveTracedRuntimePath(moduleUrl?: string): string {
+  const cwdCandidate = path.join(process.cwd(), TRACED_RUNTIME_RELATIVE);
+  if (fs.existsSync(cwdCandidate)) {
+    return cwdCandidate;
+  }
+
+  if (moduleUrl) {
+    try {
+      const fromModuleUrl = walkUpForTracedRuntime(path.dirname(fileURLToPath(moduleUrl)));
+      if (fromModuleUrl) {
+        return fromModuleUrl;
+      }
+    } catch {
+      // Ignore invalid moduleUrl values and continue with other anchors.
+    }
+  }
+
+  const fromCwdWalk = walkUpForTracedRuntime(process.cwd());
+  if (fromCwdWalk) {
+    return fromCwdWalk;
+  }
 
   throw new Error(`Traced DB runtime not found at ${TRACED_RUNTIME_RELATIVE}`);
 }
 
 type TracedRuntimeModule = typeof import('../../../../packages/db/dist/runtime.js');
 
-function loadTracedRuntimeModule(): TracedRuntimeModule {
+export async function loadTracedRuntimeModule(): Promise<TracedRuntimeModule> {
   const runtimePath = resolveTracedRuntimePath(import.meta.url);
-  const require = createRequire(runtimePath);
-  return require(runtimePath) as TracedRuntimeModule;
+  return import(pathToFileURL(runtimePath).href) as Promise<TracedRuntimeModule>;
 }
-
-const runtimeModule = loadTracedRuntimeModule();
-
-export const createPrismaClient = runtimeModule.createPrismaClient;
-export const getTaskById = runtimeModule.getTaskById;
-export const listTasks = runtimeModule.listTasks;
-export const createTask = runtimeModule.createTask;
-export const getRecipientById = runtimeModule.getRecipientById;
-export const createAuditEvent = runtimeModule.createAuditEvent;
-export const persistOwnerTaskMutation = runtimeModule.persistOwnerTaskMutation;
-export const persistReturnToOwner = runtimeModule.persistReturnToOwner;
-export const findCapabilityByTokenHash = runtimeModule.findCapabilityByTokenHash;
-export const createCapability = runtimeModule.createCapability;
-export const findActiveCapabilitiesForAssignment = runtimeModule.findActiveCapabilitiesForAssignment;
-export const revokeCapabilityRecord = runtimeModule.revokeCapabilityRecord;
-export const updateActiveAssignmentCapabilityBinding =
-  runtimeModule.updateActiveAssignmentCapabilityBinding;
-export const updateTaskWithExpectedVersion = runtimeModule.updateTaskWithExpectedVersion;
-export const getCapabilityById = runtimeModule.getCapabilityById;
-export const markCapabilityExpiredRecord = runtimeModule.markCapabilityExpiredRecord;
-export const persistCapabilityAction = runtimeModule.persistCapabilityAction;
-export const persistWorkRequest = runtimeModule.persistWorkRequest;

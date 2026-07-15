@@ -55,7 +55,7 @@ export async function createOwnerTask(
   const owner = requireOwnerActor(command.owner);
 
   try {
-    const dbRuntime = loadDbRuntime();
+    const dbRuntime = await loadDbRuntime();
     const taskId = asTaskId(command.taskId ?? newEntityId('task'));
     const domainTask = createStandaloneTask({
       actor: owner,

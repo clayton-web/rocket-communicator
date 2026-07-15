@@ -60,7 +60,7 @@ async function runOwnerMutation(
 ): Promise<OwnerTaskMutationResult> {
   const owner = requireOwnerActor(command.owner);
   try {
-    const dbRuntime = loadDbRuntime();
+    const dbRuntime = await loadDbRuntime();
     const current = await loadOwnerTask(command.db, owner, command.taskId);
     const ifMatch = ifMatchFromExpectedVersion(command.taskId, command.expectedVersion);
     const result = mutate(current, ifMatch);
@@ -238,7 +238,7 @@ export async function returnOwnerTaskToOwner(
 ): Promise<{ task: import('./map-to-dto').TaskDto; audit: AuditEventRecord }> {
   const owner = requireOwnerActor(command.owner);
   try {
-    const dbRuntime = loadDbRuntime();
+    const dbRuntime = await loadDbRuntime();
     const current = await loadOwnerTask(command.db, owner, command.taskId);
     if (!current.assignment) {
       throw taskServiceError(
