@@ -5,10 +5,19 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const monorepoRoot = path.join(__dirname, '../..');
 
 const dbPackageRoot = '../../packages/db';
+const domainPackageRoot = '../../packages/domain';
 const prismaGeneratedClient = `${dbPackageRoot}/dist/generated/client`;
 const dbPackageRuntimeTraceFiles = [
   `${dbPackageRoot}/package.json`,
   `${dbPackageRoot}/dist/**/*.js`,
+];
+const domainPackageRuntimeTraceFiles = [
+  `${domainPackageRoot}/package.json`,
+  `${domainPackageRoot}/dist/**/*.js`,
+];
+const workspacePackageEntryTraceFiles = [
+  '../../apps/web/node_modules/@aicaa/db/package.json',
+  '../../apps/web/node_modules/@aicaa/domain/package.json',
 ];
 const prismaServerlessTraceFiles = [
   `${prismaGeneratedClient}/libquery_engine-rhel-openssl-3.0.x.so.node`,
@@ -16,6 +25,8 @@ const prismaServerlessTraceFiles = [
 ];
 const dbBackedRouteTraceFiles = [
   ...dbPackageRuntimeTraceFiles,
+  ...domainPackageRuntimeTraceFiles,
+  ...workspacePackageEntryTraceFiles,
   ...prismaServerlessTraceFiles,
 ];
 

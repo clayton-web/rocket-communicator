@@ -6,7 +6,9 @@ import {
   logDbRuntimeStageFailure,
 } from '@/lib/db/stage-diagnostics';
 
-export type DbRuntimeModule = typeof import('@aicaa/db');
+export type DbRuntimeModule = typeof import('@aicaa/db/runtime');
+
+const DB_RUNTIME_PACKAGE = '@aicaa/db/runtime';
 
 const REQUIRED_EXPORTS = [
   'createPrismaClient',
@@ -76,14 +78,14 @@ function requireDbModule(): unknown {
   const requireDbPackage = createRequire(import.meta.url);
   const loadExternalDb = new Function(
     'requireImpl',
-    'return requireImpl("@aicaa/db")',
+    'return requireImpl("@aicaa/db/runtime")',
   ) as (requireImpl: NodeRequire) => unknown;
   return loadExternalDb(requireDbPackage);
 }
 
 /**
  * Load the externalized @aicaa/db package at runtime via CommonJS require.
- * Must remain the only production code path that resolves @aicaa/db values.
+ * Must remain the only production code path that resolves @aicaa/db/runtime values.
  */
 export function loadDbRuntime(): DbRuntimeModule {
   if (testRuntimeOverride) {

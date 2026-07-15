@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import * as aicaaDb from '@aicaa/db';
+import * as aicaaDb from '@aicaa/db/runtime';
 import {
   DbRuntimeConfigurationError,
   loadDbRuntime,
@@ -23,7 +23,7 @@ describe('db runtime loader', () => {
     setDbForTests(undefined);
   });
 
-  it('loads @aicaa/db through the injected test runtime', () => {
+  it('loads @aicaa/db/runtime through the injected test runtime', () => {
     setDbRuntimeForTests(aicaaDb);
     const runtime = loadDbRuntime();
     expect(typeof runtime.createPrismaClient).toBe('function');
@@ -62,7 +62,7 @@ describe('db runtime loader', () => {
     expect(getDb()).toBe(injected);
   });
 
-  it('exposes the same createPrismaClient export as @aicaa/db in integration mode', () => {
+  it('exposes the same createPrismaClient export as @aicaa/db/runtime in integration mode', () => {
     setDbRuntimeForTests(aicaaDb);
     expect(loadDbRuntime().createPrismaClient).toBe(aicaaDb.createPrismaClient);
   });

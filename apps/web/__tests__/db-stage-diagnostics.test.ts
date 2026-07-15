@@ -23,8 +23,8 @@ import { setDbStageContext, resetDbStageContextForTests } from '@/lib/db/stage-c
 import { listTasksFromDb } from '@/lib/tasks/internal';
 import { mapOwnerTaskRouteError } from '@/lib/http/errors';
 import { clearDbTestRuntime } from './helpers/db-test-runtime';
-import * as aicaaDb from '@aicaa/db';
-import { createTestDatabase } from '@aicaa/db';
+import * as aicaaDb from '@aicaa/db/runtime';
+import { createTestDatabase } from '@aicaa/db/testing';
 
 vi.mock('@/lib/auth/require-owner', () => ({
   getAuthenticatedOwner: vi.fn(),

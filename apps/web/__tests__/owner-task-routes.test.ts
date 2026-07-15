@@ -31,15 +31,14 @@ import {
 } from '@aicaa/domain';
 import {
   createCapability,
-  createTestDatabase,
   getCapabilityById,
   getTaskById,
   listAuditEventsForTask,
   listTaskAssignments,
   updateActiveAssignmentCapabilityBinding,
   upsertRecipient,
-  type TestDatabase,
 } from '@aicaa/db';
+import { createTestDatabase, type TestDatabase } from '@aicaa/db/testing';
 import { clearDbTestRuntime, installDbTestRuntime } from './helpers/db-test-runtime';
 
 vi.mock('@/lib/auth/require-owner', () => ({

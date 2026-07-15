@@ -8,16 +8,15 @@ import {
   ownerActor,
   type Recipient,
 } from '@aicaa/domain';
-import * as aicaaDb from '@aicaa/db';
+import * as aicaaDb from '@aicaa/db/runtime';
 import {
-  createTestDatabase,
   getCapabilityById,
   getTaskById,
   listAuditEventsForTask,
   listTaskAssignments,
   upsertRecipient,
-  type TestDatabase,
 } from '@aicaa/db';
+import { createTestDatabase, type TestDatabase } from '@aicaa/db/testing';
 import { resetDbRuntimeForTests, setDbRuntimeForTests } from '@/lib/db/runtime-db';
 import {
   RecipientCapabilityServiceError,

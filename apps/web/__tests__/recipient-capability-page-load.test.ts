@@ -8,13 +8,8 @@ import {
   ownerActor,
   type Recipient,
 } from '@aicaa/domain';
-import {
-  createTestDatabase,
-  getTaskById,
-  listAuditEventsForTask,
-  upsertRecipient,
-  type TestDatabase,
-} from '@aicaa/db';
+import { getTaskById, listAuditEventsForTask, upsertRecipient } from '@aicaa/db';
+import { createTestDatabase, type TestDatabase } from '@aicaa/db/testing';
 import { clearDbTestRuntime, installDbTestRuntime } from './helpers/db-test-runtime';
 import { deriveAvailableRecipientActions, issueCapabilityForTask } from '@/lib/capability';
 import { loadCapabilityPageView } from '@/lib/capability/page-load';

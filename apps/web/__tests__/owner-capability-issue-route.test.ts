@@ -13,14 +13,13 @@ import {
   type Recipient,
 } from '@aicaa/domain';
 import {
-  createTestDatabase,
   findActiveCapabilitiesForAssignment,
   findCapabilityByTokenHash,
   getCapabilityById,
   getTaskById,
   listAuditEventsForTask,
-  type TestDatabase,
 } from '@aicaa/db';
+import { createTestDatabase, type TestDatabase } from '@aicaa/db/testing';
 import { clearDbTestRuntime, installDbTestRuntime } from './helpers/db-test-runtime';
 import { hashCapabilityToken } from '@/lib/capability';
 

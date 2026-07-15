@@ -13,14 +13,13 @@ import {
   type Recipient,
 } from '@aicaa/domain';
 import {
-  createTestDatabase,
   getCapabilityById,
   getTaskById,
   listAuditEventsForTask,
   listTaskAssignments,
   upsertRecipient,
-  type TestDatabase,
 } from '@aicaa/db';
+import { createTestDatabase, type TestDatabase } from '@aicaa/db/testing';
 import { clearDbTestRuntime, installDbTestRuntime } from './helpers/db-test-runtime';
 import { issueCapabilityForTask, revokeCapabilityForOwner } from '@/lib/capability';
 import { createOwnerTask, startOwnerTask } from '@/lib/tasks';

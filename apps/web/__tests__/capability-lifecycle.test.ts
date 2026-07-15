@@ -15,11 +15,10 @@ import {
   type Recipient,
 } from '@aicaa/domain';
 import { resetDbRuntimeForTests } from '@/lib/db/runtime-db';
-import * as aicaaDb from '@aicaa/db';
+import * as aicaaDb from '@aicaa/db/runtime';
 import {
   createActiveAssignment,
   createTask,
-  createTestDatabase,
   findCapabilityByTokenHash,
   getCapabilityById,
   getTaskById,
@@ -28,8 +27,8 @@ import {
   persistReturnToOwner,
   updateTaskWithExpectedVersion,
   upsertRecipient,
-  type TestDatabase,
 } from '@aicaa/db';
+import { createTestDatabase, type TestDatabase } from '@aicaa/db/testing';
 import { setDbRuntimeForTests } from '@/lib/db/runtime-db';
 import {
   CapabilityTokenError,

@@ -1,5 +1,5 @@
 import type { DbClient } from '@aicaa/db';
-import * as aicaaDb from '@aicaa/db';
+import * as aicaaDb from '@aicaa/db/runtime';
 import { resetDbRuntimeForTests, setDbRuntimeForTests } from '@/lib/db/runtime-db';
 import { setDbForTests } from '@/lib/db/server';
 

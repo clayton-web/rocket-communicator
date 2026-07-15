@@ -5,7 +5,6 @@ export {
   type DbClient,
   type DbTransaction,
 } from './client/create-prisma-client.js';
-// createTestDatabase (PGlite) is exported for in-process tests; not for persistent DBs.
 
 export {
   PersistenceError,

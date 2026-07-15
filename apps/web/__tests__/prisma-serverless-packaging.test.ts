@@ -6,10 +6,14 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   DB_BACKED_ROUTE_NFTS,
+  DB_PACKAGE_LITERAL,
+  PGLITE_MARKERS,
   RHEL_ENGINE,
   assertNftIncludesDbPackageRuntime,
   getRequiredDbPackageRuntimeFiles,
+  getRequiredDomainPackageRuntimeFiles,
   nftIncludesRepoFile,
+  simulateRouteRuntimeRequire,
   walkDbPackageRuntimeJsFiles,
 } from '../scripts/lib/db-package-trace.mjs';
 
@@ -20,6 +24,7 @@ const nextConfigPath = path.join(webRoot, 'next.config.mjs');
 const generatedClientDir = path.join(repoRoot, 'packages/db/dist/generated/client');
 const verifyScriptPath = path.join(webRoot, 'scripts/verify-prisma-serverless-trace.mjs');
 const verifyDbRuntimeScriptPath = path.join(webRoot, 'scripts/verify-db-runtime-resolution.mjs');
+const verifyDbPackageRequirePath = path.join(webRoot, 'scripts/verify-db-package-require.mjs');
 const tasksNftPath = path.join(webRoot, '.next/server/app/api/v1/tasks/route.js.nft.json');
 
 const FORBIDDEN_TRACE_GLOBS = [
@@ -43,9 +48,16 @@ describe('Prisma serverless packaging configuration', () => {
     expect(config).toContain('outputFileTracingRoot');
     expect(config).toContain('outputFileTracingIncludes');
     expect(config).toContain('dbPackageRuntimeTraceFiles');
+    expect(config).toContain('domainPackageRuntimeTraceFiles');
+    expect(config).toContain('workspacePackageEntryTraceFiles');
     expect(config).toContain('dbPackageRoot');
     expect(config).toContain('${dbPackageRoot}/package.json');
     expect(config).toContain('${dbPackageRoot}/dist/**/*.js');
+    expect(config).toContain('domainPackageRoot');
+    expect(config).toContain('${domainPackageRoot}/package.json');
+    expect(config).toContain('${domainPackageRoot}/dist/**/*.js');
+    expect(config).toContain('node_modules/@aicaa/db/package.json');
+    expect(config).toContain('node_modules/@aicaa/domain/package.json');
     expect(config).toContain('turbopack:');
     expect(config).toContain('root: monorepoRoot');
     expect(config).toContain(RHEL_ENGINE);
@@ -69,18 +81,22 @@ describe('Prisma serverless packaging configuration', () => {
     expect(fs.existsSync(schemaArtifactPath)).toBe(true);
   });
 
-  it('computes the @aicaa/db runtime import graph from dist/index.js', () => {
-    const indexJs = path.join(repoRoot, 'packages/db/dist/index.js');
-    const graph = walkDbPackageRuntimeJsFiles(indexJs);
-    expect(graph).toContain(indexJs);
+  it('computes the @aicaa/db runtime import graph from dist/runtime.js', () => {
+    const runtimeJs = path.join(repoRoot, 'packages/db/dist/runtime.js');
+    const graph = walkDbPackageRuntimeJsFiles(runtimeJs);
+    expect(graph).toContain(runtimeJs);
     expect(graph.some((filePath) => filePath.endsWith('generated/client/index.js'))).toBe(true);
     expect(graph.some((filePath) => filePath.endsWith('generated/client/runtime/library.js'))).toBe(
       true,
     );
     expect(graph.some((filePath) => filePath.endsWith('client/create-prisma-client.js'))).toBe(true);
+    expect(graph.some((filePath) => filePath.includes('create-test-database.js'))).toBe(false);
+    for (const marker of PGLITE_MARKERS) {
+      expect(graph.some((filePath) => filePath.includes(marker))).toBe(false);
+    }
   });
 
-  it('includes @aicaa/db package runtime files in task-route NFT when .next output exists', () => {
+  it('includes @aicaa/db runtime and domain package files in task-route NFT when .next output exists', () => {
     if (!fs.existsSync(tasksNftPath)) {
       return;
     }
@@ -88,18 +104,43 @@ describe('Prisma serverless packaging configuration', () => {
     const nft = JSON.parse(fs.readFileSync(tasksNftPath, 'utf8')) as { files?: string[] };
     const files = Array.isArray(nft.files) ? nft.files : [];
     const required = getRequiredDbPackageRuntimeFiles(repoRoot);
+    const domainRequired = getRequiredDomainPackageRuntimeFiles(repoRoot);
 
     expect(nftIncludesRepoFile(files, repoRoot, required.packageJson)).toBe(true);
-    expect(nftIncludesRepoFile(files, repoRoot, required.indexJs)).toBe(true);
+    expect(nftIncludesRepoFile(files, repoRoot, required.runtimeJs)).toBe(true);
     expect(nftIncludesRepoFile(files, repoRoot, required.libraryJs)).toBe(true);
     expect(nftIncludesRepoFile(files, repoRoot, required.rhelEngine)).toBe(true);
     expect(nftIncludesRepoFile(files, repoRoot, required.schema)).toBe(true);
+    expect(nftIncludesRepoFile(files, repoRoot, domainRequired.packageJson)).toBe(true);
+    expect(nftIncludesRepoFile(files, repoRoot, domainRequired.indexJs)).toBe(true);
 
     for (const jsFile of required.importGraphJs) {
       expect(nftIncludesRepoFile(files, repoRoot, jsFile)).toBe(true);
     }
 
+    for (const jsFile of domainRequired.importGraphJs) {
+      expect(nftIncludesRepoFile(files, repoRoot, jsFile)).toBe(true);
+    }
+
     assertNftIncludesDbPackageRuntime(files, repoRoot, 'task route');
+  });
+
+  it('resolves require(@aicaa/db/runtime) from simulated task-route layout when built', () => {
+    if (!fs.existsSync(tasksNftPath)) {
+      return;
+    }
+
+    const result = simulateRouteRuntimeRequire({
+      webRoot,
+      repoRoot,
+      nftRelativePath: 'app/api/v1/tasks/route.js.nft.json',
+    });
+    expect(result.resolved.replace(/\\/g, '/')).toMatch(
+      /(?:packages\/db|node_modules\/@aicaa\/db)\/dist\/runtime\.js$/,
+    );
+    expect(result.exportNames).toContain('createPrismaClient');
+    expect(result.exportNames).not.toContain('createTestDatabase');
+    expect(DB_PACKAGE_LITERAL).toBe('@aicaa/db/runtime');
   });
 
   it('covers Owner, Recipient capability, and Recipient page route NFT manifests when built', () => {
@@ -140,5 +181,19 @@ describe('Prisma serverless packaging configuration', () => {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     expect(output.trim()).toBe('verify-db-runtime-resolution: ok');
+  });
+
+  it('passes post-build package require simulation when .next output exists', () => {
+    const nextDir = path.join(webRoot, '.next');
+    if (!fs.existsSync(nextDir)) {
+      return;
+    }
+
+    const output = execFileSync(process.execPath, [verifyDbPackageRequirePath], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    expect(output.trim()).toMatch(/^verify-db-package-require: ok/);
   });
 });

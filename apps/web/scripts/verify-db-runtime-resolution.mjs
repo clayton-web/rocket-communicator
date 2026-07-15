@@ -28,7 +28,7 @@ const DB_STUB_PATTERNS = [
   /\bloadDbRuntime\b[^;]{0,120}\(void\s+0\)/,
 ];
 
-const REQUIRED_RUNTIME_MARKERS = ['@aicaa/db', 'createRequire', 'loadDbRuntime', 'requireImpl'];
+const REQUIRED_RUNTIME_MARKERS = ['@aicaa/db/runtime', 'createRequire', 'loadDbRuntime', 'requireImpl'];
 
 function fail(message) {
   console.error(`verify-db-runtime-resolution: ${message}`);
@@ -156,7 +156,7 @@ function assertRuntimeLoaderChunkPresent() {
     const content = fs.readFileSync(filePath, 'utf8');
     return (
       content.includes('loadDbRuntime') &&
-      content.includes('@aicaa/db') &&
+      content.includes('@aicaa/db/runtime') &&
       content.includes('createRequire')
     );
   });
