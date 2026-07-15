@@ -1,19 +1,27 @@
 import { randomBytes } from 'node:crypto';
 import {
-  DomainError,
   formatETag,
   ownerActor,
+  type DomainError,
   type OwnerActor,
   type UtcInstant,
 } from '@aicaa/domain';
 import {
-  PersistenceError,
   getTaskById,
   listTasks as listTasksFromDb,
   type CreateAuditEventInput,
   type DbClient,
+  type PersistenceErrorCode,
 } from '@aicaa/db';
-import { taskServiceError, TaskServiceError, type TaskServiceErrorCode } from './errors';
+import {
+  isDomainError,
+  isTaskServiceError,
+  readDomainErrorCode,
+  readDomainErrorDetails,
+  readDomainErrorMessage,
+  readPersistenceErrorCode,
+} from '@/lib/errors/safe-error-shapes';
+import { taskServiceError, type TaskServiceErrorCode } from './errors';
 
 export function requireOwnerActor(owner: unknown): OwnerActor {
   if (
@@ -50,14 +58,25 @@ export function ifMatchFromExpectedVersion(
 }
 
 export function mapDomainOrPersistenceError(error: unknown): never {
-  if (error instanceof TaskServiceError) {
+  if (isTaskServiceError(error)) {
     throw error;
   }
-  if (error instanceof DomainError) {
-    throw taskServiceError(mapDomainCode(error.code), error.message, error.details);
+  if (isDomainError(error)) {
+    const code = readDomainErrorCode(error);
+    if (code) {
+      throw taskServiceError(
+        mapDomainCode(code),
+        readDomainErrorMessage(error),
+        readDomainErrorDetails(error),
+      );
+    }
   }
-  if (error instanceof PersistenceError) {
-    throw taskServiceError(mapPersistenceCode(error.code), sanitizePersistenceMessage(error));
+  const persistenceCode = readPersistenceErrorCode(error);
+  if (persistenceCode) {
+    throw taskServiceError(
+      mapPersistenceCode(persistenceCode),
+      sanitizePersistenceMessage(persistenceCode),
+    );
   }
   throw error;
 }
@@ -84,7 +103,7 @@ function mapDomainCode(code: DomainError['code']): TaskServiceErrorCode {
   }
 }
 
-function mapPersistenceCode(code: PersistenceError['code']): TaskServiceErrorCode {
+function mapPersistenceCode(code: PersistenceErrorCode): TaskServiceErrorCode {
   switch (code) {
     case 'NOT_FOUND':
     case 'ORGANIZATION_MISMATCH':
@@ -100,8 +119,8 @@ function mapPersistenceCode(code: PersistenceError['code']): TaskServiceErrorCod
   }
 }
 
-function sanitizePersistenceMessage(error: PersistenceError): string {
-  switch (error.code) {
+function sanitizePersistenceMessage(code: PersistenceErrorCode): string {
+  switch (code) {
     case 'NOT_FOUND':
     case 'ORGANIZATION_MISMATCH':
       return 'Resource not found.';

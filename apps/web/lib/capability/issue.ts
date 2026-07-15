@@ -24,8 +24,8 @@ import {
   type AuditEventRecord,
   type DbClient,
   type DbTransaction,
-  PersistenceError,
 } from '@aicaa/db';
+import { isCapabilityTokenError, readPersistenceErrorCode } from '@/lib/errors/safe-error-shapes';
 import {
   assertValidCapabilityPepper,
   assertValidCapabilityTtlMs,
@@ -181,10 +181,9 @@ async function persistIssuance(
   try {
     current = await getTaskById(command.db, owner.organizationId, command.taskId);
   } catch (error) {
-    if (error instanceof PersistenceError) {
-      if (error.code === 'NOT_FOUND' || error.code === 'ORGANIZATION_MISMATCH') {
-        throw capabilityTokenError('NOT_FOUND', 'Task not found.', { taskId: command.taskId });
-      }
+    const persistenceCode = readPersistenceErrorCode(error);
+    if (persistenceCode === 'NOT_FOUND' || persistenceCode === 'ORGANIZATION_MISMATCH') {
+      throw capabilityTokenError('NOT_FOUND', 'Task not found.', { taskId: command.taskId });
     }
     throw error;
   }
@@ -349,17 +348,18 @@ async function persistIssuance(
       replacedCapabilityId: persisted.replacedIds[0],
     };
   } catch (error) {
-    if (error instanceof CapabilityTokenError) {
+    if (isCapabilityTokenError(error)) {
       throw error;
     }
-    if (error instanceof PersistenceError && error.code === 'UNIQUE_VIOLATION') {
+    const persistenceCode = readPersistenceErrorCode(error);
+    if (persistenceCode === 'UNIQUE_VIOLATION') {
       throw capabilityTokenError(
         'ISSUANCE_CONFLICT',
         'Capability token hash conflict during issuance.',
         { taskId: command.taskId },
       );
     }
-    if (error instanceof PersistenceError && error.code === 'OPTIMISTIC_CONCURRENCY') {
+    if (persistenceCode === 'OPTIMISTIC_CONCURRENCY') {
       throw capabilityTokenError(
         'PRECONDITION_FAILED',
         'The resource has changed since the provided ETag.',

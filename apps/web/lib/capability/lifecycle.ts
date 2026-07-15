@@ -13,11 +13,11 @@ import {
   persistReturnToOwner,
   revokeCapabilityRecord,
   updateActiveAssignmentCapabilityBinding,
-  PersistenceError,
   type AuditEventRecord,
   type DbClient,
   type PersistedCapability,
 } from '@aicaa/db';
+import { readPersistenceErrorCode } from '@/lib/errors/safe-error-shapes';
 import { capabilityTokenError } from './errors';
 import { omitTokenHash } from './validate';
 
@@ -57,7 +57,7 @@ export async function revokeCapabilityForOwner(input: {
       capabilityStatus: 'revoked',
     },
   ).catch((error: unknown) => {
-    if (error instanceof PersistenceError && error.code === 'NOT_FOUND') {
+    if (readPersistenceErrorCode(error) === 'NOT_FOUND') {
       return;
     }
     throw error;

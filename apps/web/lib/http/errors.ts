@@ -1,15 +1,26 @@
 import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import type { components } from '@aicaa/contracts/schema';
-import { PersistenceError } from '@aicaa/db';
-import { AuthConfigError } from '@/lib/auth/errors';
 import { jsonErrorResponse, unauthorizedResponse } from '@/lib/auth/http';
-import { CapabilityTokenError, type CapabilityTokenErrorCode } from '@/lib/capability/errors';
+import type { CapabilityTokenErrorCode } from '@/lib/capability/errors';
+import type { RecipientCapabilityServiceErrorCode } from '@/lib/capability/recipient-errors';
 import {
-  RecipientCapabilityServiceError,
-  type RecipientCapabilityServiceErrorCode,
-} from '@/lib/capability/recipient-errors';
-import { TaskServiceError, type TaskServiceErrorCode } from '@/lib/tasks/errors';
+  isAuthConfigError,
+  isCapabilityTokenError,
+  isPersistenceErrorShape,
+  isRecipientCapabilityServiceError,
+  isTaskServiceError,
+  readCapabilityTokenErrorCode,
+  readPersistenceErrorCode,
+  readRecipientCapabilityServiceErrorCode,
+  readRecipientCapabilityServiceErrorDetails,
+  readRecipientCapabilityServiceErrorMessage,
+  readTaskServiceErrorCode,
+  readTaskServiceErrorDetails,
+  readTaskServiceErrorMessage,
+  safeReadString,
+} from '@/lib/errors/safe-error-shapes';
+import type { TaskServiceErrorCode } from '@/lib/tasks/errors';
 
 type ErrorResponse = components['schemas']['ErrorResponse'];
 type ErrorCode = ErrorResponse['error']['code'];
@@ -32,6 +43,10 @@ export function jsonErrorResponseWithDetails(
     },
     { status },
   );
+}
+
+function genericInternalErrorResponse(): NextResponse<ErrorResponse> {
+  return jsonErrorResponse('INTERNAL_ERROR', 'An unexpected error occurred.', 500);
 }
 
 function httpStatusForTaskCode(code: TaskServiceErrorCode): number {
@@ -113,8 +128,8 @@ function contractCodeForCapabilityCode(code: CapabilityTokenErrorCode): ErrorCod
   }
 }
 
-function sanitizeCapabilityMessage(error: CapabilityTokenError): string {
-  switch (error.code) {
+function sanitizeCapabilityMessage(code: CapabilityTokenErrorCode, message?: string): string {
+  switch (code) {
     case 'MISSING_CONFIGURATION':
     case 'INVALID_TTL_CONFIGURATION':
       return 'Capability issuance is not configured.';
@@ -125,7 +140,7 @@ function sanitizeCapabilityMessage(error: CapabilityTokenError): string {
     case 'ISSUANCE_CONFLICT':
       return 'An active capability link already exists for this assignment.';
     case 'ISSUANCE_PRECONDITION':
-      return error.message;
+      return message ?? 'An unexpected error occurred.';
     default:
       return 'An unexpected error occurred.';
   }
@@ -208,63 +223,99 @@ function sanitizeRecipientMessage(
   }
 }
 
-/** Map Recipient capability application failures to the public HTTP error envelope. */
-export function mapRecipientCapabilityRouteError(error: unknown): NextResponse<ErrorResponse> {
-  if (error instanceof RecipientCapabilityServiceError) {
-    return jsonErrorResponseWithDetails(
-      contractCodeForRecipientCode(error.code),
-      sanitizeRecipientMessage(error.code, error.message),
-      httpStatusForRecipientCode(error.code),
-      error.code === 'VALIDATION_ERROR' ? error.details : undefined,
+function mapPersistenceErrorToHttpResponse(): NextResponse<ErrorResponse> {
+  return genericInternalErrorResponse();
+}
+
+function mapOwnerPersistenceErrorToHttpResponse(
+  code: NonNullable<ReturnType<typeof readPersistenceErrorCode>>,
+): NextResponse<ErrorResponse> {
+  if (code === 'NOT_FOUND' || code === 'ORGANIZATION_MISMATCH') {
+    return jsonErrorResponse('NOT_FOUND', 'Task not found.', 404);
+  }
+  if (code === 'OPTIMISTIC_CONCURRENCY') {
+    return jsonErrorResponse(
+      'PRECONDITION_FAILED',
+      'The resource has changed since the provided ETag.',
+      412,
     );
   }
-  if (error instanceof CapabilityTokenError) {
-    // Config/load failures only — runtime authz errors are already mapped by services.
-    if (error.code === 'MISSING_CONFIGURATION' || error.code === 'INVALID_TTL_CONFIGURATION') {
-      return jsonErrorResponse('INTERNAL_ERROR', 'An unexpected error occurred.', 500);
+  return genericInternalErrorResponse();
+}
+
+/** Map Recipient capability application failures to the public HTTP error envelope. */
+export function mapRecipientCapabilityRouteError(error: unknown): NextResponse<ErrorResponse> {
+  try {
+    if (isRecipientCapabilityServiceError(error)) {
+      const code = readRecipientCapabilityServiceErrorCode(error);
+      if (!code) {
+        return genericInternalErrorResponse();
+      }
+      return jsonErrorResponseWithDetails(
+        contractCodeForRecipientCode(code),
+        sanitizeRecipientMessage(code, readRecipientCapabilityServiceErrorMessage(error)),
+        httpStatusForRecipientCode(code),
+        code === 'VALIDATION_ERROR'
+          ? readRecipientCapabilityServiceErrorDetails(error)
+          : undefined,
+      );
     }
-    return jsonErrorResponse('UNAUTHORIZED', 'Capability token is invalid.', 401);
+    if (isCapabilityTokenError(error)) {
+      const code = readCapabilityTokenErrorCode(error);
+      if (!code) {
+        return genericInternalErrorResponse();
+      }
+      if (code === 'MISSING_CONFIGURATION' || code === 'INVALID_TTL_CONFIGURATION') {
+        return genericInternalErrorResponse();
+      }
+      return jsonErrorResponse('UNAUTHORIZED', 'Capability token is invalid.', 401);
+    }
+    if (isPersistenceErrorShape(error)) {
+      return mapPersistenceErrorToHttpResponse();
+    }
+    return genericInternalErrorResponse();
+  } catch {
+    return genericInternalErrorResponse();
   }
-  if (error instanceof PersistenceError) {
-    return jsonErrorResponse('INTERNAL_ERROR', 'An unexpected error occurred.', 500);
-  }
-  return jsonErrorResponse('INTERNAL_ERROR', 'An unexpected error occurred.', 500);
 }
 
 /** Map Owner task / capability application failures to the contracted HTTP error envelope. */
 export function mapOwnerTaskRouteError(error: unknown): NextResponse<ErrorResponse> {
-  if (error instanceof TaskServiceError) {
-    return jsonErrorResponseWithDetails(
-      contractCodeForTaskCode(error.code),
-      error.message,
-      httpStatusForTaskCode(error.code),
-      error.details,
-    );
-  }
-  if (error instanceof CapabilityTokenError) {
-    return jsonErrorResponseWithDetails(
-      contractCodeForCapabilityCode(error.code),
-      sanitizeCapabilityMessage(error),
-      httpStatusForCapabilityCode(error.code),
-    );
-  }
-  if (error instanceof PersistenceError) {
-    if (error.code === 'NOT_FOUND' || error.code === 'ORGANIZATION_MISMATCH') {
-      return jsonErrorResponse('NOT_FOUND', 'Task not found.', 404);
-    }
-    if (error.code === 'OPTIMISTIC_CONCURRENCY') {
-      return jsonErrorResponse(
-        'PRECONDITION_FAILED',
-        'The resource has changed since the provided ETag.',
-        412,
+  try {
+    if (isTaskServiceError(error)) {
+      const code = readTaskServiceErrorCode(error);
+      if (!code) {
+        return genericInternalErrorResponse();
+      }
+      return jsonErrorResponseWithDetails(
+        contractCodeForTaskCode(code),
+        readTaskServiceErrorMessage(error),
+        httpStatusForTaskCode(code),
+        readTaskServiceErrorDetails(error),
       );
     }
-    return jsonErrorResponse('INTERNAL_ERROR', 'An unexpected error occurred.', 500);
+    if (isCapabilityTokenError(error)) {
+      const code = readCapabilityTokenErrorCode(error);
+      if (!code) {
+        return genericInternalErrorResponse();
+      }
+      return jsonErrorResponseWithDetails(
+        contractCodeForCapabilityCode(code),
+        sanitizeCapabilityMessage(code, safeReadString(error, 'message')),
+        httpStatusForCapabilityCode(code),
+      );
+    }
+    const persistenceCode = readPersistenceErrorCode(error);
+    if (persistenceCode) {
+      return mapOwnerPersistenceErrorToHttpResponse(persistenceCode);
+    }
+    if (isAuthConfigError(error)) {
+      return jsonErrorResponse('INTERNAL_ERROR', 'Authentication is not configured.', 500);
+    }
+    return genericInternalErrorResponse();
+  } catch {
+    return genericInternalErrorResponse();
   }
-  if (error instanceof AuthConfigError) {
-    return jsonErrorResponse('INTERNAL_ERROR', 'Authentication is not configured.', 500);
-  }
-  return jsonErrorResponse('INTERNAL_ERROR', 'An unexpected error occurred.', 500);
 }
 
 export { unauthorizedResponse };

@@ -1,18 +1,28 @@
 import { randomBytes } from 'node:crypto';
 import {
-  DomainError,
   formatETag,
   type CapabilityAction,
   type CapabilityActor,
+  type DomainError,
   type UtcInstant,
 } from '@aicaa/domain';
 import {
-  PersistenceError,
   findCapabilityByTokenHash,
   type CreateAuditEventInput,
   type DbClient,
+  type PersistenceErrorCode,
 } from '@aicaa/db';
 import { CapabilityTokenError, type CapabilityTokenErrorCode } from './errors';
+import {
+  isCapabilityTokenError,
+  isDomainError,
+  isRecipientCapabilityServiceError,
+  readCapabilityTokenErrorCode,
+  readDomainErrorCode,
+  readDomainErrorDetails,
+  readDomainErrorMessage,
+  readPersistenceErrorCode,
+} from '@/lib/errors/safe-error-shapes';
 import { persistCapabilityExpiryIfNeeded } from './lifecycle';
 import { hashCapabilityToken } from './token';
 import { assertValidCapabilityPepper } from './config';
@@ -66,22 +76,33 @@ export function requireExpectedVersion(expectedVersion: number | undefined): num
  * Collapses unknown/expired/revoked/malformed tokens to UNAUTHORIZED with a non-distinguishing message.
  */
 export function mapRecipientServiceError(error: unknown): never {
-  if (error instanceof RecipientCapabilityServiceError) {
+  if (isRecipientCapabilityServiceError(error)) {
     throw error;
   }
-  if (error instanceof CapabilityTokenError) {
-    throw recipientCapabilityServiceError(
-      mapCapabilityTokenCode(error.code),
-      sanitizeCapabilityMessage(error.code),
-    );
+  if (isCapabilityTokenError(error)) {
+    const code = readCapabilityTokenErrorCode(error);
+    if (code) {
+      throw recipientCapabilityServiceError(
+        mapCapabilityTokenCode(code),
+        sanitizeCapabilityMessage(code),
+      );
+    }
   }
-  if (error instanceof DomainError) {
-    throw recipientCapabilityServiceError(mapDomainCode(error.code), error.message, error.details);
+  if (isDomainError(error)) {
+    const code = readDomainErrorCode(error);
+    if (code) {
+      throw recipientCapabilityServiceError(
+        mapDomainCode(code),
+        readDomainErrorMessage(error),
+        readDomainErrorDetails(error),
+      );
+    }
   }
-  if (error instanceof PersistenceError) {
+  const persistenceCode = readPersistenceErrorCode(error);
+  if (persistenceCode) {
     throw recipientCapabilityServiceError(
-      mapPersistenceCode(error.code),
-      sanitizePersistenceMessage(error),
+      mapPersistenceCode(persistenceCode),
+      sanitizePersistenceMessage(persistenceCode),
     );
   }
   throw error;
@@ -155,7 +176,7 @@ function mapDomainCode(code: DomainError['code']): RecipientCapabilityServiceErr
   }
 }
 
-function mapPersistenceCode(code: PersistenceError['code']): RecipientCapabilityServiceErrorCode {
+function mapPersistenceCode(code: PersistenceErrorCode): RecipientCapabilityServiceErrorCode {
   switch (code) {
     case 'NOT_FOUND':
     case 'ORGANIZATION_MISMATCH':
@@ -171,8 +192,8 @@ function mapPersistenceCode(code: PersistenceError['code']): RecipientCapability
   }
 }
 
-function sanitizePersistenceMessage(error: PersistenceError): string {
-  switch (error.code) {
+function sanitizePersistenceMessage(code: PersistenceErrorCode): string {
+  switch (code) {
     case 'NOT_FOUND':
     case 'ORGANIZATION_MISMATCH':
       return 'Resource not found.';
