@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Post-build verification for externalized @aicaa/db runtime resolution.
+ * Post-build verification for app-local DB runtime bridge resolution.
  *
  * Usage (from repo root after Vercel-equivalent build):
  *   node apps/web/scripts/verify-db-runtime-resolution.mjs
@@ -11,9 +11,9 @@ import { fileURLToPath } from 'node:url';
 import {
   DB_BACKED_API_ROUTE_NFTS,
   DB_BACKED_PAGE_ROUTE_NFTS,
-  DB_BACKED_ROUTE_NFTS,
-  DB_PACKAGE_LITERAL,
+  DB_RUNTIME_LOAD_START_STAGE,
   INVALID_ROOT_PATTERN,
+  assertBuiltOutputUsesRuntimeBridge,
   assertNftIncludesDbPackageRuntime,
 } from './lib/db-package-trace.mjs';
 
@@ -28,7 +28,11 @@ const DB_STUB_PATTERNS = [
   /\bloadDbRuntime\b[^;]{0,120}\(void\s+0\)/,
 ];
 
-const REQUIRED_RUNTIME_MARKERS = ['@aicaa/db/runtime', 'createRequire', 'loadDbRuntime', 'requireImpl'];
+const REQUIRED_RUNTIME_MARKERS = [
+  'loadDbRuntime',
+  DB_RUNTIME_LOAD_START_STAGE,
+  'createPrismaClient',
+];
 
 function fail(message) {
   console.error(`verify-db-runtime-resolution: ${message}`);
@@ -40,21 +44,6 @@ function readJson(filePath) {
     fail(`missing file: ${path.relative(repoRoot, filePath)}`);
   }
   return JSON.parse(fs.readFileSync(filePath, 'utf8'));
-}
-
-function collectJsFiles(dir, results = []) {
-  if (!fs.existsSync(dir)) {
-    return results;
-  }
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const fullPath = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      collectJsFiles(fullPath, results);
-    } else if (entry.isFile() && entry.name.endsWith('.js') && !entry.name.endsWith('.js.map')) {
-      results.push(fullPath);
-    }
-  }
-  return results;
 }
 
 function resolveNftFile(relativeNftPath) {
@@ -115,10 +104,6 @@ function assertRuntimeReferencePresent(routeLabel, artifactPaths) {
       fail(`${routeLabel} server output is missing runtime marker: ${marker}`);
     }
   }
-
-  if (!combined.includes(DB_PACKAGE_LITERAL)) {
-    fail(`${routeLabel} server output does not reference ${DB_PACKAGE_LITERAL}`);
-  }
 }
 
 function assertNoDbStubs(routeLabel, artifactPaths) {
@@ -142,30 +127,6 @@ function assertNoDbStubs(routeLabel, artifactPaths) {
   }
 }
 
-function assertRuntimeLoaderChunkPresent() {
-  const chunkDirs = [
-    path.join(webRoot, '.next/server/chunks'),
-    path.join(webRoot, '.next/server/app'),
-  ];
-  const candidates = [];
-  for (const dir of chunkDirs) {
-    candidates.push(...collectJsFiles(dir));
-  }
-
-  const loaderChunks = candidates.filter((filePath) => {
-    const content = fs.readFileSync(filePath, 'utf8');
-    return (
-      content.includes('loadDbRuntime') &&
-      content.includes('@aicaa/db/runtime') &&
-      content.includes('createRequire')
-    );
-  });
-
-  if (loaderChunks.length === 0) {
-    fail(`no server chunk contains loadDbRuntime with a ${DB_PACKAGE_LITERAL} require reference`);
-  }
-}
-
 function assertDbPackageNftTrace(relativeNftPath) {
   const nftPath = resolveNftFile(relativeNftPath);
   const nft = readJson(nftPath);
@@ -180,7 +141,7 @@ function main() {
     fail('missing .next build output — run pnpm build first');
   }
 
-  assertRuntimeLoaderChunkPresent();
+  assertBuiltOutputUsesRuntimeBridge(webRoot, repoRoot);
 
   for (const relativeNft of DB_BACKED_API_ROUTE_NFTS) {
     const nftPath = resolveNftFile(relativeNft);

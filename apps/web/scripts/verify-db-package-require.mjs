@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Post-build verification for @aicaa/db/runtime package resolution in traced layouts.
+ * Post-build verification for traced DB runtime bridge loading without workspace symlinks.
  *
  * Usage (from repo root after Vercel-equivalent build):
  *   node apps/web/scripts/verify-db-package-require.mjs
@@ -9,12 +9,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  DB_PACKAGE_LITERAL,
   DB_BACKED_API_ROUTE_NFTS,
+  DB_RUNTIME_RELATIVE,
+  assertBuiltOutputUsesRuntimeBridge,
   assertRuntimeGraphExcludesPglite,
   getRequiredDbPackageRuntimeFiles,
   getRequiredDomainPackageRuntimeFiles,
-  simulateRouteRuntimeRequire,
+  simulateRouteRuntimeBridge,
 } from './lib/db-package-trace.mjs';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
@@ -28,10 +29,7 @@ function fail(message) {
 
 function isValidRuntimeResolution(resolvedPath) {
   const normalized = resolvedPath.replace(/\\/g, '/');
-  return (
-    normalized.endsWith('packages/db/dist/runtime.js') ||
-    normalized.endsWith('node_modules/@aicaa/db/dist/runtime.js')
-  );
+  return normalized.endsWith(DB_RUNTIME_RELATIVE);
 }
 
 function main() {
@@ -39,6 +37,8 @@ function main() {
   if (!fs.existsSync(nextDir)) {
     fail('missing .next build output — run pnpm build first');
   }
+
+  assertBuiltOutputUsesRuntimeBridge(webRoot, repoRoot);
 
   const required = getRequiredDbPackageRuntimeFiles(repoRoot);
   const domainRequired = getRequiredDomainPackageRuntimeFiles(repoRoot);
@@ -52,7 +52,7 @@ function main() {
   }
 
   for (const relativeNft of DB_BACKED_API_ROUTE_NFTS) {
-    const result = simulateRouteRuntimeRequire({
+    const result = simulateRouteRuntimeBridge({
       webRoot,
       repoRoot,
       nftRelativePath: relativeNft,
@@ -63,7 +63,7 @@ function main() {
   }
 
   console.log(
-    `verify-db-package-require: ok (${DB_PACKAGE_LITERAL}, domain files=${domainRequired.importGraphJs.length}, node=${process.version})`,
+    `verify-db-package-require: ok (${DB_RUNTIME_RELATIVE}, domain files=${domainRequired.importGraphJs.length}, node=${process.version})`,
   );
 }
 

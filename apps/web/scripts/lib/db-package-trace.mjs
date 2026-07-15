@@ -9,8 +9,13 @@ export const RHEL_ENGINE = 'libquery_engine-rhel-openssl-3.0.x.so.node';
 export const SCHEMA_FILE = 'schema.prisma';
 export const INVALID_ROOT_PATTERN = '/ROOT/packages/db';
 export const DB_PACKAGE_LITERAL = '@aicaa/db/runtime';
+export const DB_RUNTIME_RELATIVE = 'packages/db/dist/runtime.js';
+export const DB_RUNTIME_BRIDGE_MODULE = 'db-runtime-entry';
+export const DB_RUNTIME_LOAD_START_STAGE = 'DB_RUNTIME_LOAD_START';
 export const DB_TESTING_LITERAL = '@aicaa/db/testing';
 export const DOMAIN_PACKAGE_LITERAL = '@aicaa/domain';
+export const FORBIDDEN_RUNTIME_PACKAGE_REQUIRE = 'require("@aicaa/db/runtime")';
+export const FORBIDDEN_RUNTIME_PACKAGE_REQUIRE_ALT = "require('@aicaa/db/runtime')";
 
 export const REQUIRED_RUNTIME_EXPORTS = [
   'createPrismaClient',
@@ -300,7 +305,12 @@ function copyFileOrSymlink(src, dest) {
   fs.copyFileSync(src, dest);
 }
 
-export function materializeNftLayout({ webRoot, repoRoot, nftRelativePath }) {
+export function materializeNftLayout({
+  webRoot,
+  repoRoot,
+  nftRelativePath,
+  includeWorkspaceSymlinks = true,
+}) {
   const nftPath = path.join(webRoot, '.next/server', nftRelativePath);
   const nft = JSON.parse(fs.readFileSync(nftPath, 'utf8'));
   const files = Array.isArray(nft.files) ? nft.files : [];
@@ -332,15 +342,17 @@ export function materializeNftLayout({ webRoot, repoRoot, nftRelativePath }) {
     copyFileOrSymlink(src, dest);
   }
 
-  const webNodeModules = path.join(repoRoot, 'apps/web/node_modules/@aicaa');
-  const layoutNodeModules = path.join(layoutRoot, 'apps/web/node_modules/@aicaa');
-  if (fs.existsSync(webNodeModules)) {
-    fs.mkdirSync(layoutNodeModules, { recursive: true });
-    for (const name of ['db', 'domain']) {
-      const src = path.join(webNodeModules, name);
-      const dest = path.join(layoutNodeModules, name);
-      if (fs.existsSync(src)) {
-        copyFileOrSymlink(src, dest);
+  if (includeWorkspaceSymlinks) {
+    const webNodeModules = path.join(repoRoot, 'apps/web/node_modules/@aicaa');
+    const layoutNodeModules = path.join(layoutRoot, 'apps/web/node_modules/@aicaa');
+    if (fs.existsSync(webNodeModules)) {
+      fs.mkdirSync(layoutNodeModules, { recursive: true });
+      for (const name of ['db', 'domain']) {
+        const src = path.join(webNodeModules, name);
+        const dest = path.join(layoutNodeModules, name);
+        if (fs.existsSync(src)) {
+          copyFileOrSymlink(src, dest);
+        }
       }
     }
   }
@@ -348,26 +360,22 @@ export function materializeNftLayout({ webRoot, repoRoot, nftRelativePath }) {
   return { layoutRoot, routeJs };
 }
 
-export function simulateRouteRuntimeRequire({ webRoot, repoRoot, nftRelativePath }) {
-  const { layoutRoot, routeJs } = materializeNftLayout({ webRoot, repoRoot, nftRelativePath });
-  const req = createRequire(routeJs);
-  const resolved = req.resolve(DB_PACKAGE_LITERAL);
-  const loaded = req(DB_PACKAGE_LITERAL);
-
+function assertRuntimeExports(loaded) {
   for (const exportName of REQUIRED_RUNTIME_EXPORTS) {
     if (typeof loaded[exportName] === 'undefined') {
       throw new Error(`loaded runtime missing export: ${exportName}`);
+    }
+    if (typeof loaded[exportName] !== 'function') {
+      throw new Error(`loaded runtime export is not callable: ${exportName}`);
     }
   }
 
   if (typeof loaded.createTestDatabase !== 'undefined') {
     throw new Error('loaded runtime unexpectedly exports createTestDatabase');
   }
+}
 
-  const required = getRequiredDbPackageRuntimeFiles(repoRoot);
-  assertRuntimeGraphExcludesPglite(required.importGraphJs, repoRoot);
-  assertNoTopLevelAwait(required.runtimeJs);
-
+function guardPgliteRequire(loadFn) {
   let pgliteRequested = false;
   const originalLoad = Module.prototype.require;
   Module.prototype.require = function patchedRequire(specifier) {
@@ -382,17 +390,100 @@ export function simulateRouteRuntimeRequire({ webRoot, repoRoot, nftRelativePath
   };
 
   try {
-    req(DB_PACKAGE_LITERAL);
+    const result = loadFn();
+    if (pgliteRequested) {
+      throw new Error('runtime require attempted to load PGlite/test modules');
+    }
+    return result;
   } finally {
     Module.prototype.require = originalLoad;
+  }
+}
+
+export function simulateRouteRuntimeBridge({ webRoot, repoRoot, nftRelativePath }) {
+  const { layoutRoot, routeJs } = materializeNftLayout({
+    webRoot,
+    repoRoot,
+    nftRelativePath,
+    includeWorkspaceSymlinks: false,
+  });
+
+  const runtimePath = path.join(layoutRoot, DB_RUNTIME_RELATIVE);
+  if (!fs.existsSync(runtimePath)) {
+    fs.rmSync(layoutRoot, { recursive: true, force: true });
+    throw new Error(`traced layout missing ${DB_RUNTIME_RELATIVE}`);
+  }
+
+  const req = createRequire(routeJs);
+  let loaded;
+  try {
+    loaded = guardPgliteRequire(() => req(runtimePath));
+  } finally {
     fs.rmSync(layoutRoot, { recursive: true, force: true });
   }
 
-  if (pgliteRequested) {
-    throw new Error('runtime require attempted to load PGlite/test modules');
+  assertRuntimeExports(loaded);
+
+  const required = getRequiredDbPackageRuntimeFiles(repoRoot);
+  assertRuntimeGraphExcludesPglite(required.importGraphJs, repoRoot);
+  assertNoTopLevelAwait(required.runtimeJs);
+
+  return {
+    resolved: runtimePath,
+    exportNames: Object.keys(loaded).sort(),
+  };
+}
+
+export function simulateRouteRuntimeRequire({ webRoot, repoRoot, nftRelativePath }) {
+  return simulateRouteRuntimeBridge({ webRoot, repoRoot, nftRelativePath });
+}
+
+export function collectServerJsFiles(webRoot) {
+  const roots = [
+    path.join(webRoot, '.next/server/chunks'),
+    path.join(webRoot, '.next/server/app'),
+  ];
+  const files = [];
+  for (const root of roots) {
+    files.push(...listDistJsFiles(root));
+  }
+  return files;
+}
+
+export function assertBuiltOutputUsesRuntimeBridge(webRoot, repoRoot) {
+  const serverFiles = collectServerJsFiles(webRoot);
+
+  const combined = serverFiles.map((filePath) => fs.readFileSync(filePath, 'utf8')).join('\n');
+
+  if (!combined.includes('loadDbRuntime')) {
+    throw new Error('built server output does not reference loadDbRuntime');
+  }
+  if (!combined.includes(DB_RUNTIME_LOAD_START_STAGE)) {
+    throw new Error(`built server output does not reference ${DB_RUNTIME_LOAD_START_STAGE}`);
+  }
+  if (!combined.includes('createPrismaClient')) {
+    throw new Error('built server output does not reference createPrismaClient');
   }
 
-  return { resolved, exportNames: Object.keys(loaded).sort() };
+  if (
+    combined.includes(FORBIDDEN_RUNTIME_PACKAGE_REQUIRE) ||
+    combined.includes(FORBIDDEN_RUNTIME_PACKAGE_REQUIRE_ALT) ||
+    combined.includes('requireImpl("@aicaa/db/runtime")') ||
+    combined.includes("requireImpl('@aicaa/db/runtime')")
+  ) {
+    throw new Error('built server output still contains package-name @aicaa/db/runtime require');
+  }
+
+  if (combined.includes(INVALID_ROOT_PATTERN)) {
+    throw new Error(`built server output contains invalid bundling path ${INVALID_ROOT_PATTERN}`);
+  }
+
+  for (const filePath of serverFiles) {
+    const content = fs.readFileSync(filePath, 'utf8');
+    if (/\bawait\s+\(void\s+0\)\s*\(/.test(content)) {
+      throw new Error(`built server output contains void 0 stub in ${path.relative(repoRoot, filePath)}`);
+    }
+  }
 }
 
 export function readTaskRouteNftFiles(webRoot) {

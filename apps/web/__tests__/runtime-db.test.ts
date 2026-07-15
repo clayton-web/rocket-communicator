@@ -66,6 +66,19 @@ describe('db runtime loader', () => {
     setDbRuntimeForTests(aicaaDb);
     expect(loadDbRuntime().createPrismaClient).toBe(aicaaDb.createPrismaClient);
   });
+
+  it('does not use package-name require for production runtime loading', () => {
+    const runtimeDbPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '../lib/db/runtime-db.ts');
+    const bridgePath = path.join(path.dirname(fileURLToPath(import.meta.url)), '../lib/db/db-runtime-entry.ts');
+    const runtimeSource = fs.readFileSync(runtimeDbPath, 'utf8');
+    const bridgeSource = fs.readFileSync(bridgePath, 'utf8');
+
+    expect(runtimeSource).not.toMatch(/from ['"]@aicaa\/db\/runtime['"]/);
+    expect(runtimeSource).not.toMatch(/require\(['"]@aicaa\/db\/runtime['"]\)/);
+    expect(runtimeSource).not.toMatch(/createRequire/);
+    expect(bridgeSource).toContain('packages/db/dist/runtime.js');
+    expect(bridgeSource).not.toMatch(/from ['"]@aicaa\/db\/runtime['"]/);
+  });
 });
 
 describe('session-only path isolation', () => {

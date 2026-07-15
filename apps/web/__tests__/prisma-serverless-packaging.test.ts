@@ -6,9 +6,10 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   DB_BACKED_ROUTE_NFTS,
-  DB_PACKAGE_LITERAL,
+  DB_RUNTIME_RELATIVE,
   PGLITE_MARKERS,
   RHEL_ENGINE,
+  assertBuiltOutputUsesRuntimeBridge,
   assertNftIncludesDbPackageRuntime,
   getRequiredDbPackageRuntimeFiles,
   getRequiredDomainPackageRuntimeFiles,
@@ -125,7 +126,7 @@ describe('Prisma serverless packaging configuration', () => {
     assertNftIncludesDbPackageRuntime(files, repoRoot, 'task route');
   });
 
-  it('resolves require(@aicaa/db/runtime) from simulated task-route layout when built', () => {
+  it('resolves traced packages/db runtime from simulated task-route layout without workspace symlinks when built', () => {
     if (!fs.existsSync(tasksNftPath)) {
       return;
     }
@@ -135,12 +136,9 @@ describe('Prisma serverless packaging configuration', () => {
       repoRoot,
       nftRelativePath: 'app/api/v1/tasks/route.js.nft.json',
     });
-    expect(result.resolved.replace(/\\/g, '/')).toMatch(
-      /(?:packages\/db|node_modules\/@aicaa\/db)\/dist\/runtime\.js$/,
-    );
+    expect(result.resolved.replace(/\\/g, '/')).toMatch(/packages\/db\/dist\/runtime\.js$/);
     expect(result.exportNames).toContain('createPrismaClient');
     expect(result.exportNames).not.toContain('createTestDatabase');
-    expect(DB_PACKAGE_LITERAL).toBe('@aicaa/db/runtime');
   });
 
   it('covers Owner, Recipient capability, and Recipient page route NFT manifests when built', () => {
@@ -183,6 +181,22 @@ describe('Prisma serverless packaging configuration', () => {
     expect(output.trim()).toBe('verify-db-runtime-resolution: ok');
   });
 
+  it('uses the app-local DB runtime bridge in built server output when .next exists', () => {
+    const nextDir = path.join(webRoot, '.next');
+    if (!fs.existsSync(nextDir)) {
+      return;
+    }
+
+    expect(() => assertBuiltOutputUsesRuntimeBridge(webRoot, repoRoot)).not.toThrow();
+    const combined = fs
+      .readdirSync(path.join(webRoot, '.next/server/chunks'))
+      .filter((name) => name.endsWith('.js') && !name.endsWith('.js.map'))
+      .map((name) => fs.readFileSync(path.join(webRoot, '.next/server/chunks', name), 'utf8'))
+      .join('\n');
+    expect(combined).not.toContain('@aicaa/db/runtime');
+    expect(combined).not.toContain('requireImpl("@aicaa/db/runtime")');
+  });
+
   it('passes post-build package require simulation when .next output exists', () => {
     const nextDir = path.join(webRoot, '.next');
     if (!fs.existsSync(nextDir)) {
@@ -195,5 +209,6 @@ describe('Prisma serverless packaging configuration', () => {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     expect(output.trim()).toMatch(/^verify-db-package-require: ok/);
+    expect(output).toContain(DB_RUNTIME_RELATIVE);
   });
 });
