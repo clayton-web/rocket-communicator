@@ -450,7 +450,54 @@ export function collectServerJsFiles(webRoot) {
   return files;
 }
 
+export function findCompiledBridgeExportNames(webRoot) {
+  const chunksDir = path.join(webRoot, '.next/server/chunks');
+  const chunkFiles = listDistJsFiles(chunksDir).filter((filePath) => {
+    const content = fs.readFileSync(filePath, 'utf8');
+    return content.includes('loadDbRuntime') && content.includes(DB_RUNTIME_LOAD_START_STAGE);
+  });
+
+  if (chunkFiles.length === 0) {
+    throw new Error('no compiled server chunks contain loadDbRuntime');
+  }
+
+  for (const chunkPath of chunkFiles) {
+    const content = fs.readFileSync(chunkPath, 'utf8');
+    for (const [, exportsBody] of content.matchAll(/e\.s\(\[([^\]]+)\],(\d+)\)/g)) {
+      if (!exportsBody.includes('"createPrismaClient"')) {
+        continue;
+      }
+
+      const exportNames = [...exportsBody.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
+      if (exportNames.length > 0) {
+        return {
+          chunkPath,
+          exportNames,
+        };
+      }
+    }
+  }
+
+  throw new Error('compiled bridge namespace is empty or missing createPrismaClient');
+}
+
+export function assertCompiledBridgeNamespace(webRoot) {
+  const { exportNames } = findCompiledBridgeExportNames(webRoot);
+
+  if (exportNames.length === 0) {
+    throw new Error('compiled bridge namespace is empty');
+  }
+
+  for (const exportName of REQUIRED_RUNTIME_EXPORTS) {
+    if (!exportNames.includes(exportName)) {
+      throw new Error(`compiled bridge namespace missing export: ${exportName}`);
+    }
+  }
+}
+
 export function assertBuiltOutputUsesRuntimeBridge(webRoot, repoRoot) {
+  assertCompiledBridgeNamespace(webRoot);
+
   const serverFiles = collectServerJsFiles(webRoot);
 
   const combined = serverFiles.map((filePath) => fs.readFileSync(filePath, 'utf8')).join('\n');

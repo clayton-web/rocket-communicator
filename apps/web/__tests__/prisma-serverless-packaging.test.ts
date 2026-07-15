@@ -10,7 +10,9 @@ import {
   PGLITE_MARKERS,
   RHEL_ENGINE,
   assertBuiltOutputUsesRuntimeBridge,
+  assertCompiledBridgeNamespace,
   assertNftIncludesDbPackageRuntime,
+  findCompiledBridgeExportNames,
   getRequiredDbPackageRuntimeFiles,
   getRequiredDomainPackageRuntimeFiles,
   nftIncludesRepoFile,
@@ -195,6 +197,19 @@ describe('Prisma serverless packaging configuration', () => {
       .join('\n');
     expect(combined).not.toContain('@aicaa/db/runtime');
     expect(combined).not.toContain('requireImpl("@aicaa/db/runtime")');
+  });
+
+  it('registers every required runtime export in the compiled bridge namespace when built', () => {
+    const nextDir = path.join(webRoot, '.next');
+    if (!fs.existsSync(nextDir)) {
+      return;
+    }
+
+    expect(() => assertCompiledBridgeNamespace(webRoot)).not.toThrow();
+    const bridge = findCompiledBridgeExportNames(webRoot);
+    expect(bridge.exportNames).toContain('createPrismaClient');
+    expect(bridge.exportNames).toContain('listTasks');
+    expect(bridge.exportNames).not.toContain('createTestDatabase');
   });
 
   it('passes post-build package require simulation when .next output exists', () => {
