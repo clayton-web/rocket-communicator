@@ -1,4 +1,3 @@
-import { Prisma, PersistenceError } from '@aicaa/db';
 import { AuthConfigError } from '@/lib/auth/errors';
 import { CapabilityTokenError } from '@/lib/capability/errors';
 import { TaskServiceError } from '@/lib/tasks/errors';
@@ -37,6 +36,17 @@ export interface DatabaseRuntimeFailureContext {
 
 const DATABASE_URL_REQUIRED_MESSAGE = 'DATABASE_URL is required to create the Prisma client.';
 
+const PRISMA_INITIALIZATION_ERROR_NAME = 'PrismaClientInitializationError';
+const PRISMA_KNOWN_REQUEST_ERROR_NAME = 'PrismaClientKnownRequestError';
+const PRISMA_UNKNOWN_REQUEST_ERROR_NAME = 'PrismaClientUnknownRequestError';
+const PRISMA_RUST_PANIC_ERROR_NAME = 'PrismaClientRustPanicError';
+const PRISMA_VALIDATION_ERROR_NAME = 'PrismaClientValidationError';
+const PERSISTENCE_ERROR_NAME = 'PersistenceError';
+
+const PERSISTENCE_DATABASE_LOG_CODES = new Set(['TRANSACTION_FAILED', 'UNIQUE_VIOLATION']);
+
+const MAX_CAUSE_DEPTH = 12;
+
 export const ENABLE_DB_RUNTIME_DIAGNOSTICS_ENV = 'ENABLE_DB_RUNTIME_DIAGNOSTICS' as const;
 
 export function isDatabaseRuntimeDiagnosticsEnabled(
@@ -62,35 +72,114 @@ function isPostgresDatabaseUrlFormat(databaseUrl: string): boolean {
   }
 }
 
-function isPrismaClientError(error: unknown): error is { name: string } {
-  return (
-    error instanceof Prisma.PrismaClientInitializationError ||
-    error instanceof Prisma.PrismaClientKnownRequestError ||
-    error instanceof Prisma.PrismaClientUnknownRequestError ||
-    error instanceof Prisma.PrismaClientRustPanicError ||
-    error instanceof Prisma.PrismaClientValidationError
-  );
+/** Read a property without throwing on proxies, getters, or non-objects. */
+export function safeReadProperty(value: unknown, key: string): unknown {
+  try {
+    if (value === null || value === undefined) {
+      return undefined;
+    }
+    if (typeof value !== 'object' && typeof value !== 'function') {
+      return undefined;
+    }
+    return Reflect.get(value, key);
+  } catch {
+    return undefined;
+  }
+}
+
+function safeReadString(value: unknown, key: string): string | undefined {
+  const candidate = safeReadProperty(value, key);
+  return typeof candidate === 'string' && candidate.length > 0 ? candidate : undefined;
+}
+
+function safeInstanceof(value: unknown, constructor: unknown): boolean {
+  if (typeof constructor !== 'function') {
+    return false;
+  }
+  try {
+    return value instanceof constructor;
+  } catch {
+    return false;
+  }
+}
+
+function errorName(value: unknown): string | undefined {
+  return safeReadString(value, 'name');
 }
 
 function isDatabaseUrlConfigurationError(error: unknown): boolean {
   return (
-    error instanceof Error &&
-    error.message === DATABASE_URL_REQUIRED_MESSAGE &&
-    error.name === 'Error'
+    safeInstanceof(error, Error) &&
+    safeReadString(error, 'message') === DATABASE_URL_REQUIRED_MESSAGE &&
+    errorName(error) === 'Error'
   );
+}
+
+function isPrismaInitializationError(error: unknown): boolean {
+  return errorName(error) === PRISMA_INITIALIZATION_ERROR_NAME;
+}
+
+function isPrismaKnownRequestError(error: unknown): boolean {
+  return errorName(error) === PRISMA_KNOWN_REQUEST_ERROR_NAME;
+}
+
+function isPrismaUnknownRequestError(error: unknown): boolean {
+  return errorName(error) === PRISMA_UNKNOWN_REQUEST_ERROR_NAME;
+}
+
+function isPrismaRustPanicError(error: unknown): boolean {
+  return errorName(error) === PRISMA_RUST_PANIC_ERROR_NAME;
+}
+
+function isPrismaValidationError(error: unknown): boolean {
+  return errorName(error) === PRISMA_VALIDATION_ERROR_NAME;
+}
+
+function isPrismaClientError(error: unknown): boolean {
+  return (
+    isPrismaInitializationError(error) ||
+    isPrismaKnownRequestError(error) ||
+    isPrismaUnknownRequestError(error) ||
+    isPrismaRustPanicError(error) ||
+    isPrismaValidationError(error)
+  );
+}
+
+function isPersistenceError(error: unknown): boolean {
+  if (errorName(error) !== PERSISTENCE_ERROR_NAME) {
+    return false;
+  }
+  const code = safeReadString(error, 'code');
+  return typeof code === 'string';
+}
+
+function persistenceErrorCode(error: unknown): string | undefined {
+  if (!isPersistenceError(error)) {
+    return undefined;
+  }
+  return safeReadString(error, 'code');
 }
 
 function nodeErrorCodeFromCause(error: unknown): string | undefined {
   const seen = new Set<unknown>();
   let current: unknown = error;
+  let depth = 0;
 
-  while (current && typeof current === 'object' && !seen.has(current)) {
-    seen.add(current);
-    const record = current as { code?: unknown; cause?: unknown };
-    if (typeof record.code === 'string' && record.code.length > 0) {
-      return record.code;
+  while (current !== null && current !== undefined && depth < MAX_CAUSE_DEPTH) {
+    if (typeof current === 'object' || typeof current === 'function') {
+      if (seen.has(current)) {
+        break;
+      }
+      seen.add(current);
     }
-    current = record.cause;
+
+    const code = safeReadString(current, 'code');
+    if (code) {
+      return code;
+    }
+
+    current = safeReadProperty(current, 'cause');
+    depth += 1;
   }
 
   return undefined;
@@ -135,10 +224,8 @@ function classifyNodeErrorCode(code: string): DatabaseRuntimeFailureCategory {
   }
 }
 
-function classifyPrismaInitializationError(
-  error: Prisma.PrismaClientInitializationError,
-): DatabaseRuntimeFailureCategory {
-  const code = error.errorCode;
+function classifyPrismaInitializationError(error: unknown): DatabaseRuntimeFailureCategory {
+  const code = safeReadString(error, 'errorCode');
   if (code === 'P1000' || code === 'P1010') {
     return 'DATABASE_AUTHENTICATION_FAILED';
   }
@@ -156,118 +243,125 @@ function classifyPrismaInitializationError(
 
 /**
  * Classify unexpected database failures using error types/codes only — never messages.
+ * Never throws for any input value.
  */
 export function classifyDatabaseRuntimeFailure(error: unknown): DatabaseRuntimeFailureCategory {
-  if (!isDatabaseUrlPresent()) {
-    return 'DATABASE_URL_MISSING';
-  }
+  try {
+    if (!isDatabaseUrlPresent()) {
+      return 'DATABASE_URL_MISSING';
+    }
 
-  const databaseUrl = process.env.DATABASE_URL;
-  if (isNonEmptyString(databaseUrl) && !isPostgresDatabaseUrlFormat(databaseUrl)) {
-    return 'DATABASE_URL_INVALID_FORMAT';
-  }
+    const databaseUrl = process.env.DATABASE_URL;
+    if (isNonEmptyString(databaseUrl) && !isPostgresDatabaseUrlFormat(databaseUrl)) {
+      return 'DATABASE_URL_INVALID_FORMAT';
+    }
 
-  if (isDatabaseUrlConfigurationError(error)) {
-    return 'DATABASE_URL_MISSING';
-  }
+    if (isDatabaseUrlConfigurationError(error)) {
+      return 'DATABASE_URL_MISSING';
+    }
 
-  if (error instanceof Prisma.PrismaClientInitializationError) {
-    return classifyPrismaInitializationError(error);
-  }
+    if (isPrismaInitializationError(error)) {
+      return classifyPrismaInitializationError(error);
+    }
 
-  if (error instanceof Prisma.PrismaClientKnownRequestError) {
-    return classifyPrismaKnownRequestCode(error.code);
-  }
-
-  if (
-    error instanceof Prisma.PrismaClientUnknownRequestError ||
-    error instanceof Prisma.PrismaClientRustPanicError
-  ) {
-    return 'DATABASE_QUERY_FAILED';
-  }
-
-  if (error instanceof Prisma.PrismaClientValidationError) {
-    return 'DATABASE_QUERY_FAILED';
-  }
-
-  if (error instanceof PersistenceError) {
-    if (error.code === 'TRANSACTION_FAILED' || error.code === 'UNIQUE_VIOLATION') {
+    if (isPrismaKnownRequestError(error)) {
+      const code = safeReadString(error, 'code');
+      if (code) {
+        return classifyPrismaKnownRequestCode(code);
+      }
       return 'DATABASE_QUERY_FAILED';
     }
-  }
 
-  const nodeErrorCode = nodeErrorCodeFromCause(error);
-  if (nodeErrorCode) {
-    const nodeCategory = classifyNodeErrorCode(nodeErrorCode);
-    if (nodeCategory !== 'UNKNOWN_DATABASE_ERROR') {
-      return nodeCategory;
+    if (isPrismaUnknownRequestError(error) || isPrismaRustPanicError(error)) {
+      return 'DATABASE_QUERY_FAILED';
     }
-  }
 
-  if (error instanceof Error && error.name.includes('Prisma')) {
-    return 'PRISMA_CLIENT_INITIALIZATION';
-  }
+    if (isPrismaValidationError(error)) {
+      return 'DATABASE_QUERY_FAILED';
+    }
 
-  return 'UNKNOWN_DATABASE_ERROR';
+    const persistenceCode = persistenceErrorCode(error);
+    if (persistenceCode && PERSISTENCE_DATABASE_LOG_CODES.has(persistenceCode)) {
+      return 'DATABASE_QUERY_FAILED';
+    }
+
+    const nodeErrorCode = nodeErrorCodeFromCause(error);
+    if (nodeErrorCode) {
+      const nodeCategory = classifyNodeErrorCode(nodeErrorCode);
+      if (nodeCategory !== 'UNKNOWN_DATABASE_ERROR') {
+        return nodeCategory;
+      }
+    }
+
+    const name = errorName(error);
+    if (name?.includes('Prisma')) {
+      return 'PRISMA_CLIENT_INITIALIZATION';
+    }
+
+    return 'UNKNOWN_DATABASE_ERROR';
+  } catch {
+    return 'UNKNOWN_DATABASE_ERROR';
+  }
 }
 
 /**
  * True when an Owner task route error should emit structured database runtime diagnostics.
+ * Never throws for any input value.
  */
 export function shouldLogDatabaseRuntimeFailure(error: unknown): boolean {
-  if (error instanceof TaskServiceError) {
+  try {
+    if (safeInstanceof(error, TaskServiceError)) {
+      return false;
+    }
+    if (safeInstanceof(error, CapabilityTokenError)) {
+      return false;
+    }
+    if (safeInstanceof(error, AuthConfigError)) {
+      return false;
+    }
+
+    const persistenceCode = persistenceErrorCode(error);
+    if (persistenceCode && PERSISTENCE_DATABASE_LOG_CODES.has(persistenceCode)) {
+      return true;
+    }
+
+    if (!isDatabaseUrlPresent()) {
+      return true;
+    }
+    if (isDatabaseUrlConfigurationError(error)) {
+      return true;
+    }
+    if (isPrismaClientError(error)) {
+      return true;
+    }
+
+    const nodeErrorCode = nodeErrorCodeFromCause(error);
+    if (nodeErrorCode) {
+      return classifyNodeErrorCode(nodeErrorCode) !== 'UNKNOWN_DATABASE_ERROR';
+    }
+
+    return false;
+  } catch {
     return false;
   }
-  if (error instanceof CapabilityTokenError) {
-    return false;
-  }
-  if (error instanceof AuthConfigError) {
-    return false;
-  }
-  if (error instanceof PersistenceError) {
-    return error.code === 'TRANSACTION_FAILED' || error.code === 'UNIQUE_VIOLATION';
-  }
-  if (!isDatabaseUrlPresent()) {
-    return true;
-  }
-  if (isDatabaseUrlConfigurationError(error)) {
-    return true;
-  }
-  if (isPrismaClientError(error)) {
-    return true;
-  }
-  const nodeErrorCode = nodeErrorCodeFromCause(error);
-  if (nodeErrorCode) {
-    return classifyNodeErrorCode(nodeErrorCode) !== 'UNKNOWN_DATABASE_ERROR';
-  }
-  return false;
 }
 
 function prismaErrorClassName(error: unknown): string | undefined {
-  if (error instanceof Error && error.name) {
-    return error.name;
-  }
-  return undefined;
+  return errorName(error);
 }
 
 function prismaErrorCode(error: unknown): string | undefined {
-  if (error instanceof Prisma.PrismaClientKnownRequestError) {
-    return error.code;
+  if (isPrismaKnownRequestError(error)) {
+    return safeReadString(error, 'code');
   }
-  if (error instanceof Prisma.PrismaClientInitializationError && error.errorCode) {
-    return error.errorCode;
+  if (isPrismaInitializationError(error)) {
+    return safeReadString(error, 'errorCode');
   }
   return undefined;
 }
 
 function clientVersion(error: unknown): string | undefined {
-  if (error instanceof Prisma.PrismaClientInitializationError && error.clientVersion) {
-    return error.clientVersion;
-  }
-  if (error instanceof Prisma.PrismaClientKnownRequestError && error.clientVersion) {
-    return error.clientVersion;
-  }
-  return undefined;
+  return safeReadString(error, 'clientVersion');
 }
 
 function deploymentRuntimeMarker(): string | undefined {
@@ -284,43 +378,78 @@ export function buildDatabaseRuntimeFailureLogPayload(
   error: unknown,
   context: DatabaseRuntimeFailureContext = {},
 ): DatabaseRuntimeFailureLogPayload {
-  return {
-    event: DATABASE_RUNTIME_FAILURE_EVENT,
-    category: classifyDatabaseRuntimeFailure(error),
-    prismaErrorClass: prismaErrorClassName(error),
-    prismaErrorCode: prismaErrorCode(error),
-    nodeErrorCode: nodeErrorCodeFromCause(error),
-    clientVersion: clientVersion(error),
-    routePathname: context.routePathname,
-    deploymentRuntime: deploymentRuntimeMarker(),
-    databaseUrlPresent: isDatabaseUrlPresent(),
-    requestId: context.requestId,
-    timestamp: new Date().toISOString(),
-  };
+  try {
+    return {
+      event: DATABASE_RUNTIME_FAILURE_EVENT,
+      category: classifyDatabaseRuntimeFailure(error),
+      prismaErrorClass: prismaErrorClassName(error),
+      prismaErrorCode: prismaErrorCode(error),
+      nodeErrorCode: nodeErrorCodeFromCause(error),
+      clientVersion: clientVersion(error),
+      routePathname: context.routePathname,
+      deploymentRuntime: deploymentRuntimeMarker(),
+      databaseUrlPresent: isDatabaseUrlPresent(),
+      requestId: context.requestId,
+      timestamp: new Date().toISOString(),
+    };
+  } catch {
+    return {
+      event: DATABASE_RUNTIME_FAILURE_EVENT,
+      category: 'UNKNOWN_DATABASE_ERROR',
+      databaseUrlPresent: isDatabaseUrlPresent(),
+      timestamp: new Date().toISOString(),
+    };
+  }
 }
 
 /** Serialize diagnostics for tests and runtime logging without unsafe fields. */
 export function serializeDatabaseRuntimeFailureLogPayload(
   payload: DatabaseRuntimeFailureLogPayload,
 ): string {
-  return JSON.stringify(payload);
+  try {
+    return JSON.stringify(payload);
+  } catch {
+    return JSON.stringify({
+      event: DATABASE_RUNTIME_FAILURE_EVENT,
+      category: 'UNKNOWN_DATABASE_ERROR',
+      databaseUrlPresent: isDatabaseUrlPresent(),
+      timestamp: new Date().toISOString(),
+    });
+  }
 }
 
 /**
  * Emit structured, server-side-only diagnostics. Never logs messages, stacks, or secrets.
+ * Never throws; returns undefined when diagnostics cannot be produced.
  */
 export function logDatabaseRuntimeFailure(
   error: unknown,
   context: DatabaseRuntimeFailureContext = {},
 ): DatabaseRuntimeFailureLogPayload | undefined {
-  if (!isDatabaseRuntimeDiagnosticsEnabled()) {
-    return undefined;
-  }
-  if (!shouldLogDatabaseRuntimeFailure(error)) {
-    return undefined;
-  }
+  try {
+    if (!isDatabaseRuntimeDiagnosticsEnabled()) {
+      return undefined;
+    }
+    if (!shouldLogDatabaseRuntimeFailure(error)) {
+      return undefined;
+    }
 
-  const payload = buildDatabaseRuntimeFailureLogPayload(error, context);
-  console.error(serializeDatabaseRuntimeFailureLogPayload(payload));
-  return payload;
+    let payload: DatabaseRuntimeFailureLogPayload;
+    try {
+      payload = buildDatabaseRuntimeFailureLogPayload(error, context);
+    } catch {
+      return undefined;
+    }
+
+    try {
+      const serialized = serializeDatabaseRuntimeFailureLogPayload(payload);
+      console.error(serialized);
+    } catch {
+      return undefined;
+    }
+
+    return payload;
+  } catch {
+    return undefined;
+  }
 }
