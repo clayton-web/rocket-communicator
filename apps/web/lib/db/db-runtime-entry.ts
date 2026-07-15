@@ -1,63 +1,72 @@
 import 'server-only';
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import {
+  createAuditEvent as createAuditEventExport,
+  createCapability as createCapabilityExport,
+  createPrismaClient as createPrismaClientExport,
+  createTask as createTaskExport,
+  findActiveCapabilitiesForAssignment as findActiveCapabilitiesForAssignmentExport,
+  findCapabilityByTokenHash as findCapabilityByTokenHashExport,
+  getCapabilityById as getCapabilityByIdExport,
+  getRecipientById as getRecipientByIdExport,
+  getTaskById as getTaskByIdExport,
+  listTasks as listTasksExport,
+  markCapabilityExpiredRecord as markCapabilityExpiredRecordExport,
+  persistCapabilityAction as persistCapabilityActionExport,
+  persistOwnerTaskMutation as persistOwnerTaskMutationExport,
+  persistReturnToOwner as persistReturnToOwnerExport,
+  persistWorkRequest as persistWorkRequestExport,
+  revokeCapabilityRecord as revokeCapabilityRecordExport,
+  updateActiveAssignmentCapabilityBinding as updateActiveAssignmentCapabilityBindingExport,
+  updateTaskWithExpectedVersion as updateTaskWithExpectedVersionExport,
+} from './db-runtime-reexports';
 
 /**
  * Production DB runtime bridge.
  *
- * Resolved at runtime via dynamic import into traced packages/db/dist output.
- * Production Lambda code must not resolve the workspace package name at runtime.
- *
- * Runtime loading is deferred until loadTracedRuntimeModule() is called so route
- * module import cannot throw before application error handling runs.
+ * Uses a literal relative specifier so Turbopack can trace and retain the
+ * external packages/db runtime at build time. Production Lambda code must not
+ * resolve the workspace package name at runtime.
  */
-const TRACED_RUNTIME_RELATIVE = path.join('packages', 'db', 'dist', 'runtime.js');
-
-function walkUpForTracedRuntime(startDir: string): string | undefined {
-  let dir = startDir;
-  for (let depth = 0; depth < 24; depth += 1) {
-    const candidate = path.join(dir, TRACED_RUNTIME_RELATIVE);
-    if (fs.existsSync(candidate)) {
-      return candidate;
-    }
-    const parent = path.dirname(dir);
-    if (parent === dir) {
-      break;
-    }
-    dir = parent;
-  }
-  return undefined;
-}
-
-export function resolveTracedRuntimePath(moduleUrl?: string): string {
-  const cwdCandidate = path.join(process.cwd(), TRACED_RUNTIME_RELATIVE);
-  if (fs.existsSync(cwdCandidate)) {
-    return cwdCandidate;
-  }
-
-  if (moduleUrl) {
-    try {
-      const fromModuleUrl = walkUpForTracedRuntime(path.dirname(fileURLToPath(moduleUrl)));
-      if (fromModuleUrl) {
-        return fromModuleUrl;
-      }
-    } catch {
-      // Ignore invalid moduleUrl values and continue with other anchors.
-    }
-  }
-
-  const fromCwdWalk = walkUpForTracedRuntime(process.cwd());
-  if (fromCwdWalk) {
-    return fromCwdWalk;
-  }
-
-  throw new Error(`Traced DB runtime not found at ${TRACED_RUNTIME_RELATIVE}`);
-}
-
-type TracedRuntimeModule = typeof import('../../../../packages/db/dist/runtime.js');
+export type TracedRuntimeModule = {
+  createPrismaClient: typeof createPrismaClientExport;
+  getTaskById: typeof getTaskByIdExport;
+  listTasks: typeof listTasksExport;
+  createTask: typeof createTaskExport;
+  getRecipientById: typeof getRecipientByIdExport;
+  createAuditEvent: typeof createAuditEventExport;
+  persistOwnerTaskMutation: typeof persistOwnerTaskMutationExport;
+  persistReturnToOwner: typeof persistReturnToOwnerExport;
+  findCapabilityByTokenHash: typeof findCapabilityByTokenHashExport;
+  createCapability: typeof createCapabilityExport;
+  findActiveCapabilitiesForAssignment: typeof findActiveCapabilitiesForAssignmentExport;
+  revokeCapabilityRecord: typeof revokeCapabilityRecordExport;
+  updateActiveAssignmentCapabilityBinding: typeof updateActiveAssignmentCapabilityBindingExport;
+  updateTaskWithExpectedVersion: typeof updateTaskWithExpectedVersionExport;
+  getCapabilityById: typeof getCapabilityByIdExport;
+  markCapabilityExpiredRecord: typeof markCapabilityExpiredRecordExport;
+  persistCapabilityAction: typeof persistCapabilityActionExport;
+  persistWorkRequest: typeof persistWorkRequestExport;
+};
 
 export async function loadTracedRuntimeModule(): Promise<TracedRuntimeModule> {
-  const runtimePath = resolveTracedRuntimePath(import.meta.url);
-  return import(pathToFileURL(runtimePath).href) as Promise<TracedRuntimeModule>;
+  return {
+    createPrismaClient: createPrismaClientExport,
+    getTaskById: getTaskByIdExport,
+    listTasks: listTasksExport,
+    createTask: createTaskExport,
+    getRecipientById: getRecipientByIdExport,
+    createAuditEvent: createAuditEventExport,
+    persistOwnerTaskMutation: persistOwnerTaskMutationExport,
+    persistReturnToOwner: persistReturnToOwnerExport,
+    findCapabilityByTokenHash: findCapabilityByTokenHashExport,
+    createCapability: createCapabilityExport,
+    findActiveCapabilitiesForAssignment: findActiveCapabilitiesForAssignmentExport,
+    revokeCapabilityRecord: revokeCapabilityRecordExport,
+    updateActiveAssignmentCapabilityBinding: updateActiveAssignmentCapabilityBindingExport,
+    updateTaskWithExpectedVersion: updateTaskWithExpectedVersionExport,
+    getCapabilityById: getCapabilityByIdExport,
+    markCapabilityExpiredRecord: markCapabilityExpiredRecordExport,
+    persistCapabilityAction: persistCapabilityActionExport,
+    persistWorkRequest: persistWorkRequestExport,
+  };
 }

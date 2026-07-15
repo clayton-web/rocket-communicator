@@ -12,7 +12,10 @@ export const INVALID_ROOT_PATTERN = '/ROOT/packages/db';
 export const DB_PACKAGE_LITERAL = '@aicaa/db/runtime';
 export const DB_RUNTIME_RELATIVE = 'packages/db/dist/runtime.js';
 export const DB_RUNTIME_BRIDGE_MODULE = 'db-runtime-entry';
-export const DB_RUNTIME_BRIDGE_EXPORTS = ['loadTracedRuntimeModule', 'resolveTracedRuntimePath'];
+export const DB_RUNTIME_REEXPORTS_MODULE = 'db-runtime-reexports';
+export const DB_RUNTIME_BRIDGE_EXPORTS = ['loadTracedRuntimeModule'];
+export const DB_RUNTIME_LITERAL_SPECIFIER = '../../../../packages/db/dist/runtime.js';
+export const DB_RUNTIME_TOO_DYNAMIC_MARKER = 'expression is too dynamic';
 export const DB_RUNTIME_LOAD_START_STAGE = 'DB_RUNTIME_LOAD_START';
 export const DB_TESTING_LITERAL = '@aicaa/db/testing';
 export const DOMAIN_PACKAGE_LITERAL = '@aicaa/domain';
@@ -435,25 +438,39 @@ export function collectServerJsFiles(webRoot) {
   return files;
 }
 
+export function findBridgeChunkFiles(webRoot) {
+  const chunksDir = path.join(webRoot, '.next/server/chunks');
+  return listDistJsFiles(chunksDir).filter((filePath) => {
+    const content = fs.readFileSync(filePath, 'utf8');
+    return content.includes('loadDbRuntime') && content.includes(DB_RUNTIME_LOAD_START_STAGE);
+  });
+}
+
 export function findCompiledBridgeExportNames(webRoot) {
   const { chunkPath } = assertCompiledBridgeNamespace(webRoot);
   return {
     chunkPath,
-    exportNames: [...DB_RUNTIME_BRIDGE_EXPORTS],
+    exportNames: [...REQUIRED_RUNTIME_EXPORTS],
     lazy: true,
   };
 }
 
-function assertLazyRuntimeResolutionInChunk(content, chunkPath) {
-  if (/let W=\(i=H\(/.test(content)) {
+function assertStaticBridgeInChunk(content, chunkPath) {
+  if (content.includes(DB_RUNTIME_TOO_DYNAMIC_MARKER)) {
     throw new Error(
-      `compiled bridge still eagerly requires traced runtime at module init in ${path.basename(chunkPath)}`,
+      `compiled bridge still contains Turbopack dynamic import stub in ${path.basename(chunkPath)}`,
     );
   }
 
-  if (/\$=W\.createPrismaClient/.test(content)) {
+  if (/createPrismaClient:\s*void 0/.test(content)) {
     throw new Error(
-      `compiled bridge still eagerly exports traced runtime functions in ${path.basename(chunkPath)}`,
+      `compiled bridge still contains void 0 runtime export stubs in ${path.basename(chunkPath)}`,
+    );
+  }
+
+  if (!/e\.s\(\[\],\d+\)/.test(content)) {
+    throw new Error(
+      `compiled bridge is missing traced external runtime module reference in ${path.basename(chunkPath)}`,
     );
   }
 
@@ -463,15 +480,27 @@ function assertLazyRuntimeResolutionInChunk(content, chunkPath) {
     );
   }
 
-  if (!content.includes('Traced DB runtime not found')) {
+  let retainedExportCount = 0;
+  for (const exportName of REQUIRED_RUNTIME_EXPORTS) {
+    if (content.includes(exportName)) {
+      retainedExportCount += 1;
+    }
+  }
+  if (retainedExportCount < REQUIRED_RUNTIME_EXPORTS.length) {
     throw new Error(
-      `compiled bridge is missing traced runtime resolution error marker in ${path.basename(chunkPath)}`,
+      `compiled bridge is missing required runtime export markers in ${path.basename(chunkPath)}`,
     );
   }
 
-  if (!content.includes('process.cwd()')) {
+  if (content.includes('Traced DB runtime not found')) {
     throw new Error(
-      `compiled bridge does not anchor traced runtime resolution from process.cwd() in ${path.basename(chunkPath)}`,
+      `compiled bridge still contains runtime path resolution marker in ${path.basename(chunkPath)}`,
+    );
+  }
+
+  if (/pathToFileURL\(/.test(content)) {
+    throw new Error(
+      `compiled bridge still contains pathToFileURL runtime resolution in ${path.basename(chunkPath)}`,
     );
   }
 
@@ -489,11 +518,7 @@ function assertLazyRuntimeResolutionInChunk(content, chunkPath) {
 }
 
 export function assertCompiledBridgeNamespace(webRoot) {
-  const chunksDir = path.join(webRoot, '.next/server/chunks');
-  const chunkFiles = listDistJsFiles(chunksDir).filter((filePath) => {
-    const content = fs.readFileSync(filePath, 'utf8');
-    return content.includes('loadDbRuntime') && content.includes(DB_RUNTIME_LOAD_START_STAGE);
-  });
+  const chunkFiles = findBridgeChunkFiles(webRoot);
 
   if (chunkFiles.length === 0) {
     throw new Error('no compiled server chunks contain loadDbRuntime');
@@ -501,100 +526,65 @@ export function assertCompiledBridgeNamespace(webRoot) {
 
   for (const chunkPath of chunkFiles) {
     const content = fs.readFileSync(chunkPath, 'utf8');
-    assertLazyRuntimeResolutionInChunk(content, chunkPath);
+    assertStaticBridgeInChunk(content, chunkPath);
     return { chunkPath };
   }
 
   throw new Error('compiled bridge validation failed');
 }
 
-function resolveTurbopackImportMetaUrl(layoutWeb) {
-  const turbopackRuntime = path.join(layoutWeb, '.next/server/chunks/[turbopack]_runtime.js');
-  const RUNTIME_PUBLIC_PATH = 'server/chunks/[turbopack]_runtime.js';
-  const RELATIVE_ROOT_PATH = '../../..';
-  const relativePathToDistRoot = path.join(path.relative(RUNTIME_PUBLIC_PATH, '.'), RELATIVE_ROOT_PATH);
-  const ABSOLUTE_ROOT = path.resolve(turbopackRuntime, relativePathToDistRoot);
-  return path.join(ABSOLUTE_ROOT, 'apps/web/lib/db/db-runtime-entry.ts');
+function findLayoutBridgeChunkPath(layoutWeb) {
+  const chunksDir = path.join(layoutWeb, '.next/server/chunks');
+  const bridgeChunks = listDistJsFiles(chunksDir).filter((filePath) => {
+    const content = fs.readFileSync(filePath, 'utf8');
+    return content.includes('loadDbRuntime') && content.includes(DB_RUNTIME_LOAD_START_STAGE);
+  });
+  if (bridgeChunks.length === 0) {
+    return undefined;
+  }
+  return bridgeChunks[0];
 }
 
-function writeLambdaBridgeSimulationScript({ layoutRoot, layoutWeb, routeJs }) {
+function writeLambdaBridgeSimulationScript({ layoutRoot, layoutWeb, routeJs, bridgeChunkRelativePath }) {
   const scriptPath = path.join(layoutRoot, 'lambda-bridge-sim.mjs');
   const source = `
 import fs from 'node:fs';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 
 const layoutRoot = ${JSON.stringify(layoutRoot)};
 const layoutWeb = ${JSON.stringify(layoutWeb)};
 const routeJs = ${JSON.stringify(routeJs)};
+const bridgeChunkRelativePath = ${JSON.stringify(bridgeChunkRelativePath)};
 const tracedRelative = ${JSON.stringify(DB_RUNTIME_RELATIVE)};
 
-function walkUpForTracedRuntime(startDir) {
-  let dir = startDir;
-  for (let depth = 0; depth < 24; depth += 1) {
-    const candidate = path.join(dir, tracedRelative);
-    if (fs.existsSync(candidate)) {
-      return candidate;
-    }
-    const parent = path.dirname(dir);
-    if (parent === dir) {
-      break;
-    }
-    dir = parent;
-  }
-  return undefined;
-}
-
-function resolveTracedRuntimePath(moduleUrl) {
-  const cwdCandidate = path.join(process.cwd(), tracedRelative);
-  if (fs.existsSync(cwdCandidate)) {
-    return cwdCandidate;
-  }
-
-  if (moduleUrl) {
-    const fromModuleUrl = walkUpForTracedRuntime(path.dirname(new URL(moduleUrl).pathname));
-    if (fromModuleUrl) {
-      return fromModuleUrl;
-    }
-  }
-
-  const fromCwdWalk = walkUpForTracedRuntime(process.cwd());
-  if (fromCwdWalk) {
-    return fromCwdWalk;
-  }
-
-  throw new Error('Traced DB runtime not found at ' + tracedRelative);
-}
-
 process.chdir(layoutRoot);
+process.env.NODE_ENV = 'production';
 
-const sourceTs = path.join(layoutRoot, 'apps/web/lib/db/db-runtime-entry.ts');
-if (fs.existsSync(sourceTs)) {
-  throw new Error('lambda simulation must not include bridge source file');
-}
-
-await import(pathToFileURL(routeJs).href);
+const requireFromWeb = createRequire(path.join(layoutWeb, 'package.json'));
+requireFromWeb(routeJs);
 console.log('ROUTE_IMPORT_OK');
 
-const importMetaPath = ${JSON.stringify(resolveTurbopackImportMetaUrl(layoutWeb))};
-if (fs.existsSync(importMetaPath)) {
-  throw new Error('lambda simulation must not include Turbopack import.meta source path');
-}
-
-const moduleUrl = pathToFileURL(importMetaPath).href;
-const runtimePath = resolveTracedRuntimePath(moduleUrl);
+const runtimePath = path.join(layoutRoot, tracedRelative);
 const runtimeModule = await import(pathToFileURL(runtimePath).href);
-
 for (const exportName of ${JSON.stringify(REQUIRED_RUNTIME_EXPORTS)}) {
   if (typeof runtimeModule[exportName] !== 'function') {
     throw new Error('loaded runtime missing export: ' + exportName);
   }
 }
-
 if (typeof runtimeModule.createTestDatabase !== 'undefined') {
   throw new Error('loaded runtime unexpectedly exports createTestDatabase');
 }
 
+const bridgeChunkPath = path.join(layoutWeb, '.next', bridgeChunkRelativePath);
+const bridgeContent = fs.readFileSync(bridgeChunkPath, 'utf8');
+if (bridgeContent.includes(${JSON.stringify(DB_RUNTIME_TOO_DYNAMIC_MARKER)})) {
+  throw new Error('compiled bridge still contains dynamic import stub');
+}
+if (/createPrismaClient:\\s*void 0/.test(bridgeContent)) {
+  throw new Error('compiled bridge still contains void 0 runtime stubs');
+}
 console.log('RUNTIME_LOAD_OK');
 `;
   fs.writeFileSync(scriptPath, source);
@@ -619,18 +609,20 @@ export function simulateLambdaLayoutBridgeInit({
     throw new Error(`traced layout missing ${DB_RUNTIME_RELATIVE}`);
   }
 
-  const sourceTs = path.join(layoutRoot, 'apps/web/lib/db/db-runtime-entry.ts');
-  if (fs.existsSync(sourceTs)) {
-    fs.unlinkSync(sourceTs);
-  }
-
   const layoutWeb = path.join(layoutRoot, 'apps/web');
-  const importMetaPath = resolveTurbopackImportMetaUrl(layoutWeb);
-  if (fs.existsSync(importMetaPath)) {
-    fs.unlinkSync(importMetaPath);
+  const layoutBridgeChunkPath = findLayoutBridgeChunkPath(layoutWeb);
+  if (!layoutBridgeChunkPath) {
+    fs.rmSync(layoutRoot, { recursive: true, force: true });
+    throw new Error('traced layout missing compiled bridge chunk');
   }
+  const bridgeChunkRelativePath = path.relative(path.join(layoutWeb, '.next'), layoutBridgeChunkPath);
 
-  const scriptPath = writeLambdaBridgeSimulationScript({ layoutRoot, layoutWeb, routeJs });
+  const scriptPath = writeLambdaBridgeSimulationScript({
+    layoutRoot,
+    layoutWeb,
+    routeJs,
+    bridgeChunkRelativePath,
+  });
 
   try {
     const proc = spawnSync(process.execPath, [scriptPath], {
@@ -655,7 +647,7 @@ export function simulateLambdaLayoutBridgeInit({
       layoutRoot,
       routeJs,
       resolved: runtimePath,
-      importMetaPath,
+      bridgeChunkRelativePath,
     };
   } finally {
     fs.rmSync(layoutRoot, { recursive: true, force: true });
@@ -663,20 +655,18 @@ export function simulateLambdaLayoutBridgeInit({
 }
 
 export function assertBuiltOutputUsesRuntimeBridge(webRoot, repoRoot) {
-  assertCompiledBridgeNamespace(webRoot);
-
-  const serverFiles = collectServerJsFiles(webRoot);
-
-  const combined = serverFiles.map((filePath) => fs.readFileSync(filePath, 'utf8')).join('\n');
+  const { chunkPath } = assertCompiledBridgeNamespace(webRoot);
+  const bridgeFiles = [chunkPath];
+  const combined = bridgeFiles.map((filePath) => fs.readFileSync(filePath, 'utf8')).join('\n');
 
   if (!combined.includes('loadDbRuntime')) {
-    throw new Error('built server output does not reference loadDbRuntime');
+    throw new Error('built bridge output does not reference loadDbRuntime');
   }
   if (!combined.includes(DB_RUNTIME_LOAD_START_STAGE)) {
-    throw new Error(`built server output does not reference ${DB_RUNTIME_LOAD_START_STAGE}`);
+    throw new Error(`built bridge output does not reference ${DB_RUNTIME_LOAD_START_STAGE}`);
   }
   if (!combined.includes('createPrismaClient')) {
-    throw new Error('built server output does not reference createPrismaClient');
+    throw new Error('built bridge output does not reference createPrismaClient');
   }
 
   if (
@@ -685,26 +675,36 @@ export function assertBuiltOutputUsesRuntimeBridge(webRoot, repoRoot) {
     combined.includes('requireImpl("@aicaa/db/runtime")') ||
     combined.includes("requireImpl('@aicaa/db/runtime')")
   ) {
-    throw new Error('built server output still contains package-name @aicaa/db/runtime require');
+    throw new Error('built bridge output still contains package-name @aicaa/db/runtime require');
   }
 
   if (combined.includes(INVALID_ROOT_PATTERN)) {
-    throw new Error(`built server output contains invalid bundling path ${INVALID_ROOT_PATTERN}`);
+    throw new Error(`built bridge output contains invalid bundling path ${INVALID_ROOT_PATTERN}`);
   }
 
-  for (const filePath of serverFiles) {
+  for (const filePath of bridgeFiles) {
     const content = fs.readFileSync(filePath, 'utf8');
+    if (content.includes(DB_RUNTIME_TOO_DYNAMIC_MARKER)) {
+      throw new Error(
+        `built bridge output contains Turbopack dynamic import stub in ${path.relative(repoRoot, filePath)}`,
+      );
+    }
+    if (/createPrismaClient:\s*void 0/.test(content)) {
+      throw new Error(
+        `built bridge output contains void 0 runtime export stubs in ${path.relative(repoRoot, filePath)}`,
+      );
+    }
     if (/\bawait\s+\(void\s+0\)\s*\(/.test(content)) {
-      throw new Error(`built server output contains void 0 stub in ${path.relative(repoRoot, filePath)}`);
+      throw new Error(`built bridge output contains void 0 stub in ${path.relative(repoRoot, filePath)}`);
     }
     if (/require\([^)]*packages\/db\/dist\/runtime\.js/.test(content)) {
       throw new Error(
-        `built server output contains require() of ESM runtime.js in ${path.relative(repoRoot, filePath)}`,
+        `built bridge output contains require() of ESM runtime.js in ${path.relative(repoRoot, filePath)}`,
       );
     }
     if (/createRequire\)\([^)]*\)\([^)]*runtime\.js/.test(content)) {
       throw new Error(
-        `built server output contains createRequire() of runtime.js in ${path.relative(repoRoot, filePath)}`,
+        `built bridge output contains createRequire() of runtime.js in ${path.relative(repoRoot, filePath)}`,
       );
     }
   }

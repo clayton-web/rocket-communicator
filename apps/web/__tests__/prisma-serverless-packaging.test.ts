@@ -6,9 +6,9 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   DB_BACKED_ROUTE_NFTS,
-  DB_RUNTIME_BRIDGE_EXPORTS,
   DB_RUNTIME_RELATIVE,
   PGLITE_MARKERS,
+  REQUIRED_RUNTIME_EXPORTS,
   RHEL_ENGINE,
   assertBuiltOutputUsesRuntimeBridge,
   assertCompiledBridgeNamespace,
@@ -202,7 +202,7 @@ describe('Prisma serverless packaging configuration', () => {
     expect(combined).not.toContain('requireImpl("@aicaa/db/runtime")');
   });
 
-  it('registers lazy bridge exports in the compiled bridge namespace when built', () => {
+  it('registers static bridge exports in the compiled bridge namespace when built', () => {
     const nextDir = path.join(webRoot, '.next');
     if (!fs.existsSync(nextDir)) {
       return;
@@ -211,24 +211,19 @@ describe('Prisma serverless packaging configuration', () => {
     expect(() => assertCompiledBridgeNamespace(webRoot)).not.toThrow();
     const bridge = findCompiledBridgeExportNames(webRoot);
     expect(bridge.lazy).toBe(true);
-    expect(bridge.exportNames).toEqual(DB_RUNTIME_BRIDGE_EXPORTS);
+    expect(bridge.exportNames).toEqual(REQUIRED_RUNTIME_EXPORTS);
   });
 
-  it('does not compile CommonJS require() of traced ESM runtime.js when built', () => {
+  it('does not compile Turbopack dynamic runtime import stubs in bridge chunks when built', () => {
     const nextDir = path.join(webRoot, '.next');
     if (!fs.existsSync(nextDir)) {
       return;
     }
 
-    const combined = fs
-      .readdirSync(path.join(webRoot, '.next/server/chunks'))
-      .filter((name) => name.endsWith('.js') && !name.endsWith('.js.map'))
-      .map((name) => fs.readFileSync(path.join(webRoot, '.next/server/chunks', name), 'utf8'))
-      .join('\n');
-
-    expect(combined).not.toMatch(/require\([^)]*packages\/db\/dist\/runtime\.js/);
-    expect(combined).not.toMatch(/createRequire\)\([^)]*\)\([^)]*runtime\.js/);
-    expect(combined).toMatch(/import\(/);
+    const { chunkPath } = assertCompiledBridgeNamespace(webRoot);
+    const bridgeContent = fs.readFileSync(chunkPath, 'utf8');
+    expect(bridgeContent).not.toContain('expression is too dynamic');
+    expect(bridgeContent).not.toMatch(/createPrismaClient:\s*void 0/);
   });
 
   it('loads traced runtime from simulated Vercel Lambda layout when built', () => {

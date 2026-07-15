@@ -5,9 +5,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as aicaaDb from '@aicaa/db/runtime';
 import {
-  loadTracedRuntimeModule,
-  resolveTracedRuntimePath,
-} from '@/lib/db/db-runtime-entry';
+  DB_RUNTIME_LITERAL_SPECIFIER,
+  REQUIRED_RUNTIME_EXPORTS,
+} from '../scripts/lib/db-package-trace.mjs';
+import { loadTracedRuntimeModule } from '@/lib/db/db-runtime-entry';
 import {
   DbRuntimeConfigurationError,
   loadDbRuntime,
@@ -56,7 +57,12 @@ describe('db runtime loader', () => {
   });
 
   it('does not poison test injection after a failed import', async () => {
-    vi.spyOn(fs, 'existsSync').mockReturnValue(false);
+    const importSpy = vi.spyOn(
+      await import('@/lib/db/db-runtime-entry'),
+      'loadTracedRuntimeModule',
+    );
+    importSpy.mockRejectedValueOnce(new Error('bridge import failed'));
+
     await expect(loadDbRuntime()).rejects.toThrow(DbRuntimeConfigurationError);
 
     resetDbRuntimeForTests();
@@ -103,46 +109,72 @@ describe('db runtime loader', () => {
     expect(typeof runtime.persistWorkRequest).toBe('function');
   });
 
-  it('does not eagerly load traced runtime when importing the bridge module', async () => {
-    vi.resetModules();
-    const existsSync = vi.spyOn(fs, 'existsSync');
-
-    await import('@/lib/db/db-runtime-entry');
-
-    const runtimeChecks = existsSync.mock.calls.some(([candidate]) =>
-      String(candidate).replace(/\\/g, '/').includes('packages/db/dist/runtime.js'),
-    );
-    expect(runtimeChecks).toBe(false);
-  });
-
-  it('resolves traced runtime.js from process.cwd() when import.meta source path is absent', () => {
-    const missingSourceUrl = `file://${path.join(
+  it('uses a literal static runtime specifier in the bridge layer', () => {
+    const reexportsPath = path.join(
       path.dirname(fileURLToPath(import.meta.url)),
-      '../lib/db/missing-bridge-source.ts',
-    )}`;
-    const resolved = resolveTracedRuntimePath(missingSourceUrl);
-    expect(resolved.replace(/\\/g, '/')).toMatch(/packages\/db\/dist\/runtime\.js$/);
-  });
-
-  it('resolves traced runtime.js from the bridge module location', () => {
+      '../lib/db/db-runtime-reexports.ts',
+    );
     const bridgePath = path.join(
       path.dirname(fileURLToPath(import.meta.url)),
       '../lib/db/db-runtime-entry.ts',
     );
-    const resolved = resolveTracedRuntimePath(`file://${bridgePath}`);
-    expect(resolved.replace(/\\/g, '/')).toMatch(/packages\/db\/dist\/runtime\.js$/);
+    const reexportsSource = fs.readFileSync(reexportsPath, 'utf8');
+    const bridgeSource = fs.readFileSync(bridgePath, 'utf8');
+
+    expect(reexportsSource).toContain(DB_RUNTIME_LITERAL_SPECIFIER);
+    expect(reexportsSource).toContain(`from '${DB_RUNTIME_LITERAL_SPECIFIER}'`);
+    expect(reexportsSource).not.toMatch(/import\(/);
+    expect(reexportsSource).not.toMatch(/pathToFileURL/);
+    expect(reexportsSource).not.toMatch(/createRequire/);
+    expect(reexportsSource).not.toMatch(/process\.cwd\(/);
+    expect(bridgeSource).toContain('./db-runtime-reexports');
+    expect(bridgeSource).not.toMatch(/from ['"]@aicaa\/db\/runtime['"]/);
   });
 
-  it('classifies a missing traced runtime through loadDbRuntime()', async () => {
-    vi.spyOn(fs, 'existsSync').mockReturnValue(false);
+  it('statically references all required runtime exports in the bridge layer', () => {
+    const bridgePath = path.join(
+      path.dirname(fileURLToPath(import.meta.url)),
+      '../lib/db/db-runtime-entry.ts',
+    );
+    const reexportsPath = path.join(
+      path.dirname(fileURLToPath(import.meta.url)),
+      '../lib/db/db-runtime-reexports.ts',
+    );
+    const bridgeSource = fs.readFileSync(bridgePath, 'utf8');
+    const reexportsSource = fs.readFileSync(reexportsPath, 'utf8');
 
-    await expect(loadDbRuntime()).rejects.toThrow(DbRuntimeConfigurationError);
-    await expect(loadTracedRuntimeModule()).rejects.toThrow(/Traced DB runtime not found/);
+    for (const exportName of REQUIRED_RUNTIME_EXPORTS) {
+      expect(reexportsSource).toContain(exportName);
+      expect(bridgeSource).toContain(exportName);
+    }
+  });
+
+  it('does not use package-name require for production runtime loading', () => {
+    const runtimeDbPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '../lib/db/runtime-db.ts');
+    const bridgePath = path.join(path.dirname(fileURLToPath(import.meta.url)), '../lib/db/db-runtime-entry.ts');
+    const reexportsPath = path.join(
+      path.dirname(fileURLToPath(import.meta.url)),
+      '../lib/db/db-runtime-reexports.ts',
+    );
+    const runtimeSource = fs.readFileSync(runtimeDbPath, 'utf8');
+    const bridgeSource = fs.readFileSync(bridgePath, 'utf8');
+    const reexportsSource = fs.readFileSync(reexportsPath, 'utf8');
+
+    expect(runtimeSource).not.toMatch(/from ['"]@aicaa\/db\/runtime['"]/);
+    expect(runtimeSource).not.toMatch(/require\(['"]@aicaa\/db\/runtime['"]\)/);
+    expect(runtimeSource).not.toMatch(/createRequire/);
+    expect(runtimeSource).toContain('loadTracedRuntimeModule');
+    expect(reexportsSource).toContain(DB_RUNTIME_LITERAL_SPECIFIER);
+    expect(bridgeSource).toContain('loadTracedRuntimeModule');
+    expect(bridgeSource).not.toMatch(/createRequire/);
+    expect(bridgeSource).not.toMatch(/pathToFileURL/);
+    expect(bridgeSource).not.toMatch(/from ['"]@aicaa\/db\/runtime['"]/);
+    expect(bridgeSource).not.toMatch(/require\(['"]@aicaa\/db\/runtime['"]\)/);
+    expect(bridgeSource).not.toMatch(/export \* from/);
+    expect(reexportsSource).not.toMatch(/export \* from/);
   });
 
   it('returns the contracted JSON error envelope for bridge-loading failure', () => {
-    vi.spyOn(fs, 'existsSync').mockReturnValue(false);
-
     const response = mapOwnerTaskRouteError(new DbRuntimeConfigurationError());
     expect(response.status).toBe(500);
     return response.json().then((body) => {
@@ -153,26 +185,6 @@ describe('db runtime loader', () => {
         },
       });
     });
-  });
-
-  it('does not use package-name require for production runtime loading', () => {
-    const runtimeDbPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '../lib/db/runtime-db.ts');
-    const bridgePath = path.join(path.dirname(fileURLToPath(import.meta.url)), '../lib/db/db-runtime-entry.ts');
-    const runtimeSource = fs.readFileSync(runtimeDbPath, 'utf8');
-    const bridgeSource = fs.readFileSync(bridgePath, 'utf8');
-
-    expect(runtimeSource).not.toMatch(/from ['"]@aicaa\/db\/runtime['"]/);
-    expect(runtimeSource).not.toMatch(/require\(['"]@aicaa\/db\/runtime['"]\)/);
-    expect(runtimeSource).not.toMatch(/createRequire/);
-    expect(runtimeSource).toContain('loadTracedRuntimeModule');
-    expect(bridgeSource).toContain('packages/db/dist/runtime.js');
-    expect(bridgeSource).toContain('pathToFileURL');
-    expect(bridgeSource).toContain('loadTracedRuntimeModule');
-    expect(bridgeSource).not.toMatch(/createRequire/);
-    expect(bridgeSource).not.toMatch(/const runtimeModule = loadTracedRuntimeModule\(\)/);
-    expect(bridgeSource).not.toMatch(/from ['"]@aicaa\/db\/runtime['"]/);
-    expect(bridgeSource).not.toMatch(/require\(['"]@aicaa\/db\/runtime['"]\)/);
-    expect(bridgeSource).not.toMatch(/export \* from/);
   });
 });
 
