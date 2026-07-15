@@ -32,6 +32,16 @@ import {
   simulateRuntimeImportFailureWithoutDomainDist,
   walkDbPackageRuntimeJsFiles,
 } from '../scripts/lib/db-package-trace.mjs';
+import {
+  GENERATED_CLIENT_ENGINE_RELATIVE,
+  GENERATED_CLIENT_INDEX_RELATIVE,
+  GENERATED_CLIENT_LIBRARY_RELATIVE,
+  GENERATED_CLIENT_SCHEMA_RELATIVE,
+  inspectPrismaLayoutArtifacts,
+  isLinuxPlatform,
+  runPrismaClientConstructionProbe,
+  sanitizeGeneratorOutputShape,
+} from '../scripts/lib/prisma-client-construction-probe.mjs';
 
 const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const repoRoot = path.resolve(webRoot, '../..');
@@ -42,6 +52,10 @@ const verifyScriptPath = path.join(webRoot, 'scripts/verify-prisma-serverless-tr
 const verifyDbRuntimeScriptPath = path.join(webRoot, 'scripts/verify-db-runtime-resolution.mjs');
 const verifyDbPackageRequirePath = path.join(webRoot, 'scripts/verify-db-package-require.mjs');
 const verifyLambdaLayoutBridgePath = path.join(webRoot, 'scripts/verify-lambda-layout-bridge.mjs');
+const verifyPrismaClientConstructionPath = path.join(
+  webRoot,
+  'scripts/verify-prisma-client-construction.mjs',
+);
 const tasksNftPath = path.join(webRoot, '.next/server/app/api/v1/tasks/route.js.nft.json');
 
 const FORBIDDEN_TRACE_GLOBS = [
@@ -385,5 +399,75 @@ describe('Prisma serverless packaging configuration', () => {
     });
     expect(output.trim()).toMatch(/^verify-db-package-require: ok/);
     expect(output).toContain(DB_RUNTIME_RELATIVE);
+  });
+
+  it('sanitizes embedded Prisma generator output paths to repository-relative shapes', () => {
+    expect(sanitizeGeneratorOutputShape('/Users/example/rocket communicator/packages/db/src/generated/client')).toBe(
+      'packages/db/src/generated/client',
+    );
+    expect(sanitizeGeneratorOutputShape('/vercel/path0/packages/db/dist/generated/client')).toBe(
+      '<build-root>/packages/db/dist/generated/client',
+    );
+  });
+
+  it('reports co-located Prisma artifacts in faithful NFT layouts when built', () => {
+    if (!fs.existsSync(tasksNftPath)) {
+      return;
+    }
+
+    const { layoutRoot } = materializeNftLayout({
+      webRoot,
+      repoRoot,
+      nftRelativePath: 'app/api/v1/tasks/route.js.nft.json',
+      includeWorkspaceSymlinks: false,
+    });
+
+    try {
+      const inspection = inspectPrismaLayoutArtifacts(layoutRoot);
+      expect(inspection.artifacts.indexJs).toBe(true);
+      expect(inspection.artifacts.libraryJs).toBe(true);
+      expect(inspection.artifacts.schemaPrisma).toBe(true);
+      expect(inspection.artifacts.rhelEngine).toBe(true);
+      expect(inspection.schemaColocatedWithIndex).toBe(true);
+      expect(inspection.engineColocatedWithIndex).toBe(true);
+      expect(inspection.dirnameFallbackWouldActivate).toBe(false);
+      expect(fs.existsSync(path.join(layoutRoot, GENERATED_CLIENT_INDEX_RELATIVE))).toBe(true);
+      expect(fs.existsSync(path.join(layoutRoot, GENERATED_CLIENT_LIBRARY_RELATIVE))).toBe(true);
+      expect(fs.existsSync(path.join(layoutRoot, GENERATED_CLIENT_SCHEMA_RELATIVE))).toBe(true);
+      expect(fs.existsSync(path.join(layoutRoot, GENERATED_CLIENT_ENGINE_RELATIVE))).toBe(true);
+    } finally {
+      fs.rmSync(layoutRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('passes post-build Prisma client construction verification on Linux when built', () => {
+    if (!fs.existsSync(path.join(webRoot, '.next'))) {
+      return;
+    }
+    if (!isLinuxPlatform()) {
+      return;
+    }
+
+    const output = execFileSync(process.execPath, [verifyPrismaClientConstructionPath], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: {
+        ...process.env,
+        PRISMA_CLIENT_CONSTRUCTION_PROBE_REQUIRED: 'true',
+      },
+    });
+    expect(output.trim()).toMatch(/^verify-prisma-client-construction: ok/);
+  });
+
+  it('runs the Linux Prisma construction probe directly on Linux when built', () => {
+    if (!fs.existsSync(tasksNftPath) || !isLinuxPlatform()) {
+      return;
+    }
+
+    const result = runPrismaClientConstructionProbe({ webRoot, repoRoot });
+    expect(result.probe1.classification).toBe('CONSTRUCTION_SUCCEEDED');
+    expect(result.probe2.classification).toBe('CONNECT_REACHED_DATABASE_NETWORK');
+    expect(result.probe2.prismaErrorCode).toBe('P1001');
   });
 });

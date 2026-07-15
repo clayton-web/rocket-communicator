@@ -105,6 +105,9 @@ jobs:
       - name: Build domain package for web imports
         run: pnpm build:domain
 
+      - name: Build db package for Prisma serverless artifacts
+        run: pnpm build:db
+
       - name: Format check
         run: pnpm format:check
         env:
@@ -134,6 +137,19 @@ jobs:
           NEXT_PUBLIC_APP_URL: http://localhost:3000
           OWNER_WORKSPACE_DOMAIN: example.com
           OWNER_ORGANIZATION_ID: org_ci_test
+
+      - name: Verify Prisma client construction (Linux NFT layout, Node 22)
+        run: PRISMA_CLIENT_CONSTRUCTION_PROBE_REQUIRED=true node apps/web/scripts/verify-prisma-client-construction.mjs
+
+      - name: Verify Prisma client construction (Linux NFT layout, Node 24)
+        run: PRISMA_CLIENT_CONSTRUCTION_PROBE_REQUIRED=true npx -y node@24 apps/web/scripts/verify-prisma-client-construction.mjs
+
+      - name: Verify Prisma serverless packaging scripts
+        run: |
+          node apps/web/scripts/verify-prisma-serverless-trace.mjs
+          node apps/web/scripts/verify-db-runtime-resolution.mjs
+          node apps/web/scripts/verify-db-package-require.mjs
+          node apps/web/scripts/verify-lambda-layout-bridge.mjs
 
   android:
     name: Android ktlint, unit tests, api-contract, debug build
