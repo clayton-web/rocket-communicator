@@ -13,7 +13,9 @@ import {
   RHEL_ENGINE,
   SCHEMA_FILE,
   assertNftIncludesDbPackageRuntime,
+  assertNftIncludesResolvableDomainPackage,
   getRequiredDbPackageRuntimeFiles,
+  nftIncludesNodeModulesDomainIndex,
 } from './lib/db-package-trace.mjs';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
@@ -60,7 +62,14 @@ function collectJsFiles(dir, results = []) {
 function assertTasksRouteNftTrace() {
   const nft = readJson(TASKS_NFT);
   const files = Array.isArray(nft.files) ? nft.files : [];
+  if (files.some((entry) => entry.includes('.nft-sim'))) {
+    fail('task route NFT trace contains stale local simulation artifacts');
+  }
   assertNftIncludesDbPackageRuntime(files, repoRoot, 'task route');
+  assertNftIncludesResolvableDomainPackage(files, repoRoot, 'task route');
+  if (!nftIncludesNodeModulesDomainIndex(files)) {
+    fail('task route NFT trace is missing node_modules/@aicaa/domain/dist/index.js');
+  }
 }
 
 function assertNoInvalidRootBundling() {
@@ -105,6 +114,7 @@ function assertNextConfig() {
     '${domainPackageRoot}/dist/**/*.js',
     'node_modules/@aicaa/db/package.json',
     'node_modules/@aicaa/domain/package.json',
+    'node_modules/@aicaa/domain/dist/**/*.js',
     RHEL_ENGINE,
     SCHEMA_FILE,
     "'/c/[token]'",

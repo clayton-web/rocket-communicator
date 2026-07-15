@@ -2,6 +2,7 @@
  * Shared helpers for @aicaa/db output-file tracing verification (no database access).
  */
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
@@ -19,6 +20,11 @@ export const DB_RUNTIME_TOO_DYNAMIC_MARKER = 'expression is too dynamic';
 export const DB_RUNTIME_LOAD_START_STAGE = 'DB_RUNTIME_LOAD_START';
 export const DB_TESTING_LITERAL = '@aicaa/db/testing';
 export const DOMAIN_PACKAGE_LITERAL = '@aicaa/domain';
+export const DOMAIN_NODE_MODULES_RELATIVE = 'apps/web/node_modules/@aicaa/domain';
+export const DOMAIN_NODE_MODULES_DIST_INDEX_RELATIVE =
+  'apps/web/node_modules/@aicaa/domain/dist/index.js';
+export const DOMAIN_FUNCTION_ROOT_DIST_INDEX_RELATIVE =
+  'node_modules/@aicaa/domain/dist/index.js';
 export const FORBIDDEN_RUNTIME_PACKAGE_REQUIRE = 'require("@aicaa/db/runtime")';
 export const FORBIDDEN_RUNTIME_PACKAGE_REQUIRE_ALT = "require('@aicaa/db/runtime')";
 
@@ -234,6 +240,76 @@ export function nftIncludesRepoFile(nftFiles, repoRoot, absolutePath) {
   });
 }
 
+export function nftIncludesNodeModulesDomainDist(nftFiles) {
+  return nftFiles.some((entry) => {
+    const normalized = normalizeNftEntry(entry);
+    return normalized.includes('node_modules/@aicaa/domain/dist/');
+  });
+}
+
+export function nftIncludesNodeModulesDomainIndex(nftFiles) {
+  return nftFiles.some((entry) => {
+    const normalized = normalizeNftEntry(entry);
+    return normalized.endsWith('node_modules/@aicaa/domain/dist/index.js');
+  });
+}
+
+export function assertNftIncludesResolvableDomainPackage(nftFiles, repoRoot, routeLabel) {
+  const domainRequired = getRequiredDomainPackageRuntimeFiles(repoRoot);
+  const missing = [];
+
+  if (!nftIncludesNodeModulesDomainIndex(nftFiles)) {
+    missing.push(DOMAIN_NODE_MODULES_DIST_INDEX_RELATIVE);
+  }
+
+  for (const jsFile of domainRequired.importGraphJs) {
+    if (!nftIncludesRepoFile(nftFiles, repoRoot, jsFile)) {
+      missing.push(path.relative(repoRoot, jsFile));
+    }
+  }
+
+  const nodeModulesDistFiles = nftFiles.filter((entry) =>
+    normalizeNftEntry(entry).includes('node_modules/@aicaa/domain/dist/'),
+  );
+  if (nodeModulesDistFiles.length === 0) {
+    missing.push('node_modules/@aicaa/domain/dist/**/*.js');
+  }
+
+  if (missing.length > 0) {
+    throw new Error(
+      `${routeLabel} NFT trace is missing resolvable @aicaa/domain package files: ${missing.join(', ')}`,
+    );
+  }
+
+  return { domainRequired, nodeModulesDistFiles };
+}
+
+export function assertIsolatedNftLayoutOutsideRepo(layoutRoot, repoRoot) {
+  const resolvedLayoutRoot = path.resolve(layoutRoot);
+  const resolvedRepoRoot = path.resolve(repoRoot);
+  const relative = path.relative(resolvedRepoRoot, resolvedLayoutRoot);
+
+  if (relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative))) {
+    throw new Error('NFT simulation layout must be created outside the repository');
+  }
+
+  let dir = resolvedLayoutRoot;
+  for (let depth = 0; depth < 32; depth += 1) {
+    const parent = path.dirname(dir);
+    if (parent === dir) {
+      break;
+    }
+    const parentNodeModules = path.join(parent, 'node_modules');
+    if (fs.existsSync(parentNodeModules)) {
+      const repoNodeModules = path.join(resolvedRepoRoot, 'node_modules');
+      if (parentNodeModules === repoNodeModules) {
+        throw new Error('host repository node_modules is reachable from simulation layout');
+      }
+    }
+    dir = parent;
+  }
+}
+
 export function assertNftIncludesDbPackageRuntime(nftFiles, repoRoot, routeLabel) {
   const required = getRequiredDbPackageRuntimeFiles(repoRoot);
   const domainRequired = getRequiredDomainPackageRuntimeFiles(repoRoot);
@@ -273,6 +349,8 @@ export function assertNftIncludesDbPackageRuntime(nftFiles, repoRoot, routeLabel
     }
   }
 
+  assertNftIncludesResolvableDomainPackage(nftFiles, repoRoot, routeLabel);
+
   if (missing.length > 0) {
     throw new Error(
       `${routeLabel} NFT trace is missing @aicaa/db runtime files: ${missing.join(', ')}`,
@@ -310,6 +388,36 @@ function copyFileOrSymlink(src, dest) {
   fs.copyFileSync(src, dest);
 }
 
+function materializeTracedDomainPackageAtFunctionRoot(layoutRoot) {
+  const dest = path.join(layoutRoot, 'node_modules/@aicaa/domain');
+  if (fs.existsSync(path.join(dest, 'dist', 'index.js'))) {
+    return dest;
+  }
+
+  const sources = [
+    path.join(layoutRoot, 'apps/web/node_modules/@aicaa/domain'),
+    path.join(layoutRoot, 'packages/domain'),
+  ];
+
+  let source;
+  for (const candidate of sources) {
+    if (fs.existsSync(path.join(candidate, 'dist', 'index.js'))) {
+      source = candidate;
+      break;
+    }
+  }
+
+  if (!source) {
+    throw new Error(
+      'isolated layout missing traced @aicaa/domain sources required for function-root node_modules',
+    );
+  }
+
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  fs.cpSync(source, dest, { recursive: true, dereference: true });
+  return dest;
+}
+
 export function materializeNftLayout({
   webRoot,
   repoRoot,
@@ -320,7 +428,8 @@ export function materializeNftLayout({
   const nft = JSON.parse(fs.readFileSync(nftPath, 'utf8'));
   const files = Array.isArray(nft.files) ? nft.files : [];
   const serverRoot = path.dirname(nftPath);
-  const layoutRoot = fs.mkdtempSync(path.join(webRoot, '.nft-sim-'));
+  const layoutRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'rc-nft-sim-'));
+  assertIsolatedNftLayoutOutsideRepo(layoutRoot, repoRoot);
   const routeJs = path.join(
     layoutRoot,
     'apps/web/.next/server',
@@ -335,6 +444,9 @@ export function materializeNftLayout({
   }
 
   for (const entry of files) {
+    if (normalizeNftEntry(entry).includes('.nft-sim')) {
+      continue;
+    }
     const src = path.resolve(serverRoot, entry);
     if (!fs.existsSync(src)) {
       continue;
@@ -361,6 +473,8 @@ export function materializeNftLayout({
       }
     }
   }
+
+  materializeTracedDomainPackageAtFunctionRoot(layoutRoot);
 
   return { layoutRoot, routeJs };
 }
@@ -424,6 +538,65 @@ export function simulateRouteRuntimeBridge({ webRoot, repoRoot, nftRelativePath 
 
 export function simulateRouteRuntimeRequire({ webRoot, repoRoot, nftRelativePath }) {
   return simulateRouteRuntimeBridge({ webRoot, repoRoot, nftRelativePath });
+}
+
+export function simulateRuntimeImportFailureWithoutDomainDist({
+  webRoot,
+  repoRoot,
+  nftRelativePath,
+}) {
+  const { layoutRoot } = materializeNftLayout({
+    webRoot,
+    repoRoot,
+    nftRelativePath,
+    includeWorkspaceSymlinks: false,
+  });
+
+  const domainDistPath = path.join(layoutRoot, 'node_modules/@aicaa/domain/dist');
+
+  try {
+    if (!fs.existsSync(domainDistPath)) {
+      throw new Error('isolated layout missing node_modules/@aicaa/domain/dist');
+    }
+    fs.rmSync(domainDistPath, { recursive: true, force: true });
+
+    const runtimePath = path.join(layoutRoot, DB_RUNTIME_RELATIVE);
+    const script = `
+import { pathToFileURL } from 'node:url';
+try {
+  await import(pathToFileURL(${JSON.stringify(runtimePath)}).href);
+  console.log('UNEXPECTED_SUCCESS');
+} catch (error) {
+  console.log(JSON.stringify({
+    code: error?.code,
+    message: String(error?.message ?? error).slice(0, 250),
+  }));
+}
+`;
+    const proc = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+      cwd: layoutRoot,
+      encoding: 'utf8',
+      env: { NODE_ENV: 'production' },
+    });
+
+    if (proc.status !== 0) {
+      throw new Error(proc.stderr?.trim() || proc.stdout?.trim() || 'domain removal import probe failed');
+    }
+
+    const output = proc.stdout.trim();
+    if (output === 'UNEXPECTED_SUCCESS') {
+      throw new Error('runtime import unexpectedly succeeded without node_modules/@aicaa/domain/dist');
+    }
+
+    const parsed = JSON.parse(output);
+    if (parsed.code !== 'ERR_MODULE_NOT_FOUND' || !parsed.message.includes(DOMAIN_PACKAGE_LITERAL)) {
+      throw new Error(`expected ERR_MODULE_NOT_FOUND for ${DOMAIN_PACKAGE_LITERAL}, got ${output}`);
+    }
+
+    return parsed;
+  } finally {
+    fs.rmSync(layoutRoot, { recursive: true, force: true });
+  }
 }
 
 export function collectServerJsFiles(webRoot) {
@@ -595,6 +768,7 @@ function writeLambdaBridgeSimulationScript({
   layoutWeb,
   routeJs,
   bridgeChunkRelativePath,
+  repoRoot,
 }) {
   const scriptPath = path.join(layoutRoot, 'lambda-bridge-sim.mjs');
   const routeBootstrapPath = routeJs;
@@ -605,7 +779,7 @@ function writeLambdaBridgeSimulationScript({
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const layoutRoot = ${JSON.stringify(layoutRoot)};
 const layoutWeb = ${JSON.stringify(layoutWeb)};
@@ -614,10 +788,52 @@ const bridgeChunkRelativePath = ${JSON.stringify(bridgeChunkRelativePath)};
 const tracedRelative = ${JSON.stringify(DB_RUNTIME_RELATIVE)};
 const routeBootstrapPath = ${JSON.stringify(routeBootstrapPath)};
 const turbopackRouteId = ${JSON.stringify(turbopackRouteId)};
+const repoRoot = ${JSON.stringify(repoRoot)};
+
+function assertIsolatedLayout() {
+  const resolvedLayoutRoot = path.resolve(layoutRoot);
+  const resolvedRepoRoot = path.resolve(repoRoot);
+  const relative = path.relative(resolvedRepoRoot, resolvedLayoutRoot);
+  if (relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative))) {
+    throw new Error('simulation layout must be outside repository');
+  }
+
+  let dir = resolvedLayoutRoot;
+  for (let depth = 0; depth < 32; depth += 1) {
+    const parent = path.dirname(dir);
+    if (parent === dir) {
+      break;
+    }
+    const parentNodeModules = path.join(parent, 'node_modules');
+    if (fs.existsSync(parentNodeModules)) {
+      const repoNodeModules = path.join(resolvedRepoRoot, 'node_modules');
+      if (parentNodeModules === repoNodeModules) {
+        throw new Error('host repository node_modules is reachable from simulation layout');
+      }
+    }
+    dir = parent;
+  }
+}
+
+async function assertDomainPackageResolvesFromLayout() {
+  const mapperPath = path.join(layoutRoot, 'packages/db/dist/mappers/domain-mappers.js');
+  const resolved = await import.meta.resolve('@aicaa/domain', pathToFileURL(mapperPath).href);
+  const resolvedPath = path.resolve(fileURLToPath(resolved));
+  const resolvedLayoutRoot = fs.realpathSync.native
+    ? fs.realpathSync.native(layoutRoot)
+    : fs.realpathSync(layoutRoot);
+  const relative = path.relative(resolvedLayoutRoot, resolvedPath);
+  if (relative === '' || relative.startsWith('..') || path.isAbsolute(relative)) {
+    throw new Error('domain package resolved outside isolated layout: ' + resolvedPath);
+  }
+}
 
 process.chdir(layoutRoot);
 process.env.NODE_ENV = 'production';
 delete process.env.DATABASE_URL;
+
+assertIsolatedLayout();
+console.log('ISOLATED_LAYOUT_OK');
 
 const requireFromWeb = createRequire(path.join(layoutWeb, 'package.json'));
 requireFromWeb(routeJs);
@@ -633,6 +849,9 @@ for (const exportName of ${JSON.stringify(REQUIRED_RUNTIME_EXPORTS)}) {
 if (typeof runtimeModule.createTestDatabase !== 'undefined') {
   throw new Error('loaded runtime unexpectedly exports createTestDatabase');
 }
+await assertDomainPackageResolvesFromLayout();
+console.log('DOMAIN_PACKAGE_RESOLVED_OK');
+console.log('RUNTIME_LOAD_OK');
 
 const bridgeChunkPath = path.join(layoutWeb, '.next', bridgeChunkRelativePath);
 const bridgeContent = fs.readFileSync(bridgeChunkPath, 'utf8');
@@ -642,7 +861,6 @@ if (bridgeContent.includes(${JSON.stringify(DB_RUNTIME_TOO_DYNAMIC_MARKER)})) {
 if (/createPrismaClient:\\s*void 0/.test(bridgeContent)) {
   throw new Error('compiled bridge still contains void 0 runtime stubs');
 }
-console.log('RUNTIME_LOAD_OK');
 
 const routeBootstrap = fs.readFileSync(routeBootstrapPath, 'utf8');
 const turbopackRuntime = requireFromWeb(
@@ -711,6 +929,7 @@ export function simulateLambdaLayoutBridgeInit({
     layoutWeb,
     routeJs,
     bridgeChunkRelativePath,
+    repoRoot,
   });
 
   try {
@@ -729,7 +948,9 @@ export function simulateLambdaLayoutBridgeInit({
 
     const output = `${proc.stdout ?? ''}${proc.stderr ?? ''}`;
     if (
+      !output.includes('ISOLATED_LAYOUT_OK') ||
       !output.includes('ROUTE_IMPORT_OK') ||
+      !output.includes('DOMAIN_PACKAGE_RESOLVED_OK') ||
       !output.includes('RUNTIME_LOAD_OK') ||
       !output.includes('COMPILED_BRIDGE_LOAD_OK')
     ) {

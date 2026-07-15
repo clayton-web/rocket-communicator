@@ -18,6 +18,7 @@ const domainPackageRuntimeTraceFiles = [
 const workspacePackageEntryTraceFiles = [
   '../../apps/web/node_modules/@aicaa/db/package.json',
   '../../apps/web/node_modules/@aicaa/domain/package.json',
+  '../../apps/web/node_modules/@aicaa/domain/dist/**/*.js',
 ];
 const prismaServerlessTraceFiles = [
   `${prismaGeneratedClient}/libquery_engine-rhel-openssl-3.0.x.so.node`,

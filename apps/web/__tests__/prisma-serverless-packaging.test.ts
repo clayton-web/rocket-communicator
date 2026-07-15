@@ -7,18 +7,26 @@ import { describe, expect, it } from 'vitest';
 import {
   DB_BACKED_ROUTE_NFTS,
   DB_RUNTIME_RELATIVE,
+  DOMAIN_NODE_MODULES_DIST_INDEX_RELATIVE,
+  DOMAIN_FUNCTION_ROOT_DIST_INDEX_RELATIVE,
   PGLITE_MARKERS,
   REQUIRED_RUNTIME_EXPORTS,
   RHEL_ENGINE,
   assertBuiltOutputUsesRuntimeBridge,
   assertCompiledBridgeNamespace,
+  assertIsolatedNftLayoutOutsideRepo,
   assertNftIncludesDbPackageRuntime,
+  assertNftIncludesResolvableDomainPackage,
   findCompiledBridgeExportNames,
   getRequiredDbPackageRuntimeFiles,
   getRequiredDomainPackageRuntimeFiles,
+  materializeNftLayout,
+  nftIncludesNodeModulesDomainDist,
+  nftIncludesNodeModulesDomainIndex,
   nftIncludesRepoFile,
   simulateLambdaLayoutBridgeInit,
   simulateRouteRuntimeRequire,
+  simulateRuntimeImportFailureWithoutDomainDist,
   walkDbPackageRuntimeJsFiles,
 } from '../scripts/lib/db-package-trace.mjs';
 
@@ -64,6 +72,7 @@ describe('Prisma serverless packaging configuration', () => {
     expect(config).toContain('${domainPackageRoot}/dist/**/*.js');
     expect(config).toContain('node_modules/@aicaa/db/package.json');
     expect(config).toContain('node_modules/@aicaa/domain/package.json');
+    expect(config).toContain('node_modules/@aicaa/domain/dist/**/*.js');
     expect(config).toContain('turbopack:');
     expect(config).toContain('root: monorepoRoot');
     expect(config).toContain(RHEL_ENGINE);
@@ -129,6 +138,70 @@ describe('Prisma serverless packaging configuration', () => {
     }
 
     assertNftIncludesDbPackageRuntime(files, repoRoot, 'task route');
+  });
+
+  it('includes resolvable node_modules @aicaa/domain dist tree in DB-backed route NFTs when built', () => {
+    const nextDir = path.join(webRoot, '.next');
+    if (!fs.existsSync(nextDir)) {
+      return;
+    }
+
+    const domainRequired = getRequiredDomainPackageRuntimeFiles(repoRoot);
+
+    for (const relativeNft of DB_BACKED_ROUTE_NFTS) {
+      const nftPath = path.join(webRoot, '.next/server', relativeNft);
+      const nft = JSON.parse(fs.readFileSync(nftPath, 'utf8')) as { files?: string[] };
+      const files = Array.isArray(nft.files) ? nft.files : [];
+
+      expect(files.some((entry) => entry.includes('.nft-sim')), relativeNft).toBe(false);
+      expect(nftIncludesNodeModulesDomainIndex(files), relativeNft).toBe(true);
+      expect(nftIncludesNodeModulesDomainDist(files), relativeNft).toBe(true);
+      assertNftIncludesResolvableDomainPackage(files, repoRoot, relativeNft);
+
+      for (const jsFile of domainRequired.importGraphJs) {
+        expect(nftIncludesRepoFile(files, repoRoot, jsFile), relativeNft).toBe(true);
+      }
+    }
+  });
+
+  it('materializes isolated NFT layouts outside the repository when built', () => {
+    if (!fs.existsSync(tasksNftPath)) {
+      return;
+    }
+
+    const { layoutRoot } = materializeNftLayout({
+      webRoot,
+      repoRoot,
+      nftRelativePath: 'app/api/v1/tasks/route.js.nft.json',
+      includeWorkspaceSymlinks: false,
+    });
+
+    try {
+      expect(() => assertIsolatedNftLayoutOutsideRepo(layoutRoot, repoRoot)).not.toThrow();
+      expect(layoutRoot.startsWith(repoRoot)).toBe(false);
+      expect(
+        fs.existsSync(path.join(layoutRoot, DOMAIN_FUNCTION_ROOT_DIST_INDEX_RELATIVE)),
+      ).toBe(true);
+      expect(
+        fs.existsSync(path.join(layoutRoot, DOMAIN_NODE_MODULES_DIST_INDEX_RELATIVE)),
+      ).toBe(true);
+    } finally {
+      fs.rmSync(layoutRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('reproduces ERR_MODULE_NOT_FOUND when traced domain dist is removed from isolated layout', () => {
+    if (!fs.existsSync(tasksNftPath)) {
+      return;
+    }
+
+    const failure = simulateRuntimeImportFailureWithoutDomainDist({
+      webRoot,
+      repoRoot,
+      nftRelativePath: 'app/api/v1/tasks/route.js.nft.json',
+    });
+    expect(failure.code).toBe('ERR_MODULE_NOT_FOUND');
+    expect(failure.message).toContain('@aicaa/domain');
   });
 
   it('resolves traced packages/db runtime from simulated task-route layout without workspace symlinks when built', () => {
@@ -248,6 +321,21 @@ describe('Prisma serverless packaging configuration', () => {
       webRoot,
       repoRoot,
       nftRelativePath: 'app/api/v1/tasks/route.js.nft.json',
+    });
+    expect(result.resolved.replace(/\\/g, '/')).toMatch(/packages\/db\/dist\/runtime\.js$/);
+    expect(fs.existsSync(result.layoutRoot)).toBe(false);
+  });
+
+  it('loads traced runtime from simulated capability route layout when built', () => {
+    const nextDir = path.join(webRoot, '.next');
+    if (!fs.existsSync(nextDir)) {
+      return;
+    }
+
+    const result = simulateLambdaLayoutBridgeInit({
+      webRoot,
+      repoRoot,
+      nftRelativePath: 'app/api/v1/capabilities/[token]/tasks/[taskId]/route.js.nft.json',
     });
     expect(result.resolved.replace(/\\/g, '/')).toMatch(/packages\/db\/dist\/runtime\.js$/);
   });
