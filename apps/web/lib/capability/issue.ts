@@ -13,18 +13,12 @@ import {
   type TaskCapability,
   type UtcInstant,
 } from '@aicaa/domain';
-import {
-  createAuditEvent,
-  createCapability,
-  findActiveCapabilitiesForAssignment,
-  getTaskById,
-  revokeCapabilityRecord,
-  updateActiveAssignmentCapabilityBinding,
-  updateTaskWithExpectedVersion,
-  type AuditEventRecord,
-  type DbClient,
-  type DbTransaction,
+import type {
+  AuditEventRecord,
+  DbClient,
+  DbTransaction,
 } from '@aicaa/db';
+import { loadDbRuntime } from '@/lib/db/runtime-db';
 import { isCapabilityTokenError, readPersistenceErrorCode } from '@/lib/errors/safe-error-shapes';
 import {
   assertValidCapabilityPepper,
@@ -176,10 +170,11 @@ async function persistIssuance(
   const ttlMs = assertValidCapabilityTtlMs(command.ttlMs);
   const pepper = assertValidCapabilityPepper(command.pepper, 'pepper');
   const owner = ownerActor(command.owner.ownerId, command.owner.organizationId);
+  const dbRuntime = loadDbRuntime();
 
   let current: Task;
   try {
-    current = await getTaskById(command.db, owner.organizationId, command.taskId);
+    current = await dbRuntime.getTaskById(command.db, owner.organizationId, command.taskId);
   } catch (error) {
     const persistenceCode = readPersistenceErrorCode(error);
     if (persistenceCode === 'NOT_FOUND' || persistenceCode === 'ORGANIZATION_MISMATCH') {
@@ -208,7 +203,7 @@ async function persistIssuance(
   const scope = resolveCapabilityScopeFromAssignment(assignmentSnapshot, command.scope);
   const writeVersion = command.expectedVersion ?? current.version;
 
-  const existingActive = await findActiveCapabilitiesForAssignment(
+  const existingActive = await dbRuntime.findActiveCapabilitiesForAssignment(
     command.db,
     owner.organizationId,
     assignmentSnapshot.id,
@@ -278,7 +273,7 @@ async function persistIssuance(
         },
       };
 
-      const task = await updateTaskWithExpectedVersion(
+      const task = await dbRuntime.updateTaskWithExpectedVersion(
         tx,
         owner.organizationId,
         // If-Match expectedVersion is enforced atomically here (not only via the pre-transaction read).
@@ -286,13 +281,13 @@ async function persistIssuance(
         taskForPersist,
       );
 
-      await updateActiveAssignmentCapabilityBinding(tx, owner.organizationId, task.id, {
+      await dbRuntime.updateActiveAssignmentCapabilityBinding(tx, owner.organizationId, task.id, {
         activeCapabilityId: domainResult.capability.id,
         capabilityStatus: 'active',
         // Intentionally omit allowedCapabilityActions — issuance must not rewrite them.
       });
 
-      const capability = await createCapability(
+      const capability = await dbRuntime.createCapability(
         tx,
         owner.organizationId,
         {
@@ -305,7 +300,7 @@ async function persistIssuance(
         tokenHash,
       );
 
-      const audit = await createAuditEvent(tx, {
+      const audit = await dbRuntime.createAuditEvent(tx, {
         id: auditId,
         organizationId: owner.organizationId,
         actorKind: 'owner',
@@ -324,7 +319,7 @@ async function persistIssuance(
         recordedAt: command.now,
       });
 
-      const reloaded = await getTaskById(tx, owner.organizationId, task.id);
+      const reloaded = await dbRuntime.getTaskById(tx, owner.organizationId, task.id);
       return { task: reloaded, capability, audit, replacedIds };
     });
 
@@ -377,6 +372,7 @@ async function revokeActiveCapabilitiesInTransaction(
   now: UtcInstant,
   reason: string,
 ): Promise<string[]> {
+  const { findActiveCapabilitiesForAssignment, revokeCapabilityRecord } = loadDbRuntime();
   const actives = await findActiveCapabilitiesForAssignment(tx, organizationId, assignmentId);
   const revokedIds: string[] = [];
   for (const active of actives) {

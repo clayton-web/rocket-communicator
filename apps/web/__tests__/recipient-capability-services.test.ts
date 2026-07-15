@@ -8,6 +8,7 @@ import {
   ownerActor,
   type Recipient,
 } from '@aicaa/domain';
+import * as aicaaDb from '@aicaa/db';
 import {
   createTestDatabase,
   getCapabilityById,
@@ -17,6 +18,7 @@ import {
   upsertRecipient,
   type TestDatabase,
 } from '@aicaa/db';
+import { resetDbRuntimeForTests, setDbRuntimeForTests } from '@/lib/db/runtime-db';
 import {
   RecipientCapabilityServiceError,
   addCapabilityTaskNote,
@@ -61,10 +63,12 @@ describe('Recipient capability application services (Phase 4D)', () => {
 
   beforeAll(async () => {
     db = await createTestDatabase();
+    setDbRuntimeForTests(aicaaDb);
   });
 
   afterAll(async () => {
     await db.close();
+    resetDbRuntimeForTests();
   });
 
   beforeEach(async () => {

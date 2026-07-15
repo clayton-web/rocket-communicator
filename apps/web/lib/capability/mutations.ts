@@ -12,12 +12,8 @@ import {
   type TaskOutcomeType,
   type UtcInstant,
 } from '@aicaa/domain';
-import {
-  persistCapabilityAction,
-  persistWorkRequest,
-  type AuditEventRecord,
-  type DbClient,
-} from '@aicaa/db';
+import type { AuditEventRecord, DbClient } from '@aicaa/db';
+import { loadDbRuntime } from '@/lib/db/runtime-db';
 import {
   buildCapabilityAudit,
   ifMatchFromExpectedVersion,
@@ -71,6 +67,7 @@ async function runRecipientMutation(
   },
 ): Promise<RecipientCapabilityMutationResult> {
   try {
+    const dbRuntime = loadDbRuntime();
     const expectedVersion = requireExpectedVersion(command.expectedVersion);
     const ctx = await validateRecipientCapability({
       db: command.db,
@@ -96,7 +93,7 @@ async function runRecipientMutation(
         ? result.note
         : undefined;
 
-    const persisted = await persistCapabilityAction({
+    const persisted = await dbRuntime.persistCapabilityAction({
       db: command.db,
       organizationId: ctx.organizationId,
       expectedVersion: ctx.task.version,
@@ -228,6 +225,7 @@ export async function returnCapabilityTaskToOwner(
   command: RecipientCapabilityMutationBase & { note?: string },
 ): Promise<RecipientCapabilityMutationResult> {
   try {
+    const dbRuntime = loadDbRuntime();
     const expectedVersion = requireExpectedVersion(command.expectedVersion);
     const ctx = await validateRecipientCapability({
       db: command.db,
@@ -308,6 +306,7 @@ export async function submitCapabilityWorkRequest(
   audit: AuditEventRecord;
 }> {
   try {
+    const dbRuntime = loadDbRuntime();
     const expectedVersion = requireExpectedVersion(command.expectedVersion);
     const ctx = await validateRecipientCapability({
       db: command.db,
@@ -347,7 +346,7 @@ export async function submitCapabilityWorkRequest(
       );
     }
 
-    const persisted = await persistWorkRequest({
+    const persisted = await dbRuntime.persistWorkRequest({
       db: command.db,
       organizationId: ctx.organizationId,
       expectedVersion: ctx.task.version,

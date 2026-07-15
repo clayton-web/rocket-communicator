@@ -6,12 +6,8 @@ import {
   type DomainError,
   type UtcInstant,
 } from '@aicaa/domain';
-import {
-  findCapabilityByTokenHash,
-  type CreateAuditEventInput,
-  type DbClient,
-  type PersistenceErrorCode,
-} from '@aicaa/db';
+import type { CreateAuditEventInput, DbClient, PersistenceErrorCode } from '@aicaa/db';
+import { loadDbRuntime } from '@/lib/db/runtime-db';
 import { CapabilityTokenError, type CapabilityTokenErrorCode } from './errors';
 import {
   isCapabilityTokenError,
@@ -252,6 +248,7 @@ async function persistExpiredStatusBestEffort(input: {
   try {
     const pepper = assertValidCapabilityPepper(input.pepper, 'pepper');
     const tokenHash = hashCapabilityToken(input.rawToken.trim(), pepper);
+    const { findCapabilityByTokenHash } = loadDbRuntime();
     const found = await findCapabilityByTokenHash(input.db, tokenHash);
     if (!found || found.status === 'revoked' || found.status === 'expired') {
       return;

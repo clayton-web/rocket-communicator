@@ -21,7 +21,7 @@ import {
   upsertRecipient,
   type TestDatabase,
 } from '@aicaa/db';
-import { setDbForTests } from '@/lib/db/server';
+import { clearDbTestRuntime, installDbTestRuntime } from './helpers/db-test-runtime';
 import { issueCapabilityForTask, revokeCapabilityForOwner } from '@/lib/capability';
 import { createOwnerTask, startOwnerTask } from '@/lib/tasks';
 
@@ -117,11 +117,11 @@ describe('Recipient capability HTTP routes (Phase 4E)', () => {
 
   beforeAll(async () => {
     db = await createTestDatabase();
-    setDbForTests(db.prisma);
+    installDbTestRuntime(db.prisma);
   });
 
   afterAll(async () => {
-    setDbForTests(undefined);
+    clearDbTestRuntime();
     await db.close();
   });
 

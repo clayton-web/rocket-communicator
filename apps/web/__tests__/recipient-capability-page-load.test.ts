@@ -15,7 +15,7 @@ import {
   upsertRecipient,
   type TestDatabase,
 } from '@aicaa/db';
-import { setDbForTests } from '@/lib/db/server';
+import { clearDbTestRuntime, installDbTestRuntime } from './helpers/db-test-runtime';
 import { deriveAvailableRecipientActions, issueCapabilityForTask } from '@/lib/capability';
 import { loadCapabilityPageView } from '@/lib/capability/page-load';
 import { createOwnerTask } from '@/lib/tasks';
@@ -47,11 +47,11 @@ describe('Recipient capability page loader + available actions', () => {
 
   beforeAll(async () => {
     db = await createTestDatabase();
-    setDbForTests(db.prisma);
+    installDbTestRuntime(db.prisma);
   });
 
   afterAll(async () => {
-    setDbForTests(undefined);
+    clearDbTestRuntime();
     await db.close();
     process.env = { ...ORIGINAL_ENV };
   });

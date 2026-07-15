@@ -14,7 +14,9 @@ import {
   shouldLogDatabaseRuntimeFailure,
 } from '@/lib/db/diagnostics';
 import { mapOwnerTaskRouteError } from '@/lib/http/errors';
-import { setDbForTests } from '@/lib/db/server';
+import { clearDbTestRuntime } from './helpers/db-test-runtime';
+import * as aicaaDb from '@aicaa/db';
+import { setDbRuntimeForTests } from '@/lib/db/runtime-db';
 
 vi.mock('@/lib/auth/require-owner', () => ({
   getAuthenticatedOwner: vi.fn(),
@@ -64,14 +66,14 @@ describe('database runtime diagnostics', () => {
   beforeEach(() => {
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     process.env = { ...originalEnv };
-    setDbForTests(undefined);
+    clearDbTestRuntime();
     authOwner();
   });
 
   afterEach(() => {
     consoleErrorSpy.mockRestore();
     process.env = { ...originalEnv };
-    setDbForTests(undefined);
+    clearDbTestRuntime();
     vi.clearAllMocks();
   });
 
@@ -215,6 +217,7 @@ describe('database runtime diagnostics', () => {
   });
 
   it('keeps public Owner route response generic 500 INTERNAL_ERROR', async () => {
+    setDbRuntimeForTests(aicaaDb);
     delete process.env.DATABASE_URL;
     delete process.env[ENABLE_DB_RUNTIME_DIAGNOSTICS_ENV];
 
@@ -234,6 +237,7 @@ describe('database runtime diagnostics', () => {
   });
 
   it('logs sanitized diagnostics on Owner route only when diagnostics are enabled', async () => {
+    setDbRuntimeForTests(aicaaDb);
     delete process.env.DATABASE_URL;
     process.env[ENABLE_DB_RUNTIME_DIAGNOSTICS_ENV] = 'true';
 
@@ -276,14 +280,14 @@ describe('fail-safe database runtime diagnostics', () => {
   beforeEach(() => {
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     process.env = { ...originalEnv };
-    setDbForTests(undefined);
+    clearDbTestRuntime();
     authOwner();
   });
 
   afterEach(() => {
     consoleErrorSpy.mockRestore();
     process.env = { ...originalEnv };
-    setDbForTests(undefined);
+    clearDbTestRuntime();
     vi.clearAllMocks();
   });
 
@@ -419,6 +423,7 @@ describe('fail-safe database runtime diagnostics', () => {
     );
     expect(payload).toBeUndefined();
 
+    setDbRuntimeForTests(aicaaDb);
     const response = await listTasks(new Request('http://localhost/api/v1/tasks'));
     const body = await response.json();
     expect(response.status).toBe(500);

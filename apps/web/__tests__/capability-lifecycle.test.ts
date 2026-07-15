@@ -14,6 +14,8 @@ import {
   type TaskAssignment,
   type Recipient,
 } from '@aicaa/domain';
+import { resetDbRuntimeForTests } from '@/lib/db/runtime-db';
+import * as aicaaDb from '@aicaa/db';
 import {
   createActiveAssignment,
   createTask,
@@ -28,6 +30,7 @@ import {
   upsertRecipient,
   type TestDatabase,
 } from '@aicaa/db';
+import { setDbRuntimeForTests } from '@/lib/db/runtime-db';
 import {
   CapabilityTokenError,
   hashCapabilityToken,
@@ -111,6 +114,7 @@ let db: TestDatabase;
 
 describe('capability issuance and validation (PGlite)', () => {
   beforeAll(async () => {
+    setDbRuntimeForTests(aicaaDb);
     db = await createTestDatabase();
     await upsertRecipient(db.prisma, { organizationId: org, recipient: recipient() });
     await upsertRecipient(db.prisma, {
@@ -122,6 +126,7 @@ describe('capability issuance and validation (PGlite)', () => {
 
   afterAll(async () => {
     await db.close();
+    resetDbRuntimeForTests();
   });
 
   it('issues a capability scoped to assignment actions without rewriting the assignment', async () => {

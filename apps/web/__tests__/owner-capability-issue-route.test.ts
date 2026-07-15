@@ -21,7 +21,7 @@ import {
   listAuditEventsForTask,
   type TestDatabase,
 } from '@aicaa/db';
-import { setDbForTests } from '@/lib/db/server';
+import { clearDbTestRuntime, installDbTestRuntime } from './helpers/db-test-runtime';
 import { hashCapabilityToken } from '@/lib/capability';
 
 vi.mock('@/lib/auth/require-owner', () => ({
@@ -116,11 +116,11 @@ describe('POST /api/v1/tasks/{taskId}/capabilities (Phase 4C)', () => {
 
   beforeAll(async () => {
     db = await createTestDatabase();
-    setDbForTests(db.prisma);
+    installDbTestRuntime(db.prisma);
   });
 
   afterAll(async () => {
-    setDbForTests(undefined);
+    clearDbTestRuntime();
     await db.close();
   });
 

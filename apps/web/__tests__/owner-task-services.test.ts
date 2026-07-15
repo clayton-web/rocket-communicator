@@ -8,6 +8,7 @@ import {
   ownerActor,
   type Recipient,
 } from '@aicaa/domain';
+import * as aicaaDb from '@aicaa/db';
 import {
   createCapability,
   createTestDatabase,
@@ -19,6 +20,7 @@ import {
   upsertRecipient,
   type TestDatabase,
 } from '@aicaa/db';
+import { resetDbRuntimeForTests, setDbRuntimeForTests } from '@/lib/db/runtime-db';
 import {
   TaskServiceError,
   addOwnerTaskNote,
@@ -65,10 +67,12 @@ describe('Owner task application services (Phase 4A)', () => {
 
   beforeAll(async () => {
     db = await createTestDatabase();
+    setDbRuntimeForTests(aicaaDb);
   });
 
   afterAll(async () => {
     await db.close();
+    resetDbRuntimeForTests();
   });
 
   beforeEach(async () => {

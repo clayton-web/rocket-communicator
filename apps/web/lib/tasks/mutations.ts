@@ -13,12 +13,8 @@ import {
   type TaskOutcomeType,
   type UtcInstant,
 } from '@aicaa/domain';
-import {
-  persistOwnerTaskMutation,
-  persistReturnToOwner,
-  type AuditEventRecord,
-  type DbClient,
-} from '@aicaa/db';
+import type { AuditEventRecord, DbClient } from '@aicaa/db';
+import { loadDbRuntime } from '@/lib/db/runtime-db';
 import {
   buildOwnerAudit,
   ifMatchFromExpectedVersion,
@@ -64,13 +60,14 @@ async function runOwnerMutation(
 ): Promise<OwnerTaskMutationResult> {
   const owner = requireOwnerActor(command.owner);
   try {
+    const dbRuntime = loadDbRuntime();
     const current = await loadOwnerTask(command.db, owner, command.taskId);
     const ifMatch = ifMatchFromExpectedVersion(command.taskId, command.expectedVersion);
     const result = mutate(current, ifMatch);
     const newNote =
       result.note && !current.notes.some((n) => n.id === result.note!.id) ? result.note : undefined;
 
-    const persisted = await persistOwnerTaskMutation({
+    const persisted = await dbRuntime.persistOwnerTaskMutation({
       db: command.db,
       organizationId: owner.organizationId,
       expectedVersion: current.version,
@@ -241,6 +238,7 @@ export async function returnOwnerTaskToOwner(
 ): Promise<{ task: import('./map-to-dto').TaskDto; audit: AuditEventRecord }> {
   const owner = requireOwnerActor(command.owner);
   try {
+    const dbRuntime = loadDbRuntime();
     const current = await loadOwnerTask(command.db, owner, command.taskId);
     if (!current.assignment) {
       throw taskServiceError(
@@ -263,7 +261,7 @@ export async function returnOwnerTaskToOwner(
     const newNote =
       command.note && noteId ? domainResult.task.notes.find((n) => n.id === noteId) : undefined;
 
-    const persisted = await persistReturnToOwner({
+    const persisted = await dbRuntime.persistReturnToOwner({
       db: command.db,
       organizationId: owner.organizationId,
       expectedVersion: current.version,

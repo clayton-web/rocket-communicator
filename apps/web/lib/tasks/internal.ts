@@ -6,13 +6,9 @@ import {
   type OwnerActor,
   type UtcInstant,
 } from '@aicaa/domain';
-import {
-  getTaskById,
-  listTasks as listTasksFromDb,
-  type CreateAuditEventInput,
-  type DbClient,
-  type PersistenceErrorCode,
-} from '@aicaa/db';
+import type { CreateAuditEventInput, DbClient, PersistenceErrorCode } from '@aicaa/db';
+import type { DbRuntimeModule } from '@/lib/db/runtime-db';
+import { loadDbRuntime } from '@/lib/db/runtime-db';
 import {
   isDomainError,
   isTaskServiceError,
@@ -137,6 +133,7 @@ function sanitizePersistenceMessage(code: PersistenceErrorCode): string {
 
 export async function loadOwnerTask(db: DbClient, owner: OwnerActor, taskId: string) {
   try {
+    const { getTaskById } = loadDbRuntime();
     return await getTaskById(db, owner.organizationId, taskId);
   } catch (error) {
     mapDomainOrPersistenceError(error);
@@ -174,4 +171,10 @@ export function buildOwnerAudit(input: {
   };
 }
 
-export { listTasksFromDb };
+export async function listTasksFromDb(
+  db: DbClient,
+  query: Parameters<DbRuntimeModule['listTasks']>[1],
+): ReturnType<DbRuntimeModule['listTasks']> {
+  const { listTasks } = loadDbRuntime();
+  return listTasks(db, query);
+}

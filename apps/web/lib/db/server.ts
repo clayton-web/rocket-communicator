@@ -1,4 +1,5 @@
-import { createPrismaClient, type DbClient } from '@aicaa/db';
+import type { DbClient } from '@aicaa/db';
+import { loadDbRuntime } from './runtime-db';
 
 let client: DbClient | undefined;
 
@@ -8,7 +9,7 @@ let client: DbClient | undefined;
  */
 export function getDb(): DbClient {
   if (!client) {
-    client = createPrismaClient();
+    client = loadDbRuntime().createPrismaClient();
   }
   return client;
 }

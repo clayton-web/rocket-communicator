@@ -12,13 +12,8 @@ import {
   type TaskSummaryPoint,
   type UtcInstant,
 } from '@aicaa/domain';
-import {
-  createAuditEvent,
-  createTask,
-  getRecipientById,
-  type AuditEventRecord,
-  type DbClient,
-} from '@aicaa/db';
+import type { AuditEventRecord, DbClient } from '@aicaa/db';
+import { loadDbRuntime } from '@/lib/db/runtime-db';
 import {
   buildOwnerAudit,
   mapDomainOrPersistenceError,
@@ -60,6 +55,7 @@ export async function createOwnerTask(
   const owner = requireOwnerActor(command.owner);
 
   try {
+    const dbRuntime = loadDbRuntime();
     const taskId = asTaskId(command.taskId ?? newEntityId('task'));
     const domainTask = createStandaloneTask({
       actor: owner,
@@ -74,7 +70,7 @@ export async function createOwnerTask(
 
     let assignment: TaskAssignment | undefined;
     if (command.recipientId) {
-      const recipient = await getRecipientById(
+      const recipient = await dbRuntime.getRecipientById(
         command.db,
         owner.organizationId,
         command.recipientId,
@@ -96,8 +92,8 @@ export async function createOwnerTask(
     }
 
     const persisted = await command.db.$transaction(async (tx) => {
-      const task = await createTask(tx, owner.organizationId, domainTask, assignment);
-      const audit = await createAuditEvent(
+      const task = await dbRuntime.createTask(tx, owner.organizationId, domainTask, assignment);
+      const audit = await dbRuntime.createAuditEvent(
         tx,
         buildOwnerAudit({
           id: command.auditId ?? newEntityId('audit'),

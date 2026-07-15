@@ -11,6 +11,7 @@ const schemaPath = path.join(repoRoot, 'packages/db/prisma/schema.prisma');
 const nextConfigPath = path.join(webRoot, 'next.config.mjs');
 const generatedClientDir = path.join(repoRoot, 'packages/db/dist/generated/client');
 const verifyScriptPath = path.join(webRoot, 'scripts/verify-prisma-serverless-trace.mjs');
+const verifyDbRuntimeScriptPath = path.join(webRoot, 'scripts/verify-db-runtime-resolution.mjs');
 
 const RHEL_ENGINE = 'libquery_engine-rhel-openssl-3.0.x.so.node';
 
@@ -58,5 +59,19 @@ describe('Prisma serverless packaging configuration', () => {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     expect(output.trim()).toBe('verify-prisma-serverless-trace: ok');
+  });
+
+  it('passes post-build db runtime resolution verification when .next output exists', () => {
+    const nextDir = path.join(webRoot, '.next');
+    if (!fs.existsSync(nextDir)) {
+      return;
+    }
+
+    const output = execFileSync(process.execPath, [verifyDbRuntimeScriptPath], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    expect(output.trim()).toBe('verify-db-runtime-resolution: ok');
   });
 });

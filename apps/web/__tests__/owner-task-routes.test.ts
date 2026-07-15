@@ -40,7 +40,7 @@ import {
   upsertRecipient,
   type TestDatabase,
 } from '@aicaa/db';
-import { setDbForTests } from '@/lib/db/server';
+import { clearDbTestRuntime, installDbTestRuntime } from './helpers/db-test-runtime';
 
 vi.mock('@/lib/auth/require-owner', () => ({
   getAuthenticatedOwner: vi.fn(),
@@ -145,11 +145,11 @@ describe('Owner task HTTP routes (Phase 4B)', () => {
 
   beforeAll(async () => {
     db = await createTestDatabase();
-    setDbForTests(db.prisma);
+    installDbTestRuntime(db.prisma);
   });
 
   afterAll(async () => {
-    setDbForTests(undefined);
+    clearDbTestRuntime();
     await db.close();
   });
 

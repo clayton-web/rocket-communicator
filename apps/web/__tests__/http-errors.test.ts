@@ -16,7 +16,9 @@ import {
 import {
   recipientCapabilityServiceError,
 } from '@/lib/capability/recipient-errors';
-import { setDbForTests } from '@/lib/db/server';
+import { clearDbTestRuntime } from './helpers/db-test-runtime';
+import * as aicaaDb from '@aicaa/db';
+import { setDbRuntimeForTests } from '@/lib/db/runtime-db';
 import { GET as listTasks } from '@/app/api/v1/tasks/route';
 
 vi.mock('@/lib/auth/require-owner', () => ({
@@ -72,14 +74,14 @@ describe('safe HTTP error mapping', () => {
   beforeEach(() => {
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     process.env = { ...originalEnv };
-    setDbForTests(undefined);
+    clearDbTestRuntime();
     authOwner();
   });
 
   afterEach(() => {
     consoleErrorSpy.mockRestore();
     process.env = { ...originalEnv };
-    setDbForTests(undefined);
+    clearDbTestRuntime();
     vi.clearAllMocks();
   });
 
@@ -203,6 +205,7 @@ describe('safe HTTP error mapping', () => {
   });
 
   it('returns JSON 500 from Owner task route when getDb fails with diagnostics enabled', async () => {
+    setDbRuntimeForTests(aicaaDb);
     delete process.env.DATABASE_URL;
     process.env[ENABLE_DB_RUNTIME_DIAGNOSTICS_ENV] = 'true';
 

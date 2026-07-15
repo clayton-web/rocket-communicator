@@ -6,17 +6,13 @@ import {
   type TaskCapability,
   type UtcInstant,
 } from '@aicaa/domain';
-import {
-  createAuditEvent,
-  getCapabilityById,
-  markCapabilityExpiredRecord,
-  persistReturnToOwner,
-  revokeCapabilityRecord,
-  updateActiveAssignmentCapabilityBinding,
-  type AuditEventRecord,
-  type DbClient,
-  type PersistedCapability,
+import type {
+  AuditEventRecord,
+  DbClient,
+  PersistedCapability,
 } from '@aicaa/db';
+import type { DbRuntimeModule } from '@/lib/db/runtime-db';
+import { loadDbRuntime } from '@/lib/db/runtime-db';
 import { readPersistenceErrorCode } from '@/lib/errors/safe-error-shapes';
 import { capabilityTokenError } from './errors';
 import { omitTokenHash } from './validate';
@@ -33,14 +29,15 @@ export async function revokeCapabilityForOwner(input: {
   requestId?: string;
   auditId?: string;
 }): Promise<{ capability: TaskCapability; audit: AuditEventRecord }> {
-  const existing = await getCapabilityById(
+  const dbRuntime = loadDbRuntime();
+  const existing = await dbRuntime.getCapabilityById(
     input.db,
     input.owner.organizationId,
     input.capabilityId,
   );
   const revokedDomain = revokeCapability(omitTokenHash(existing), input.now);
 
-  const capability = await revokeCapabilityRecord(
+  const capability = await dbRuntime.revokeCapabilityRecord(
     input.db,
     input.owner.organizationId,
     input.capabilityId,
@@ -48,7 +45,7 @@ export async function revokeCapabilityForOwner(input: {
     input.reason ?? 'owner_revoked',
   );
 
-  await updateActiveAssignmentCapabilityBinding(
+  await dbRuntime.updateActiveAssignmentCapabilityBinding(
     input.db,
     input.owner.organizationId,
     capability.taskId,
@@ -63,7 +60,7 @@ export async function revokeCapabilityForOwner(input: {
     throw error;
   });
 
-  const audit = await createAuditEvent(input.db, {
+  const audit = await dbRuntime.createAuditEvent(input.db, {
     id: input.auditId ?? `audit_revoke_${capability.id}`,
     organizationId: input.owner.organizationId,
     actorKind: 'owner',
@@ -92,7 +89,8 @@ export async function persistCapabilityExpiryIfNeeded(input: {
   capabilityId: string;
   now: UtcInstant;
 }): Promise<TaskCapability | null> {
-  const existing = await getCapabilityById(input.db, input.organizationId, input.capabilityId);
+  const dbRuntime = loadDbRuntime();
+  const existing = await dbRuntime.getCapabilityById(input.db, input.organizationId, input.capabilityId);
   const domain = omitTokenHash(existing);
   if (domain.status === 'revoked' || domain.status === 'expired') {
     return domain;
@@ -101,7 +99,7 @@ export async function persistCapabilityExpiryIfNeeded(input: {
     return null;
   }
   markCapabilityExpired(domain, input.now);
-  const updated = await markCapabilityExpiredRecord(
+  const updated = await dbRuntime.markCapabilityExpiredRecord(
     input.db,
     input.organizationId,
     input.capabilityId,
@@ -119,9 +117,10 @@ export async function invalidateCapabilityOnAssignmentChangePersisted(input: {
   now: UtcInstant;
   reason?: string;
 }): Promise<PersistedCapability> {
-  const existing = await getCapabilityById(input.db, input.organizationId, input.capabilityId);
+  const dbRuntime = loadDbRuntime();
+  const existing = await dbRuntime.getCapabilityById(input.db, input.organizationId, input.capabilityId);
   invalidateCapabilityOnAssignmentChange(omitTokenHash(existing), input.now);
-  return revokeCapabilityRecord(
+  return dbRuntime.revokeCapabilityRecord(
     input.db,
     input.organizationId,
     input.capabilityId,
@@ -135,13 +134,13 @@ export async function invalidateCapabilityOnAssignmentChangePersisted(input: {
  * Invalidates the named capability in the same transaction.
  */
 export async function returnToOwnerWithCapabilityInvalidation(
-  input: Parameters<typeof persistReturnToOwner>[0],
-): Promise<Awaited<ReturnType<typeof persistReturnToOwner>>> {
+  input: Parameters<DbRuntimeModule['persistReturnToOwner']>[0],
+): Promise<Awaited<ReturnType<DbRuntimeModule['persistReturnToOwner']>>> {
   if (!input.capabilityId) {
     throw capabilityTokenError(
       'ISSUANCE_PRECONDITION',
       'Return-to-Owner requires the capability id to invalidate.',
     );
   }
-  return persistReturnToOwner(input);
+  return loadDbRuntime().persistReturnToOwner(input);
 }

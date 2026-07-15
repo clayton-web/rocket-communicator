@@ -9,12 +9,8 @@ import {
   type TaskCapability,
   type UtcInstant,
 } from '@aicaa/domain';
-import {
-  findCapabilityByTokenHash,
-  getTaskById,
-  type DbClient,
-  type PersistedCapability,
-} from '@aicaa/db';
+import type { DbClient, PersistedCapability } from '@aicaa/db';
+import { loadDbRuntime } from '@/lib/db/runtime-db';
 import { assertValidCapabilityPepper } from './config';
 import { capabilityTokenError, type CapabilityTokenErrorCode } from './errors';
 import { hashCapabilityToken } from './token';
@@ -58,6 +54,7 @@ export async function validateCapabilityToken(
   }
 
   const tokenHash = hashCapabilityToken(command.rawToken, pepper);
+  const { findCapabilityByTokenHash, getTaskById } = loadDbRuntime();
   const found = await findCapabilityByTokenHash(command.db, tokenHash);
   if (!found) {
     throw capabilityTokenError('INVALID_CAPABILITY', 'Capability token is invalid.');
