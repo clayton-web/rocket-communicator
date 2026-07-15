@@ -8,19 +8,18 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  DB_BACKED_API_ROUTE_NFTS,
+  DB_BACKED_PAGE_ROUTE_NFTS,
+  DB_BACKED_ROUTE_NFTS,
+  DB_PACKAGE_LITERAL,
+  INVALID_ROOT_PATTERN,
+  assertNftIncludesDbPackageRuntime,
+} from './lib/db-package-trace.mjs';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const webRoot = path.resolve(scriptDir, '..');
 const repoRoot = path.resolve(webRoot, '../..');
-
-const INVALID_ROOT_PATTERN = '/ROOT/packages/db';
-const DB_PACKAGE_LITERAL = '@aicaa/db';
-
-const DB_BACKED_ROUTE_NFTS = [
-  'app/api/v1/tasks/route.js.nft.json',
-  'app/api/v1/tasks/[taskId]/route.js.nft.json',
-  'app/api/v1/capabilities/[token]/tasks/[taskId]/route.js.nft.json',
-];
 
 const DB_STUB_PATTERNS = [
   /await\s+\(void\s+0\)\s*\(/,
@@ -88,9 +87,12 @@ function readRouteChunkImports(routeJsPath) {
     return [];
   }
   const content = fs.readFileSync(routeJsPath, 'utf8');
-  const chunkMatches = [...content.matchAll(/server\/chunks\/[^"']+\.js/g)];
-  const chunkDir = path.join(webRoot, '.next/server/chunks');
-  return chunkMatches.map((match) => path.join(chunkDir, path.basename(match[0])));
+  const chunkMatches = [...content.matchAll(/server\/chunks\/(?:ssr\/)?[^"']+\.js/g)];
+  const chunks = [];
+  for (const match of chunkMatches) {
+    chunks.push(path.join(webRoot, '.next', match[0]));
+  }
+  return chunks;
 }
 
 function gatherRouteArtifacts(relativeNftPath) {
@@ -164,6 +166,14 @@ function assertRuntimeLoaderChunkPresent() {
   }
 }
 
+function assertDbPackageNftTrace(relativeNftPath) {
+  const nftPath = resolveNftFile(relativeNftPath);
+  const nft = readJson(nftPath);
+  const files = Array.isArray(nft.files) ? nft.files : [];
+  const routeLabel = relativeNftPath.replace(/\.nft\.json$/, '');
+  assertNftIncludesDbPackageRuntime(files, repoRoot, routeLabel);
+}
+
 function main() {
   const nextDir = path.join(webRoot, '.next');
   if (!fs.existsSync(nextDir)) {
@@ -172,7 +182,7 @@ function main() {
 
   assertRuntimeLoaderChunkPresent();
 
-  for (const relativeNft of DB_BACKED_ROUTE_NFTS) {
+  for (const relativeNft of DB_BACKED_API_ROUTE_NFTS) {
     const nftPath = resolveNftFile(relativeNft);
     if (!fs.existsSync(nftPath)) {
       fail(`missing NFT trace for ${relativeNft}`);
@@ -184,6 +194,15 @@ function main() {
     }
     assertRuntimeReferencePresent(routeLabel, artifacts);
     assertNoDbStubs(routeLabel, artifacts);
+    assertDbPackageNftTrace(relativeNft);
+  }
+
+  for (const relativeNft of DB_BACKED_PAGE_ROUTE_NFTS) {
+    const nftPath = resolveNftFile(relativeNft);
+    if (!fs.existsSync(nftPath)) {
+      fail(`missing NFT trace for ${relativeNft}`);
+    }
+    assertDbPackageNftTrace(relativeNft);
   }
 
   console.log('verify-db-runtime-resolution: ok');

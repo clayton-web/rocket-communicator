@@ -4,10 +4,19 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const monorepoRoot = path.join(__dirname, '../..');
 
-const prismaGeneratedClient = '../../packages/db/dist/generated/client';
+const dbPackageRoot = '../../packages/db';
+const prismaGeneratedClient = `${dbPackageRoot}/dist/generated/client`;
+const dbPackageRuntimeTraceFiles = [
+  `${dbPackageRoot}/package.json`,
+  `${dbPackageRoot}/dist/**/*.js`,
+];
 const prismaServerlessTraceFiles = [
   `${prismaGeneratedClient}/libquery_engine-rhel-openssl-3.0.x.so.node`,
   `${prismaGeneratedClient}/schema.prisma`,
+];
+const dbBackedRouteTraceFiles = [
+  ...dbPackageRuntimeTraceFiles,
+  ...prismaServerlessTraceFiles,
 ];
 
 /** @type {import('next').NextConfig} */
@@ -17,9 +26,11 @@ const nextConfig = {
   serverExternalPackages: ['@aicaa/db'],
   outputFileTracingRoot: monorepoRoot,
   outputFileTracingIncludes: {
-    '/api/v1/tasks': prismaServerlessTraceFiles,
-    '/api/v1/tasks/**/*': prismaServerlessTraceFiles,
-    '/api/v1/capabilities/**/*': prismaServerlessTraceFiles,
+    '/api/v1/tasks': dbBackedRouteTraceFiles,
+    '/api/v1/tasks/**/*': dbBackedRouteTraceFiles,
+    '/api/v1/capabilities/**/*': dbBackedRouteTraceFiles,
+    '/c/[token]': dbBackedRouteTraceFiles,
+    '/c/**/*': dbBackedRouteTraceFiles,
   },
   turbopack: {
     root: monorepoRoot,

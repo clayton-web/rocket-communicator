@@ -8,22 +8,27 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  INVALID_ROOT_PATTERN,
+  RHEL_ENGINE,
+  SCHEMA_FILE,
+  assertNftIncludesDbPackageRuntime,
+  getRequiredDbPackageRuntimeFiles,
+} from './lib/db-package-trace.mjs';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const webRoot = path.resolve(scriptDir, '..');
 const repoRoot = path.resolve(webRoot, '../..');
 
-const RHEL_ENGINE = 'libquery_engine-rhel-openssl-3.0.x.so.node';
-const SCHEMA_FILE = 'schema.prisma';
 const TASKS_NFT = path.join(
   webRoot,
   '.next/server/app/api/v1/tasks/route.js.nft.json',
 );
-const GENERATED_CLIENT_DIR = path.join(
-  repoRoot,
-  'packages/db/dist/generated/client',
-);
-const INVALID_ROOT_PATTERN = '/ROOT/packages/db';
+
+const FORBIDDEN_TRACE_GLOBS = [
+  '../../packages/db/**/*',
+  '../../**/*',
+];
 
 function fail(message) {
   console.error(`verify-prisma-serverless-trace: ${message}`);
@@ -35,39 +40,6 @@ function readJson(filePath) {
     fail(`missing file: ${path.relative(repoRoot, filePath)}`);
   }
   return JSON.parse(fs.readFileSync(filePath, 'utf8'));
-}
-
-function assertGeneratedClientArtifacts() {
-  const rhelPath = path.join(GENERATED_CLIENT_DIR, RHEL_ENGINE);
-  const schemaPath = path.join(GENERATED_CLIENT_DIR, SCHEMA_FILE);
-
-  if (!fs.existsSync(rhelPath)) {
-    fail(
-      `Linux query engine not found at packages/db/dist/generated/client/${RHEL_ENGINE} — run pnpm build:db`,
-    );
-  }
-  if (!fs.existsSync(schemaPath)) {
-    fail(
-      `schema.prisma not found at packages/db/dist/generated/client/${SCHEMA_FILE} — run pnpm build:db`,
-    );
-  }
-}
-
-function assertTasksRouteNftTrace() {
-  const nft = readJson(TASKS_NFT);
-  const files = Array.isArray(nft.files) ? nft.files : [];
-
-  const hasRhel = files.some((entry) => entry.includes(RHEL_ENGINE));
-  const hasSchema = files.some((entry) => entry.endsWith(SCHEMA_FILE));
-
-  if (!hasRhel) {
-    fail(
-      `task route NFT trace does not include ${RHEL_ENGINE} (macOS builds may still list darwin native — config must include rhel target)`,
-    );
-  }
-  if (!hasSchema) {
-    fail(`task route NFT trace does not include ${SCHEMA_FILE}`);
-  }
 }
 
 function collectJsFiles(dir, results = []) {
@@ -83,6 +55,12 @@ function collectJsFiles(dir, results = []) {
     }
   }
   return results;
+}
+
+function assertTasksRouteNftTrace() {
+  const nft = readJson(TASKS_NFT);
+  const files = Array.isArray(nft.files) ? nft.files : [];
+  assertNftIncludesDbPackageRuntime(files, repoRoot, 'task route');
 }
 
 function assertNoInvalidRootBundling() {
@@ -118,13 +96,25 @@ function assertNextConfig() {
     "transpilePackages: ['@aicaa/domain']",
     'outputFileTracingRoot',
     'outputFileTracingIncludes',
+    'dbPackageRuntimeTraceFiles',
+    'dbPackageRoot',
+    '${dbPackageRoot}/package.json',
+    '${dbPackageRoot}/dist/**/*.js',
     RHEL_ENGINE,
     SCHEMA_FILE,
+    "'/c/[token]'",
+    "'/c/**/*'",
   ];
 
   for (const snippet of requiredSnippets) {
     if (!configSource.includes(snippet)) {
       fail(`next.config.mjs missing expected setting: ${snippet}`);
+    }
+  }
+
+  for (const forbidden of FORBIDDEN_TRACE_GLOBS) {
+    if (configSource.includes(forbidden)) {
+      fail(`next.config.mjs must not use broad trace glob: ${forbidden}`);
     }
   }
 
@@ -138,7 +128,7 @@ function assertNextConfig() {
 
 function main() {
   assertNextConfig();
-  assertGeneratedClientArtifacts();
+  getRequiredDbPackageRuntimeFiles(repoRoot);
   assertTasksRouteNftTrace();
   assertNoInvalidRootBundling();
   console.log('verify-prisma-serverless-trace: ok');

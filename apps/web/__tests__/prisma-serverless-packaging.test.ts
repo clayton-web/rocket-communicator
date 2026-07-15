@@ -4,6 +4,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import {
+  DB_BACKED_ROUTE_NFTS,
+  RHEL_ENGINE,
+  assertNftIncludesDbPackageRuntime,
+  getRequiredDbPackageRuntimeFiles,
+  nftIncludesRepoFile,
+  walkDbPackageRuntimeJsFiles,
+} from '../scripts/lib/db-package-trace.mjs';
 
 const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const repoRoot = path.resolve(webRoot, '../..');
@@ -12,8 +20,12 @@ const nextConfigPath = path.join(webRoot, 'next.config.mjs');
 const generatedClientDir = path.join(repoRoot, 'packages/db/dist/generated/client');
 const verifyScriptPath = path.join(webRoot, 'scripts/verify-prisma-serverless-trace.mjs');
 const verifyDbRuntimeScriptPath = path.join(webRoot, 'scripts/verify-db-runtime-resolution.mjs');
+const tasksNftPath = path.join(webRoot, '.next/server/app/api/v1/tasks/route.js.nft.json');
 
-const RHEL_ENGINE = 'libquery_engine-rhel-openssl-3.0.x.so.node';
+const FORBIDDEN_TRACE_GLOBS = [
+  '../../packages/db/**/*',
+  '../../**/*',
+];
 
 describe('Prisma serverless packaging configuration', () => {
   it('declares native and rhel-openssl-3.0.x binary targets in schema.prisma', () => {
@@ -30,6 +42,10 @@ describe('Prisma serverless packaging configuration', () => {
     expect(config).not.toMatch(/transpilePackages:\s*\[[^\]]*@aicaa\/db/);
     expect(config).toContain('outputFileTracingRoot');
     expect(config).toContain('outputFileTracingIncludes');
+    expect(config).toContain('dbPackageRuntimeTraceFiles');
+    expect(config).toContain('dbPackageRoot');
+    expect(config).toContain('${dbPackageRoot}/package.json');
+    expect(config).toContain('${dbPackageRoot}/dist/**/*.js');
     expect(config).toContain('turbopack:');
     expect(config).toContain('root: monorepoRoot');
     expect(config).toContain(RHEL_ENGINE);
@@ -37,7 +53,13 @@ describe('Prisma serverless packaging configuration', () => {
     expect(config).toContain("'/api/v1/tasks'");
     expect(config).toContain("'/api/v1/tasks/**/*'");
     expect(config).toContain("'/api/v1/capabilities/**/*'");
+    expect(config).toContain("'/c/[token]'");
+    expect(config).toContain("'/c/**/*'");
     expect(config).not.toContain("'/api/v1/session'");
+
+    for (const forbidden of FORBIDDEN_TRACE_GLOBS) {
+      expect(config).not.toContain(forbidden);
+    }
   });
 
   it('includes the Linux engine in dist/generated/client after db build', () => {
@@ -45,6 +67,51 @@ describe('Prisma serverless packaging configuration', () => {
     const schemaArtifactPath = path.join(generatedClientDir, 'schema.prisma');
     expect(fs.existsSync(rhelEnginePath)).toBe(true);
     expect(fs.existsSync(schemaArtifactPath)).toBe(true);
+  });
+
+  it('computes the @aicaa/db runtime import graph from dist/index.js', () => {
+    const indexJs = path.join(repoRoot, 'packages/db/dist/index.js');
+    const graph = walkDbPackageRuntimeJsFiles(indexJs);
+    expect(graph).toContain(indexJs);
+    expect(graph.some((filePath) => filePath.endsWith('generated/client/index.js'))).toBe(true);
+    expect(graph.some((filePath) => filePath.endsWith('generated/client/runtime/library.js'))).toBe(
+      true,
+    );
+    expect(graph.some((filePath) => filePath.endsWith('client/create-prisma-client.js'))).toBe(true);
+  });
+
+  it('includes @aicaa/db package runtime files in task-route NFT when .next output exists', () => {
+    if (!fs.existsSync(tasksNftPath)) {
+      return;
+    }
+
+    const nft = JSON.parse(fs.readFileSync(tasksNftPath, 'utf8')) as { files?: string[] };
+    const files = Array.isArray(nft.files) ? nft.files : [];
+    const required = getRequiredDbPackageRuntimeFiles(repoRoot);
+
+    expect(nftIncludesRepoFile(files, repoRoot, required.packageJson)).toBe(true);
+    expect(nftIncludesRepoFile(files, repoRoot, required.indexJs)).toBe(true);
+    expect(nftIncludesRepoFile(files, repoRoot, required.libraryJs)).toBe(true);
+    expect(nftIncludesRepoFile(files, repoRoot, required.rhelEngine)).toBe(true);
+    expect(nftIncludesRepoFile(files, repoRoot, required.schema)).toBe(true);
+
+    for (const jsFile of required.importGraphJs) {
+      expect(nftIncludesRepoFile(files, repoRoot, jsFile)).toBe(true);
+    }
+
+    assertNftIncludesDbPackageRuntime(files, repoRoot, 'task route');
+  });
+
+  it('covers Owner, Recipient capability, and Recipient page route NFT manifests when built', () => {
+    const nextDir = path.join(webRoot, '.next');
+    if (!fs.existsSync(nextDir)) {
+      return;
+    }
+
+    for (const relativeNft of DB_BACKED_ROUTE_NFTS) {
+      const nftPath = path.join(webRoot, '.next/server', relativeNft);
+      expect(fs.existsSync(nftPath), relativeNft).toBe(true);
+    }
   });
 
   it('passes post-build serverless trace verification when .next output exists', () => {
