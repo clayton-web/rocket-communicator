@@ -2,14 +2,18 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Prisma } from '@aicaa/db';
 import * as aicaaDb from '@aicaa/db/runtime';
 import { ENABLE_DB_RUNTIME_DIAGNOSTICS_ENV } from '@/lib/db/diagnostics';
 import {
+  EXPECTED_CI_ENGINE_BYTE_LENGTH,
+  EXPECTED_CI_ENGINE_SHA256,
   RHEL_ENGINE_FILENAME,
   capturePrismaLayoutFailureDiagnostics,
   classifyPrismaLayoutFailure,
+  inspectPrismaEngineIdentity,
   inspectPrismaGeneratedClientLayout,
   shouldCapturePrismaLayoutDiagnostics,
 } from '@/lib/db/prisma-layout-diagnostics';
@@ -24,7 +28,14 @@ import { logDbRuntimeStage, logDbRuntimeStageFailure } from '@/lib/db/stage-diag
 import {
   DB_CATEGORY_HEADER,
   DB_PRISMA_CLIENT_INDEX_HEADER,
+  DB_PRISMA_ENGINE_ARCH_HEADER,
+  DB_PRISMA_ENGINE_BYTES_HEADER,
+  DB_PRISMA_ENGINE_ELF_HEADER,
+  DB_PRISMA_ENGINE_EXECUTABLE_HEADER,
   DB_PRISMA_ENGINE_HEADER,
+  DB_PRISMA_ENGINE_IDENTITY_HEADER,
+  DB_PRISMA_ENGINE_READABLE_HEADER,
+  DB_PRISMA_ENGINE_SHA256_HEADER,
   DB_PRISMA_FAILURE_HEADER,
   DB_PRISMA_LIBRARY_HEADER,
   DB_PRISMA_PACKAGE_HEADER,
@@ -59,7 +70,7 @@ const FORBIDDEN_FRAGMENTS = [
   'libquery_engine',
   'schema.prisma',
   'could not locate',
-  'ERR_DLOPEN_FAILED',
+  'cannot open shared object',
   '\n',
   ' at ',
 ];
@@ -79,6 +90,25 @@ function assertSafe(serialized: string) {
   }
 }
 
+const CI_ENGINE_SOURCE = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../../../packages/db/dist/generated/client',
+  RHEL_ENGINE_FILENAME,
+);
+
+function writeMinimalElf64(eMachine: number): Buffer {
+  const buf = Buffer.alloc(64, 0);
+  buf[0] = 0x7f;
+  buf[1] = 0x45;
+  buf[2] = 0x4c;
+  buf[3] = 0x46;
+  buf[4] = 2; // ELFCLASS64
+  buf[5] = 1; // ELFDATA2LSB
+  buf[6] = 1; // EV_CURRENT
+  buf.writeUInt16LE(eMachine, 18);
+  return buf;
+}
+
 function writeArtifactTree(
   root: string,
   artifacts: {
@@ -87,6 +117,7 @@ function writeArtifactTree(
     engine?: boolean;
     library?: boolean;
     packageJson?: boolean;
+    engineBytes?: Buffer | string;
   },
 ) {
   fs.mkdirSync(root, { recursive: true });
@@ -97,7 +128,17 @@ function writeArtifactTree(
     fs.writeFileSync(path.join(root, 'schema.prisma'), 'generator client {}');
   }
   if (artifacts.engine !== false) {
-    fs.writeFileSync(path.join(root, RHEL_ENGINE_FILENAME), 'engine');
+    const enginePath = path.join(root, RHEL_ENGINE_FILENAME);
+    if (artifacts.engineBytes !== undefined) {
+      fs.writeFileSync(enginePath, artifacts.engineBytes);
+    } else {
+      fs.writeFileSync(enginePath, 'engine');
+    }
+    try {
+      fs.chmodSync(enginePath, 0o755);
+    } catch {
+      // Best-effort mode for fixtures.
+    }
   }
   if (artifacts.library !== false) {
     fs.mkdirSync(path.join(root, 'runtime'), { recursive: true });
@@ -198,8 +239,44 @@ describe('prisma layout diagnostics probe', () => {
       Object.assign(new Error('cannot open shared object file'), { code: 'ERR_DLOPEN_FAILED' }),
       dir,
     );
-    expect(loadFailed.prismaFailureClass).toBe('ENGINE_LOAD_FAILED');
+    expect(loadFailed.prismaFailureClass).toBe('ENGINE_DLOPEN_FAILED');
     assertSafe(JSON.stringify(loadFailed));
+  });
+
+  it('maps fine-grained message categories without exposing text', () => {
+    const layout = {
+      generatedClientDirectoryResolved: true,
+      prismaClientIndexPresent: true,
+      prismaSchemaAdjacent: true,
+      prismaEngineAdjacent: true,
+      prismaRuntimeLibraryPresent: true,
+    };
+    const cases: Array<{ message?: string; code?: string; expected: string }> = [
+      { message: 'dlopen failed loading engine', expected: 'ENGINE_DLOPEN_FAILED' },
+      { message: 'libssl.so.3: cannot open shared object', expected: 'OPENSSL_LIBRARY_MISSING' },
+      { message: 'version `GLIBC_2.34` not found', expected: 'GLIBC_INCOMPATIBLE' },
+      { message: 'invalid ELF header', expected: 'ELF_ARCHITECTURE_MISMATCH' },
+      {
+        message: 'Module did not self-register',
+        expected: 'NATIVE_MODULE_REGISTRATION_FAILED',
+      },
+      { code: 'EACCES', message: 'permission denied', expected: 'ENGINE_PERMISSION_DENIED' },
+      { message: 'engine file truncated', expected: 'ENGINE_FILE_TRUNCATED' },
+      { message: 'checksum verification failed', expected: 'ENGINE_CHECKSUM_MISMATCH' },
+      { message: 'thread panicked at query engine', expected: 'QUERY_ENGINE_PANIC' },
+      {
+        message: 'Error validating datasource `db`: the URL must start with',
+        expected: 'DATASOURCE_CONFIGURATION',
+      },
+    ];
+    for (const c of cases) {
+      expect(
+        classifyPrismaLayoutFailure(
+          { message: c.message, code: c.code },
+          layout,
+        ),
+      ).toBe(c.expected);
+    }
   });
 
   it('maps unknown message to UNKNOWN', () => {
@@ -215,6 +292,74 @@ describe('prisma layout diagnostics probe', () => {
         },
       ),
     ).toBe('UNKNOWN');
+  });
+
+  it('classifies known CI engine bytes as MATCHES_CI_ENGINE', () => {
+    expect(fs.existsSync(CI_ENGINE_SOURCE)).toBe(true);
+    const dir = makeTempClientDir({
+      engineBytes: fs.readFileSync(CI_ENGINE_SOURCE),
+    });
+    const result = inspectPrismaGeneratedClientLayout(undefined, dir);
+    expect(result.prismaEngineByteLength).toBe(EXPECTED_CI_ENGINE_BYTE_LENGTH);
+    expect(result.prismaEngineSha256).toBe(EXPECTED_CI_ENGINE_SHA256);
+    expect(result.prismaEngineElfClass).toBe('ELF64');
+    expect(result.prismaEngineArchitecture).toBe('X86_64');
+    expect(result.prismaEngineIdentity).toBe('MATCHES_CI_ENGINE');
+    assertSafe(JSON.stringify(result));
+  });
+
+  it('classifies same-size altered bytes as HASH_MISMATCH', () => {
+    const bytes = Buffer.from(fs.readFileSync(CI_ENGINE_SOURCE));
+    bytes[bytes.length - 1] ^= 0xff;
+    const dir = makeTempClientDir({ engineBytes: bytes });
+    const result = inspectPrismaGeneratedClientLayout(undefined, dir);
+    expect(result.prismaEngineByteLength).toBe(EXPECTED_CI_ENGINE_BYTE_LENGTH);
+    expect(result.prismaEngineSha256).not.toBe(EXPECTED_CI_ENGINE_SHA256);
+    expect(result.prismaEngineIdentity).toBe('HASH_MISMATCH');
+    assertSafe(JSON.stringify(result));
+  });
+
+  it('classifies truncated engine as SIZE_MISMATCH', () => {
+    const bytes = fs.readFileSync(CI_ENGINE_SOURCE).subarray(0, 4096);
+    const dir = makeTempClientDir({ engineBytes: bytes });
+    const result = inspectPrismaGeneratedClientLayout(undefined, dir);
+    expect(result.prismaEngineByteLength).toBe(4096);
+    expect(result.prismaEngineIdentity).toBe('SIZE_MISMATCH');
+    assertSafe(JSON.stringify(result));
+  });
+
+  it('classifies invalid ELF as INVALID_ELF', () => {
+    const dir = makeTempClientDir({ engineBytes: Buffer.from('not-an-elf-file') });
+    const result = inspectPrismaGeneratedClientLayout(undefined, dir);
+    expect(result.prismaEngineElfMagicValid).toBe(false);
+    expect(result.prismaEngineIdentity).toBe('INVALID_ELF');
+    assertSafe(JSON.stringify(result));
+  });
+
+  it('classifies wrong-architecture ELF64 as WRONG_ARCHITECTURE', () => {
+    const dir = makeTempClientDir({ engineBytes: writeMinimalElf64(3) }); // EM_386
+    const result = inspectPrismaGeneratedClientLayout(undefined, dir);
+    expect(result.prismaEngineElfMagicValid).toBe(true);
+    expect(result.prismaEngineElfClass).toBe('ELF64');
+    expect(result.prismaEngineArchitecture).toBe('OTHER');
+    expect(result.prismaEngineIdentity).toBe('WRONG_ARCHITECTURE');
+    assertSafe(JSON.stringify(result));
+  });
+
+  it('classifies unreadable engine as UNREADABLE without throwing', () => {
+    const dir = makeTempClientDir();
+    const enginePath = path.join(dir, RHEL_ENGINE_FILENAME);
+    fs.chmodSync(enginePath, 0o000);
+    expect(() => inspectPrismaEngineIdentity(enginePath)).not.toThrow();
+    const result = inspectPrismaGeneratedClientLayout(undefined, dir);
+    expect(result.prismaEngineReadable).toBe(false);
+    expect(result.prismaEngineIdentity).toBe('UNREADABLE');
+    try {
+      fs.chmodSync(enginePath, 0o755);
+    } catch {
+      // restore best-effort for cleanup
+    }
+    assertSafe(JSON.stringify(result));
   });
 
   it('survives throwing getters and proxies', () => {
@@ -316,9 +461,11 @@ describe('prisma layout diagnostics probe', () => {
     assertSafe(JSON.stringify(body));
   });
 
-  it('maps query-time engine-load failure to ENGINE_LOAD_FAILED', () => {
+  it('maps query-time engine-load failure to ENGINE_DLOPEN_FAILED and preserves identity fields', () => {
     process.env[ENABLE_DB_RUNTIME_DIAGNOSTICS_ENV] = 'true';
-    installTracedLayout();
+    installTracedLayout({
+      engineBytes: fs.readFileSync(CI_ENGINE_SOURCE),
+    });
     setDbStageContext({ routePathname: '/api/v1/tasks', requestId: 'req_dlopen' });
     logDbRuntimeStage('PRISMA_QUERY_START', { queryOperation: 'listTasks' });
 
@@ -331,11 +478,26 @@ describe('prisma layout diagnostics probe', () => {
       queryOperation: 'listTasks',
     });
 
-    expect(getDbStageContext()?.prismaFailureClass).toBe('ENGINE_LOAD_FAILED');
+    const ctx = getDbStageContext();
+    expect(ctx?.prismaFailureClass).toBe('ENGINE_DLOPEN_FAILED');
+    expect(ctx?.prismaEngineIdentity).toBe('MATCHES_CI_ENGINE');
+    expect(ctx?.prismaEngineByteLength).toBe(EXPECTED_CI_ENGINE_BYTE_LENGTH);
+    expect(ctx?.prismaEngineSha256).toBe(EXPECTED_CI_ENGINE_SHA256);
+
     const headers = readHeaders(mapOwnerTaskRouteError(error));
-    expect(headers[DB_PRISMA_FAILURE_HEADER.toLowerCase()]).toBe('ENGINE_LOAD_FAILED');
+    expect(headers[DB_PRISMA_FAILURE_HEADER.toLowerCase()]).toBe('ENGINE_DLOPEN_FAILED');
+    expect(headers[DB_PRISMA_ENGINE_IDENTITY_HEADER.toLowerCase()]).toBe('MATCHES_CI_ENGINE');
+    expect(headers[DB_PRISMA_ENGINE_BYTES_HEADER.toLowerCase()]).toBe(
+      String(EXPECTED_CI_ENGINE_BYTE_LENGTH),
+    );
+    expect(headers[DB_PRISMA_ENGINE_SHA256_HEADER.toLowerCase()]).toBe(EXPECTED_CI_ENGINE_SHA256);
+    expect(headers[DB_PRISMA_ENGINE_READABLE_HEADER.toLowerCase()]).toBe('true');
+    expect(headers[DB_PRISMA_ENGINE_EXECUTABLE_HEADER.toLowerCase()]).toBe('true');
+    expect(headers[DB_PRISMA_ENGINE_ELF_HEADER.toLowerCase()]).toBe('ELF64');
+    expect(headers[DB_PRISMA_ENGINE_ARCH_HEADER.toLowerCase()]).toBe('X86_64');
     expect(JSON.stringify(headers)).not.toContain('cannot open shared object');
     expect(JSON.stringify(headers)).not.toContain('postgresql://');
+    assertSafe(JSON.stringify(headers));
   });
 
   it('does not trigger layout inspection for non-Prisma query errors', () => {
@@ -502,17 +664,124 @@ describe('prisma layout diagnostics probe', () => {
       lastStage: 'DB_RUNTIME_FAILURE',
       failureCategory: 'PRISMA_ENGINE_OR_CLIENT_LOAD',
       errorName: 'PrismaClientInitializationError',
-      prismaFailureClass: 'ENGINE_LOAD_FAILED',
+      prismaFailureClass: 'ENGINE_DLOPEN_FAILED',
       prismaClientIndexPresent: true,
       prismaSchemaAdjacent: true,
       prismaEngineAdjacent: true,
       prismaRuntimeLibraryPresent: true,
       prismaGeneratedPackagePresent: true,
       prismaExpectedEngineTarget: 'RHEL_OPENSSL_3',
+      prismaEngineByteLength: EXPECTED_CI_ENGINE_BYTE_LENGTH,
+      prismaEngineSha256: EXPECTED_CI_ENGINE_SHA256,
+      prismaEngineReadable: true,
+      prismaEngineExecutable: true,
+      prismaEngineElfClass: 'ELF64',
+      prismaEngineArchitecture: 'X86_64',
+      prismaEngineIdentity: 'MATCHES_CI_ENGINE',
     });
 
     const headers = buildOwnerTaskDbDiagnosticHeaders() as Record<string, string>;
     assertSafe(JSON.stringify(headers));
-    expect(headers[DB_PRISMA_FAILURE_HEADER]).toBe('ENGINE_LOAD_FAILED');
+    expect(headers[DB_PRISMA_FAILURE_HEADER]).toBe('ENGINE_DLOPEN_FAILED');
+    expect(headers[DB_PRISMA_ENGINE_IDENTITY_HEADER]).toBe('MATCHES_CI_ENGINE');
+    expect(headers[DB_PRISMA_ENGINE_SHA256_HEADER]).toBe(EXPECTED_CI_ENGINE_SHA256);
+  });
+
+  it('hashing/read failure cannot alter the public response body or status', async () => {
+    process.env[ENABLE_DB_RUNTIME_DIAGNOSTICS_ENV] = 'true';
+    const { clientDir } = installTracedLayout();
+    const enginePath = path.join(clientDir, RHEL_ENGINE_FILENAME);
+    fs.writeFileSync(enginePath, 'x');
+    fs.chmodSync(enginePath, 0o000);
+    setDbStageContext({ routePathname: '/api/v1/tasks', requestId: 'req_hash_fail' });
+
+    const error = new Prisma.PrismaClientInitializationError('init', '6.19.3');
+    expect(() => logDbRuntimeStageFailure(error, 'PRISMA_ENGINE_OR_CLIENT_LOAD')).not.toThrow();
+
+    const response = mapOwnerTaskRouteError(error);
+    const body = await response.json();
+    expect(response.status).toBe(500);
+    expect(body).toEqual({
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'An unexpected error occurred.',
+        requestId: expect.any(String),
+        correlationId: null,
+      },
+    });
+    try {
+      fs.chmodSync(enginePath, 0o755);
+    } catch {
+      // cleanup best-effort
+    }
+  });
+
+  it('omits engine-identity headers on 200, 4xx, session, recipient, and diagnostics-off', () => {
+    process.env[ENABLE_DB_RUNTIME_DIAGNOSTICS_ENV] = 'true';
+    setDbStageContext({
+      routePathname: '/api/v1/tasks',
+      requestId: 'req_gate',
+      lastStage: 'DB_RUNTIME_FAILURE',
+      failureCategory: 'PRISMA_ENGINE_OR_CLIENT_LOAD',
+      prismaFailureClass: 'UNKNOWN',
+      prismaEngineIdentity: 'MATCHES_CI_ENGINE',
+      prismaEngineSha256: EXPECTED_CI_ENGINE_SHA256,
+      prismaEngineByteLength: EXPECTED_CI_ENGINE_BYTE_LENGTH,
+      prismaEngineReadable: true,
+      prismaEngineExecutable: true,
+      prismaEngineElfClass: 'ELF64',
+      prismaEngineArchitecture: 'X86_64',
+    });
+
+    const ok = attachOwnerTaskDbDiagnosticHeaders(
+      NextResponse.json({ items: [] }, { status: 200 }),
+    );
+    expect(readHeaders(ok)[DB_PRISMA_ENGINE_IDENTITY_HEADER.toLowerCase()]).toBeUndefined();
+
+    const fourxx = mapOwnerTaskRouteError(new TaskServiceError('NOT_FOUND', 'Task not found.'));
+    expect(readHeaders(fourxx)[DB_PRISMA_ENGINE_IDENTITY_HEADER.toLowerCase()]).toBeUndefined();
+
+    setDbStageContext({
+      routePathname: '/api/v1/session',
+      requestId: 'req_session_id',
+      lastStage: 'DB_RUNTIME_FAILURE',
+      failureCategory: 'PRISMA_ENGINE_OR_CLIENT_LOAD',
+      prismaFailureClass: 'UNKNOWN',
+      prismaEngineIdentity: 'MATCHES_CI_ENGINE',
+    });
+    expect(
+      readHeaders(mapOwnerTaskRouteError(new Error('x')))[
+        DB_PRISMA_ENGINE_IDENTITY_HEADER.toLowerCase()
+      ],
+    ).toBeUndefined();
+
+    setDbStageContext({
+      routePathname: '/api/v1/capabilities/tok/tasks/t1',
+      requestId: 'req_cap_id',
+      lastStage: 'DB_RUNTIME_FAILURE',
+      failureCategory: 'PRISMA_ENGINE_OR_CLIENT_LOAD',
+      prismaFailureClass: 'UNKNOWN',
+      prismaEngineIdentity: 'MATCHES_CI_ENGINE',
+    });
+    expect(
+      readHeaders(mapRecipientCapabilityRouteError(new Error('x')))[
+        DB_PRISMA_ENGINE_IDENTITY_HEADER.toLowerCase()
+      ],
+    ).toBeUndefined();
+
+    delete process.env[ENABLE_DB_RUNTIME_DIAGNOSTICS_ENV];
+    setDbStageContext({
+      routePathname: '/api/v1/tasks',
+      requestId: 'req_off_id',
+      lastStage: 'DB_RUNTIME_FAILURE',
+      failureCategory: 'PRISMA_ENGINE_OR_CLIENT_LOAD',
+      prismaFailureClass: 'UNKNOWN',
+      prismaEngineIdentity: 'MATCHES_CI_ENGINE',
+    });
+    expect(
+      readHeaders(mapOwnerTaskRouteError(new Error('x')))[
+        DB_PRISMA_ENGINE_IDENTITY_HEADER.toLowerCase()
+      ],
+    ).toBeUndefined();
   });
 });

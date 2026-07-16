@@ -2,6 +2,7 @@
  * Linux-faithful Prisma client construction probe for traced NFT Lambda layouts.
  * No production credentials or external network access.
  */
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -474,4 +475,267 @@ export function repoRootFromScript(importMetaUrl) {
 export function webRootFromScript(importMetaUrl) {
   const scriptDir = path.dirname(fileURLToPath(importMetaUrl));
   return path.resolve(scriptDir, '..');
+}
+
+const EXPECTED_CI_ENGINE_BYTE_LENGTH = 17547808;
+const EXPECTED_CI_ENGINE_SHA256 =
+  'a2924eab1c78a0a7bb67edac5738939fa10589ef073af5542f53812a22e4a7d8';
+const ELF_MAGIC = Buffer.from([0x7f, 0x45, 0x4c, 0x46]);
+const ELFCLASS64 = 2;
+const EM_X86_64 = 62;
+
+function classifyEngineIdentityFromBytes(contents, readable) {
+  if (!readable) {
+    return {
+      prismaEngineByteLength: undefined,
+      prismaEngineSha256: undefined,
+      prismaEngineReadable: false,
+      prismaEngineExecutable: false,
+      prismaEngineElfMagicValid: false,
+      prismaEngineElfClass: 'UNKNOWN',
+      prismaEngineArchitecture: 'UNKNOWN',
+      prismaEngineIdentity: 'UNREADABLE',
+    };
+  }
+
+  const byteLength = contents.length;
+  let sha256;
+  try {
+    sha256 = createHash('sha256').update(contents).digest('hex');
+  } catch {
+    sha256 = undefined;
+  }
+
+  const elfMagicValid = contents.length >= 4 && contents.subarray(0, 4).equals(ELF_MAGIC);
+  let elfClass = 'UNKNOWN';
+  let architecture = 'UNKNOWN';
+  if (elfMagicValid && contents.length >= 20) {
+    elfClass = contents[4] === ELFCLASS64 ? 'ELF64' : 'OTHER';
+    const eiData = contents[5];
+    if (eiData === 1 || eiData === 2) {
+      const eMachine = eiData === 1 ? contents.readUInt16LE(18) : contents.readUInt16BE(18);
+      architecture = eMachine === EM_X86_64 ? 'X86_64' : 'OTHER';
+    }
+  } else if (!elfMagicValid) {
+    elfClass = 'OTHER';
+    architecture = 'OTHER';
+  }
+
+  let identity = 'UNKNOWN';
+  if (!elfMagicValid || elfClass !== 'ELF64') {
+    identity = 'INVALID_ELF';
+  } else if (architecture !== 'X86_64') {
+    identity = 'WRONG_ARCHITECTURE';
+  } else if (byteLength !== EXPECTED_CI_ENGINE_BYTE_LENGTH) {
+    identity = 'SIZE_MISMATCH';
+  } else if (sha256 !== EXPECTED_CI_ENGINE_SHA256) {
+    identity = 'HASH_MISMATCH';
+  } else {
+    identity = 'MATCHES_CI_ENGINE';
+  }
+
+  return {
+    prismaEngineByteLength: byteLength,
+    prismaEngineSha256: sha256,
+    prismaEngineReadable: true,
+    prismaEngineExecutable: true,
+    prismaEngineElfMagicValid: elfMagicValid,
+    prismaEngineElfClass: elfClass,
+    prismaEngineArchitecture: architecture,
+    prismaEngineIdentity: identity,
+  };
+}
+
+function classifySyntheticFailure(error) {
+  const errorName = safeReadString(error, 'name');
+  const prismaErrorCode = safeReadString(error, 'errorCode');
+  const nodeErrorCode = nodeErrorCodeFromCause(error);
+  const message = safeReadString(error, 'message') ?? '';
+
+  let failureClass = 'UNKNOWN';
+  if (nodeErrorCode === 'EACCES' || /permission denied|EACCES/i.test(message)) {
+    failureClass = 'ENGINE_PERMISSION_DENIED';
+  } else if (/GLIBC|glibc version/i.test(message)) {
+    failureClass = 'GLIBC_INCOMPATIBLE';
+  } else if (/libssl|libcrypto|OpenSSL/i.test(message)) {
+    failureClass = 'OPENSSL_LIBRARY_MISSING';
+  } else if (/invalid ELF|wrong ELF class|ELFCLASS|wrong.*architecture/i.test(message)) {
+    failureClass = 'ELF_ARCHITECTURE_MISMATCH';
+  } else if (/truncat|unexpected end of file|file too short/i.test(message)) {
+    failureClass = 'ENGINE_FILE_TRUNCATED';
+  } else if (
+    nodeErrorCode === 'ERR_DLOPEN_FAILED' ||
+    /ERR_DLOPEN_FAILED|cannot open shared object|dlopen/i.test(message)
+  ) {
+    failureClass = 'ENGINE_DLOPEN_FAILED';
+  } else if (errorName === 'PrismaClientInitializationError') {
+    failureClass = 'UNKNOWN';
+  }
+
+  return {
+    errorClass: errorName,
+    prismaErrorCode,
+    nodeErrorCode,
+    failureClass,
+  };
+}
+
+/**
+ * Optional Linux NFT synthetic engine-failure matrix.
+ * Does not connect to an external database. Never mutates the repository engine.
+ * Failures here must not weaken the unmodified CASE E probe.
+ */
+export function runPrismaEngineSyntheticMatrix({
+  webRoot,
+  repoRoot,
+  nftRelativePath = 'app/api/v1/tasks/route.js.nft.json',
+  nodeExecutable = process.execPath,
+}) {
+  const { layoutRoot } = materializeNftLayout({
+    webRoot,
+    repoRoot,
+    nftRelativePath,
+    includeWorkspaceSymlinks: false,
+  });
+
+  try {
+    assertIsolatedNftLayoutOutsideRepo(layoutRoot, repoRoot);
+    stripNonRhelQueryEngines(layoutRoot);
+
+    const enginePath = path.join(layoutRoot, GENERATED_CLIENT_ENGINE_RELATIVE);
+    const runtimePath = path.join(layoutRoot, DB_RUNTIME_RELATIVE);
+    if (!fs.existsSync(enginePath) || !fs.existsSync(runtimePath)) {
+      return { skipped: true, reason: 'ENGINE_OR_RUNTIME_MISSING', variants: [] };
+    }
+
+    const originalEngine = fs.readFileSync(enginePath);
+    const artifacts = inspectPrismaLayoutArtifacts(layoutRoot);
+    const runnerPath = writeProbeRunnerScript({ layoutRoot, runtimePath, artifacts });
+
+    const variants = [
+      {
+        name: 'truncated',
+        apply: () => fs.writeFileSync(enginePath, originalEngine.subarray(0, 4096)),
+      },
+      {
+        name: 'zero_length',
+        apply: () => fs.writeFileSync(enginePath, Buffer.alloc(0)),
+      },
+      {
+        name: 'non_elf',
+        apply: () => fs.writeFileSync(enginePath, Buffer.from('not-an-elf-engine-fixture')),
+      },
+      {
+        name: 'corrupted',
+        apply: () => {
+          const copy = Buffer.from(originalEngine);
+          copy[Math.floor(copy.length / 2)] ^= 0xff;
+          fs.writeFileSync(enginePath, copy);
+        },
+      },
+      {
+        name: 'unreadable',
+        apply: () => {
+          fs.writeFileSync(enginePath, originalEngine);
+          fs.chmodSync(enginePath, 0o000);
+        },
+        restoreMode: true,
+      },
+    ];
+
+    const results = [];
+    for (const variant of variants) {
+      try {
+        variant.apply();
+        let contents = Buffer.alloc(0);
+        let readable = false;
+        try {
+          fs.accessSync(enginePath, fs.constants.R_OK);
+          contents = fs.readFileSync(enginePath);
+          readable = true;
+        } catch {
+          readable = false;
+        }
+        const identity = classifyEngineIdentityFromBytes(contents, readable);
+
+        const proc = spawnSync(nodeExecutable, [runnerPath], {
+          cwd: layoutRoot,
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            NODE_ENV: 'production',
+            DATABASE_URL: PLACEHOLDER_DATABASE_URL,
+          },
+        });
+
+        let probeSummary = {
+          errorClass: undefined,
+          prismaErrorCode: undefined,
+          nodeErrorCode: undefined,
+          failureClass: 'UNKNOWN',
+        };
+
+        if (proc.status === 0) {
+          try {
+            const parsed = JSON.parse(proc.stdout.trim());
+            const failing = parsed.probe1?.constructed === false ? parsed.probe1 : parsed.probe2;
+            probeSummary = {
+              errorClass: failing?.errorName,
+              prismaErrorCode: failing?.prismaErrorCode,
+              nodeErrorCode: failing?.nodeErrorCode,
+              failureClass:
+                failing?.classification === 'ENGINE_BINARY_INCOMPATIBLE'
+                  ? 'ENGINE_DLOPEN_FAILED'
+                  : failing?.classification === 'CONNECT_REACHED_DATABASE_NETWORK'
+                    ? 'OTHER'
+                    : 'UNKNOWN',
+            };
+            if (failing?.errorName || failing?.nodeErrorCode) {
+              probeSummary = {
+                ...probeSummary,
+                ...classifySyntheticFailure({
+                  name: failing.errorName,
+                  errorCode: failing.prismaErrorCode,
+                  code: failing.nodeErrorCode,
+                  message: '',
+                }),
+              };
+            }
+          } catch {
+            probeSummary = { ...probeSummary, failureClass: 'UNKNOWN' };
+          }
+        } else {
+          probeSummary = {
+            errorClass: undefined,
+            prismaErrorCode: undefined,
+            nodeErrorCode: undefined,
+            failureClass: 'UNKNOWN',
+          };
+        }
+
+        results.push({
+          variant: variant.name,
+          errorClass: probeSummary.errorClass,
+          prismaErrorCode: probeSummary.prismaErrorCode,
+          nodeErrorCode: probeSummary.nodeErrorCode,
+          failureClass: probeSummary.failureClass,
+          engineIdentity: identity.prismaEngineIdentity,
+        });
+      } finally {
+        try {
+          if (variant.restoreMode) {
+            fs.chmodSync(enginePath, 0o755);
+          }
+          fs.writeFileSync(enginePath, originalEngine);
+          fs.chmodSync(enginePath, 0o755);
+        } catch {
+          // Best-effort restore between variants.
+        }
+      }
+    }
+
+    return { skipped: false, variants: results };
+  } finally {
+    fs.rmSync(layoutRoot, { recursive: true, force: true });
+  }
 }

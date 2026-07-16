@@ -14,6 +14,7 @@ import {
   isLinuxPlatform,
   repoRootFromScript,
   runPrismaClientConstructionProbe,
+  runPrismaEngineSyntheticMatrix,
   webRootFromScript,
 } from './lib/prisma-client-construction-probe.mjs';
 
@@ -56,6 +57,30 @@ function main() {
   console.log(
     `verify-prisma-client-construction: ok (node=${process.version}, probe1=${result.probe1.classification}, probe2=${result.probe2.classification})`,
   );
+
+  // Optional synthetic matrix: informational only; never weakens CASE E pass criteria.
+  try {
+    const matrix = runPrismaEngineSyntheticMatrix({ webRoot, repoRoot });
+    if (matrix.skipped) {
+      console.log(
+        `verify-prisma-client-construction: synthetic-matrix skipped (${matrix.reason ?? 'unknown'})`,
+      );
+    } else {
+      const summary = matrix.variants
+        .map(
+          (v) =>
+            `${v.variant}:${v.failureClass ?? 'UNKNOWN'}/${v.engineIdentity ?? 'UNKNOWN'}`,
+        )
+        .join(',');
+      console.log(`verify-prisma-client-construction: synthetic-matrix ${summary}`);
+    }
+  } catch (error) {
+    console.log(
+      `verify-prisma-client-construction: synthetic-matrix non-blocking failure (${
+        error instanceof Error ? error.message : 'unknown'
+      })`,
+    );
+  }
 }
 
 main();

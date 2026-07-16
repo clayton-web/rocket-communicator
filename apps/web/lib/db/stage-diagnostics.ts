@@ -8,6 +8,9 @@ import {
 import {
   capturePrismaLayoutFailureDiagnostics,
   shouldCapturePrismaLayoutDiagnostics,
+  type PrismaEngineArchitecture,
+  type PrismaEngineElfClass,
+  type PrismaEngineIdentityClass,
   type PrismaExpectedEngineTarget,
   type PrismaLayoutFailureClass,
 } from '@/lib/db/prisma-layout-diagnostics';
@@ -65,6 +68,14 @@ export interface DbRuntimeStageLogPayload {
   generatedClientDirectoryResolved?: boolean;
   engineFileReadable?: boolean;
   schemaFileReadable?: boolean;
+  prismaEngineByteLength?: number;
+  prismaEngineSha256?: string;
+  prismaEngineReadable?: boolean;
+  prismaEngineExecutable?: boolean;
+  prismaEngineElfMagicValid?: boolean;
+  prismaEngineElfClass?: PrismaEngineElfClass;
+  prismaEngineArchitecture?: PrismaEngineArchitecture;
+  prismaEngineIdentity?: PrismaEngineIdentityClass;
 }
 
 const CLEARED_LAYOUT_FIELDS: Pick<
@@ -79,6 +90,14 @@ const CLEARED_LAYOUT_FIELDS: Pick<
   | 'generatedClientDirectoryResolved'
   | 'engineFileReadable'
   | 'schemaFileReadable'
+  | 'prismaEngineByteLength'
+  | 'prismaEngineSha256'
+  | 'prismaEngineReadable'
+  | 'prismaEngineExecutable'
+  | 'prismaEngineElfMagicValid'
+  | 'prismaEngineElfClass'
+  | 'prismaEngineArchitecture'
+  | 'prismaEngineIdentity'
 > = {
   prismaClientIndexPresent: undefined,
   prismaSchemaAdjacent: undefined,
@@ -90,6 +109,14 @@ const CLEARED_LAYOUT_FIELDS: Pick<
   generatedClientDirectoryResolved: undefined,
   engineFileReadable: undefined,
   schemaFileReadable: undefined,
+  prismaEngineByteLength: undefined,
+  prismaEngineSha256: undefined,
+  prismaEngineReadable: undefined,
+  prismaEngineExecutable: undefined,
+  prismaEngineElfMagicValid: undefined,
+  prismaEngineElfClass: undefined,
+  prismaEngineArchitecture: undefined,
+  prismaEngineIdentity: undefined,
 };
 
 const MAX_CAUSE_DEPTH = 12;
@@ -162,6 +189,14 @@ function layoutFieldsFromContext(): Pick<
   | 'generatedClientDirectoryResolved'
   | 'engineFileReadable'
   | 'schemaFileReadable'
+  | 'prismaEngineByteLength'
+  | 'prismaEngineSha256'
+  | 'prismaEngineReadable'
+  | 'prismaEngineExecutable'
+  | 'prismaEngineElfMagicValid'
+  | 'prismaEngineElfClass'
+  | 'prismaEngineArchitecture'
+  | 'prismaEngineIdentity'
 > {
   try {
     const context = getDbStageContext();
@@ -179,6 +214,14 @@ function layoutFieldsFromContext(): Pick<
       generatedClientDirectoryResolved: context.generatedClientDirectoryResolved,
       engineFileReadable: context.engineFileReadable,
       schemaFileReadable: context.schemaFileReadable,
+      prismaEngineByteLength: context.prismaEngineByteLength,
+      prismaEngineSha256: context.prismaEngineSha256,
+      prismaEngineReadable: context.prismaEngineReadable,
+      prismaEngineExecutable: context.prismaEngineExecutable,
+      prismaEngineElfMagicValid: context.prismaEngineElfMagicValid,
+      prismaEngineElfClass: context.prismaEngineElfClass,
+      prismaEngineArchitecture: context.prismaEngineArchitecture,
+      prismaEngineIdentity: context.prismaEngineIdentity,
     };
   } catch {
     return {};
