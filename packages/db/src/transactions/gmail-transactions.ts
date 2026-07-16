@@ -5,12 +5,19 @@ import {
   type ParsedGmailMessageFixture,
 } from '../../../domain/dist/index.js';
 import type { DbClient } from '../client/create-prisma-client.js';
-import { fromIso, mapCommunicationAccount } from '../mappers/domain-mappers.js';
+import {
+  fromIso,
+  mapCommunicationAccount,
+  type AuditEventRecord,
+} from '../mappers/domain-mappers.js';
 import {
   upsertCommunicationEvent,
   upsertTemporaryCommunicationExcerpt,
 } from '../repositories/communication-event-repository.js';
-import { persistenceValidation } from '../errors/persistence-errors.js';
+import { persistEncryptedGmailCredential } from '../repositories/gmail-credential-repository.js';
+import { disconnectCommunicationAccount } from '../repositories/communication-account-repository.js';
+import { createAuditEvent, type CreateAuditEventInput } from '../repositories/audit-repository.js';
+import { organizationMismatch, persistenceValidation } from '../errors/persistence-errors.js';
 
 export type PersistGmailHistoryPageResult = {
   account: CommunicationAccount;
@@ -112,5 +119,133 @@ export async function persistGmailHistoryPageTransaction(input: {
       messagesSkipped,
       events,
     };
+  });
+}
+
+export type PersistGmailConnectionResult = {
+  account: CommunicationAccount;
+  audit: AuditEventRecord;
+};
+
+/**
+ * Atomic Owner Gmail connect / reconnect unit of work (A5.3).
+ * Upserts the single per-organization account to `connected`, replaces the encrypted
+ * credential (ciphertext only), and records a truthful Owner audit event in one transaction.
+ * No history backfill: a brand-new account starts with `historyState = unset`; reconnects
+ * preserve any existing cursor for the later sync chunk (D076). Never persists plaintext tokens.
+ */
+export async function persistGmailConnectionTransaction(input: {
+  db: DbClient;
+  organizationId: string;
+  accountId: string;
+  emailAddress: string;
+  externalAccountId: string;
+  connectedAt: string;
+  credential: {
+    id: string;
+    encryptedRefreshToken: string;
+    encryptedAccessToken?: string | null;
+    accessTokenExpiresAt?: string | null;
+    grantedScopes: string;
+    tokenType?: string | null;
+    encryptionKeyVersion: string;
+  };
+  audit: CreateAuditEventInput;
+}): Promise<PersistGmailConnectionResult> {
+  return input.db.$transaction(async (tx) => {
+    const existing = await tx.communicationAccount.findUnique({
+      where: {
+        organizationId_provider: {
+          organizationId: input.organizationId,
+          provider: 'gmail',
+        },
+      },
+    });
+    if (existing && existing.id !== input.accountId) {
+      throw organizationMismatch(
+        'Organization already has a Gmail CommunicationAccount with a different id.',
+      );
+    }
+
+    const connectedAt = fromIso(input.connectedAt)!;
+    const accountRow = await tx.communicationAccount.upsert({
+      where: { id: input.accountId },
+      create: {
+        id: input.accountId,
+        organizationId: input.organizationId,
+        provider: 'gmail',
+        emailAddress: input.emailAddress,
+        externalAccountId: input.externalAccountId,
+        status: 'connected',
+        historyId: null,
+        historyState: 'unset',
+        connectedAt,
+        disconnectedAt: null,
+        lastSyncAt: null,
+        lastSuccessAt: null,
+        lastErrorCode: null,
+        lastErrorAt: null,
+        syncLockUntil: null,
+      },
+      update: {
+        emailAddress: input.emailAddress,
+        externalAccountId: input.externalAccountId,
+        status: 'connected',
+        connectedAt,
+        disconnectedAt: null,
+        lastErrorCode: null,
+        lastErrorAt: null,
+        syncLockUntil: null,
+      },
+    });
+    if (accountRow.organizationId !== input.organizationId) {
+      throw organizationMismatch('CommunicationAccount belongs to a different organization.');
+    }
+
+    await persistEncryptedGmailCredential(tx, {
+      id: input.credential.id,
+      accountId: input.accountId,
+      organizationId: input.organizationId,
+      encryptedRefreshToken: input.credential.encryptedRefreshToken,
+      encryptedAccessToken: input.credential.encryptedAccessToken ?? null,
+      accessTokenExpiresAt: input.credential.accessTokenExpiresAt ?? null,
+      grantedScopes: input.credential.grantedScopes,
+      tokenType: input.credential.tokenType ?? null,
+      encryptionKeyVersion: input.credential.encryptionKeyVersion,
+    });
+
+    const audit = await createAuditEvent(tx, input.audit);
+
+    return { account: mapCommunicationAccount(accountRow), audit };
+  });
+}
+
+export type PersistGmailDisconnectResult = {
+  account: CommunicationAccount;
+  audit: AuditEventRecord;
+};
+
+/**
+ * Atomic Owner Gmail disconnect unit of work (A5.3).
+ * Deletes the encrypted credential, marks the account `disconnected`, clears the sync lock,
+ * and records a truthful Owner audit event. Durable CommunicationEvents are retained (D077);
+ * retention cleanup belongs to later policy/workers.
+ */
+export async function persistGmailDisconnectTransaction(input: {
+  db: DbClient;
+  organizationId: string;
+  accountId: string;
+  disconnectedAt: string;
+  audit: CreateAuditEventInput;
+}): Promise<PersistGmailDisconnectResult> {
+  return input.db.$transaction(async (tx) => {
+    const account = await disconnectCommunicationAccount(
+      tx,
+      input.organizationId,
+      input.accountId,
+      input.disconnectedAt,
+    );
+    const audit = await createAuditEvent(tx, input.audit);
+    return { account, audit };
   });
 }

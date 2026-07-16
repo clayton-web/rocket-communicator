@@ -325,6 +325,30 @@ model GmailSyncRun {
   @@map("gmail_sync_runs")
 }
 
+/// Short-lived, single-use Owner Gmail OAuth state + PKCE binding (A5.3, D069/D070).
+/// Persists SHA-256 `stateHash` only (never the raw OAuth state) and an AES-256-GCM
+/// encrypted PKCE verifier envelope. Rows are consumed atomically once and expire quickly;
+/// they never contain OAuth tokens or authorization codes.
+model GmailOAuthState {
+  id                      String    @id @db.VarChar(64)
+  /// SHA-256 hex digest of the raw OAuth `state`. Unique. Raw state is never stored.
+  stateHash               String    @unique @map("state_hash") @db.VarChar(64)
+  organizationId          String    @map("organization_id") @db.VarChar(64)
+  ownerId                 String    @map("owner_id") @db.VarChar(64)
+  /// Purpose-bound AES-256-GCM envelope for the PKCE verifier. Nulled on consume.
+  encryptedPkceVerifier   String?   @map("encrypted_pkce_verifier") @db.Text
+  encryptionKeyVersion    String    @map("encryption_key_version") @db.VarChar(64)
+  redirectPath            String    @map("redirect_path") @db.VarChar(512)
+  createdAt               DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  expiresAt               DateTime  @map("expires_at") @db.Timestamptz(3)
+  consumedAt              DateTime? @map("consumed_at") @db.Timestamptz(3)
+
+  @@index([organizationId])
+  @@index([expiresAt])
+  @@index([consumedAt])
+  @@map("gmail_oauth_states")
+}
+
 enum TaskStatus {
   open
   in_progress

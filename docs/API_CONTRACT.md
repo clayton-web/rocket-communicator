@@ -125,14 +125,14 @@ Return-to-Owner (either surface) clears assignment ownership; Task status unchan
 
 ### Owner Gmail routes (A5)
 
-**No Gmail HTTP handlers exist yet.** OpenAPI contracts and persistence foundation (A5.1–A5.2) only.
+OAuth connection routes are implemented in A5.3. Sync, poll, and ingestion remain pending. Production migration and live Gmail credentials are not configured in this chunk.
 
 | Method | Path                           | Purpose                                        | Status                                                                  |
 | ------ | ------------------------------ | ---------------------------------------------- | ----------------------------------------------------------------------- |
-| GET    | `/api/v1/gmail/connection`     | Safe connection status                         | Contract defined; persistence foundation implemented; HTTP pending      |
-| GET    | `/api/v1/gmail/oauth/start`    | Start OAuth redirect (`gmail.readonly`)        | Contract defined; implementation pending                                |
-| GET    | `/api/v1/gmail/oauth/callback` | OAuth callback redirect (no tokens in query)   | Contract defined; implementation pending                                |
-| POST   | `/api/v1/gmail/disconnect`     | Disconnect and wipe credential ciphertext      | Contract defined; persistence foundation implemented; HTTP pending      |
+| GET    | `/api/v1/gmail/connection`     | Safe connection status                         | Implemented (A5.3)                                                      |
+| POST   | `/api/v1/gmail/oauth/start`    | Start OAuth redirect (`gmail.readonly`)        | Implemented (A5.3)                                                      |
+| GET    | `/api/v1/gmail/oauth/callback` | OAuth callback redirect (no tokens in query)   | Implemented (A5.3)                                                      |
+| POST   | `/api/v1/gmail/disconnect`     | Disconnect and wipe credential ciphertext      | Implemented (A5.3)                                                      |
 | POST   | `/api/v1/gmail/sync`           | Owner manual sync                              | Contract defined; persistence foundation implemented; HTTP pending      |
 | GET    | `/api/v1/gmail/sync-runs`      | Recent safe sync-run summaries                 | Contract defined; persistence foundation implemented; HTTP pending      |
 | POST   | `/api/v1/internal/gmail/poll`  | Cron poll (`InternalCronBearer`; system audit) | Contract defined; persistence foundation implemented; HTTP/cron pending |

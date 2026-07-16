@@ -66,3 +66,20 @@ export {
   persistOwnerTaskMutation,
   persistWorkRequest,
 } from './transactions/a4-transactions.js';
+
+// A5.3 Owner Gmail OAuth / connection surface (server-only runtime bridge).
+export { getCommunicationAccountByOrganization } from './repositories/communication-account-repository.js';
+export { getGmailOAuthCredentialByAccountId } from './repositories/gmail-credential-repository.js';
+export {
+  createGmailOAuthState,
+  consumeGmailOAuthState,
+  inspectGmailOAuthState,
+  deleteFinishedGmailOAuthStates,
+  type GmailOAuthStateRecord,
+} from './repositories/gmail-oauth-state-repository.js';
+export {
+  persistGmailConnectionTransaction,
+  persistGmailDisconnectTransaction,
+  type PersistGmailConnectionResult,
+  type PersistGmailDisconnectResult,
+} from './transactions/gmail-transactions.js';

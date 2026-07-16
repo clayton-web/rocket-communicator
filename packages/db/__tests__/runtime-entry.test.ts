@@ -28,6 +28,14 @@ const REQUIRED_RUNTIME_EXPORTS = [
   'markCapabilityExpiredRecord',
   'persistCapabilityAction',
   'persistWorkRequest',
+  'getCommunicationAccountByOrganization',
+  'getGmailOAuthCredentialByAccountId',
+  'createGmailOAuthState',
+  'consumeGmailOAuthState',
+  'inspectGmailOAuthState',
+  'deleteFinishedGmailOAuthStates',
+  'persistGmailConnectionTransaction',
+  'persistGmailDisconnectTransaction',
 ];
 
 describe('@aicaa/db/runtime entry', () => {

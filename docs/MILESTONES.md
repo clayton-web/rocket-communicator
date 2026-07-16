@@ -48,7 +48,11 @@ Process: [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW.md) · [REVIEW_CHECKLIST
 
 Connect one inbox; poll every **five minutes** (D065); create communication events only (D077). Polling-only in A5 (D066); Pub/Sub deferred. No AI suggestions or forwarding yet.
 
-**A5.1–A5.2:** OpenAPI Gmail contracts, domain types/invariants, Prisma models, forward-only migration, repositories, and DB tests. **No Gmail HTTP route is implemented.** Route statuses: contract defined (all); persistence foundation implemented where models/repos exist; HTTP/OAuth/polling/UI pending later A5 chunks. Production migration must not be applied until Owner approval.
+**A5.1–A5.2:** OpenAPI Gmail contracts, domain types/invariants, Prisma models, forward-only migration, repositories, and DB tests.
+
+**A5.3:** Owner Gmail OAuth start (**POST**) / callback (state hash + encrypted PKCE), AES-256-GCM purpose-bound token encryption, connection status, and disconnect/revoke. **No polling, cron, ingestion, sync handlers, or UI.** Production migration remains unapplied; live Gmail credentials are not configured.
+
+Later A5 chunks: History API ingestion, sync-run listing, internal cron poll, settings UI.
 
 ### A6 — AI relevance and task suggestions
 

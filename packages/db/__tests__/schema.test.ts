@@ -117,4 +117,24 @@ describe('A5 Gmail Prisma schema contracts', () => {
     expect(schema).not.toMatch(/rawMime|mimeBytes|attachmentBytes|htmlBody|fullBody/);
     expect(a5Migration).not.toMatch(/raw_mime|mime_bytes|attachment_bytes|html_body|full_body/);
   });
+
+  it('defines a single-use OAuth state model with hashed state and encrypted PKCE only', () => {
+    expect(schema).toContain('model GmailOAuthState');
+    expect(schema).toContain('stateHash');
+    expect(schema).toContain('encryptedPkceVerifier');
+    expect(schema).toContain('encryptionKeyVersion');
+    expect(schema).toContain('consumedAt');
+    expect(schema).not.toMatch(/codeVerifier/);
+    expect(schema).not.toMatch(/GmailOAuthState[\s\S]*?(refreshToken|accessToken)\b/);
+    expect(a5Migration).toContain('CREATE TABLE "gmail_oauth_states"');
+    expect(a5Migration).toContain('"state_hash"');
+    expect(a5Migration).toContain('"encrypted_pkce_verifier"');
+    expect(a5Migration).toContain('gmail_oauth_states_state_hash_key');
+    expect(a5Migration).not.toMatch(/"code_verifier"/);
+    expect(a5Migration).not.toMatch(/gmail_oauth_states[\s\S]*?(refresh_token|access_token)/);
+  });
+
+  it('enables deny-by-default RLS on the OAuth state table', () => {
+    expect(a5Migration).toContain('ALTER TABLE "gmail_oauth_states" ENABLE ROW LEVEL SECURITY');
+  });
 });

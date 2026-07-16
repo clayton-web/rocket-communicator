@@ -186,8 +186,33 @@ ALTER TABLE "gmail_sync_runs"
   FOREIGN KEY ("account_id") REFERENCES "communication_accounts"("id")
   ON DELETE RESTRICT ON UPDATE CASCADE;
 
+-- A5.3 Owner Gmail OAuth state (short-lived, single-use). Stores state HASH + encrypted PKCE only.
+CREATE TABLE "gmail_oauth_states" (
+    "id" VARCHAR(64) NOT NULL,
+    "state_hash" VARCHAR(64) NOT NULL,
+    "organization_id" VARCHAR(64) NOT NULL,
+    "owner_id" VARCHAR(64) NOT NULL,
+    "encrypted_pkce_verifier" TEXT,
+    "encryption_key_version" VARCHAR(64) NOT NULL,
+    "redirect_path" VARCHAR(512) NOT NULL,
+    "created_at" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "expires_at" TIMESTAMPTZ(3) NOT NULL,
+    "consumed_at" TIMESTAMPTZ(3),
+    CONSTRAINT "gmail_oauth_states_pkey" PRIMARY KEY ("id")
+);
+
+CREATE UNIQUE INDEX "gmail_oauth_states_state_hash_key"
+  ON "gmail_oauth_states"("state_hash");
+CREATE INDEX "gmail_oauth_states_organization_id_idx"
+  ON "gmail_oauth_states"("organization_id");
+CREATE INDEX "gmail_oauth_states_expires_at_idx"
+  ON "gmail_oauth_states"("expires_at");
+CREATE INDEX "gmail_oauth_states_consumed_at_idx"
+  ON "gmail_oauth_states"("consumed_at");
+
 ALTER TABLE "communication_accounts" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "gmail_oauth_credentials" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "communication_events" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "temporary_communication_excerpts" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "gmail_sync_runs" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "gmail_oauth_states" ENABLE ROW LEVEL SECURITY;

@@ -514,8 +514,7 @@ export interface paths {
         /**
          * Get Owner Gmail connection status
          * @description Returns safe connection status for the authenticated Owner organization.
-         *     **Status: Contract defined; persistence foundation implemented; HTTP pending.**
-         *     Never returns tokens, ciphertext, or OAuth secrets.
+         *     **Status: Implemented in A5.3.** Never returns tokens, ciphertext, or OAuth secrets.
          *
          */
         get: operations["getGmailConnection"];
@@ -534,16 +533,18 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        get?: never;
+        put?: never;
         /**
          * Start Gmail OAuth (redirect)
-         * @description Starts Owner Gmail OAuth with gmail.readonly only (D070). Uses state + PKCE.
-         *     Redirects to Google.
-         *     **Status: Contract defined; implementation pending.**
+         * @description Starts Owner Gmail OAuth with gmail.readonly only (D070). Uses hashed state +
+         *     encrypted PKCE. Creates a durable one-time state record and may emit an audit event;
+         *     therefore this is POST (not GET) to prevent prefetch/crawler accidental starts.
+         *     Redirects to Google. Raw state and PKCE verifier are never returned in JSON.
+         *     **Status: Implemented in A5.3.**
          *
          */
-        get: operations["startGmailOAuth"];
-        put?: never;
-        post?: never;
+        post: operations["startGmailOAuth"];
         delete?: never;
         options?: never;
         head?: never;
@@ -562,7 +563,8 @@ export interface paths {
          * @description Exchanges authorization code, verifies Workspace mailbox domain (D069),
          *     persists encrypted credentials. Redirects to Owner UI with safe error codes
          *     on failure. Never exposes tokens in query or body.
-         *     **Status: Contract defined; implementation pending.**
+         *     Protected by state + PKCE; does not rely solely on the Supabase Owner session.
+         *     **Status: Implemented in A5.3.**
          *
          */
         get: operations["gmailOAuthCallback"];
@@ -586,7 +588,7 @@ export interface paths {
         /**
          * Disconnect Gmail
          * @description Revokes best-effort at Google, wipes encrypted credentials, stops polling.
-         *     **Status: Contract defined; persistence foundation implemented; HTTP pending.**
+         *     **Status: Implemented in A5.3.**
          *
          */
         post: operations["disconnectGmail"];
@@ -2480,7 +2482,10 @@ export interface operations {
     };
     startGmailOAuth: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Optional same-origin absolute return path (allowlisted server-side). */
+                returnPath?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;

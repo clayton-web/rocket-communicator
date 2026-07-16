@@ -22,6 +22,14 @@ const REQUIRED_EXPORTS = [
   'markCapabilityExpiredRecord',
   'persistCapabilityAction',
   'persistWorkRequest',
+  'getCommunicationAccountByOrganization',
+  'getGmailOAuthCredentialByAccountId',
+  'createGmailOAuthState',
+  'consumeGmailOAuthState',
+  'inspectGmailOAuthState',
+  'deleteFinishedGmailOAuthStates',
+  'persistGmailConnectionTransaction',
+  'persistGmailDisconnectTransaction',
 ] as const satisfies ReadonlyArray<keyof DbRuntimeModule>;
 
 let cachedRuntime: DbRuntimeModule | undefined;

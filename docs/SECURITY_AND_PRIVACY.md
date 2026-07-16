@@ -59,6 +59,7 @@ Governed by [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md). Definitions: [GL
 
 - Env secrets only; commit `.env.example` placeholders, never real values.
 - Encrypt Gmail OAuth tokens server-side as ciphertext only (`GmailOAuthCredential`); never ship to Android; never expose on public Gmail DTOs.
+- A5.3 uses AES-256-GCM with a random IV, authentication tag, explicit key version, and purpose-bound AAD (`gmail_refresh_token` / `gmail_pkce_verifier`) in a versioned envelope. The encryption key (`GMAIL_TOKEN_ENCRYPTION_KEY`) is server-only and must never enter browser bundles. OAuth stores only a SHA-256 `stateHash` plus an encrypted PKCE verifier; raw state and plaintext verifiers are never persisted.
 - Owner Session tokens on Android use platform secure storage.
 - Recipient emails and allowlists from secure configuration, not source hard-coding.
 
@@ -67,6 +68,8 @@ Governed by [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md). Definitions: [GL
 Record capability ID, bound resource IDs, action, timestamp, request ID, outcome, state/version context, truthful attribution (D057). Raw IP and full user-agent deferred. Wording must not overstate identity (D052).
 
 **A5 (D074):** scheduled Gmail polling uses `AuditActorKind.system` with a `systemId` (for example `gmail_poll`). Do not fake Owner attribution for cron. Owner and capability actor kinds remain unchanged.
+
+**A5.3 Owner Gmail OAuth audits** (Owner actor only): `gmail_oauth_started`, `gmail_connected`, `gmail_reconnected`, `gmail_disconnected`. Notes never contain tokens or raw OAuth errors.
 
 Also audit: suggestion decisions, assignment/forward approvals, reminder attempts, retention runs, authz denials, Gmail reauth, work-request Suggestions.
 

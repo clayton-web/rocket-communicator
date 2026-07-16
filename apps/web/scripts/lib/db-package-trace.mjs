@@ -50,6 +50,14 @@ export const REQUIRED_RUNTIME_EXPORTS = [
   'markCapabilityExpiredRecord',
   'persistCapabilityAction',
   'persistWorkRequest',
+  'getCommunicationAccountByOrganization',
+  'getGmailOAuthCredentialByAccountId',
+  'createGmailOAuthState',
+  'consumeGmailOAuthState',
+  'inspectGmailOAuthState',
+  'deleteFinishedGmailOAuthStates',
+  'persistGmailConnectionTransaction',
+  'persistGmailDisconnectTransaction',
 ];
 
 export const PGLITE_MARKERS = [
@@ -645,8 +653,12 @@ function extractLoadTracedRuntimeModuleBody(content) {
     content.match(
       /async function \w+\(\)\{(?:let \w+=await [^;]+;)?return\{createPrismaClient:(?:\w+\.)?createPrismaClient[^}]+\}\}/,
     ) ??
+    // Larger return objects (A5.3 Gmail runtime exports) exceed the prior 1200-char window.
     content.match(
-      /async function \w+\(\)\{let \w+=[\s\S]{0,1200}?createPrismaClient:\w+\.createPrismaClient[\s\S]{0,1200}?\}\}/,
+      /async function \w+\(\)\{let \w+=[\s\S]{0,6000}?createPrismaClient:\w+\.createPrismaClient[\s\S]{0,6000}?\}\}/,
+    ) ??
+    content.match(
+      /async function \w+\(\)\{[\s\S]{0,6000}?return\{createPrismaClient:\w+\.createPrismaClient[\s\S]{0,6000}?\}\}/,
     );
   return match?.[0];
 }

@@ -35,12 +35,14 @@ const dbBackedRouteTraceFiles = [
 const nextConfig = {
   reactStrictMode: true,
   transpilePackages: ['@aicaa/domain'],
-  serverExternalPackages: ['@aicaa/db'],
+  // @aicaa/db and google-auth-library are Node-only; keep them out of client/edge bundles.
+  serverExternalPackages: ['@aicaa/db', 'google-auth-library'],
   outputFileTracingRoot: monorepoRoot,
   outputFileTracingIncludes: {
     '/api/v1/tasks': dbBackedRouteTraceFiles,
     '/api/v1/tasks/**/*': dbBackedRouteTraceFiles,
     '/api/v1/capabilities/**/*': dbBackedRouteTraceFiles,
+    '/api/v1/gmail/**/*': dbBackedRouteTraceFiles,
     '/c/[token]': dbBackedRouteTraceFiles,
     '/c/**/*': dbBackedRouteTraceFiles,
   },

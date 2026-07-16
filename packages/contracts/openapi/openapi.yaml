@@ -9,9 +9,9 @@ info:
     Canonical HTTP contract for the AI Communication Action Assistant.
     OpenAPI is the source of truth (D007). A3 Owner session authentication and A4
     Owner task + Recipient capability routes are implemented and production-verified.
-    Task suggestion HTTP handlers are contract-only until A6. A5 Gmail connection and
-    sync paths are contracted here with persistence foundation in A5.1–A5.2;
-    no Gmail HTTP/OAuth/polling handlers exist yet.
+    Task suggestion HTTP handlers are contract-only until A6. A5 Gmail OAuth connection
+    routes (status, start, callback, disconnect) are implemented in A5.3; sync, poll,
+    and ingestion handlers remain pending. Persistence foundation is A5.1–A5.2.
     Owner and capability authorization surfaces are separate (D059).
 servers:
   - url: https://api.example.invalid
@@ -27,8 +27,8 @@ tags:
     description: Recipient capability-token routes (separate from Owner session APIs).
   - name: Gmail
     description: |
-      Owner Gmail connection and sync (A5). Contracts defined; persistence foundation
-      in A5.1–A5.2; HTTP/OAuth/polling handlers pending. Does not create Task Suggestions (D077).
+      Owner Gmail connection and sync (A5). OAuth connection routes implemented in A5.3;
+      sync/poll/ingestion pending. Does not create Task Suggestions (D077).
       Internal poll uses InternalCronBearer (CRON_SECRET), not Owner session.
 security:
   - bearerAuth: []

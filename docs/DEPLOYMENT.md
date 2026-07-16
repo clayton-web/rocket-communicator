@@ -41,6 +41,20 @@ Configure in Vercel **Production** (and matching Preview/Development as needed).
 | `CAPABILITY_TOKEN_PEPPER` | Server-only HMAC pepper for capability hash lookup (min 32 characters).   |
 | `CAPABILITY_TTL_MS`       | Issued link TTL in milliseconds (D055 default: seven days = `604800000`). |
 
+### Gmail OAuth (A5.3; names only — do not configure production values in this chunk)
+
+Distinct from Supabase Owner authentication. Server-only; never `NEXT_PUBLIC_*`. Scope is `gmail.readonly` only.
+
+| Variable                             | Purpose                                                                                               |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| `GOOGLE_GMAIL_CLIENT_ID`             | Google OAuth client id for the Gmail connection app.                                                  |
+| `GOOGLE_GMAIL_CLIENT_SECRET`         | Google OAuth client secret (server-only).                                                             |
+| `GMAIL_OAUTH_REDIRECT_URL`           | Optional. Defaults to `${NEXT_PUBLIC_APP_URL}/api/v1/gmail/oauth/callback` when unset.                |
+| `GMAIL_TOKEN_ENCRYPTION_KEY`         | AES-256-GCM key: 32 raw bytes as 64 hex chars or standard/base64url base64. Never commit real values. |
+| `GMAIL_TOKEN_ENCRYPTION_KEY_VERSION` | Explicit key version stored with each ciphertext envelope (for example `1`).                          |
+
+`CRON_SECRET` / `InternalCronBearer` remain reserved for a later A5 polling chunk and are not required for A5.3.
+
 ### Diagnostics (normally off)
 
 | Variable                        | Purpose                                                                                                                                                                                            |
@@ -73,7 +87,7 @@ These are durable safeguards for Linux/Vercel Prisma packaging—not temporary i
 
 A4 foundation migration: `packages/db/prisma/migrations/20260713190000_a4_persistence_foundation/` (**applied in production** as part of A4).
 
-A5 Gmail persistence migration: `packages/db/prisma/migrations/20260716140000_a5_gmail_persistence/` (**forward-only; not applied to production in A5.1–A5.2** — apply only after Owner approval).
+A5 Gmail persistence migration: `packages/db/prisma/migrations/20260716140000_a5_gmail_persistence/` (**forward-only; still unapplied to production through A5.3** — apply only after Owner approval). The A5.3 OAuth-state table lives in the same migration because it has never been applied.
 
 **Apply to production** (with production `DATABASE_URL` configured for the target):
 

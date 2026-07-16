@@ -75,6 +75,14 @@ export type TracedRuntimeModule = {
   markCapabilityExpiredRecord: typeof TracedRuntimeBindings.markCapabilityExpiredRecord;
   persistCapabilityAction: typeof TracedRuntimeBindings.persistCapabilityAction;
   persistWorkRequest: typeof TracedRuntimeBindings.persistWorkRequest;
+  getCommunicationAccountByOrganization: typeof TracedRuntimeBindings.getCommunicationAccountByOrganization;
+  getGmailOAuthCredentialByAccountId: typeof TracedRuntimeBindings.getGmailOAuthCredentialByAccountId;
+  createGmailOAuthState: typeof TracedRuntimeBindings.createGmailOAuthState;
+  consumeGmailOAuthState: typeof TracedRuntimeBindings.consumeGmailOAuthState;
+  inspectGmailOAuthState: typeof TracedRuntimeBindings.inspectGmailOAuthState;
+  deleteFinishedGmailOAuthStates: typeof TracedRuntimeBindings.deleteFinishedGmailOAuthStates;
+  persistGmailConnectionTransaction: typeof TracedRuntimeBindings.persistGmailConnectionTransaction;
+  persistGmailDisconnectTransaction: typeof TracedRuntimeBindings.persistGmailDisconnectTransaction;
 };
 
 export async function loadTracedRuntimeModule(): Promise<TracedRuntimeModule> {
@@ -100,5 +108,13 @@ export async function loadTracedRuntimeModule(): Promise<TracedRuntimeModule> {
     markCapabilityExpiredRecord: tracedRuntime.markCapabilityExpiredRecord,
     persistCapabilityAction: tracedRuntime.persistCapabilityAction,
     persistWorkRequest: tracedRuntime.persistWorkRequest,
+    getCommunicationAccountByOrganization: tracedRuntime.getCommunicationAccountByOrganization,
+    getGmailOAuthCredentialByAccountId: tracedRuntime.getGmailOAuthCredentialByAccountId,
+    createGmailOAuthState: tracedRuntime.createGmailOAuthState,
+    consumeGmailOAuthState: tracedRuntime.consumeGmailOAuthState,
+    inspectGmailOAuthState: tracedRuntime.inspectGmailOAuthState,
+    deleteFinishedGmailOAuthStates: tracedRuntime.deleteFinishedGmailOAuthStates,
+    persistGmailConnectionTransaction: tracedRuntime.persistGmailConnectionTransaction,
+    persistGmailDisconnectTransaction: tracedRuntime.persistGmailDisconnectTransaction,
   };
 }

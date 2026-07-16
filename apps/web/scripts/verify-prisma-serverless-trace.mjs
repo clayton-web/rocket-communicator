@@ -90,7 +90,7 @@ function assertNextConfig() {
   const configSource = fs.readFileSync(configPath, 'utf8');
 
   const requiredSnippets = [
-    "serverExternalPackages: ['@aicaa/db']",
+    "serverExternalPackages: ['@aicaa/db', 'google-auth-library']",
     "transpilePackages: ['@aicaa/domain']",
     'outputFileTracingRoot',
     'outputFileTracingIncludes',

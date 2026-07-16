@@ -83,6 +83,13 @@ export {
   requireGmailOAuthCredentialByAccountId,
 } from './repositories/gmail-credential-repository.js';
 export {
+  createGmailOAuthState,
+  consumeGmailOAuthState,
+  inspectGmailOAuthState,
+  deleteFinishedGmailOAuthStates,
+  type GmailOAuthStateRecord,
+} from './repositories/gmail-oauth-state-repository.js';
+export {
   getCommunicationEventById,
   getCommunicationEventByProviderMessageId,
   upsertCommunicationEvent,
@@ -105,5 +112,9 @@ export {
 } from './transactions/a4-transactions.js';
 export {
   persistGmailHistoryPageTransaction,
+  persistGmailConnectionTransaction,
+  persistGmailDisconnectTransaction,
   type PersistGmailHistoryPageResult,
+  type PersistGmailConnectionResult,
+  type PersistGmailDisconnectResult,
 } from './transactions/gmail-transactions.js';
