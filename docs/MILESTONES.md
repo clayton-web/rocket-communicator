@@ -1,8 +1,8 @@
 # Milestones
 
-**Current:** A4 complete (automated verification). Live Supabase migration deployment and manual Owner↔Recipient E2E remain operator runbook steps before production use. Next: A5 Gmail connection and polling.
+**Current:** A4 complete — automated verification and **production E2E (`A4_FULL_E2E_PASS`)**. **Next:** A5 Gmail connection and polling.
 
-Process: [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW.md) · [REVIEW_CHECKLIST.md](REVIEW_CHECKLIST.md)
+Process: [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW.md) · [REVIEW_CHECKLIST.md](REVIEW_CHECKLIST.md) · Operations: [DEPLOYMENT.md](DEPLOYMENT.md)
 
 ---
 
@@ -16,21 +16,27 @@ Process: [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW.md) · [REVIEW_CHECKLIST
 
 **Status:** Complete. pnpm workspaces; Next.js and Android Compose shells; shared ESLint/TS configs; CI smoke. Foundation: `com.aicommunication.assistant`, `minSdk` 31, Node 22, pnpm 9.15.9, Next.js 16.2.10, React 19.0.0, AGP 8.8.2, Kotlin 2.1.10, Gradle 8.12.1.
 
-### A2 — API contracts and domain model
-
-**Status:** Complete. `packages/contracts` (OpenAPI + generated TS/Kotlin), `packages/domain`, Android `api-contract` compile module. No DB/auth/API handlers in A2.
-
 ### A3 — Owner authentication
 
-**Status:** Complete. Web-only Supabase Google OAuth for the single Owner (D048): `/login`, `/auth/callback`, `GET /api/v1/session`, `OWNER_ORGANIZATION_ID` + `OWNER_WORKSPACE_DOMAIN`.
+**Status:** Complete. Web-only Supabase Google OAuth for the single Owner (D048): `/login`, `/auth/callback`, `GET /api/v1/session`, `OWNER_ORGANIZATION_ID` + `OWNER_WORKSPACE_DOMAIN`. Production-verified (`organizationId` = `axford`).
 
 ### A4 — Task core and Recipient capability web view
 
-**Status:** Complete (automated). Product implementation finished; `pnpm test`, `pnpm build`, contract checks, and `pnpm verify` pass.
+**Status:** Complete.
 
-**Not yet done (operator):** live Supabase migration has not been applied; live Google Workspace / Supabase end-to-end verification remains pending. Do not treat this as production-verified.
+**Automated:** Product implementation finished; `pnpm test`, `pnpm build`, contract checks, and `pnpm verify` pass.
 
-**Out of scope for A4 (unchanged):** AI, Gmail forward, Android task UI; Owner suggestion review/approval HTTP (later suggestion workflow); raw IP / full UA retention (D057); Recipient voice (D058 → A12).
+**Production:**
+
+- Supabase migration `20260713190000_a4_persistence_foundation` **applied**
+- Full production Owner↔Recipient E2E **passed**
+- Classification: **`A4_FULL_E2E_PASS`**
+- Production health baseline confirmed: `GET /api/v1/session` → 200 (`role` = `owner`, `organizationId` = `axford`); `GET /api/v1/tasks` → 200
+- Verified in production: Owner task creation, mutation, version conflicts, notes, waiting/resume, completion, dismissal, capability issuance, Recipient actions, capability expiry/revocation, work requests, audit attribution, and persistence
+- Retained E2E artifacts are **intentional operator-runbook data** (not repository secrets)
+- `ENABLE_DB_RUNTIME_DIAGNOSTICS` disabled in Production; no temporary incident probe headers
+
+**Out of scope for A4 (unchanged):** AI ingest, Gmail connection/forward, Android task UI; Owner suggestion **review/approval HTTP** (A6); raw IP / full UA retention (D057); Recipient voice (D058 → A12).
 
 **Binding decisions:** D055–D064. OPEN #21 deferred to A7.
 
@@ -42,9 +48,11 @@ Process: [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW.md) · [REVIEW_CHECKLIST
 
 Connect one inbox; poll; create communication events. Polling-first (D015). No AI suggestions or forwarding yet.
 
+**Planning assumption (OPEN #4):** provisional default poll interval **no less frequently than every 5 minutes**; exact interval requires Owner approval during A5 planning. Webhook/push may be evaluated but must not be assumed.
+
 ### A6 — AI relevance and task suggestions
 
-Filter/extract suggestions; Owner approve/edit/dismiss/merge; no auto-create tasks.
+Filter/extract suggestions; Owner approve/edit/dismiss/merge HTTP; no auto-create tasks.
 
 ### A7 — Gmail forwarding and assignment email
 

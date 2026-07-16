@@ -28,11 +28,7 @@ const DB_STUB_PATTERNS = [
   /\bloadDbRuntime\b[^;]{0,120}\(void\s+0\)/,
 ];
 
-const REQUIRED_RUNTIME_MARKERS = [
-  'loadDbRuntime',
-  TRACED_DB_RUNTIME_MARKER,
-  'createPrismaClient',
-];
+const REQUIRED_RUNTIME_MARKERS = ['loadDbRuntime', TRACED_DB_RUNTIME_MARKER, 'createPrismaClient'];
 
 function fail(message) {
   console.error(`verify-db-runtime-resolution: ${message}`);

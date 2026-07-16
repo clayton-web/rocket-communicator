@@ -11,7 +11,7 @@ Navigation only. Definitions: [GLOSSARY.md](GLOSSARY.md). Governing authority: [
 5. [ARCHITECTURE.md](ARCHITECTURE.md)
 6. [STATE_MACHINE.md](STATE_MACHINE.md) · [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md) · [API_CONTRACT.md](API_CONTRACT.md)
 7. [WORKFLOWS.md](WORKFLOWS.md) · [DATA_RETENTION.md](DATA_RETENTION.md) · [AI_CONSTITUTION.md](AI_CONSTITUTION.md)
-8. [MILESTONES.md](MILESTONES.md) · [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW.md) · [REVIEW_CHECKLIST.md](REVIEW_CHECKLIST.md)
+8. [MILESTONES.md](MILESTONES.md) · [DEPLOYMENT.md](DEPLOYMENT.md) · [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW.md) · [REVIEW_CHECKLIST.md](REVIEW_CHECKLIST.md)
 9. [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md)
 
 Root entry: [../README.md](../README.md)
@@ -32,5 +32,6 @@ Root entry: [../README.md](../README.md)
 | Retention                                          | DATA_RETENTION                         |
 | AI ladder / never-invent                           | AI_CONSTITUTION                        |
 | Delivery plan                                      | MILESTONES                             |
+| Deployment and operations                          | DEPLOYMENT                             |
 | Process / review gate                              | ENGINEERING_WORKFLOW, REVIEW_CHECKLIST |
 | Unresolved unknowns                                | OPEN_QUESTIONS                         |

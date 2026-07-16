@@ -115,7 +115,7 @@ Independent of the seven-day excerpt timer.
 
 - Log each retention run and per-item failure.
 - Retry with backoff.
-- Alert operators/primary on sustained backlog.
+- Alert operators / Owner on sustained backlog.
 - Do not silently skip items indefinitely.
 
 ## User-initiated deletion

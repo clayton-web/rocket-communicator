@@ -14,12 +14,13 @@ Not a permanent communication archive.
 
 | Area                    | Status                                                                                           |
 | ----------------------- | ------------------------------------------------------------------------------------------------ |
-| A3 Owner authentication | Complete (`apps/web` Google Workspace + Supabase)                                                |
-| A4 task + capability    | Complete (automated): Owner/Recipient task + capability HTTP, `/c/[token]` UI                    |
-| Live DB / E2E           | Operator follow-up: migrate Supabase + run live Owner↔Recipient checklist (not yet claimed here) |
-| Later                   | Gmail, AI, Android auth, notifications, voice, workers                                           |
+| A3 Owner authentication | Complete; production-verified (`GET /api/v1/session` → 200, `organizationId` = `axford`)         |
+| A4 task + capability    | Complete — **`A4_FULL_E2E_PASS`**: migration applied; full production Owner↔Recipient E2E passed |
+| Production baseline     | Healthy; Prisma/Supabase connectivity confirmed; capability links via production app URL         |
+| Next                    | **A5** Gmail connection and polling ([MILESTONES](docs/MILESTONES.md))                           |
+| Later                   | AI suggestions (A6), Gmail forward (A7), Android task UI, notifications, voice, workers          |
 
-Terms: [docs/GLOSSARY.md](docs/GLOSSARY.md). Plan: [docs/MILESTONES.md](docs/MILESTONES.md).
+Operations: [DEPLOYMENT](docs/DEPLOYMENT.md). Terms: [GLOSSARY](docs/GLOSSARY.md). Plan: [MILESTONES](docs/MILESTONES.md).
 
 ## Repository layout
 
@@ -66,6 +67,7 @@ Authority: [docs/DOCUMENTATION_INDEX.md](docs/DOCUMENTATION_INDEX.md)
 | Flows                       | [WORKFLOWS](docs/WORKFLOWS.md)                       |
 | Scope / MVP                 | [PRODUCT_SCOPE](docs/PRODUCT_SCOPE.md)               |
 | Plan                        | [MILESTONES](docs/MILESTONES.md)                     |
+| Deployment / operations     | [DEPLOYMENT](docs/DEPLOYMENT.md)                     |
 | Open unknowns               | [OPEN_QUESTIONS](docs/OPEN_QUESTIONS.md)             |
 
 ## Local repository

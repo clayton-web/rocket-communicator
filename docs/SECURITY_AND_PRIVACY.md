@@ -21,9 +21,12 @@ Governed by [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md). Definitions: [GL
 
 ## Recipient authorization
 
-- Recipients act only through Capability Links (D050).
+- Recipients act only through Capability Links (D050). **Recipients do not have application accounts** (D049).
 - Separate Owner session surfaces vs capability surfaces (D059).
-- GET view is non-mutating; POST requires explicit confirmation (D050, D059).
+- GET view is non-mutating; POST requires explicit confirmation (`confirmation: "confirmed"`) (D050, D059).
+- **Default issued scope** (when Owner does not specify a subset at issuance): `view_assigned_task`, `complete_task`, `mark_task_waiting`, `add_task_note`, `return_task_to_owner`, `request_clarification`, `submit_work_request` (`DEFAULT_RECIPIENT_CAPABILITY_SCOPE` in `@aicaa/domain`).
+- **`record_completion_outcome`** may appear in OpenAPI but is **not** included in the default issued scope unless explicitly granted.
+- **Resume** (`POST …/resume`) is permitted when the capability includes **`mark_task_waiting`**; resume shares that scope action.
 - Default expiry seven days; required TTL config; persisted `expiresAt` (D055).
 - Multi-use until invalidation; no A4 `used` transitions (D056).
 - Store hash only; raw secret may return once to Owner; never log raw secret (D063).

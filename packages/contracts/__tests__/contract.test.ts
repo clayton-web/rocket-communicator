@@ -61,4 +61,13 @@ describe('contracts package', () => {
     expect(generated).toContain('TaskSuggestion');
     expect(generated).toContain('TaskStatus');
   }, 120_000);
+
+  it('has no stale generated Kotlin artifacts outside the generator manifest', () => {
+    execSync('node scripts/cleanup-kotlin-orphans.mjs --check', { cwd: root, stdio: 'pipe' });
+    const kotlinDocs = path.join(root, 'generated/kotlin/docs');
+    expect(readFileSync(path.join(kotlinDocs, 'AuthenticatedRole.md'), 'utf8')).toContain('owner');
+    expect(readFileSync(path.join(kotlinDocs, 'ReturnTaskToOwnerRequest.md'), 'utf8')).toContain(
+      'ReturnTaskToOwnerRequest',
+    );
+  });
 });

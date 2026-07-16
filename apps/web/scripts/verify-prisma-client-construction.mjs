@@ -67,10 +67,7 @@ function main() {
       );
     } else {
       const summary = matrix.variants
-        .map(
-          (v) =>
-            `${v.variant}:${v.failureClass ?? 'UNKNOWN'}/${v.engineIdentity ?? 'UNKNOWN'}`,
-        )
+        .map((v) => `${v.variant}:${v.failureClass ?? 'UNKNOWN'}/${v.engineIdentity ?? 'UNKNOWN'}`)
         .join(',');
       console.log(`verify-prisma-client-construction: synthetic-matrix ${summary}`);
     }

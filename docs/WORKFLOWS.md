@@ -4,9 +4,23 @@ End-to-end flows. Terms: [GLOSSARY.md](GLOSSARY.md). Transitions: [STATE_MACHINE
 
 Owner approval is required to create Tasks, Assignments, forwards, and Follow-up Assignments. Recipient capability actions on an already assigned Task use POST after confirm ([STATE_MACHINE.md](STATE_MACHINE.md)).
 
+## Implemented through A4
+
+| Workflow                                                  | Section                                   | Status                                                         |
+| --------------------------------------------------------- | ----------------------------------------- | -------------------------------------------------------------- |
+| Owner typed task creation and lifecycle                   | (via Owner APIs; partial overlap with §7) | **Production-verified**                                        |
+| Recipient actions via Capability Link                     | §8                                        | **Production-verified**                                        |
+| Waiting and snooze (Owner; Recipient waiting only)        | §9                                        | **Production-verified** (reminder side effects deferred to A8) |
+| Dismissal (Task)                                          | §13                                       | **Production-verified**                                        |
+| Recipient work request → pending Suggestion (persistence) | §8                                        | **Production-verified** (Owner review HTTP is A6)              |
+
+## Planned for A5+
+
+Workflows §1–§7, §10–§12, §14–§15 depend on Gmail, AI, Android capture, reminders, or retention workers not yet implemented. Sections below retain target behaviour; milestone labels note when each ships.
+
 ---
 
-## 1. Gmail → Task Suggestion
+## 1. Gmail → Task Suggestion _(planned — A5/A6)_
 
 1. Detect new Owner inbox message.
 2. Store minimized `CommunicationEvent`.
@@ -15,14 +29,14 @@ Owner approval is required to create Tasks, Assignments, forwards, and Follow-up
 
 No Task created; no email sent.
 
-## 2. Gmail-origin Assignment + forward (D037)
+## 2. Gmail-origin Assignment + forward (D037) _(planned — A7)_
 
 1. Owner confirms one dialog disclosing: create/activate Task, Assignment, forward original + all attachments, Capability Link, reminders.
 2. On confirm: create Task/Assignment; issue Capability; forward via Gmail API with AI summary **above** original (D042); schedule reminders; record forwarded message id (idempotent).
 
 One confirmation only. Recipient email from Owner-managed records—not hard-coded. Partial forward failure must not be reported as complete success (D042; OPEN #9).
 
-## 3. Google Messages → Task Suggestion
+## 3. Google Messages → Task Suggestion _(planned — A10)_
 
 1. NotificationListener captures content (dedupe); respect exclusions.
 2. After Owner enables Messages as a source (D043): backend may analyze → `TaskSuggestion`.
@@ -30,50 +44,50 @@ One confirmation only. Recipient email from Owner-managed records—not hard-cod
 
 Task creation still requires Owner approval.
 
-## 4. Missed call → voice proposal
+## 4. Missed call → voice proposal _(planned — A11/A12)_
 
 When detected: prompt Owner. Voice → transcript → **Task Suggestion** or note proposal—never a Task (D038). Assignment uses workflow 2 or non-Gmail assignment path. Audio: D041 / [DATA_RETENTION.md](DATA_RETENTION.md).
 
-## 5. Known Contact completed call
+## 5. Known Contact completed call _(planned — A11)_
 
 Optional prompt only for Known Contacts. Unknown completed calls do not always prompt. Best-effort detection; manual/voice fallback always available.
 
-## 6. Manual voice proposal
+## 6. Manual voice proposal _(planned — A12)_
 
 Record → transcribe → structure → `Task Suggestion` until workflow 7. Voice never creates a Task (D038). Assignment still needs Owner confirmation.
 
-## 7. Suggestion approval → Task
+## 7. Suggestion approval → Task _(planned — A6; partial today via Owner typed task create)_
 
 Owner approves (after edits if any) → create `Task`; schedule retention. Self-assignment needs no Recipient email. Recipient handoff for Gmail-origin uses workflow 2’s single bundled confirmation—not a second forward step. Non-Gmail Recipient assignment: one confirmation without Gmail forward.
 
-## 8. Recipient actions via Capability Link
+## 8. Recipient actions via Capability Link _(implemented — A4 production-verified)_
 
 GET Capability Link: non-mutating view. POST after confirm: complete, waiting/resume, notes, return to Owner, clarification, work request → Suggestion. Forbidden actions and attribution: [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md). Audit fields: D057.
 
-## 9. Waiting and snooze
+## 9. Waiting and snooze _(implemented — A4; reminder scheduling A8)_
 
 Waiting (Owner or Recipient capability): pause reminders until `waiting_until`. Snooze (Owner only): recalculate next reminder; does not change Task status ([STATE_MACHINE.md](STATE_MACHINE.md)).
 
-## 10. Reminder and escalation
+## 10. Reminder and escalation _(planned — A8)_
 
 Scheduler selects actionable, non-waiting tasks due for reminder; idempotent attempt rows. First overdue → Recipient; later stages may CC Owner. Deterministic policy sends; AI does not. Delivery via Gmail API.
 
-## 11. Voice completion + follow-up proposal
+## 11. Voice completion + follow-up proposal _(planned — A12)_
 
 Structure multi-intent utterance. On Owner confirm: complete **current** Task; create follow-up only as `Task Suggestion` (D038). Hold Recipient assignment/email/forward until D037 confirmation when applicable.
 
-## 12. Merge duplicate suggestion
+## 12. Merge duplicate suggestion _(planned — A6)_
 
 Owner merges into existing Task; mark suggestion `merged`; optional summary append; learning signal. No extra assignment email by default.
 
-## 13. Dismissal
+## 13. Dismissal _(implemented — A4 for Tasks)_
 
 Owner dismisses suggestion or Task → terminal dismiss; excerpt purge +7 days; learning signal if provided. No assignment email.
 
-## 14. Retention cleanup
+## 14. Retention cleanup _(planned — A13)_
 
 Policy-driven: excerpt purge; completed content scrub; audio already deleted on success path; extract Owner learning before scrub (D054); **do not** delete Gmail mailbox forwards (D031). Details: [DATA_RETENTION.md](DATA_RETENTION.md). Tombstone duration: OPEN #12.
 
-## 15. Learning / rule proposal
+## 15. Learning / rule proposal _(planned — A14)_
 
 Record `LearningSignal`; optionally propose `WorkflowRule`. Apply only on Owner approval (D054). Recipients do not participate. No silent activation in v1.

@@ -7,8 +7,10 @@ info:
     identifier: UNLICENSED
   description: |
     Canonical HTTP contract for the AI Communication Action Assistant.
-    OpenAPI is the source of truth (D007). A3 Owner authentication is implemented.
-    A4 Phase 0 contracts separate Owner and capability authorization surfaces (D059).
+    OpenAPI is the source of truth (D007). A3 Owner session authentication and A4
+    Owner task + Recipient capability routes are implemented and production-verified.
+    Task suggestion HTTP handlers are contract-only until A6. Owner and capability
+    authorization surfaces are separate (D059).
 servers:
   - url: https://api.example.invalid
     description: Placeholder server URL for contract generation only

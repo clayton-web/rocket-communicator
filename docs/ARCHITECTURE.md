@@ -10,6 +10,35 @@ Private Android-first product with Next.js on Vercel, Supabase PostgreSQL, Prism
 
 Assignment binds a Task to a Recipient. A Capability is the authorization grant for that assignment. A Capability Link delivers the bearer credential. Possession of the link authorizes scoped actions; it does not authenticate a person.
 
+## Implemented through A4 (production-verified)
+
+The following are **implemented** in the repository and included in production verification (`A4_FULL_E2E_PASS`):
+
+- Owner Google Workspace authentication (Supabase Auth; single Owner)
+- Owner session API (`GET /api/v1/session`)
+- Owner task HTTP (create, list, get, lifecycle mutations, snooze, dismiss, capability issuance)
+- Task persistence (`@aicaa/db` / Prisma on Supabase Postgres)
+- Recipient capability HTTP and non-mutating `GET /c/[token]` page
+- Recipient POST actions with explicit confirmation
+- Audit trail for Owner and capability actions (D057)
+- Vercel-hosted Next.js runtime with traced `@aicaa/db` / Prisma packaging
+
+Deployment and smoke checks: [DEPLOYMENT.md](DEPLOYMENT.md). HTTP status by route: [API_CONTRACT.md](API_CONTRACT.md).
+
+## Planned for A5 and later (target architecture)
+
+The following remain **planned**—described here and in [WORKFLOWS.md](WORKFLOWS.md) but not yet implemented:
+
+- Gmail account connection and polling (A5)
+- Communication event ingestion tables and workers (A5+)
+- AI relevance filtering and task suggestion HTTP (A6)
+- Gmail assignment email and forward-with-attachments (A7)
+- Reminder and retention workers; optional Supabase Realtime
+- Future `CommunicationAccount` schema (multiple inboxes later; v1 targets one)
+- Android Owner task UI, Messages/call capture, voice, learning (A9–A14)
+
+Do not delete this target architecture; label it accurately when implementing.
+
 ## Package layout
 
 | Path                                                    | Responsibility                                                                                                               |
@@ -43,7 +72,7 @@ Do not share Zod types with Kotlin. Generate clients from OpenAPI. Neon is not u
 
 **Web:** Owner-authenticated routes for Owner APIs (D048). Recipient mutations use `/api/v1/capabilities/{token}/…` (D059). Browser view `GET /c/[token]` is non-mutating. Capability secrets: hash at rest; one-time raw reveal to Owner (D063); seven-day default TTL with persisted `expiresAt` (D055); multi-use until invalidation (D056). Persistence: `@aicaa/db`. Dismiss, not physical delete (D064).
 
-**Gmail:** One Owner inbox; polling-first (D015). On approved Gmail-origin assignment: forward original with attachments after single confirmation (D037). Schema may allow multiple `CommunicationAccount` rows later; v1 implements one.
+**Gmail (planned — A5+):** One Owner inbox; polling-first (D015). On approved Gmail-origin assignment: forward original with attachments after single confirmation (D037). Future schema may add `CommunicationAccount` rows; v1 will implement one account when A5 lands.
 
 **AI:** Tiered jobs (relevance → extract → recommend → transcribe → outcomes → learning suggestions). Recommendations never silently become tasks, assignments, or emails. Learning Owner-only (D054).
 
@@ -93,7 +122,7 @@ flowchart TB
   subgraph Data["Supabase"]
     Auth["Auth - Owner only"]
     DB[("PostgreSQL")]
-    RT["Realtime optional"]
+    RT["Realtime optional — planned"]
     Cron["Schedule - reminders and retention"]
   end
 
