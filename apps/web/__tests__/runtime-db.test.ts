@@ -79,7 +79,7 @@ describe('db runtime loader', () => {
   });
 
   it('invokes runtime-loaded createPrismaClient from getDb()', async () => {
-    const fakeClient = { kind: 'test-db', $connect: vi.fn(async () => undefined) } as never;
+    const fakeClient = { kind: 'test-db' } as never;
     const createPrismaClient = vi.fn(() => fakeClient);
     setDbRuntimeForTests({
       ...aicaaDb,
@@ -88,9 +88,28 @@ describe('db runtime loader', () => {
 
     await expect(getDb()).resolves.toBe(fakeClient);
     expect(createPrismaClient).toHaveBeenCalledTimes(1);
-    expect((fakeClient as { $connect: ReturnType<typeof vi.fn> }).$connect).toHaveBeenCalledTimes(
-      1,
+  });
+
+  it('shares one construction promise for concurrent getDb calls', async () => {
+    const fakeClient = { kind: 'shared' } as never;
+    const createPrismaClient = vi.fn(() => fakeClient);
+
+    let resolveLoad!: (runtime: typeof aicaaDb) => void;
+    const loadGate = new Promise<typeof aicaaDb>((resolve) => {
+      resolveLoad = resolve;
+    });
+
+    const runtimeDb = await import('@/lib/db/runtime-db');
+    vi.spyOn(runtimeDb, 'loadDbRuntime').mockImplementation(() =>
+      loadGate.then(() => ({ ...aicaaDb, createPrismaClient })),
     );
+
+    const first = getDb();
+    const second = getDb();
+    resolveLoad(aicaaDb);
+
+    await expect(Promise.all([first, second])).resolves.toEqual([fakeClient, fakeClient]);
+    expect(createPrismaClient).toHaveBeenCalledTimes(1);
   });
 
   it('keeps setDbForTests injection without calling createPrismaClient', async () => {

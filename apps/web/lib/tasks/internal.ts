@@ -10,11 +10,6 @@ import type { CreateAuditEventInput, DbClient, PersistenceErrorCode } from '@aic
 import type { DbRuntimeModule } from '@/lib/db/runtime-db';
 import { loadDbRuntime } from '@/lib/db/runtime-db';
 import {
-  classifyDbRuntimeStageFailure,
-  logDbRuntimeStage,
-  logDbRuntimeStageFailure,
-} from '@/lib/db/stage-diagnostics';
-import {
   isDomainError,
   isTaskServiceError,
   readDomainErrorCode,
@@ -180,16 +175,6 @@ export async function listTasksFromDb(
   db: DbClient,
   query: Parameters<DbRuntimeModule['listTasks']>[1],
 ): ReturnType<DbRuntimeModule['listTasks']> {
-  logDbRuntimeStage('PRISMA_QUERY_START', { queryOperation: 'listTasks' });
-  try {
-    const { listTasks } = await loadDbRuntime();
-    const result = await listTasks(db, query);
-    logDbRuntimeStage('PRISMA_QUERY_SUCCEEDED', { queryOperation: 'listTasks' });
-    return result;
-  } catch (error) {
-    logDbRuntimeStageFailure(error, classifyDbRuntimeStageFailure(error), {
-      queryOperation: 'listTasks',
-    });
-    throw error;
-  }
+  const { listTasks } = await loadDbRuntime();
+  return listTasks(db, query);
 }

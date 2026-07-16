@@ -205,7 +205,20 @@ describe('safe HTTP error mapping', () => {
     expectGenericJson500(response, body);
     expect(consoleErrorSpy.mock.calls.length).toBeGreaterThanOrEqual(1);
     const serializedLogs = consoleErrorSpy.mock.calls.map((call) => String(call[0])).join('\n');
-    expect(serializedLogs).toContain('db_runtime_stage');
+    expect(serializedLogs).toContain('database_runtime_failure');
+  });
+
+  it('does not attach X-AICAA-DB-* headers on unexpected Owner 500', async () => {
+    setDbRuntimeForTests(aicaaDb);
+    delete process.env.DATABASE_URL;
+
+    const response = await listTasks(new Request('http://localhost/api/v1/tasks'));
+    const body = await response.json();
+
+    expectGenericJson500(response, body);
+    for (const [key] of response.headers.entries()) {
+      expect(key.toLowerCase()).not.toMatch(/^x-aicaa-db-/);
+    }
   });
 
   it('logs diagnostics for genuine PersistenceError shape when enabled', () => {

@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import type { components } from '@aicaa/contracts/schema';
 import { jsonErrorResponse, unauthorizedResponse } from '@/lib/auth/http';
-import { attachOwnerTaskDbDiagnosticHeaders } from '@/lib/db/stage-response-headers';
 import type { CapabilityTokenErrorCode } from '@/lib/capability/errors';
 import type { RecipientCapabilityServiceErrorCode } from '@/lib/capability/recipient-errors';
 import {
@@ -51,7 +50,7 @@ function genericInternalErrorResponse(): NextResponse<ErrorResponse> {
 }
 
 function ownerTaskUnexpectedInternalErrorResponse(): NextResponse<ErrorResponse> {
-  return attachOwnerTaskDbDiagnosticHeaders(genericInternalErrorResponse());
+  return genericInternalErrorResponse();
 }
 
 function httpStatusForTaskCode(code: TaskServiceErrorCode): number {

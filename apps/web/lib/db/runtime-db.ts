@@ -1,19 +1,7 @@
 import 'server-only';
-import {
-  classifyDbModuleRequireFailure,
-  logDbRuntimeStage,
-  logDbRuntimeStageFailure,
-} from '@/lib/db/stage-diagnostics';
-import { loadTracedRuntimeModule, resolveTracedRuntimePath } from './db-runtime-entry';
-import {
-  getLastResolvedTracedRuntimePath,
-  resetLastResolvedTracedRuntimePathForTests,
-  setLastResolvedTracedRuntimePath,
-} from './traced-runtime-path';
+import { loadTracedRuntimeModule } from './db-runtime-entry';
 
 export type DbRuntimeModule = Awaited<ReturnType<typeof loadTracedRuntimeModule>>;
-
-export { getLastResolvedTracedRuntimePath };
 
 const REQUIRED_EXPORTS = [
   'createPrismaClient',
@@ -73,7 +61,6 @@ export function resetDbRuntimeForTests(): void {
   cachedRuntime = undefined;
   testRuntimeOverride = undefined;
   runtimePromise = undefined;
-  resetLastResolvedTracedRuntimePathForTests();
 }
 
 /** Test-only injection for Vitest and other non-serverless runtimes. */
@@ -81,16 +68,6 @@ export function setDbRuntimeForTests(runtime: DbRuntimeModule | undefined): void
   testRuntimeOverride = runtime ? validateRuntimeModule(runtime) : undefined;
   cachedRuntime = testRuntimeOverride;
   runtimePromise = undefined;
-}
-
-async function loadProductionRuntimeModule(): Promise<unknown> {
-  const loaded = await loadTracedRuntimeModule();
-  try {
-    setLastResolvedTracedRuntimePath(resolveTracedRuntimePath());
-  } catch {
-    setLastResolvedTracedRuntimePath(undefined);
-  }
-  return loaded;
 }
 
 async function loadAndValidateRuntime(): Promise<DbRuntimeModule> {
@@ -102,35 +79,18 @@ async function loadAndValidateRuntime(): Promise<DbRuntimeModule> {
     return cachedRuntime;
   }
 
-  logDbRuntimeStage('DB_RUNTIME_LOAD_START');
-
   let loaded: unknown;
   try {
-    loaded = await loadProductionRuntimeModule();
-  } catch (error) {
-    logDbRuntimeStageFailure(error, classifyDbModuleRequireFailure(error), {
-      moduleLoaded: false,
-      exportsValidated: false,
-    });
+    loaded = await loadTracedRuntimeModule();
+  } catch {
     throw new DbRuntimeConfigurationError();
   }
-
-  logDbRuntimeStage('DB_RUNTIME_MODULE_LOADED', { moduleLoaded: true });
 
   try {
     cachedRuntime = validateRuntimeModule(loaded);
   } catch (error) {
-    logDbRuntimeStageFailure(error, 'DB_EXPORTS_MISSING', {
-      moduleLoaded: true,
-      exportsValidated: false,
-    });
     throw error;
   }
-
-  logDbRuntimeStage('DB_RUNTIME_EXPORTS_VALIDATED', {
-    moduleLoaded: true,
-    exportsValidated: true,
-  });
 
   return cachedRuntime;
 }

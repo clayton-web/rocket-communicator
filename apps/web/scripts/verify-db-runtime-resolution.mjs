@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import {
   DB_BACKED_API_ROUTE_NFTS,
   DB_BACKED_PAGE_ROUTE_NFTS,
-  DB_RUNTIME_LOAD_START_STAGE,
+  TRACED_DB_RUNTIME_MARKER,
   INVALID_ROOT_PATTERN,
   assertBuiltOutputUsesRuntimeBridge,
   assertNftIncludesDbPackageRuntime,
@@ -30,7 +30,7 @@ const DB_STUB_PATTERNS = [
 
 const REQUIRED_RUNTIME_MARKERS = [
   'loadDbRuntime',
-  DB_RUNTIME_LOAD_START_STAGE,
+  TRACED_DB_RUNTIME_MARKER,
   'createPrismaClient',
 ];
 

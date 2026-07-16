@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto';
 import { getAuthenticatedOwner, type AuthenticatedOwner } from '@/lib/auth/require-owner';
 import { logDatabaseRuntimeFailure } from '@/lib/db/diagnostics';
 import { getDb } from '@/lib/db/server';
-import { runWithDbStageContext, updateDbStageContext } from '@/lib/db/stage-context';
 import { mapOwnerTaskRouteError, unauthorizedResponse } from '@/lib/http/errors';
 import type { DbClient } from '@aicaa/db';
 import type { OwnerActor } from '@aicaa/domain';
@@ -35,8 +34,6 @@ export async function requireOwnerTaskContext(
     return { ok: false, response: unauthorizedResponse() };
   }
   const requestId = randomUUID();
-  const routePathname = new URL(request.url).pathname;
-  updateDbStageContext({ routePathname, requestId });
   return {
     ok: true,
     context: {
@@ -49,31 +46,25 @@ export async function requireOwnerTaskContext(
   };
 }
 
-function routePathname(request: Request): string {
-  return new URL(request.url).pathname;
-}
-
 export async function runOwnerTaskRoute(
   request: Request,
   handler: (context: OwnerTaskRouteContext) => Promise<Response>,
 ): Promise<Response> {
-  const pathname = routePathname(request);
-  return runWithDbStageContext({ routePathname: pathname }, async () => {
-    let requestId: string | undefined;
+  const pathname = new URL(request.url).pathname;
+  let requestId: string | undefined;
 
-    try {
-      const auth = await requireOwnerTaskContext(request);
-      if (!auth.ok) {
-        return auth.response;
-      }
-      requestId = auth.context.requestId;
-      return await handler(auth.context);
-    } catch (error) {
-      logDatabaseRuntimeFailure(error, {
-        routePathname: pathname,
-        requestId,
-      });
-      return mapOwnerTaskRouteError(error);
+  try {
+    const auth = await requireOwnerTaskContext(request);
+    if (!auth.ok) {
+      return auth.response;
     }
-  });
+    requestId = auth.context.requestId;
+    return await handler(auth.context);
+  } catch (error) {
+    logDatabaseRuntimeFailure(error, {
+      routePathname: pathname,
+      requestId,
+    });
+    return mapOwnerTaskRouteError(error);
+  }
 }

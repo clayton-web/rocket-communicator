@@ -246,10 +246,7 @@ describe('database runtime diagnostics', () => {
     expect(body.error.code).toBe('INTERNAL_ERROR');
     expect(consoleErrorSpy.mock.calls.length).toBeGreaterThanOrEqual(1);
     const serializedLogs = consoleErrorSpy.mock.calls.map((call) => String(call[0])).join('\n');
-    expect(
-      serializedLogs.includes('database_runtime_failure') ||
-        serializedLogs.includes('db_runtime_stage'),
-    ).toBe(true);
+    expect(serializedLogs).toContain('database_runtime_failure');
     assertSafeSerializedLog(serializedLogs);
   });
 

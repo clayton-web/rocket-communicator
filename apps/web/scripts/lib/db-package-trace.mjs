@@ -18,6 +18,7 @@ export const DB_RUNTIME_BRIDGE_EXPORTS = ['loadTracedRuntimeModule'];
 export const DB_RUNTIME_LITERAL_SPECIFIER = '../../../../packages/db/dist/runtime.js';
 export const DB_RUNTIME_TOO_DYNAMIC_MARKER = 'expression is too dynamic';
 export const DB_RUNTIME_LOAD_START_STAGE = 'DB_RUNTIME_LOAD_START';
+export const TRACED_DB_RUNTIME_MARKER = 'Traced DB runtime';
 export const DB_TESTING_LITERAL = '@aicaa/db/testing';
 export const DOMAIN_PACKAGE_LITERAL = '@aicaa/domain';
 export const DOMAIN_NODE_MODULES_RELATIVE = 'apps/web/node_modules/@aicaa/domain';
@@ -626,7 +627,7 @@ export function findBridgeChunkFiles(webRoot) {
   const chunksDir = path.join(webRoot, '.next/server/chunks');
   return listDistJsFiles(chunksDir).filter((filePath) => {
     const content = fs.readFileSync(filePath, 'utf8');
-    return content.includes('loadDbRuntime') && content.includes(DB_RUNTIME_LOAD_START_STAGE);
+    return content.includes('loadDbRuntime') && content.includes(TRACED_DB_RUNTIME_MARKER);
   });
 }
 
@@ -703,9 +704,9 @@ function assertStaticBridgeInChunk(content, chunkPath) {
     );
   }
 
-  if (!content.includes(DB_RUNTIME_LOAD_START_STAGE)) {
+  if (!content.includes(TRACED_DB_RUNTIME_MARKER)) {
     throw new Error(
-      `compiled bridge is missing ${DB_RUNTIME_LOAD_START_STAGE} in ${path.basename(chunkPath)}`,
+      `compiled bridge is missing ${TRACED_DB_RUNTIME_MARKER} in ${path.basename(chunkPath)}`,
     );
   }
 
@@ -769,7 +770,7 @@ function findLayoutBridgeChunkPath(layoutWeb) {
   const chunksDir = path.join(layoutWeb, '.next/server/chunks');
   const bridgeChunks = listDistJsFiles(chunksDir).filter((filePath) => {
     const content = fs.readFileSync(filePath, 'utf8');
-    return content.includes('loadDbRuntime') && content.includes(DB_RUNTIME_LOAD_START_STAGE);
+    return content.includes('loadDbRuntime') && content.includes(TRACED_DB_RUNTIME_MARKER);
   });
   if (bridgeChunks.length === 0) {
     return undefined;
@@ -997,8 +998,8 @@ export function assertBuiltOutputUsesRuntimeBridge(webRoot, repoRoot) {
   if (!combined.includes('loadDbRuntime')) {
     throw new Error('built bridge output does not reference loadDbRuntime');
   }
-  if (!combined.includes(DB_RUNTIME_LOAD_START_STAGE)) {
-    throw new Error(`built bridge output does not reference ${DB_RUNTIME_LOAD_START_STAGE}`);
+  if (!combined.includes(TRACED_DB_RUNTIME_MARKER)) {
+    throw new Error(`built bridge output does not reference ${TRACED_DB_RUNTIME_MARKER}`);
   }
   if (!combined.includes('createPrismaClient')) {
     throw new Error('built bridge output does not reference createPrismaClient');
