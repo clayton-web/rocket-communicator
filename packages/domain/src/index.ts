@@ -8,6 +8,10 @@ export type {
   TaskSuggestionId,
   SummaryPointId,
   SourceReferenceId,
+  CommunicationAccountId,
+  CommunicationEventId,
+  GmailSyncRunId,
+  TemporaryCommunicationExcerptId,
   UserId,
 } from './types/ids.js';
 export {
@@ -19,6 +23,10 @@ export {
   asCapabilityId,
   asTaskId,
   asTaskSuggestionId,
+  asCommunicationAccountId,
+  asCommunicationEventId,
+  asGmailSyncRunId,
+  asTemporaryCommunicationExcerptId,
 } from './types/ids.js';
 export type {
   Actor,
@@ -27,7 +35,7 @@ export type {
   SystemActor,
   AuthenticatedRole,
 } from './types/actor.js';
-export { isOwner, isCapability, isSystem, ownerActor } from './types/actor.js';
+export { isOwner, isCapability, isSystem, ownerActor, systemActor } from './types/actor.js';
 export type { UtcInstant } from './types/timestamps.js';
 export { toUtcInstant, parseUtcInstant, addMilliseconds, MS_PER_DAY } from './types/timestamps.js';
 
@@ -49,6 +57,35 @@ export type {
 } from './value-objects/task-summary-point.js';
 export { MAX_SUMMARY_POINTS, MAX_TEXT_VALUE_LENGTH } from './value-objects/task-summary-point.js';
 export type { SourceReference, SourceType } from './value-objects/source-reference.js';
+export type {
+  CommunicationProvider,
+  CommunicationAccountStatus,
+  GmailHistoryState,
+  GmailSyncTrigger,
+  GmailSyncOutcome,
+  CommunicationEventStatus,
+  CommunicationAccount,
+  CommunicationEvent,
+  TemporaryCommunicationExcerpt,
+  GmailSyncRun,
+  AttachmentMetadataItem,
+  ParsedGmailMessageFixture,
+} from './value-objects/gmail.js';
+export {
+  DEFAULT_GMAIL_POLL_INTERVAL_MINUTES,
+  MAX_GMAIL_EXCERPT_BYTES,
+  MAX_GMAIL_SUBJECT_LENGTH,
+  MAX_GMAIL_SNIPPET_LENGTH,
+  GMAIL_INBOX_LABEL_ID,
+  GMAIL_READONLY_SCOPE,
+  assertGmailMailboxMatchesWorkspaceDomain,
+  isGmailInboxEligible,
+  assertExcerptWithinCap,
+  measureExcerptByteLength,
+  truncateGmailSubject,
+  truncateGmailSnippet,
+  buildGmailDedupeKey,
+} from './value-objects/gmail.js';
 export type { TaskAssignment } from './value-objects/task-assignment.js';
 export type {
   CapabilityAction,

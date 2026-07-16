@@ -60,7 +60,38 @@ describe('contracts package', () => {
     const generated = readFileSync(path.join(root, 'generated/typescript/schema.ts'), 'utf8');
     expect(generated).toContain('TaskSuggestion');
     expect(generated).toContain('TaskStatus');
+    expect(generated).toContain('GmailConnection');
+    expect(generated).toContain('GmailSyncRun');
+    expect(generated).toContain('GmailConnectionStatus');
   }, 120_000);
+
+  it('keeps Gmail public schemas free of token and ciphertext fields', () => {
+    execSync('pnpm bundle', { cwd: root, stdio: 'pipe' });
+    const bundled = parseYaml(readFileSync(path.join(root, 'dist/openapi.bundled.yaml'), 'utf8'));
+    const schemas = bundled.components?.schemas ?? {};
+    const gmailSchemas = [
+      'GmailConnection',
+      'GmailDisconnectResponse',
+      'GmailSyncRun',
+      'GmailSyncResponse',
+      'GmailPollResponse',
+    ];
+    const forbiddenPropertyNames =
+      /^(refreshToken|accessToken|encryptedRefreshToken|encryptedAccessToken|encryptionKeyVersion|clientSecret|pkceVerifier|codeVerifier)$/i;
+    for (const name of gmailSchemas) {
+      const schema = schemas[name] as { properties?: Record<string, unknown> } | undefined;
+      for (const propertyName of Object.keys(schema?.properties ?? {})) {
+        expect(propertyName).not.toMatch(forbiddenPropertyNames);
+      }
+    }
+    expect(bundled.paths?.['/api/v1/gmail/connection']).toBeDefined();
+    expect(bundled.paths?.['/api/v1/internal/gmail/poll']).toBeDefined();
+    expect(bundled.paths?.['/api/v1/communication-events']).toBeUndefined();
+    expect(schemas.GmailPollRequest).toBeUndefined();
+    const pollSecurity = bundled.paths?.['/api/v1/internal/gmail/poll']?.post?.security;
+    expect(pollSecurity).toEqual([{ InternalCronBearer: [] }]);
+    expect(bundled.components?.securitySchemes?.InternalCronBearer).toBeDefined();
+  });
 
   it('has no stale generated Kotlin artifacts outside the generator manifest', () => {
     execSync('node scripts/cleanup-kotlin-orphans.mjs --check', { cwd: root, stdio: 'pipe' });

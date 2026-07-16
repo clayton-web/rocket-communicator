@@ -10,3 +10,12 @@ components:
         Recipient capability routes use the `{token}` path parameter instead;
         OpenAPI cannot express path-based apiKey schemes, so those routes set
         `security: []` and document authorization on the CapabilityToken parameter.
+    InternalCronBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+      description: |
+        Internal scheduled-job Authorization bearer credential.
+        The configured CRON_SECRET value is validated by the handler in a later A5 chunk.
+        This is not an Owner session JWT and must never be documented as a secret
+        value in schemas or examples. Public unauthenticated access is forbidden.

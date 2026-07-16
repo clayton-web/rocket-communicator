@@ -58,13 +58,15 @@ Governed by [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md). Definitions: [GL
 ## Secrets and credentials
 
 - Env secrets only; commit `.env.example` placeholders, never real values.
-- Encrypt Gmail OAuth tokens server-side; never ship to Android.
+- Encrypt Gmail OAuth tokens server-side as ciphertext only (`GmailOAuthCredential`); never ship to Android; never expose on public Gmail DTOs.
 - Owner Session tokens on Android use platform secure storage.
 - Recipient emails and allowlists from secure configuration, not source hard-coding.
 
-## Audit (A4 field set)
+## Audit (A4 field set; A5 system actor)
 
 Record capability ID, bound resource IDs, action, timestamp, request ID, outcome, state/version context, truthful attribution (D057). Raw IP and full user-agent deferred. Wording must not overstate identity (D052).
+
+**A5 (D074):** scheduled Gmail polling uses `AuditActorKind.system` with a `systemId` (for example `gmail_poll`). Do not fake Owner attribution for cron. Owner and capability actor kinds remain unchanged.
 
 Also audit: suggestion decisions, assignment/forward approvals, reminder attempts, retention runs, authz denials, Gmail reauth, work-request Suggestions.
 

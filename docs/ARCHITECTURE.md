@@ -72,7 +72,7 @@ Do not share Zod types with Kotlin. Generate clients from OpenAPI. Neon is not u
 
 **Web:** Owner-authenticated routes for Owner APIs (D048). Recipient mutations use `/api/v1/capabilities/{token}/…` (D059). Browser view `GET /c/[token]` is non-mutating. Capability secrets: hash at rest; one-time raw reveal to Owner (D063); seven-day default TTL with persisted `expiresAt` (D055); multi-use until invalidation (D056). Persistence: `@aicaa/db`. Dismiss, not physical delete (D064).
 
-**Gmail (planned — A5+):** One Owner inbox; polling-first (D015). On approved Gmail-origin assignment: forward original with attachments after single confirmation (D037). Future schema may add `CommunicationAccount` rows; v1 will implement one account when A5 lands.
+**Gmail (A5):** One Owner inbox per organization; poll every five minutes (D065); polling-only in A5 (D066). Inbox-only ingestion (D068); Workspace-domain mailbox gate (D069); `gmail.readonly` only (D070). Persistence models (`CommunicationAccount`, encrypted credential ciphertext, `CommunicationEvent`, temporary excerpts, `GmailSyncRun`) land in A5.1–A5.2. **OpenAPI contracts are defined; no Gmail HTTP/OAuth/polling handlers exist yet.** A5 creates communication events only — not suggestions (D077). On approved Gmail-origin assignment (A7): forward original with attachments after single confirmation (D037).
 
 **AI:** Tiered jobs (relevance → extract → recommend → transcribe → outcomes → learning suggestions). Recommendations never silently become tasks, assignments, or emails. Learning Owner-only (D054).
 

@@ -9,8 +9,10 @@ info:
     Canonical HTTP contract for the AI Communication Action Assistant.
     OpenAPI is the source of truth (D007). A3 Owner session authentication and A4
     Owner task + Recipient capability routes are implemented and production-verified.
-    Task suggestion HTTP handlers are contract-only until A6. Owner and capability
-    authorization surfaces are separate (D059).
+    Task suggestion HTTP handlers are contract-only until A6. A5 Gmail connection and
+    sync paths are contracted here with persistence foundation in A5.1–A5.2;
+    no Gmail HTTP/OAuth/polling handlers exist yet.
+    Owner and capability authorization surfaces are separate (D059).
 servers:
   - url: https://api.example.invalid
     description: Placeholder server URL for contract generation only
@@ -23,6 +25,11 @@ tags:
     description: Owner-authorized actionable work items.
   - name: Capabilities
     description: Recipient capability-token routes (separate from Owner session APIs).
+  - name: Gmail
+    description: |
+      Owner Gmail connection and sync (A5). Contracts defined; persistence foundation
+      in A5.1–A5.2; HTTP/OAuth/polling handlers pending. Does not create Task Suggestions (D077).
+      Internal poll uses InternalCronBearer (CRON_SECRET), not Owner session.
 security:
   - bearerAuth: []
 paths:
@@ -80,6 +87,20 @@ paths:
     $ref: './paths/capabilities.yaml#/paths/~1api~1v1~1capabilities~1{token}~1tasks~1{taskId}~1clarification-requests'
   /api/v1/capabilities/{token}/tasks/{taskId}/work-requests:
     $ref: './paths/capabilities.yaml#/paths/~1api~1v1~1capabilities~1{token}~1tasks~1{taskId}~1work-requests'
+  /api/v1/gmail/connection:
+    $ref: './paths/gmail.yaml#/paths/~1api~1v1~1gmail~1connection'
+  /api/v1/gmail/oauth/start:
+    $ref: './paths/gmail.yaml#/paths/~1api~1v1~1gmail~1oauth~1start'
+  /api/v1/gmail/oauth/callback:
+    $ref: './paths/gmail.yaml#/paths/~1api~1v1~1gmail~1oauth~1callback'
+  /api/v1/gmail/disconnect:
+    $ref: './paths/gmail.yaml#/paths/~1api~1v1~1gmail~1disconnect'
+  /api/v1/gmail/sync:
+    $ref: './paths/gmail.yaml#/paths/~1api~1v1~1gmail~1sync'
+  /api/v1/gmail/sync-runs:
+    $ref: './paths/gmail.yaml#/paths/~1api~1v1~1gmail~1sync-runs'
+  /api/v1/internal/gmail/poll:
+    $ref: './paths/gmail.yaml#/paths/~1api~1v1~1internal~1gmail~1poll'
 components:
   schemas:
     ErrorResponse:
@@ -180,9 +201,35 @@ components:
       $ref: './components/schemas/reminder-retention.yaml#/components/schemas/ReminderMetadata'
     RetentionMetadata:
       $ref: './components/schemas/reminder-retention.yaml#/components/schemas/RetentionMetadata'
+    CommunicationProvider:
+      $ref: './components/schemas/gmail.yaml#/components/schemas/CommunicationProvider'
+    GmailConnectionStatus:
+      $ref: './components/schemas/gmail.yaml#/components/schemas/GmailConnectionStatus'
+    GmailHistoryState:
+      $ref: './components/schemas/gmail.yaml#/components/schemas/GmailHistoryState'
+    GmailSyncTrigger:
+      $ref: './components/schemas/gmail.yaml#/components/schemas/GmailSyncTrigger'
+    GmailSyncOutcome:
+      $ref: './components/schemas/gmail.yaml#/components/schemas/GmailSyncOutcome'
+    GmailConnection:
+      $ref: './components/schemas/gmail.yaml#/components/schemas/GmailConnection'
+    GmailDisconnectRequest:
+      $ref: './components/schemas/gmail.yaml#/components/schemas/GmailDisconnectRequest'
+    GmailDisconnectResponse:
+      $ref: './components/schemas/gmail.yaml#/components/schemas/GmailDisconnectResponse'
+    GmailSyncRequest:
+      $ref: './components/schemas/gmail.yaml#/components/schemas/GmailSyncRequest'
+    GmailSyncRun:
+      $ref: './components/schemas/gmail.yaml#/components/schemas/GmailSyncRun'
+    GmailSyncResponse:
+      $ref: './components/schemas/gmail.yaml#/components/schemas/GmailSyncResponse'
+    GmailPollResponse:
+      $ref: './components/schemas/gmail.yaml#/components/schemas/GmailPollResponse'
   securitySchemes:
     bearerAuth:
       $ref: './components/security.yaml#/components/securitySchemes/bearerAuth'
+    InternalCronBearer:
+      $ref: './components/security.yaml#/components/securitySchemes/InternalCronBearer'
   parameters:
     CapabilityToken:
       $ref: './components/parameters.yaml#/components/parameters/CapabilityToken'

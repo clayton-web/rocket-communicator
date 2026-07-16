@@ -16,4 +16,23 @@ export const API_DOMAIN_STATUS_MAP = {
   role: {
     owner: 'owner',
   },
+  gmailConnectionStatus: {
+    not_connected: 'not_connected',
+    pending: 'pending',
+    connected: 'connected',
+    needs_reauth: 'needs_reauth',
+    resync_required: 'resync_required',
+    disconnected: 'disconnected',
+    error: 'error',
+  },
+  gmailSyncOutcome: {
+    running: 'running',
+    succeeded: 'succeeded',
+    partial: 'partial',
+    retryable_failure: 'retryable_failure',
+    permanent_failure: 'permanent_failure',
+    skipped_locked: 'skipped_locked',
+    needs_reauth: 'needs_reauth',
+    resync_required: 'resync_required',
+  },
 } as const;

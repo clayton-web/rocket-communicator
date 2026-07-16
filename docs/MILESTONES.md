@@ -46,9 +46,9 @@ Process: [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW.md) · [REVIEW_CHECKLIST
 
 ### A5 — Gmail connection and polling
 
-Connect one inbox; poll; create communication events. Polling-first (D015). No AI suggestions or forwarding yet.
+Connect one inbox; poll every **five minutes** (D065); create communication events only (D077). Polling-only in A5 (D066); Pub/Sub deferred. No AI suggestions or forwarding yet.
 
-**Planning assumption (OPEN #4):** provisional default poll interval **no less frequently than every 5 minutes**; exact interval requires Owner approval during A5 planning. Webhook/push may be evaluated but must not be assumed.
+**A5.1–A5.2:** OpenAPI Gmail contracts, domain types/invariants, Prisma models, forward-only migration, repositories, and DB tests. **No Gmail HTTP route is implemented.** Route statuses: contract defined (all); persistence foundation implemented where models/repos exist; HTTP/OAuth/polling/UI pending later A5 chunks. Production migration must not be applied until Owner approval.
 
 ### A6 — AI relevance and task suggestions
 

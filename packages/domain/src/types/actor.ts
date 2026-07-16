@@ -43,3 +43,7 @@ export function isSystem(actor: Actor): actor is SystemActor {
 export function ownerActor(ownerId: OwnerId, organizationId: OrganizationId): OwnerActor {
   return { kind: 'owner', ownerId, organizationId };
 }
+
+export function systemActor(systemId: string): SystemActor {
+  return { kind: 'system', systemId };
+}

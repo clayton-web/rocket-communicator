@@ -1,0 +1,194 @@
+components:
+  schemas:
+    CommunicationProvider:
+      type: string
+      enum:
+        - gmail
+      description: Connected communication provider. A5 supports Gmail only.
+    GmailConnectionStatus:
+      type: string
+      enum:
+        - not_connected
+        - pending
+        - connected
+        - needs_reauth
+        - resync_required
+        - disconnected
+        - error
+      description: Owner-visible Gmail connection lifecycle (D065–D076).
+    GmailHistoryState:
+      type: string
+      enum:
+        - unset
+        - valid
+        - resync_required
+      description: |
+        History cursor validity. Invalid/expired cursors must surface as
+        resync_required — never silently reset (D076).
+    GmailSyncTrigger:
+      type: string
+      enum:
+        - cron
+        - manual
+        - initial
+      description: What started a sync run.
+    GmailSyncOutcome:
+      type: string
+      enum:
+        - running
+        - succeeded
+        - partial
+        - retryable_failure
+        - permanent_failure
+        - skipped_locked
+        - needs_reauth
+        - resync_required
+      description: Safe sync-run outcome for Owner and operations views.
+    GmailConnection:
+      type: object
+      required:
+        - status
+        - provider
+        - pollingIntervalMinutes
+        - inboxOnly
+        - readonlyScope
+        - historyState
+      properties:
+        status:
+          $ref: '#/components/schemas/GmailConnectionStatus'
+        provider:
+          $ref: '#/components/schemas/CommunicationProvider'
+        emailAddress:
+          type: string
+          format: email
+          maxLength: 320
+          description: Connected mailbox address when known. Never a token.
+        connectedAt:
+          type: string
+          format: date-time
+        lastSyncAt:
+          type: string
+          format: date-time
+        lastSuccessAt:
+          type: string
+          format: date-time
+        lastErrorCode:
+          type: string
+          maxLength: 64
+          description: Stable machine code only; never raw provider payloads.
+        historyState:
+          $ref: '#/components/schemas/GmailHistoryState'
+        pollingIntervalMinutes:
+          type: integer
+          minimum: 1
+          maximum: 60
+          description: Configured poll interval (D065 default 5).
+        inboxOnly:
+          type: boolean
+          description: Always true in A5 (D068).
+        readonlyScope:
+          type: boolean
+          description: Always true in A5 — gmail.readonly only (D070).
+      description: |
+        Safe Owner-facing Gmail connection status. Must never include refresh tokens,
+        access tokens, ciphertext, encryption key versions, OAuth codes, or PKCE secrets.
+    GmailDisconnectRequest:
+      type: object
+      required:
+        - confirmation
+      properties:
+        confirmation:
+          type: string
+          enum:
+            - confirmed
+          description: Explicit Owner confirmation to disconnect Gmail.
+    GmailDisconnectResponse:
+      type: object
+      required:
+        - connection
+      properties:
+        connection:
+          $ref: '#/components/schemas/GmailConnection'
+    GmailSyncRequest:
+      type: object
+      additionalProperties: false
+      properties: {}
+      description: Owner-triggered manual sync. Empty body; authentication is the Owner session.
+    GmailSyncRun:
+      type: object
+      required:
+        - id
+        - trigger
+        - outcome
+        - startedAt
+        - messagesExamined
+        - eventsCreated
+        - eventsUpdated
+        - messagesSkipped
+        - retryable
+      properties:
+        id:
+          type: string
+          minLength: 1
+          maxLength: 64
+        trigger:
+          $ref: '#/components/schemas/GmailSyncTrigger'
+        outcome:
+          $ref: '#/components/schemas/GmailSyncOutcome'
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: string
+          format: date-time
+        messagesExamined:
+          type: integer
+          minimum: 0
+        eventsCreated:
+          type: integer
+          minimum: 0
+        eventsUpdated:
+          type: integer
+          minimum: 0
+        messagesSkipped:
+          type: integer
+          minimum: 0
+        retryable:
+          type: boolean
+        errorCode:
+          type: string
+          maxLength: 64
+          description: Stable machine code only; never raw exception text or tokens.
+        requestId:
+          type: string
+          maxLength: 64
+      description: |
+        Safe sync-run summary. Must never include historyId secrets that are not already
+        Owner-visible operational state, tokens, or raw provider error bodies.
+    GmailSyncResponse:
+      type: object
+      required:
+        - run
+        - connection
+      properties:
+        run:
+          $ref: '#/components/schemas/GmailSyncRun'
+        connection:
+          $ref: '#/components/schemas/GmailConnection'
+    GmailPollResponse:
+      type: object
+      required:
+        - runsProcessed
+        - skippedLocked
+        - requestId
+      properties:
+        runsProcessed:
+          type: integer
+          minimum: 0
+        skippedLocked:
+          type: integer
+          minimum: 0
+        requestId:
+          type: string
+          maxLength: 64
+      description: Aggregate poll outcome. No tokens or per-message bodies.

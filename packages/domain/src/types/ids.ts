@@ -7,6 +7,12 @@ export type TaskId = string & { readonly __brand: 'TaskId' };
 export type TaskSuggestionId = string & { readonly __brand: 'TaskSuggestionId' };
 export type SummaryPointId = string & { readonly __brand: 'SummaryPointId' };
 export type SourceReferenceId = string & { readonly __brand: 'SourceReferenceId' };
+export type CommunicationAccountId = string & { readonly __brand: 'CommunicationAccountId' };
+export type CommunicationEventId = string & { readonly __brand: 'CommunicationEventId' };
+export type GmailSyncRunId = string & { readonly __brand: 'GmailSyncRunId' };
+export type TemporaryCommunicationExcerptId = string & {
+  readonly __brand: 'TemporaryCommunicationExcerptId';
+};
 
 /** @deprecated Use OwnerId. Retained for transitional mapping only. */
 export type UserId = OwnerId;
@@ -42,4 +48,20 @@ export function asTaskId(value: string): TaskId {
 
 export function asTaskSuggestionId(value: string): TaskSuggestionId {
   return value as TaskSuggestionId;
+}
+
+export function asCommunicationAccountId(value: string): CommunicationAccountId {
+  return value as CommunicationAccountId;
+}
+
+export function asCommunicationEventId(value: string): CommunicationEventId {
+  return value as CommunicationEventId;
+}
+
+export function asGmailSyncRunId(value: string): GmailSyncRunId {
+  return value as GmailSyncRunId;
+}
+
+export function asTemporaryCommunicationExcerptId(value: string): TemporaryCommunicationExcerptId {
+  return value as TemporaryCommunicationExcerptId;
 }

@@ -123,6 +123,22 @@ Recipient **work requests** in A4 create pending suggestions in persistence with
 
 Return-to-Owner (either surface) clears assignment ownership; Task status unchanged.
 
+### Owner Gmail routes (A5)
+
+**No Gmail HTTP handlers exist yet.** OpenAPI contracts and persistence foundation (A5.1–A5.2) only.
+
+| Method | Path                           | Purpose                                        | Status                                                                  |
+| ------ | ------------------------------ | ---------------------------------------------- | ----------------------------------------------------------------------- |
+| GET    | `/api/v1/gmail/connection`     | Safe connection status                         | Contract defined; persistence foundation implemented; HTTP pending      |
+| GET    | `/api/v1/gmail/oauth/start`    | Start OAuth redirect (`gmail.readonly`)        | Contract defined; implementation pending                                |
+| GET    | `/api/v1/gmail/oauth/callback` | OAuth callback redirect (no tokens in query)   | Contract defined; implementation pending                                |
+| POST   | `/api/v1/gmail/disconnect`     | Disconnect and wipe credential ciphertext      | Contract defined; persistence foundation implemented; HTTP pending      |
+| POST   | `/api/v1/gmail/sync`           | Owner manual sync                              | Contract defined; persistence foundation implemented; HTTP pending      |
+| GET    | `/api/v1/gmail/sync-runs`      | Recent safe sync-run summaries                 | Contract defined; persistence foundation implemented; HTTP pending      |
+| POST   | `/api/v1/internal/gmail/poll`  | Cron poll (`InternalCronBearer`; system audit) | Contract defined; persistence foundation implemented; HTTP/cron pending |
+
+Public Gmail DTOs never include refresh/access tokens, ciphertext, encryption key versions, OAuth codes, or PKCE secrets. Internal poll uses `InternalCronBearer` (configured CRON_SECRET), not Owner session and not public unauthenticated access. A5 does **not** expose communication-event list/browser endpoints (D073).
+
 ## Assignment approval request semantics (D037)
 
 `ApproveTaskSuggestionRequest` records Owner intent (summary, Recipient, priority/due, `acknowledgement: assignment_approved`). It does not expose internal side-effect toggles. Server derives task creation, assignment, reminders, capability issuance, and Gmail forward/email as applicable. **Future milestone:** A6/A7 handlers.

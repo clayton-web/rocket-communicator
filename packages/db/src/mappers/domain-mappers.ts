@@ -2,6 +2,9 @@ import type {
   ActionAttribution,
   CapabilityStatus,
   CapabilityScope,
+  CommunicationAccount,
+  CommunicationEvent,
+  GmailSyncRun,
   ReminderMetadata,
   RetentionMetadata,
   SourceReference,
@@ -12,26 +15,35 @@ import type {
   TaskOutcome,
   TaskSuggestion,
   TaskSummaryPoint,
+  TemporaryCommunicationExcerpt,
   Recipient,
 } from '@aicaa/domain';
 import {
   asAssignmentId,
   asCapabilityId,
+  asCommunicationAccountId,
+  asCommunicationEventId,
+  asGmailSyncRunId,
   asOrganizationId,
   asOwnerId,
   asRecipientId,
   asTaskId,
   asTaskSuggestionId,
+  asTemporaryCommunicationExcerptId,
   toUtcInstant,
 } from '../../../domain/dist/index.js';
 import type {
   AuditEvent as PrismaAuditEvent,
+  CommunicationAccount as PrismaCommunicationAccount,
+  CommunicationEvent as PrismaCommunicationEvent,
+  GmailSyncRun as PrismaGmailSyncRun,
   Recipient as PrismaRecipient,
   Task as PrismaTask,
   TaskAssignment as PrismaAssignment,
   TaskCapability as PrismaCapability,
   TaskNote as PrismaNote,
   TaskSuggestion as PrismaSuggestion,
+  TemporaryCommunicationExcerpt as PrismaTemporaryCommunicationExcerpt,
 } from '../generated/client/index.js';
 
 export function toIso(value: Date): string {
@@ -150,12 +162,16 @@ export function mapCapability(row: PrismaCapability): TaskCapability & { tokenHa
 export type AuditEventRecord = {
   id: string;
   organizationId: string;
-  actorKind: 'owner' | 'capability';
+  actorKind: 'owner' | 'capability' | 'system';
   ownerId?: string;
   capabilityId?: string;
+  systemId?: string;
   assignmentId?: string;
   taskId?: string;
   suggestionId?: string;
+  communicationAccountId?: string;
+  communicationEventId?: string;
+  gmailSyncRunId?: string;
   intendedRecipientEmail?: string;
   action: string;
   outcome: 'succeeded' | 'denied' | 'failed';
@@ -175,9 +191,13 @@ export function mapAuditEvent(row: PrismaAuditEvent): AuditEventRecord {
     actorKind: row.actorKind,
     ownerId: row.ownerId ?? undefined,
     capabilityId: row.capabilityId ?? undefined,
+    systemId: row.systemId ?? undefined,
     assignmentId: row.assignmentId ?? undefined,
     taskId: row.taskId ?? undefined,
     suggestionId: row.suggestionId ?? undefined,
+    communicationAccountId: row.communicationAccountId ?? undefined,
+    communicationEventId: row.communicationEventId ?? undefined,
+    gmailSyncRunId: row.gmailSyncRunId ?? undefined,
     intendedRecipientEmail: row.intendedRecipientEmail ?? undefined,
     action: row.action,
     outcome: row.outcome,
@@ -188,5 +208,97 @@ export function mapAuditEvent(row: PrismaAuditEvent): AuditEventRecord {
     correlationId: row.correlationId,
     attributionLabel: row.attributionLabel ?? undefined,
     recordedAt: toIso(row.recordedAt),
+  };
+}
+
+export function mapCommunicationAccount(row: PrismaCommunicationAccount): CommunicationAccount {
+  return {
+    id: asCommunicationAccountId(row.id),
+    organizationId: asOrganizationId(row.organizationId),
+    provider: row.provider,
+    emailAddress: row.emailAddress,
+    externalAccountId: row.externalAccountId,
+    status: row.status,
+    historyId: row.historyId,
+    historyState: row.historyState,
+    connectedAt: row.connectedAt ? toIso(row.connectedAt) : null,
+    disconnectedAt: row.disconnectedAt ? toIso(row.disconnectedAt) : null,
+    lastSyncAt: row.lastSyncAt ? toIso(row.lastSyncAt) : null,
+    lastSuccessAt: row.lastSuccessAt ? toIso(row.lastSuccessAt) : null,
+    lastErrorCode: row.lastErrorCode,
+    lastErrorAt: row.lastErrorAt ? toIso(row.lastErrorAt) : null,
+    syncLockUntil: row.syncLockUntil ? toIso(row.syncLockUntil) : null,
+  };
+}
+
+export type GmailOAuthCredentialRecord = {
+  id: string;
+  accountId: string;
+  organizationId: string;
+  encryptedRefreshToken: string;
+  encryptedAccessToken: string | null;
+  accessTokenExpiresAt: string | null;
+  grantedScopes: string;
+  tokenType: string | null;
+  encryptionKeyVersion: string;
+};
+
+export function mapCommunicationEvent(row: PrismaCommunicationEvent): CommunicationEvent {
+  return {
+    id: asCommunicationEventId(row.id),
+    organizationId: asOrganizationId(row.organizationId),
+    accountId: asCommunicationAccountId(row.accountId),
+    sourceType: 'gmail',
+    providerMessageId: row.providerMessageId,
+    providerThreadId: row.providerThreadId,
+    dedupeKey: row.dedupeKey,
+    internalDate: toIso(row.internalDate),
+    receivedAt: toIso(row.receivedAt),
+    fromAddress: row.fromAddress,
+    toAddresses: row.toAddresses as unknown as string[],
+    subject: row.subject,
+    snippet: row.snippet,
+    labelIds: row.labelIds as unknown as string[],
+    hasAttachments: row.hasAttachments,
+    attachmentMetadata:
+      row.attachmentMetadata as unknown as CommunicationEvent['attachmentMetadata'],
+    status: row.status,
+    ingestRunId: row.ingestRunId ? asGmailSyncRunId(row.ingestRunId) : null,
+    purgeAt: row.purgeAt ? toIso(row.purgeAt) : null,
+  };
+}
+
+export function mapTemporaryCommunicationExcerpt(
+  row: PrismaTemporaryCommunicationExcerpt,
+): TemporaryCommunicationExcerpt {
+  return {
+    id: asTemporaryCommunicationExcerptId(row.id),
+    organizationId: asOrganizationId(row.organizationId),
+    communicationEventId: asCommunicationEventId(row.communicationEventId),
+    content: row.content,
+    byteLength: row.byteLength,
+    purgeAt: toIso(row.purgeAt),
+    purgedAt: row.purgedAt ? toIso(row.purgedAt) : null,
+  };
+}
+
+export function mapGmailSyncRun(row: PrismaGmailSyncRun): GmailSyncRun {
+  return {
+    id: asGmailSyncRunId(row.id),
+    organizationId: asOrganizationId(row.organizationId),
+    accountId: asCommunicationAccountId(row.accountId),
+    trigger: row.trigger,
+    outcome: row.outcome,
+    startedAt: toIso(row.startedAt),
+    finishedAt: row.finishedAt ? toIso(row.finishedAt) : null,
+    historyIdBefore: row.historyIdBefore,
+    historyIdAfter: row.historyIdAfter,
+    messagesExamined: row.messagesExamined,
+    eventsCreated: row.eventsCreated,
+    eventsUpdated: row.eventsUpdated,
+    messagesSkipped: row.messagesSkipped,
+    retryable: row.retryable,
+    errorCode: row.errorCode,
+    requestId: row.requestId,
   };
 }

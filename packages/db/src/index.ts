@@ -25,7 +25,12 @@ export {
   mapAuditEvent,
   mapNote,
   mapAssignment,
+  mapCommunicationAccount,
+  mapCommunicationEvent,
+  mapTemporaryCommunicationExcerpt,
+  mapGmailSyncRun,
   type AuditEventRecord,
+  type GmailOAuthCredentialRecord,
 } from './mappers/domain-mappers.js';
 
 export { upsertRecipient, getRecipientById } from './repositories/recipient-repository.js';
@@ -62,8 +67,43 @@ export {
 } from './repositories/audit-repository.js';
 
 export {
+  getCommunicationAccountByOrganization,
+  getCommunicationAccountById,
+  createOrUpdatePendingCommunicationAccount,
+  persistConnectedCommunicationAccount,
+  markCommunicationAccountNeedsReauth,
+  markCommunicationAccountResyncRequired,
+  disconnectCommunicationAccount,
+  acquireGmailSyncLock,
+  releaseGmailSyncLock,
+} from './repositories/communication-account-repository.js';
+export {
+  persistEncryptedGmailCredential,
+  getGmailOAuthCredentialByAccountId,
+  requireGmailOAuthCredentialByAccountId,
+} from './repositories/gmail-credential-repository.js';
+export {
+  getCommunicationEventById,
+  getCommunicationEventByProviderMessageId,
+  upsertCommunicationEvent,
+  upsertTemporaryCommunicationExcerpt,
+  purgeTemporaryCommunicationExcerpt,
+  getTemporaryCommunicationExcerptByEventId,
+} from './repositories/communication-event-repository.js';
+export {
+  createGmailSyncRun,
+  finishGmailSyncRun,
+  getGmailSyncRunById,
+  listRecentGmailSyncRuns,
+} from './repositories/gmail-sync-run-repository.js';
+
+export {
   persistReturnToOwner,
   persistCapabilityAction,
   persistOwnerTaskMutation,
   persistWorkRequest,
 } from './transactions/a4-transactions.js';
+export {
+  persistGmailHistoryPageTransaction,
+  type PersistGmailHistoryPageResult,
+} from './transactions/gmail-transactions.js';

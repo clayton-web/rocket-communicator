@@ -71,7 +71,9 @@ These are durable safeguards for Linux/Vercel Prisma packaging—not temporary i
 
 ## Database migrations
 
-A4 foundation migration: `packages/db/prisma/migrations/20260713190000_a4_persistence_foundation/`.
+A4 foundation migration: `packages/db/prisma/migrations/20260713190000_a4_persistence_foundation/` (**applied in production** as part of A4).
+
+A5 Gmail persistence migration: `packages/db/prisma/migrations/20260716140000_a5_gmail_persistence/` (**forward-only; not applied to production in A5.1–A5.2** — apply only after Owner approval).
 
 **Apply to production** (with production `DATABASE_URL` configured for the target):
 

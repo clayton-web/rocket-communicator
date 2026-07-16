@@ -1,0 +1,179 @@
+paths:
+  /api/v1/gmail/connection:
+    get:
+      operationId: getGmailConnection
+      tags: [Gmail]
+      summary: Get Owner Gmail connection status
+      description: |
+        Returns safe connection status for the authenticated Owner organization.
+        **Status: Contract defined; persistence foundation implemented; HTTP pending.**
+        Never returns tokens, ciphertext, or OAuth secrets.
+      responses:
+        '200':
+          description: Current Gmail connection status
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/GmailConnection'
+        '401':
+          $ref: '../components/responses.yaml#/components/responses/Unauthorized'
+  /api/v1/gmail/oauth/start:
+    get:
+      operationId: startGmailOAuth
+      tags: [Gmail]
+      summary: Start Gmail OAuth (redirect)
+      description: |
+        Starts Owner Gmail OAuth with gmail.readonly only (D070). Uses state + PKCE.
+        Redirects to Google.
+        **Status: Contract defined; implementation pending.**
+      responses:
+        '200':
+          description: |
+            Not returned on success. Documented for OpenAPI lint completeness;
+            successful starts redirect with 302.
+        '302':
+          description: Redirect to Google authorization endpoint
+        '401':
+          $ref: '../components/responses.yaml#/components/responses/Unauthorized'
+        '409':
+          $ref: '../components/responses.yaml#/components/responses/Conflict'
+  /api/v1/gmail/oauth/callback:
+    get:
+      operationId: gmailOAuthCallback
+      tags: [Gmail]
+      summary: Gmail OAuth callback (redirect)
+      description: |
+        Exchanges authorization code, verifies Workspace mailbox domain (D069),
+        persists encrypted credentials. Redirects to Owner UI with safe error codes
+        on failure. Never exposes tokens in query or body.
+        **Status: Contract defined; implementation pending.**
+      parameters:
+        - name: code
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 2048
+        - name: state
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 512
+        - name: error
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 128
+      responses:
+        '200':
+          description: |
+            Not returned on success. Documented for OpenAPI lint completeness;
+            successful callbacks redirect with 302 and never expose tokens.
+        '302':
+          description: Redirect to Owner Gmail settings with success or safe error
+        '400':
+          $ref: '../components/responses.yaml#/components/responses/BadRequest'
+  /api/v1/gmail/disconnect:
+    post:
+      operationId: disconnectGmail
+      tags: [Gmail]
+      summary: Disconnect Gmail
+      description: |
+        Revokes best-effort at Google, wipes encrypted credentials, stops polling.
+        **Status: Contract defined; persistence foundation implemented; HTTP pending.**
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/GmailDisconnectRequest'
+      responses:
+        '200':
+          description: Disconnected
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/GmailDisconnectResponse'
+        '400':
+          $ref: '../components/responses.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: '../components/responses.yaml#/components/responses/Unauthorized'
+        '404':
+          $ref: '../components/responses.yaml#/components/responses/NotFound'
+  /api/v1/gmail/sync:
+    post:
+      operationId: syncGmail
+      tags: [Gmail]
+      summary: Trigger manual Gmail sync
+      description: |
+        Owner-triggered Inbox sync.
+        **Status: Contract defined; persistence foundation implemented; HTTP pending.**
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/GmailSyncRequest'
+      responses:
+        '200':
+          description: Sync run started or completed within request
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/GmailSyncResponse'
+        '401':
+          $ref: '../components/responses.yaml#/components/responses/Unauthorized'
+        '409':
+          $ref: '../components/responses.yaml#/components/responses/Conflict'
+  /api/v1/gmail/sync-runs:
+    get:
+      operationId: listGmailSyncRuns
+      tags: [Gmail]
+      summary: List recent Gmail sync runs
+      description: |
+        Cursor-paginated safe sync-run summaries.
+        **Status: Contract defined; persistence foundation implemented; HTTP pending.**
+      parameters:
+        - $ref: '../components/parameters.yaml#/components/parameters/Cursor'
+        - $ref: '../components/parameters.yaml#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Paginated sync runs
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '../openapi.yaml#/components/schemas/CursorPage'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: '../openapi.yaml#/components/schemas/GmailSyncRun'
+        '401':
+          $ref: '../components/responses.yaml#/components/responses/Unauthorized'
+  /api/v1/internal/gmail/poll:
+    post:
+      operationId: pollGmailInternal
+      tags: [Gmail]
+      summary: Internal scheduled Gmail poll
+      description: |
+        Bodyless cron poll for eligible accounts. Uses system audit attribution (D074).
+        Requires `InternalCronBearer` (configured CRON_SECRET). Not an Owner session.
+        Handler secret validation is implemented in a later A5 chunk.
+        **Status: Contract defined; persistence foundation implemented; HTTP/cron implementation pending.**
+      security:
+        - InternalCronBearer: []
+      responses:
+        '200':
+          description: Poll aggregate result
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/GmailPollResponse'
+        '401':
+          $ref: '../components/responses.yaml#/components/responses/Unauthorized'
+        '500':
+          $ref: '../components/responses.yaml#/components/responses/InternalError'

@@ -30,7 +30,9 @@ This product must not become a permanent communication archive. Retention separa
 
 - Store the minimum text needed for suggestion quality and short-term Owner review.
 - Do not store full attachment binaries in the application for version-one ingest.
-- **Delete seven days after** the related task is completed **or** the suggestion is dismissed.
+- **A5 (D071–D072):** attachment **metadata only**; temporary capped plain-text excerpts only; no full MIME or full HTML archives. Gmail remains source of truth.
+- **Delete seven days after** the related task is completed **or** the suggestion is dismissed. A5 persistence includes `purgeAt` / `purgedAt` on `TemporaryCommunicationExcerpt`; retention workers remain A13.
+- Disconnect wipes encrypted OAuth credential ciphertext; durable provider message ids on `CommunicationEvent` may remain for dedupe/threading after content scrub.
 - During the completed-task 30-day visibility window, the **excerpt still follows the seven-day rule** and should already be gone after day seven.
 
 ## Active task data

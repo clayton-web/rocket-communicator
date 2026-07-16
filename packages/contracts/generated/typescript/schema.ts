@@ -504,6 +504,166 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/gmail/connection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Owner Gmail connection status
+         * @description Returns safe connection status for the authenticated Owner organization.
+         *     **Status: Contract defined; persistence foundation implemented; HTTP pending.**
+         *     Never returns tokens, ciphertext, or OAuth secrets.
+         *
+         */
+        get: operations["getGmailConnection"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gmail/oauth/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Start Gmail OAuth (redirect)
+         * @description Starts Owner Gmail OAuth with gmail.readonly only (D070). Uses state + PKCE.
+         *     Redirects to Google.
+         *     **Status: Contract defined; implementation pending.**
+         *
+         */
+        get: operations["startGmailOAuth"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gmail/oauth/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Gmail OAuth callback (redirect)
+         * @description Exchanges authorization code, verifies Workspace mailbox domain (D069),
+         *     persists encrypted credentials. Redirects to Owner UI with safe error codes
+         *     on failure. Never exposes tokens in query or body.
+         *     **Status: Contract defined; implementation pending.**
+         *
+         */
+        get: operations["gmailOAuthCallback"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gmail/disconnect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Disconnect Gmail
+         * @description Revokes best-effort at Google, wipes encrypted credentials, stops polling.
+         *     **Status: Contract defined; persistence foundation implemented; HTTP pending.**
+         *
+         */
+        post: operations["disconnectGmail"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gmail/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Trigger manual Gmail sync
+         * @description Owner-triggered Inbox sync.
+         *     **Status: Contract defined; persistence foundation implemented; HTTP pending.**
+         *
+         */
+        post: operations["syncGmail"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gmail/sync-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List recent Gmail sync runs
+         * @description Cursor-paginated safe sync-run summaries.
+         *     **Status: Contract defined; persistence foundation implemented; HTTP pending.**
+         *
+         */
+        get: operations["listGmailSyncRuns"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/gmail/poll": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Internal scheduled Gmail poll
+         * @description Bodyless cron poll for eligible accounts. Uses system audit attribution (D074).
+         *     Requires `InternalCronBearer` (configured CRON_SECRET). Not an Owner session.
+         *     Handler secret validation is implemented in a later A5 chunk.
+         *     **Status: Contract defined; persistence foundation implemented; HTTP/cron implementation pending.**
+         *
+         */
+        post: operations["pollGmailInternal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -904,6 +1064,102 @@ export interface components {
              * @description Latest delete time for failed transcription audio (48-hour window, D041).
              */
             failedAudioDeleteAt?: string | null;
+        };
+        /**
+         * @description Connected communication provider. A5 supports Gmail only.
+         * @enum {string}
+         */
+        CommunicationProvider: "gmail";
+        /**
+         * @description Owner-visible Gmail connection lifecycle (D065–D076).
+         * @enum {string}
+         */
+        GmailConnectionStatus: "not_connected" | "pending" | "connected" | "needs_reauth" | "resync_required" | "disconnected" | "error";
+        /**
+         * @description History cursor validity. Invalid/expired cursors must surface as
+         *     resync_required — never silently reset (D076).
+         *
+         * @enum {string}
+         */
+        GmailHistoryState: "unset" | "valid" | "resync_required";
+        /**
+         * @description What started a sync run.
+         * @enum {string}
+         */
+        GmailSyncTrigger: "cron" | "manual" | "initial";
+        /**
+         * @description Safe sync-run outcome for Owner and operations views.
+         * @enum {string}
+         */
+        GmailSyncOutcome: "running" | "succeeded" | "partial" | "retryable_failure" | "permanent_failure" | "skipped_locked" | "needs_reauth" | "resync_required";
+        /** @description Safe Owner-facing Gmail connection status. Must never include refresh tokens,
+         *     access tokens, ciphertext, encryption key versions, OAuth codes, or PKCE secrets.
+         *      */
+        GmailConnection: {
+            status: components["schemas"]["GmailConnectionStatus"];
+            provider: components["schemas"]["CommunicationProvider"];
+            /**
+             * Format: email
+             * @description Connected mailbox address when known. Never a token.
+             */
+            emailAddress?: string;
+            /** Format: date-time */
+            connectedAt?: string;
+            /** Format: date-time */
+            lastSyncAt?: string;
+            /** Format: date-time */
+            lastSuccessAt?: string;
+            /** @description Stable machine code only; never raw provider payloads. */
+            lastErrorCode?: string;
+            historyState: components["schemas"]["GmailHistoryState"];
+            /** @description Configured poll interval (D065 default 5). */
+            pollingIntervalMinutes: number;
+            /** @description Always true in A5 (D068). */
+            inboxOnly: boolean;
+            /** @description Always true in A5 — gmail.readonly only (D070). */
+            readonlyScope: boolean;
+        };
+        GmailDisconnectRequest: {
+            /**
+             * @description Explicit Owner confirmation to disconnect Gmail.
+             * @enum {string}
+             */
+            confirmation: "confirmed";
+        };
+        GmailDisconnectResponse: {
+            connection: components["schemas"]["GmailConnection"];
+        };
+        /** @description Owner-triggered manual sync. Empty body; authentication is the Owner session. */
+        GmailSyncRequest: Record<string, never>;
+        /** @description Safe sync-run summary. Must never include historyId secrets that are not already
+         *     Owner-visible operational state, tokens, or raw provider error bodies.
+         *      */
+        GmailSyncRun: {
+            id: string;
+            trigger: components["schemas"]["GmailSyncTrigger"];
+            outcome: components["schemas"]["GmailSyncOutcome"];
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: date-time */
+            finishedAt?: string;
+            messagesExamined: number;
+            eventsCreated: number;
+            eventsUpdated: number;
+            messagesSkipped: number;
+            retryable: boolean;
+            /** @description Stable machine code only; never raw exception text or tokens. */
+            errorCode?: string;
+            requestId?: string;
+        };
+        GmailSyncResponse: {
+            run: components["schemas"]["GmailSyncRun"];
+            connection: components["schemas"]["GmailConnection"];
+        };
+        /** @description Aggregate poll outcome. No tokens or per-message bodies. */
+        GmailPollResponse: {
+            runsProcessed: number;
+            skippedLocked: number;
+            requestId: string;
         };
         /** @enum {string} */
         SummaryPointKind: "confirmed_fact" | "request" | "commitment" | "amount" | "deadline" | "risk" | "inference" | "missing_information" | "next_action";
@@ -2199,6 +2455,193 @@ export interface operations {
             409: components["responses"]["Conflict"];
             412: components["responses"]["PreconditionFailed"];
             428: components["responses"]["PreconditionRequired"];
+        };
+    };
+    getGmailConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current Gmail connection status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GmailConnection"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    startGmailOAuth: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Not returned on success. Documented for OpenAPI lint completeness;
+             *     successful starts redirect with 302.
+             *      */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Redirect to Google authorization endpoint */
+            302: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    gmailOAuthCallback: {
+        parameters: {
+            query?: {
+                code?: string;
+                state?: string;
+                error?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Not returned on success. Documented for OpenAPI lint completeness;
+             *     successful callbacks redirect with 302 and never expose tokens.
+             *      */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Redirect to Owner Gmail settings with success or safe error */
+            302: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    disconnectGmail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GmailDisconnectRequest"];
+            };
+        };
+        responses: {
+            /** @description Disconnected */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GmailDisconnectResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    syncGmail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["GmailSyncRequest"];
+            };
+        };
+        responses: {
+            /** @description Sync run started or completed within request */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GmailSyncResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listGmailSyncRuns: {
+        parameters: {
+            query?: {
+                /** @description Opaque pagination cursor from a prior response `nextCursor`.
+                 *     For `GET /api/v1/tasks`, the cursor represents composite order
+                 *     `updatedAt` DESC, then `id` DESC.
+                 *      */
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paginated sync runs */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CursorPage"] & {
+                        items?: components["schemas"]["GmailSyncRun"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    pollGmailInternal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Poll aggregate result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GmailPollResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalError"];
         };
     };
 }

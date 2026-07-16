@@ -16,18 +16,17 @@ Owner approval is required to create Tasks, Assignments, forwards, and Follow-up
 
 ## Planned for A5+
 
-Workflows §1–§7, §10–§12, §14–§15 depend on Gmail, AI, Android capture, reminders, or retention workers not yet implemented. Sections below retain target behaviour; milestone labels note when each ships.
+Workflows §1 (suggestion generation), §2–§7, §10–§12, §14–§15 depend on AI, Android capture, reminders, forwarding, or retention workers not yet implemented. **A5.1–A5.2** adds Gmail contracts and persistence only; OAuth/poll/HTTP remain later A5 chunks. Sections below retain target behaviour; milestone labels note when each ships.
 
 ---
 
-## 1. Gmail → Task Suggestion _(planned — A5/A6)_
+## 1. Gmail → Communication Event → Task Suggestion _(A5 events; A6 suggestions)_
 
-1. Detect new Owner inbox message.
-2. Store minimized `CommunicationEvent`.
-3. Heuristic (+ optional cheap AI) filter.
-4. If relevant → structured `TaskSuggestion`; notify Owner on Android when available.
+1. Owner connects Gmail (`gmail.readonly`, Workspace domain). Poll every five minutes (D065); no historical backfill (D067); Inbox-only (D068).
+2. **A5:** store minimized `CommunicationEvent` (+ optional temporary capped excerpt). No Task Suggestions in A5 (D077).
+3. **A6:** heuristic (+ optional cheap AI) filter → structured `TaskSuggestion`; notify Owner on Android when available.
 
-No Task created; no email sent.
+No Task created; no email sent in this workflow.
 
 ## 2. Gmail-origin Assignment + forward (D037) _(planned — A7)_
 

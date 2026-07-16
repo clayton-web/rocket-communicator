@@ -26,4 +26,33 @@ describe('api/domain mapper compatibility', () => {
     const mapped = apiStatuses.map((status) => API_DOMAIN_STATUS_MAP.taskSuggestion[status]);
     expect(mapped).toEqual([...apiStatuses]);
   });
+
+  it('keeps Gmail connection status enums aligned', () => {
+    const apiStatuses: components['schemas']['GmailConnectionStatus'][] = [
+      'not_connected',
+      'pending',
+      'connected',
+      'needs_reauth',
+      'resync_required',
+      'disconnected',
+      'error',
+    ];
+    const mapped = apiStatuses.map((status) => API_DOMAIN_STATUS_MAP.gmailConnectionStatus[status]);
+    expect(mapped).toEqual(apiStatuses);
+  });
+
+  it('keeps Gmail sync outcome enums aligned', () => {
+    const apiStatuses: components['schemas']['GmailSyncOutcome'][] = [
+      'running',
+      'succeeded',
+      'partial',
+      'retryable_failure',
+      'permanent_failure',
+      'skipped_locked',
+      'needs_reauth',
+      'resync_required',
+    ];
+    const mapped = apiStatuses.map((status) => API_DOMAIN_STATUS_MAP.gmailSyncOutcome[status]);
+    expect(mapped).toEqual(apiStatuses);
+  });
 });

@@ -161,16 +161,21 @@ model TaskCapability {
   @@map("task_capabilities")
 }
 
-/// A4 audit events (D057). No raw IP / full user-agent columns.
+/// A4 audit events (D057). Extended in A5 with system actor (D074) and optional Gmail refs.
 model AuditEvent {
   id                     String            @id @db.VarChar(64)
   organizationId         String            @map("organization_id") @db.VarChar(64)
   actorKind              AuditActorKind    @map("actor_kind")
   ownerId                String?           @map("owner_id") @db.VarChar(64)
   capabilityId           String?           @map("capability_id") @db.VarChar(64)
+  /// System actor identifier when actorKind = system (D074). Never a Gmail token.
+  systemId               String?           @map("system_id") @db.VarChar(64)
   assignmentId           String?           @map("assignment_id") @db.VarChar(64)
   taskId                 String?           @map("task_id") @db.VarChar(64)
   suggestionId           String?           @map("suggestion_id") @db.VarChar(64)
+  communicationAccountId String?           @map("communication_account_id") @db.VarChar(64)
+  communicationEventId   String?           @map("communication_event_id") @db.VarChar(64)
+  gmailSyncRunId         String?           @map("gmail_sync_run_id") @db.VarChar(64)
   intendedRecipientEmail String?           @map("intended_recipient_email") @db.VarChar(320)
   action                 String            @db.VarChar(64)
   outcome                AuditOutcome
@@ -186,8 +191,138 @@ model AuditEvent {
   @@index([organizationId, recordedAt])
   @@index([organizationId, taskId])
   @@index([organizationId, capabilityId])
+  @@index([organizationId, communicationAccountId])
   @@index([requestId])
   @@map("audit_events")
+}
+
+/// One Gmail mailbox connection per organization (A5). Tokens live in GmailOAuthCredential only.
+model CommunicationAccount {
+  id                 String                     @id @db.VarChar(64)
+  organizationId     String                     @map("organization_id") @db.VarChar(64)
+  provider           CommunicationProvider
+  emailAddress       String                     @map("email_address") @db.VarChar(320)
+  externalAccountId  String                     @map("external_account_id") @db.VarChar(256)
+  status             CommunicationAccountStatus
+  historyId          String?                    @map("history_id") @db.VarChar(128)
+  historyState       GmailHistoryState          @map("history_state")
+  connectedAt        DateTime?                  @map("connected_at") @db.Timestamptz(3)
+  disconnectedAt     DateTime?                  @map("disconnected_at") @db.Timestamptz(3)
+  lastSyncAt         DateTime?                  @map("last_sync_at") @db.Timestamptz(3)
+  lastSuccessAt      DateTime?                  @map("last_success_at") @db.Timestamptz(3)
+  lastErrorCode      String?                    @map("last_error_code") @db.VarChar(64)
+  lastErrorAt        DateTime?                  @map("last_error_at") @db.Timestamptz(3)
+  syncLockUntil      DateTime?                  @map("sync_lock_until") @db.Timestamptz(3)
+  createdAt          DateTime                   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime                   @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  credential GmailOAuthCredential?
+  events     CommunicationEvent[]
+  syncRuns   GmailSyncRun[]
+
+  @@unique([organizationId, provider])
+  @@index([organizationId, status])
+  @@index([syncLockUntil])
+  @@map("communication_accounts")
+}
+
+/// Encrypted Gmail OAuth material (D070). Ciphertext only — no encryption implementation in A5.1–A5.2.
+model GmailOAuthCredential {
+  id                     String   @id @db.VarChar(64)
+  accountId              String   @unique @map("account_id") @db.VarChar(64)
+  organizationId         String   @map("organization_id") @db.VarChar(64)
+  encryptedRefreshToken  String   @map("encrypted_refresh_token") @db.Text
+  encryptedAccessToken   String?  @map("encrypted_access_token") @db.Text
+  accessTokenExpiresAt   DateTime? @map("access_token_expires_at") @db.Timestamptz(3)
+  grantedScopes          String   @map("granted_scopes") @db.VarChar(512)
+  tokenType              String?  @map("token_type") @db.VarChar(32)
+  encryptionKeyVersion   String   @map("encryption_key_version") @db.VarChar(64)
+  createdAt              DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt              DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  account CommunicationAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("gmail_oauth_credentials")
+}
+
+/// Minimized Gmail communication event (D067–D072, D077). No MIME/HTML archives or attachment bytes.
+model CommunicationEvent {
+  id                 String                   @id @db.VarChar(64)
+  organizationId     String                   @map("organization_id") @db.VarChar(64)
+  accountId          String                   @map("account_id") @db.VarChar(64)
+  sourceType         String                   @map("source_type") @db.VarChar(32)
+  providerMessageId  String                   @map("provider_message_id") @db.VarChar(256)
+  providerThreadId   String                   @map("provider_thread_id") @db.VarChar(256)
+  dedupeKey          String                   @map("dedupe_key") @db.VarChar(128)
+  internalDate       DateTime                 @map("internal_date") @db.Timestamptz(3)
+  receivedAt         DateTime                 @map("received_at") @db.Timestamptz(3)
+  fromAddress        String                   @map("from_address") @db.VarChar(320)
+  toAddresses        Json                     @map("to_addresses")
+  subject            String?                  @db.VarChar(256)
+  snippet            String?                  @db.VarChar(512)
+  labelIds           Json                     @map("label_ids")
+  hasAttachments     Boolean                  @default(false) @map("has_attachments")
+  attachmentMetadata Json                     @map("attachment_metadata")
+  status             CommunicationEventStatus
+  ingestRunId        String?                  @map("ingest_run_id") @db.VarChar(64)
+  purgeAt            DateTime?                @map("purge_at") @db.Timestamptz(3)
+  createdAt          DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  account CommunicationAccount           @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  excerpt TemporaryCommunicationExcerpt?
+
+  @@unique([organizationId, providerMessageId])
+  @@unique([organizationId, dedupeKey])
+  @@index([organizationId, internalDate])
+  @@index([accountId, internalDate])
+  @@index([organizationId, purgeAt])
+  @@map("communication_events")
+}
+
+/// Temporary capped plain-text excerpt (D072). One active excerpt per event.
+model TemporaryCommunicationExcerpt {
+  id                   String    @id @db.VarChar(64)
+  organizationId       String    @map("organization_id") @db.VarChar(64)
+  communicationEventId String    @unique @map("communication_event_id") @db.VarChar(64)
+  content              String    @db.VarChar(8192)
+  byteLength           Int       @map("byte_length")
+  purgeAt              DateTime  @map("purge_at") @db.Timestamptz(3)
+  purgedAt             DateTime? @map("purged_at") @db.Timestamptz(3)
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  event CommunicationEvent @relation(fields: [communicationEventId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, purgeAt])
+  @@map("temporary_communication_excerpts")
+}
+
+model GmailSyncRun {
+  id               String           @id @db.VarChar(64)
+  organizationId   String           @map("organization_id") @db.VarChar(64)
+  accountId        String           @map("account_id") @db.VarChar(64)
+  trigger          GmailSyncTrigger
+  outcome          GmailSyncOutcome
+  startedAt        DateTime         @map("started_at") @db.Timestamptz(3)
+  finishedAt       DateTime?        @map("finished_at") @db.Timestamptz(3)
+  historyIdBefore  String?          @map("history_id_before") @db.VarChar(128)
+  historyIdAfter   String?          @map("history_id_after") @db.VarChar(128)
+  messagesExamined Int              @default(0) @map("messages_examined")
+  eventsCreated    Int              @default(0) @map("events_created")
+  eventsUpdated    Int              @default(0) @map("events_updated")
+  messagesSkipped  Int              @default(0) @map("messages_skipped")
+  retryable        Boolean          @default(false)
+  errorCode        String?          @map("error_code") @db.VarChar(64)
+  requestId        String?          @map("request_id") @db.VarChar(64)
+  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  account CommunicationAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, startedAt])
+  @@index([accountId, startedAt])
+  @@map("gmail_sync_runs")
 }
 
 enum TaskStatus {
@@ -229,10 +364,52 @@ enum AssignmentDeliveryStatus {
 enum AuditActorKind {
   owner
   capability
+  system
 }
 
 enum AuditOutcome {
   succeeded
   denied
   failed
+}
+
+enum CommunicationProvider {
+  gmail
+}
+
+enum CommunicationAccountStatus {
+  pending
+  connected
+  needs_reauth
+  resync_required
+  disconnected
+  error
+}
+
+enum GmailHistoryState {
+  unset
+  valid
+  resync_required
+}
+
+enum GmailSyncTrigger {
+  cron
+  manual
+  initial
+}
+
+enum GmailSyncOutcome {
+  running
+  succeeded
+  partial
+  retryable_failure
+  permanent_failure
+  skipped_locked
+  needs_reauth
+  resync_required
+}
+
+enum CommunicationEventStatus {
+  active
+  purged
 }
