@@ -1,4 +1,8 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
+import type {
+  PrismaExpectedEngineTarget,
+  PrismaLayoutFailureClass,
+} from '@/lib/db/prisma-layout-diagnostics';
 import type { DbRuntimeStage, DbRuntimeStageFailureCategory } from '@/lib/db/stage-diagnostics';
 
 export interface DbStageContext {
@@ -9,6 +13,17 @@ export interface DbStageContext {
   errorName?: string;
   prismaErrorCode?: string;
   nodeErrorCode?: string;
+  /** Temporary allowlisted Prisma layout probe fields (booleans/enums only). */
+  prismaClientIndexPresent?: boolean;
+  prismaSchemaAdjacent?: boolean;
+  prismaEngineAdjacent?: boolean;
+  prismaRuntimeLibraryPresent?: boolean;
+  prismaGeneratedPackagePresent?: boolean;
+  prismaExpectedEngineTarget?: PrismaExpectedEngineTarget;
+  prismaFailureClass?: PrismaLayoutFailureClass;
+  generatedClientDirectoryResolved?: boolean;
+  engineFileReadable?: boolean;
+  schemaFileReadable?: boolean;
 }
 
 const stageContextStorage = new AsyncLocalStorage<DbStageContext>();

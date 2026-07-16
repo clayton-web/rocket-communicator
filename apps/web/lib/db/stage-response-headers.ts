@@ -1,6 +1,12 @@
 import type { NextResponse } from 'next/server';
 import type { components } from '@aicaa/contracts/schema';
 import { isDatabaseRuntimeDiagnosticsEnabled } from '@/lib/db/diagnostics';
+import {
+  adjacentMissing,
+  presentMissing,
+  type PrismaExpectedEngineTarget,
+  type PrismaLayoutFailureClass,
+} from '@/lib/db/prisma-layout-diagnostics';
 import { getDbStageContext } from '@/lib/db/stage-context';
 import type { DbRuntimeStage, DbRuntimeStageFailureCategory } from '@/lib/db/stage-diagnostics';
 
@@ -11,6 +17,14 @@ export const DB_CATEGORY_HEADER = 'X-AICAA-DB-Category' as const;
 export const DB_ERROR_CLASS_HEADER = 'X-AICAA-DB-Error-Class' as const;
 export const DB_PRISMA_CODE_HEADER = 'X-AICAA-DB-Prisma-Code' as const;
 export const DB_NODE_CODE_HEADER = 'X-AICAA-DB-Node-Code' as const;
+
+export const DB_PRISMA_CLIENT_INDEX_HEADER = 'X-AICAA-DB-Prisma-Client-Index' as const;
+export const DB_PRISMA_SCHEMA_HEADER = 'X-AICAA-DB-Prisma-Schema' as const;
+export const DB_PRISMA_ENGINE_HEADER = 'X-AICAA-DB-Prisma-Engine' as const;
+export const DB_PRISMA_LIBRARY_HEADER = 'X-AICAA-DB-Prisma-Library' as const;
+export const DB_PRISMA_PACKAGE_HEADER = 'X-AICAA-DB-Prisma-Package' as const;
+export const DB_PRISMA_TARGET_HEADER = 'X-AICAA-DB-Prisma-Target' as const;
+export const DB_PRISMA_FAILURE_HEADER = 'X-AICAA-DB-Prisma-Failure' as const;
 
 const ALLOWED_STAGES = new Set<DbRuntimeStage>([
   'DB_RUNTIME_LOAD_START',
@@ -36,6 +50,24 @@ const ALLOWED_CATEGORIES = new Set<DbRuntimeStageFailureCategory>([
   'DATABASE_TLS_OR_DNS',
   'DATABASE_QUERY_FAILED',
   'UNKNOWN_DATABASE_ERROR',
+]);
+
+const ALLOWED_ENGINE_TARGETS = new Set<PrismaExpectedEngineTarget>([
+  'RHEL_OPENSSL_3',
+  'OTHER',
+  'UNKNOWN',
+]);
+
+const ALLOWED_LAYOUT_FAILURES = new Set<PrismaLayoutFailureClass>([
+  'ENGINE_NOT_FOUND',
+  'ENGINE_LOAD_FAILED',
+  'SCHEMA_NOT_FOUND',
+  'GENERATED_CLIENT_RUNTIME_MISSING',
+  'WRONG_CLIENT_DIRECTORY',
+  'BINARY_TARGET_MISMATCH',
+  'DATASOURCE_CONFIGURATION',
+  'OTHER',
+  'UNKNOWN',
 ]);
 
 const SAFE_ERROR_NAME = /^[A-Z][A-Za-z0-9]*Error$/;
@@ -123,6 +155,20 @@ function sanitizeNodeCode(code: string | undefined): string | undefined {
   return code;
 }
 
+function sanitizeEngineTarget(target: string | undefined): PrismaExpectedEngineTarget | undefined {
+  if (!target || !ALLOWED_ENGINE_TARGETS.has(target as PrismaExpectedEngineTarget)) {
+    return undefined;
+  }
+  return target as PrismaExpectedEngineTarget;
+}
+
+function sanitizeLayoutFailure(failure: string | undefined): PrismaLayoutFailureClass | undefined {
+  if (!failure || !ALLOWED_LAYOUT_FAILURES.has(failure as PrismaLayoutFailureClass)) {
+    return undefined;
+  }
+  return failure as PrismaLayoutFailureClass;
+}
+
 export function buildOwnerTaskDbDiagnosticHeaders(): HeadersInit | undefined {
   if (!isDatabaseRuntimeDiagnosticsEnabled()) {
     return undefined;
@@ -160,6 +206,34 @@ export function buildOwnerTaskDbDiagnosticHeaders(): HeadersInit | undefined {
   const nodeCode = sanitizeNodeCode(context.nodeErrorCode);
   if (nodeCode) {
     headers[DB_NODE_CODE_HEADER] = nodeCode;
+  }
+
+  if (typeof context.prismaFailureClass === 'string') {
+    if (typeof context.prismaClientIndexPresent === 'boolean') {
+      headers[DB_PRISMA_CLIENT_INDEX_HEADER] = presentMissing(context.prismaClientIndexPresent);
+    }
+    if (typeof context.prismaSchemaAdjacent === 'boolean') {
+      headers[DB_PRISMA_SCHEMA_HEADER] = adjacentMissing(context.prismaSchemaAdjacent);
+    }
+    if (typeof context.prismaEngineAdjacent === 'boolean') {
+      headers[DB_PRISMA_ENGINE_HEADER] = adjacentMissing(context.prismaEngineAdjacent);
+    }
+    if (typeof context.prismaRuntimeLibraryPresent === 'boolean') {
+      headers[DB_PRISMA_LIBRARY_HEADER] = presentMissing(context.prismaRuntimeLibraryPresent);
+    }
+    if (typeof context.prismaGeneratedPackagePresent === 'boolean') {
+      headers[DB_PRISMA_PACKAGE_HEADER] = presentMissing(context.prismaGeneratedPackagePresent);
+    }
+
+    const target = sanitizeEngineTarget(context.prismaExpectedEngineTarget);
+    if (target) {
+      headers[DB_PRISMA_TARGET_HEADER] = target;
+    }
+
+    const failure = sanitizeLayoutFailure(context.prismaFailureClass);
+    if (failure) {
+      headers[DB_PRISMA_FAILURE_HEADER] = failure;
+    }
   }
 
   return headers;

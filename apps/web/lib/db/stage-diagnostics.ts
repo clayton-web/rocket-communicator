@@ -5,6 +5,10 @@ import {
   safeReadProperty,
   type DatabaseRuntimeFailureCategory,
 } from '@/lib/db/diagnostics';
+import type {
+  PrismaExpectedEngineTarget,
+  PrismaLayoutFailureClass,
+} from '@/lib/db/prisma-layout-diagnostics';
 import {
   getDbStageContext,
   updateDbStageContext,
@@ -49,7 +53,42 @@ export interface DbRuntimeStageLogPayload {
   prismaErrorCode?: string;
   nodeErrorCode?: string;
   clientVersion?: string;
+  prismaClientIndexPresent?: boolean;
+  prismaSchemaAdjacent?: boolean;
+  prismaEngineAdjacent?: boolean;
+  prismaRuntimeLibraryPresent?: boolean;
+  prismaGeneratedPackagePresent?: boolean;
+  prismaExpectedEngineTarget?: PrismaExpectedEngineTarget;
+  prismaFailureClass?: PrismaLayoutFailureClass;
+  generatedClientDirectoryResolved?: boolean;
+  engineFileReadable?: boolean;
+  schemaFileReadable?: boolean;
 }
+
+const CLEARED_LAYOUT_FIELDS: Pick<
+  DbStageContext,
+  | 'prismaClientIndexPresent'
+  | 'prismaSchemaAdjacent'
+  | 'prismaEngineAdjacent'
+  | 'prismaRuntimeLibraryPresent'
+  | 'prismaGeneratedPackagePresent'
+  | 'prismaExpectedEngineTarget'
+  | 'prismaFailureClass'
+  | 'generatedClientDirectoryResolved'
+  | 'engineFileReadable'
+  | 'schemaFileReadable'
+> = {
+  prismaClientIndexPresent: undefined,
+  prismaSchemaAdjacent: undefined,
+  prismaEngineAdjacent: undefined,
+  prismaRuntimeLibraryPresent: undefined,
+  prismaGeneratedPackagePresent: undefined,
+  prismaExpectedEngineTarget: undefined,
+  prismaFailureClass: undefined,
+  generatedClientDirectoryResolved: undefined,
+  engineFileReadable: undefined,
+  schemaFileReadable: undefined,
+};
 
 const MAX_CAUSE_DEPTH = 12;
 
@@ -109,6 +148,41 @@ function contextFields(): Pick<DbRuntimeStageLogPayload, 'routePathname' | 'requ
   }
 }
 
+function layoutFieldsFromContext(): Pick<
+  DbRuntimeStageLogPayload,
+  | 'prismaClientIndexPresent'
+  | 'prismaSchemaAdjacent'
+  | 'prismaEngineAdjacent'
+  | 'prismaRuntimeLibraryPresent'
+  | 'prismaGeneratedPackagePresent'
+  | 'prismaExpectedEngineTarget'
+  | 'prismaFailureClass'
+  | 'generatedClientDirectoryResolved'
+  | 'engineFileReadable'
+  | 'schemaFileReadable'
+> {
+  try {
+    const context = getDbStageContext();
+    if (!context || typeof context.prismaFailureClass !== 'string') {
+      return {};
+    }
+    return {
+      prismaClientIndexPresent: context.prismaClientIndexPresent,
+      prismaSchemaAdjacent: context.prismaSchemaAdjacent,
+      prismaEngineAdjacent: context.prismaEngineAdjacent,
+      prismaRuntimeLibraryPresent: context.prismaRuntimeLibraryPresent,
+      prismaGeneratedPackagePresent: context.prismaGeneratedPackagePresent,
+      prismaExpectedEngineTarget: context.prismaExpectedEngineTarget,
+      prismaFailureClass: context.prismaFailureClass,
+      generatedClientDirectoryResolved: context.generatedClientDirectoryResolved,
+      engineFileReadable: context.engineFileReadable,
+      schemaFileReadable: context.schemaFileReadable,
+    };
+  } catch {
+    return {};
+  }
+}
+
 function basePayload(stage: DbRuntimeStage): DbRuntimeStageLogPayload {
   return {
     event: DB_RUNTIME_STAGE_EVENT,
@@ -136,7 +210,8 @@ function persistStageState(
   patch: Pick<
     DbStageContext,
     'lastStage' | 'failureCategory' | 'errorName' | 'prismaErrorCode' | 'nodeErrorCode'
-  >,
+  > &
+    Partial<typeof CLEARED_LAYOUT_FIELDS>,
 ): void {
   try {
     if (!getDbStageContext()) {
@@ -165,6 +240,7 @@ function emitStagePayload(payload: DbRuntimeStageLogPayload): void {
         errorName: undefined,
         prismaErrorCode: undefined,
         nodeErrorCode: undefined,
+        ...CLEARED_LAYOUT_FIELDS,
       });
     }
 
@@ -231,6 +307,7 @@ export function logDbRuntimeStageFailure(
       prismaErrorCode: prismaErrorCode(error),
       nodeErrorCode: nodeErrorCodeFromCause(error),
       clientVersion: clientVersion(error),
+      ...layoutFieldsFromContext(),
       ...extras,
     });
   } catch {
