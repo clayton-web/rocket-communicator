@@ -1,6 +1,7 @@
 import type { NextResponse } from 'next/server';
 import type { components } from '@aicaa/contracts/schema';
 import { isDatabaseRuntimeDiagnosticsEnabled } from '@/lib/db/diagnostics';
+import type { PrismaConnectProbeResult } from '@/lib/db/prisma-connect-probe';
 import {
   adjacentMissing,
   presentMissing,
@@ -35,6 +36,7 @@ export const DB_PRISMA_ENGINE_EXECUTABLE_HEADER = 'X-AICAA-DB-Prisma-Engine-Exec
 export const DB_PRISMA_ENGINE_ELF_HEADER = 'X-AICAA-DB-Prisma-Engine-ELF' as const;
 export const DB_PRISMA_ENGINE_ARCH_HEADER = 'X-AICAA-DB-Prisma-Engine-Arch' as const;
 export const DB_PRISMA_ENGINE_IDENTITY_HEADER = 'X-AICAA-DB-Prisma-Engine-Identity' as const;
+export const DB_PRISMA_CONNECT_PROBE_HEADER = 'X-AICAA-DB-Prisma-Connect-Probe' as const;
 
 const ALLOWED_STAGES = new Set<DbRuntimeStage>([
   'DB_RUNTIME_LOAD_START',
@@ -42,6 +44,9 @@ const ALLOWED_STAGES = new Set<DbRuntimeStage>([
   'DB_RUNTIME_EXPORTS_VALIDATED',
   'PRISMA_CLIENT_CONSTRUCTION_START',
   'PRISMA_CLIENT_CONSTRUCTED',
+  'PRISMA_CONNECT_PROBE_START',
+  'PRISMA_CONNECT_PROBE_SUCCEEDED',
+  'PRISMA_CONNECT_PROBE_FAILED',
   'PRISMA_QUERY_START',
   'PRISMA_QUERY_SUCCEEDED',
   'DB_RUNTIME_FAILURE',
@@ -102,6 +107,21 @@ const ALLOWED_ENGINE_IDENTITIES = new Set<PrismaEngineIdentityClass>([
   'UNREADABLE',
   'INVALID_ELF',
   'WRONG_ARCHITECTURE',
+  'UNKNOWN',
+]);
+
+const ALLOWED_CONNECT_PROBE_RESULTS = new Set<PrismaConnectProbeResult>([
+  'SUCCESS',
+  'REACHED_NETWORK_P1001',
+  'DATABASE_AUTH_P1000',
+  'DATABASE_TLS_P1011',
+  'DATASOURCE_P1012',
+  'DATASOURCE_P1013',
+  'OTHER_CODED_INIT',
+  'NO_CODE_INIT',
+  'NODE_CODE_ONLY',
+  'NON_PRISMA_ERROR',
+  'NOT_RUN',
   'UNKNOWN',
 ]);
 
@@ -255,6 +275,15 @@ function sanitizeEngineIdentity(value: string | undefined): PrismaEngineIdentity
   return value as PrismaEngineIdentityClass;
 }
 
+function sanitizeConnectProbeResult(
+  value: string | undefined,
+): PrismaConnectProbeResult | undefined {
+  if (!value || !ALLOWED_CONNECT_PROBE_RESULTS.has(value as PrismaConnectProbeResult)) {
+    return undefined;
+  }
+  return value as PrismaConnectProbeResult;
+}
+
 export function buildOwnerTaskDbDiagnosticHeaders(): HeadersInit | undefined {
   if (!isDatabaseRuntimeDiagnosticsEnabled()) {
     return undefined;
@@ -355,6 +384,11 @@ export function buildOwnerTaskDbDiagnosticHeaders(): HeadersInit | undefined {
     if (engineIdentity) {
       headers[DB_PRISMA_ENGINE_IDENTITY_HEADER] = engineIdentity;
     }
+  }
+
+  const connectProbe = sanitizeConnectProbeResult(context.prismaConnectProbeResult);
+  if (connectProbe) {
+    headers[DB_PRISMA_CONNECT_PROBE_HEADER] = connectProbe;
   }
 
   return headers;

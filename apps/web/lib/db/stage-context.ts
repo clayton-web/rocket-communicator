@@ -6,6 +6,7 @@ import type {
   PrismaExpectedEngineTarget,
   PrismaLayoutFailureClass,
 } from '@/lib/db/prisma-layout-diagnostics';
+import type { PrismaConnectProbeResult } from '@/lib/db/prisma-connect-probe';
 import type { DbRuntimeStage, DbRuntimeStageFailureCategory } from '@/lib/db/stage-diagnostics';
 
 export interface DbStageContext {
@@ -35,6 +36,8 @@ export interface DbStageContext {
   prismaEngineElfClass?: PrismaEngineElfClass;
   prismaEngineArchitecture?: PrismaEngineArchitecture;
   prismaEngineIdentity?: PrismaEngineIdentityClass;
+  /** Temporary allowlisted `$connect()` probe result (enum only). */
+  prismaConnectProbeResult?: PrismaConnectProbeResult;
 }
 
 const stageContextStorage = new AsyncLocalStorage<DbStageContext>();

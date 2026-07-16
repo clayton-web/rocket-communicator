@@ -14,6 +14,7 @@ import {
   type PrismaExpectedEngineTarget,
   type PrismaLayoutFailureClass,
 } from '@/lib/db/prisma-layout-diagnostics';
+import type { PrismaConnectProbeResult } from '@/lib/db/prisma-connect-probe';
 import {
   getDbStageContext,
   updateDbStageContext,
@@ -33,6 +34,9 @@ export type DbRuntimeStage =
   | 'DB_RUNTIME_EXPORTS_VALIDATED'
   | 'PRISMA_CLIENT_CONSTRUCTION_START'
   | 'PRISMA_CLIENT_CONSTRUCTED'
+  | 'PRISMA_CONNECT_PROBE_START'
+  | 'PRISMA_CONNECT_PROBE_SUCCEEDED'
+  | 'PRISMA_CONNECT_PROBE_FAILED'
   | 'PRISMA_QUERY_START'
   | 'PRISMA_QUERY_SUCCEEDED'
   | 'DB_RUNTIME_FAILURE';
@@ -76,6 +80,7 @@ export interface DbRuntimeStageLogPayload {
   prismaEngineElfClass?: PrismaEngineElfClass;
   prismaEngineArchitecture?: PrismaEngineArchitecture;
   prismaEngineIdentity?: PrismaEngineIdentityClass;
+  prismaConnectProbeResult?: PrismaConnectProbeResult;
 }
 
 const CLEARED_LAYOUT_FIELDS: Pick<
@@ -197,11 +202,16 @@ function layoutFieldsFromContext(): Pick<
   | 'prismaEngineElfClass'
   | 'prismaEngineArchitecture'
   | 'prismaEngineIdentity'
+  | 'prismaConnectProbeResult'
 > {
   try {
     const context = getDbStageContext();
     if (!context || typeof context.prismaFailureClass !== 'string') {
-      return {};
+      const probeOnly: { prismaConnectProbeResult?: PrismaConnectProbeResult } = {};
+      if (typeof context?.prismaConnectProbeResult === 'string') {
+        probeOnly.prismaConnectProbeResult = context.prismaConnectProbeResult;
+      }
+      return probeOnly;
     }
     return {
       prismaClientIndexPresent: context.prismaClientIndexPresent,
@@ -222,6 +232,7 @@ function layoutFieldsFromContext(): Pick<
       prismaEngineElfClass: context.prismaEngineElfClass,
       prismaEngineArchitecture: context.prismaEngineArchitecture,
       prismaEngineIdentity: context.prismaEngineIdentity,
+      prismaConnectProbeResult: context.prismaConnectProbeResult,
     };
   } catch {
     return {};

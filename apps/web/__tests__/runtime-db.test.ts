@@ -79,7 +79,7 @@ describe('db runtime loader', () => {
   });
 
   it('invokes runtime-loaded createPrismaClient from getDb()', async () => {
-    const fakeClient = { kind: 'test-db' } as never;
+    const fakeClient = { kind: 'test-db', $connect: vi.fn(async () => undefined) } as never;
     const createPrismaClient = vi.fn(() => fakeClient);
     setDbRuntimeForTests({
       ...aicaaDb,
@@ -88,6 +88,9 @@ describe('db runtime loader', () => {
 
     await expect(getDb()).resolves.toBe(fakeClient);
     expect(createPrismaClient).toHaveBeenCalledTimes(1);
+    expect((fakeClient as { $connect: ReturnType<typeof vi.fn> }).$connect).toHaveBeenCalledTimes(
+      1,
+    );
   });
 
   it('keeps setDbForTests injection without calling createPrismaClient', async () => {
