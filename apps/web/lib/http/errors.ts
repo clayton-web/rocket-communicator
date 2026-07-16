@@ -260,9 +260,7 @@ export function mapRecipientCapabilityRouteError(error: unknown): NextResponse<E
         contractCodeForRecipientCode(code),
         sanitizeRecipientMessage(code, readRecipientCapabilityServiceErrorMessage(error)),
         httpStatusForRecipientCode(code),
-        code === 'VALIDATION_ERROR'
-          ? readRecipientCapabilityServiceErrorDetails(error)
-          : undefined,
+        code === 'VALIDATION_ERROR' ? readRecipientCapabilityServiceErrorDetails(error) : undefined,
       );
     }
     if (isCapabilityTokenError(error)) {

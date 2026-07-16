@@ -58,10 +58,7 @@ const verifyPrismaClientConstructionPath = path.join(
 );
 const tasksNftPath = path.join(webRoot, '.next/server/app/api/v1/tasks/route.js.nft.json');
 
-const FORBIDDEN_TRACE_GLOBS = [
-  '../../packages/db/**/*',
-  '../../**/*',
-];
+const FORBIDDEN_TRACE_GLOBS = ['../../packages/db/**/*', '../../**/*'];
 
 describe('Prisma serverless packaging configuration', () => {
   it('declares native and rhel-openssl-3.0.x binary targets in schema.prisma', () => {
@@ -121,7 +118,9 @@ describe('Prisma serverless packaging configuration', () => {
     expect(graph.some((filePath) => filePath.endsWith('generated/client/runtime/library.js'))).toBe(
       true,
     );
-    expect(graph.some((filePath) => filePath.endsWith('client/create-prisma-client.js'))).toBe(true);
+    expect(graph.some((filePath) => filePath.endsWith('client/create-prisma-client.js'))).toBe(
+      true,
+    );
     expect(graph.some((filePath) => filePath.includes('create-test-database.js'))).toBe(false);
     for (const marker of PGLITE_MARKERS) {
       expect(graph.some((filePath) => filePath.includes(marker))).toBe(false);
@@ -170,7 +169,10 @@ describe('Prisma serverless packaging configuration', () => {
       const nft = JSON.parse(fs.readFileSync(nftPath, 'utf8')) as { files?: string[] };
       const files = Array.isArray(nft.files) ? nft.files : [];
 
-      expect(files.some((entry) => entry.includes('.nft-sim')), relativeNft).toBe(false);
+      expect(
+        files.some((entry) => entry.includes('.nft-sim')),
+        relativeNft,
+      ).toBe(false);
       expect(nftIncludesNodeModulesDomainIndex(files), relativeNft).toBe(true);
       expect(nftIncludesNodeModulesDomainDist(files), relativeNft).toBe(true);
       assertNftIncludesResolvableDomainPackage(files, repoRoot, relativeNft);
@@ -190,9 +192,7 @@ describe('Prisma serverless packaging configuration', () => {
     expect(content).not.toContain('@aicaa/domain');
     expect(content).toContain(DOMAIN_RELATIVE_IMPORT_SPECIFIER);
     expect(
-      fs.existsSync(
-        path.resolve(path.dirname(mapperJs), DOMAIN_RELATIVE_IMPORT_SPECIFIER),
-      ),
+      fs.existsSync(path.resolve(path.dirname(mapperJs), DOMAIN_RELATIVE_IMPORT_SPECIFIER)),
     ).toBe(true);
   });
 
@@ -211,12 +211,10 @@ describe('Prisma serverless packaging configuration', () => {
     try {
       expect(() => assertIsolatedNftLayoutOutsideRepo(layoutRoot, repoRoot)).not.toThrow();
       expect(layoutRoot.startsWith(repoRoot)).toBe(false);
-      expect(
-        fs.existsSync(path.join(layoutRoot, DOMAIN_RELATIVE_INDEX_RELATIVE)),
-      ).toBe(true);
-      expect(
-        fs.existsSync(path.join(layoutRoot, DOMAIN_NODE_MODULES_DIST_INDEX_RELATIVE)),
-      ).toBe(true);
+      expect(fs.existsSync(path.join(layoutRoot, DOMAIN_RELATIVE_INDEX_RELATIVE))).toBe(true);
+      expect(fs.existsSync(path.join(layoutRoot, DOMAIN_NODE_MODULES_DIST_INDEX_RELATIVE))).toBe(
+        true,
+      );
       expect(fs.existsSync(path.join(layoutRoot, 'node_modules/@aicaa/domain'))).toBe(false);
     } finally {
       fs.rmSync(layoutRoot, { recursive: true, force: true });
@@ -402,9 +400,11 @@ describe('Prisma serverless packaging configuration', () => {
   });
 
   it('sanitizes embedded Prisma generator output paths to repository-relative shapes', () => {
-    expect(sanitizeGeneratorOutputShape('/Users/example/rocket communicator/packages/db/src/generated/client')).toBe(
-      'packages/db/src/generated/client',
-    );
+    expect(
+      sanitizeGeneratorOutputShape(
+        '/Users/example/rocket communicator/packages/db/src/generated/client',
+      ),
+    ).toBe('packages/db/src/generated/client');
     expect(sanitizeGeneratorOutputShape('/vercel/path0/packages/db/dist/generated/client')).toBe(
       '<build-root>/packages/db/dist/generated/client',
     );

@@ -21,8 +21,7 @@ export const GENERATED_CLIENT_SCHEMA_RELATIVE = `${GENERATED_CLIENT_RELATIVE}/${
 export const GENERATED_CLIENT_ENGINE_RELATIVE = `${GENERATED_CLIENT_RELATIVE}/${RHEL_ENGINE}`;
 export const GENERATED_CLIENT_PACKAGE_JSON_RELATIVE = `${GENERATED_CLIENT_RELATIVE}/package.json`;
 
-export const PLACEHOLDER_DATABASE_URL =
-  'postgresql://probe:probe@127.0.0.1:9/probe?schema=public';
+export const PLACEHOLDER_DATABASE_URL = 'postgresql://probe:probe@127.0.0.1:9/probe?schema=public';
 
 export const PRISMA_PROBE_CLASSIFICATIONS = [
   'SCHEMA_NOT_COLOCATED',
@@ -34,10 +33,17 @@ export const PRISMA_PROBE_CLASSIFICATIONS = [
   'UNKNOWN_PRISMA_INITIALIZATION_FAILURE',
 ];
 
-const REPO_ROOT_SEGMENTS = ['packages/db/dist/generated/client', 'packages/db/src/generated/client'];
+const REPO_ROOT_SEGMENTS = [
+  'packages/db/dist/generated/client',
+  'packages/db/src/generated/client',
+];
 
 function safeReadString(value, key) {
-  if (value === null || value === undefined || (typeof value !== 'object' && typeof value !== 'function')) {
+  if (
+    value === null ||
+    value === undefined ||
+    (typeof value !== 'object' && typeof value !== 'function')
+  ) {
     return undefined;
   }
   try {
@@ -417,7 +423,9 @@ export function runPrismaClientConstructionProbe({
 
     if (proc.status !== 0) {
       throw new Error(
-        proc.stderr?.trim() || proc.stdout?.trim() || 'prisma client construction probe runner failed',
+        proc.stderr?.trim() ||
+          proc.stdout?.trim() ||
+          'prisma client construction probe runner failed',
       );
     }
 

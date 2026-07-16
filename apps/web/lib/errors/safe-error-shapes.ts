@@ -82,7 +82,9 @@ function hasKnownCode<T extends string>(
 }
 
 export function isPersistenceErrorShape(error: unknown): boolean {
-  return hasErrorName(error, PERSISTENCE_ERROR_NAME) && hasKnownCode(error, PERSISTENCE_ERROR_CODES);
+  return (
+    hasErrorName(error, PERSISTENCE_ERROR_NAME) && hasKnownCode(error, PERSISTENCE_ERROR_CODES)
+  );
 }
 
 export function readPersistenceErrorCode(error: unknown): PersistenceErrorCode | undefined {
@@ -124,7 +126,9 @@ export function readTaskServiceErrorDetails(
 }
 
 export function isCapabilityTokenError(error: unknown): boolean {
-  return safeInstanceof(error, CapabilityTokenError) || hasErrorName(error, CAPABILITY_TOKEN_ERROR_NAME);
+  return (
+    safeInstanceof(error, CapabilityTokenError) || hasErrorName(error, CAPABILITY_TOKEN_ERROR_NAME)
+  );
 }
 
 export function readCapabilityTokenErrorCode(error: unknown): CapabilityTokenErrorCode | undefined {

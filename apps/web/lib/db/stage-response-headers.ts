@@ -95,9 +95,7 @@ function sanitizeStage(stage: string | undefined): DbRuntimeStage | undefined {
   return stage as DbRuntimeStage;
 }
 
-function sanitizeCategory(
-  category: string | undefined,
-): DbRuntimeStageFailureCategory | undefined {
+function sanitizeCategory(category: string | undefined): DbRuntimeStageFailureCategory | undefined {
   if (!category || !ALLOWED_CATEGORIES.has(category as DbRuntimeStageFailureCategory)) {
     return undefined;
   }

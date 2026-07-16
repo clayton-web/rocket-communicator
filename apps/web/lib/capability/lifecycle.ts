@@ -6,11 +6,7 @@ import {
   type TaskCapability,
   type UtcInstant,
 } from '@aicaa/domain';
-import type {
-  AuditEventRecord,
-  DbClient,
-  PersistedCapability,
-} from '@aicaa/db';
+import type { AuditEventRecord, DbClient, PersistedCapability } from '@aicaa/db';
 import type { DbRuntimeModule } from '@/lib/db/runtime-db';
 import { loadDbRuntime } from '@/lib/db/runtime-db';
 import { readPersistenceErrorCode } from '@/lib/errors/safe-error-shapes';
@@ -45,20 +41,22 @@ export async function revokeCapabilityForOwner(input: {
     input.reason ?? 'owner_revoked',
   );
 
-  await dbRuntime.updateActiveAssignmentCapabilityBinding(
-    input.db,
-    input.owner.organizationId,
-    capability.taskId,
-    {
-      activeCapabilityId: null,
-      capabilityStatus: 'revoked',
-    },
-  ).catch((error: unknown) => {
-    if (readPersistenceErrorCode(error) === 'NOT_FOUND') {
-      return;
-    }
-    throw error;
-  });
+  await dbRuntime
+    .updateActiveAssignmentCapabilityBinding(
+      input.db,
+      input.owner.organizationId,
+      capability.taskId,
+      {
+        activeCapabilityId: null,
+        capabilityStatus: 'revoked',
+      },
+    )
+    .catch((error: unknown) => {
+      if (readPersistenceErrorCode(error) === 'NOT_FOUND') {
+        return;
+      }
+      throw error;
+    });
 
   const audit = await dbRuntime.createAuditEvent(input.db, {
     id: input.auditId ?? `audit_revoke_${capability.id}`,
@@ -90,7 +88,11 @@ export async function persistCapabilityExpiryIfNeeded(input: {
   now: UtcInstant;
 }): Promise<TaskCapability | null> {
   const dbRuntime = await loadDbRuntime();
-  const existing = await dbRuntime.getCapabilityById(input.db, input.organizationId, input.capabilityId);
+  const existing = await dbRuntime.getCapabilityById(
+    input.db,
+    input.organizationId,
+    input.capabilityId,
+  );
   const domain = omitTokenHash(existing);
   if (domain.status === 'revoked' || domain.status === 'expired') {
     return domain;
@@ -118,7 +120,11 @@ export async function invalidateCapabilityOnAssignmentChangePersisted(input: {
   reason?: string;
 }): Promise<PersistedCapability> {
   const dbRuntime = await loadDbRuntime();
-  const existing = await dbRuntime.getCapabilityById(input.db, input.organizationId, input.capabilityId);
+  const existing = await dbRuntime.getCapabilityById(
+    input.db,
+    input.organizationId,
+    input.capabilityId,
+  );
   invalidateCapabilityOnAssignmentChange(omitTokenHash(existing), input.now);
   return dbRuntime.revokeCapabilityRecord(
     input.db,

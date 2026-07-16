@@ -23,8 +23,7 @@ export const DOMAIN_PACKAGE_LITERAL = '@aicaa/domain';
 export const DOMAIN_NODE_MODULES_RELATIVE = 'apps/web/node_modules/@aicaa/domain';
 export const DOMAIN_NODE_MODULES_DIST_INDEX_RELATIVE =
   'apps/web/node_modules/@aicaa/domain/dist/index.js';
-export const DOMAIN_FUNCTION_ROOT_DIST_INDEX_RELATIVE =
-  'node_modules/@aicaa/domain/dist/index.js';
+export const DOMAIN_FUNCTION_ROOT_DIST_INDEX_RELATIVE = 'node_modules/@aicaa/domain/dist/index.js';
 export const DOMAIN_MAPPERS_RELATIVE = 'packages/db/dist/mappers/domain-mappers.js';
 export const DOMAIN_RELATIVE_IMPORT_SPECIFIER = '../../../domain/dist/index.js';
 export const DOMAIN_RELATIVE_INDEX_RELATIVE = 'packages/domain/dist/index.js';
@@ -66,10 +65,7 @@ export const DB_BACKED_API_ROUTE_NFTS = [
 
 export const DB_BACKED_PAGE_ROUTE_NFTS = ['app/c/[token]/page.js.nft.json'];
 
-export const DB_BACKED_ROUTE_NFTS = [
-  ...DB_BACKED_API_ROUTE_NFTS,
-  ...DB_BACKED_PAGE_ROUTE_NFTS,
-];
+export const DB_BACKED_ROUTE_NFTS = [...DB_BACKED_API_ROUTE_NFTS, ...DB_BACKED_PAGE_ROUTE_NFTS];
 
 const RELATIVE_JS_IMPORT =
   /(?:from|export\s+(?:\{[^}]*\}|\*)\s+from)\s+['"](\.\.?\/[^'"]+\.js)['"]|require\(\s*['"](\.\.?\/[^'"]+\.js)['"]\s*\)/g;
@@ -594,7 +590,9 @@ try {
     });
 
     if (proc.status !== 0) {
-      throw new Error(proc.stderr?.trim() || proc.stdout?.trim() || 'domain removal import probe failed');
+      throw new Error(
+        proc.stderr?.trim() || proc.stdout?.trim() || 'domain removal import probe failed',
+      );
     }
 
     const output = proc.stdout.trim();
@@ -604,7 +602,9 @@ try {
 
     const parsed = JSON.parse(output);
     if (parsed.code !== 'ERR_MODULE_NOT_FOUND') {
-      throw new Error(`expected ERR_MODULE_NOT_FOUND after removing packages/domain/dist, got ${output}`);
+      throw new Error(
+        `expected ERR_MODULE_NOT_FOUND after removing packages/domain/dist, got ${output}`,
+      );
     }
 
     return parsed;
@@ -614,10 +614,7 @@ try {
 }
 
 export function collectServerJsFiles(webRoot) {
-  const roots = [
-    path.join(webRoot, '.next/server/chunks'),
-    path.join(webRoot, '.next/server/app'),
-  ];
+  const roots = [path.join(webRoot, '.next/server/chunks'), path.join(webRoot, '.next/server/app')];
   const files = [];
   for (const root of roots) {
     files.push(...listDistJsFiles(root));
@@ -724,7 +721,10 @@ function assertStaticBridgeInChunk(content, chunkPath) {
     );
   }
 
-  if (content.includes('Traced DB runtime not found') && !/createPrismaClient:\w+\.createPrismaClient/.test(content)) {
+  if (
+    content.includes('Traced DB runtime not found') &&
+    !/createPrismaClient:\w+\.createPrismaClient/.test(content)
+  ) {
     throw new Error(
       `compiled bridge still contains runtime path resolution marker in ${path.basename(chunkPath)}`,
     );
@@ -938,7 +938,10 @@ export function simulateLambdaLayoutBridgeInit({
     fs.rmSync(layoutRoot, { recursive: true, force: true });
     throw new Error('traced layout missing compiled bridge chunk');
   }
-  const bridgeChunkRelativePath = path.relative(path.join(layoutWeb, '.next'), layoutBridgeChunkPath);
+  const bridgeChunkRelativePath = path.relative(
+    path.join(layoutWeb, '.next'),
+    layoutBridgeChunkPath,
+  );
 
   const scriptPath = writeLambdaBridgeSimulationScript({
     layoutRoot,
@@ -959,7 +962,9 @@ export function simulateLambdaLayoutBridgeInit({
     });
 
     if (proc.status !== 0) {
-      throw new Error(proc.stderr?.trim() || proc.stdout?.trim() || 'lambda bridge simulation failed');
+      throw new Error(
+        proc.stderr?.trim() || proc.stdout?.trim() || 'lambda bridge simulation failed',
+      );
     }
 
     const output = `${proc.stdout ?? ''}${proc.stderr ?? ''}`;
@@ -1025,7 +1030,9 @@ export function assertBuiltOutputUsesRuntimeBridge(webRoot, repoRoot) {
       );
     }
     if (/\bawait\s+\(void\s+0\)\s*\(/.test(content)) {
-      throw new Error(`built bridge output contains void 0 stub in ${path.relative(repoRoot, filePath)}`);
+      throw new Error(
+        `built bridge output contains void 0 stub in ${path.relative(repoRoot, filePath)}`,
+      );
     }
     if (/require\([^)]*packages\/db\/dist\/runtime\.js/.test(content)) {
       throw new Error(

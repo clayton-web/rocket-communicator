@@ -95,9 +95,7 @@ function gatherRouteArtifacts(relativeNftPath) {
 }
 
 function assertRuntimeReferencePresent(routeLabel, artifactPaths) {
-  const combined = artifactPaths
-    .map((filePath) => fs.readFileSync(filePath, 'utf8'))
-    .join('\n');
+  const combined = artifactPaths.map((filePath) => fs.readFileSync(filePath, 'utf8')).join('\n');
 
   for (const marker of REQUIRED_RUNTIME_MARKERS) {
     if (!combined.includes(marker)) {
@@ -110,7 +108,9 @@ function assertNoDbStubs(routeLabel, artifactPaths) {
   for (const filePath of artifactPaths) {
     const content = fs.readFileSync(filePath, 'utf8');
     if (content.includes(INVALID_ROOT_PATTERN)) {
-      fail(`${routeLabel} contains invalid bundling path ${INVALID_ROOT_PATTERN} in ${path.relative(repoRoot, filePath)}`);
+      fail(
+        `${routeLabel} contains invalid bundling path ${INVALID_ROOT_PATTERN} in ${path.relative(repoRoot, filePath)}`,
+      );
     }
 
     for (const pattern of DB_STUB_PATTERNS) {
@@ -122,7 +122,9 @@ function assertNoDbStubs(routeLabel, artifactPaths) {
     }
 
     if (/\["getDb",0,function\(\)\{return[^}]*\(void 0\)\(\)/.test(content)) {
-      fail(`${routeLabel} compiles getDb() to invoke void 0 in ${path.relative(repoRoot, filePath)}`);
+      fail(
+        `${routeLabel} compiles getDb() to invoke void 0 in ${path.relative(repoRoot, filePath)}`,
+      );
     }
   }
 }

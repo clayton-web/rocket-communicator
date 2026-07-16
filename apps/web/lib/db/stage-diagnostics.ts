@@ -5,7 +5,11 @@ import {
   safeReadProperty,
   type DatabaseRuntimeFailureCategory,
 } from '@/lib/db/diagnostics';
-import { getDbStageContext, updateDbStageContext, type DbStageContext } from '@/lib/db/stage-context';
+import {
+  getDbStageContext,
+  updateDbStageContext,
+  type DbStageContext,
+} from '@/lib/db/stage-context';
 
 function safeReadString(value: unknown, key: string): string | undefined {
   const candidate = safeReadProperty(value, key);
@@ -25,13 +29,10 @@ export type DbRuntimeStage =
   | 'DB_RUNTIME_FAILURE';
 
 export type DbRuntimeLoaderFailureCategory =
-  | 'DB_MODULE_NOT_FOUND'
-  | 'DB_MODULE_LOAD_FAILED'
-  | 'DB_EXPORTS_MISSING';
+  'DB_MODULE_NOT_FOUND' | 'DB_MODULE_LOAD_FAILED' | 'DB_EXPORTS_MISSING';
 
 export type DbRuntimeStageFailureCategory =
-  | DbRuntimeLoaderFailureCategory
-  | DatabaseRuntimeFailureCategory;
+  DbRuntimeLoaderFailureCategory | DatabaseRuntimeFailureCategory;
 
 export interface DbRuntimeStageLogPayload {
   event: typeof DB_RUNTIME_STAGE_EVENT;
@@ -177,9 +178,7 @@ function emitStagePayload(payload: DbRuntimeStageLogPayload): void {
 }
 
 /** Classify require("@aicaa/db") failures without reading messages or paths. */
-export function classifyDbModuleRequireFailure(
-  error: unknown,
-): DbRuntimeLoaderFailureCategory {
+export function classifyDbModuleRequireFailure(error: unknown): DbRuntimeLoaderFailureCategory {
   try {
     const nodeCode = nodeErrorCodeFromCause(error);
     if (nodeCode === 'MODULE_NOT_FOUND') {
@@ -219,7 +218,10 @@ export function logDbRuntimeStage(
 export function logDbRuntimeStageFailure(
   error: unknown,
   category: DbRuntimeStageFailureCategory,
-  extras: Pick<DbRuntimeStageLogPayload, 'moduleLoaded' | 'exportsValidated' | 'queryOperation'> = {},
+  extras: Pick<
+    DbRuntimeStageLogPayload,
+    'moduleLoaded' | 'exportsValidated' | 'queryOperation'
+  > = {},
 ): void {
   try {
     emitStagePayload({
@@ -237,9 +239,7 @@ export function logDbRuntimeStageFailure(
 }
 
 /** Classify Prisma/client/query failures for stage logging. */
-export function classifyDbRuntimeStageFailure(
-  error: unknown,
-): DbRuntimeStageFailureCategory {
+export function classifyDbRuntimeStageFailure(error: unknown): DbRuntimeStageFailureCategory {
   try {
     return classifyDatabaseRuntimeFailure(error);
   } catch {

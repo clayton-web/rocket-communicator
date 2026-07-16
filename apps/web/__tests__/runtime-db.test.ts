@@ -164,8 +164,14 @@ describe('db runtime loader', () => {
   });
 
   it('does not use package-name require for production runtime loading', () => {
-    const runtimeDbPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '../lib/db/runtime-db.ts');
-    const bridgePath = path.join(path.dirname(fileURLToPath(import.meta.url)), '../lib/db/db-runtime-entry.ts');
+    const runtimeDbPath = path.join(
+      path.dirname(fileURLToPath(import.meta.url)),
+      '../lib/db/runtime-db.ts',
+    );
+    const bridgePath = path.join(
+      path.dirname(fileURLToPath(import.meta.url)),
+      '../lib/db/db-runtime-entry.ts',
+    );
     const reexportsPath = path.join(
       path.dirname(fileURLToPath(import.meta.url)),
       '../lib/db/db-runtime-reexports.ts',

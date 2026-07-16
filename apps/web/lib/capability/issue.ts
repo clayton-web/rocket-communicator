@@ -13,11 +13,7 @@ import {
   type TaskCapability,
   type UtcInstant,
 } from '@aicaa/domain';
-import type {
-  AuditEventRecord,
-  DbClient,
-  DbTransaction,
-} from '@aicaa/db';
+import type { AuditEventRecord, DbClient, DbTransaction } from '@aicaa/db';
 import { loadDbRuntime } from '@/lib/db/runtime-db';
 import { isCapabilityTokenError, readPersistenceErrorCode } from '@/lib/errors/safe-error-shapes';
 import {

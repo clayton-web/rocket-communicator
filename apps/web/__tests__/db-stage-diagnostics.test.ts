@@ -59,10 +59,7 @@ function parseStageLogs(spy: ReturnType<typeof vi.spyOn>): Record<string, unknow
     .map((line) => JSON.parse(line) as Record<string, unknown>);
 }
 
-function findStageLog(
-  spy: ReturnType<typeof vi.spyOn>,
-  stage: string,
-): Record<string, unknown> {
+function findStageLog(spy: ReturnType<typeof vi.spyOn>, stage: string): Record<string, unknown> {
   const payload = parseStageLogs(spy).find((entry) => entry.stage === stage);
   expect(payload).toBeDefined();
   return payload!;
@@ -150,7 +147,17 @@ describe('db runtime stage diagnostics', () => {
     expect(() => logDbRuntimeStage('PRISMA_QUERY_START')).not.toThrow();
     expect(() => logDbRuntimeStageFailure(throwingGetter, 'UNKNOWN_DATABASE_ERROR')).not.toThrow();
     expect(() =>
-      logDbRuntimeStageFailure(new Proxy({}, { get: () => { throw new Error('proxy'); } }), 'UNKNOWN_DATABASE_ERROR'),
+      logDbRuntimeStageFailure(
+        new Proxy(
+          {},
+          {
+            get: () => {
+              throw new Error('proxy');
+            },
+          },
+        ),
+        'UNKNOWN_DATABASE_ERROR',
+      ),
     ).not.toThrow();
   });
 

@@ -109,9 +109,7 @@ describe('database runtime diagnostics', () => {
 
     expect(isDatabaseRuntimeDiagnosticsEnabled()).toBe(false);
     expect(
-      logDatabaseRuntimeFailure(
-        new Error('DATABASE_URL is required to create the Prisma client.'),
-      ),
+      logDatabaseRuntimeFailure(new Error('DATABASE_URL is required to create the Prisma client.')),
     ).toBeUndefined();
     expect(consoleErrorSpy).not.toHaveBeenCalled();
   });
@@ -447,9 +445,7 @@ describe('fail-safe database runtime diagnostics', () => {
     const circular: Record<string, unknown> = { event: 'database_runtime_failure' };
     circular.self = circular;
 
-    const serialized = serializeDatabaseRuntimeFailureLogPayload(
-      circular as never,
-    );
+    const serialized = serializeDatabaseRuntimeFailureLogPayload(circular as never);
     const parsed = JSON.parse(serialized) as Record<string, unknown>;
     expect(parsed.event).toBe('database_runtime_failure');
     expect(parsed.category).toBe('UNKNOWN_DATABASE_ERROR');
@@ -461,9 +457,7 @@ describe('fail-safe database runtime diagnostics', () => {
     delete process.env[ENABLE_DB_RUNTIME_DIAGNOSTICS_ENV];
 
     expect(
-      logDatabaseRuntimeFailure(
-        new Error('DATABASE_URL is required to create the Prisma client.'),
-      ),
+      logDatabaseRuntimeFailure(new Error('DATABASE_URL is required to create the Prisma client.')),
     ).toBeUndefined();
     expect(consoleErrorSpy).not.toHaveBeenCalled();
   });

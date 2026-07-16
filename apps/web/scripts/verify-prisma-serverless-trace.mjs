@@ -22,15 +22,9 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const webRoot = path.resolve(scriptDir, '..');
 const repoRoot = path.resolve(webRoot, '../..');
 
-const TASKS_NFT = path.join(
-  webRoot,
-  '.next/server/app/api/v1/tasks/route.js.nft.json',
-);
+const TASKS_NFT = path.join(webRoot, '.next/server/app/api/v1/tasks/route.js.nft.json');
 
-const FORBIDDEN_TRACE_GLOBS = [
-  '../../packages/db/**/*',
-  '../../**/*',
-];
+const FORBIDDEN_TRACE_GLOBS = ['../../packages/db/**/*', '../../**/*'];
 
 function fail(message) {
   console.error(`verify-prisma-serverless-trace: ${message}`);
@@ -74,10 +68,7 @@ function assertTasksRouteNftTrace() {
 
 function assertNoInvalidRootBundling() {
   const tasksRouteJs = path.join(webRoot, '.next/server/app/api/v1/tasks/route.js');
-  const chunkDirs = [
-    path.join(webRoot, '.next/server/chunks'),
-    path.dirname(tasksRouteJs),
-  ];
+  const chunkDirs = [path.join(webRoot, '.next/server/chunks'), path.dirname(tasksRouteJs)];
 
   const offenders = [];
   for (const dir of chunkDirs) {
@@ -90,9 +81,7 @@ function assertNoInvalidRootBundling() {
   }
 
   if (offenders.length > 0) {
-    fail(
-      `built server output still contains ${INVALID_ROOT_PATTERN} in: ${offenders.join(', ')}`,
-    );
+    fail(`built server output still contains ${INVALID_ROOT_PATTERN} in: ${offenders.join(', ')}`);
   }
 }
 

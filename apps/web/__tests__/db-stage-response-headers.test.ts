@@ -117,9 +117,7 @@ describe('owner task DB diagnostic response headers', () => {
 
     expect(headers[DB_STAGE_HEADER.toLowerCase()]).toBe('DB_RUNTIME_FAILURE');
     expect(headers[DB_CATEGORY_HEADER.toLowerCase()]).toBe('DATABASE_UNREACHABLE');
-    expect(headers[DB_ERROR_CLASS_HEADER.toLowerCase()]).toBe(
-      'PrismaClientInitializationError',
-    );
+    expect(headers[DB_ERROR_CLASS_HEADER.toLowerCase()]).toBe('PrismaClientInitializationError');
     expect(headers[DB_PRISMA_CODE_HEADER.toLowerCase()]).toBe('P1001');
   });
 
@@ -243,9 +241,7 @@ describe('owner task DB diagnostic response headers', () => {
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     setDbStageContext({ routePathname: '/api/v1/tasks', requestId: 'req_log' });
 
-    expect(() =>
-      logDbRuntimeStageFailure(new Error('safe'), 'DB_MODULE_NOT_FOUND'),
-    ).not.toThrow();
+    expect(() => logDbRuntimeStageFailure(new Error('safe'), 'DB_MODULE_NOT_FOUND')).not.toThrow();
     expect(consoleErrorSpy).toHaveBeenCalled();
 
     consoleErrorSpy.mockRestore();

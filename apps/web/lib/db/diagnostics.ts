@@ -49,9 +49,7 @@ const MAX_CAUSE_DEPTH = 12;
 
 export const ENABLE_DB_RUNTIME_DIAGNOSTICS_ENV = 'ENABLE_DB_RUNTIME_DIAGNOSTICS' as const;
 
-export function isDatabaseRuntimeDiagnosticsEnabled(
-  env: NodeJS.ProcessEnv = process.env,
-): boolean {
+export function isDatabaseRuntimeDiagnosticsEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   return env[ENABLE_DB_RUNTIME_DIAGNOSTICS_ENV] === 'true';
 }
 
