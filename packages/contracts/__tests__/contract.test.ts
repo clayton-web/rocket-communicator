@@ -53,10 +53,16 @@ describe('contracts package', () => {
     expect(examples.length).toBeGreaterThanOrEqual(4);
   });
 
-  it('generates TypeScript output', () => {
-    execSync('pnpm generate', { cwd: root, stdio: 'pipe' });
-    const generated = readFileSync(path.join(root, 'generated/typescript/schema.ts'), 'utf8');
-    expect(generated).toContain('TaskSuggestion');
-    expect(generated).toContain('TaskStatus');
-  });
+  // Full generate includes OpenAPI bundle, TypeScript, and Kotlin (Java) codegen.
+  // CI annotations showed Vitest's default 5s timeout failing this step.
+  it(
+    'generates TypeScript output',
+    () => {
+      execSync('pnpm generate', { cwd: root, stdio: 'pipe' });
+      const generated = readFileSync(path.join(root, 'generated/typescript/schema.ts'), 'utf8');
+      expect(generated).toContain('TaskSuggestion');
+      expect(generated).toContain('TaskStatus');
+    },
+    120_000,
+  );
 });
