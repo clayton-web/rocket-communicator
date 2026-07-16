@@ -4,19 +4,23 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Prisma } from '@aicaa/db';
+import * as aicaaDb from '@aicaa/db/runtime';
 import { ENABLE_DB_RUNTIME_DIAGNOSTICS_ENV } from '@/lib/db/diagnostics';
 import {
   RHEL_ENGINE_FILENAME,
+  capturePrismaLayoutFailureDiagnostics,
   classifyPrismaLayoutFailure,
   inspectPrismaGeneratedClientLayout,
+  shouldCapturePrismaLayoutDiagnostics,
 } from '@/lib/db/prisma-layout-diagnostics';
 import {
+  getDbStageContext,
   runWithDbStageContext,
   setDbStageContext,
   resetDbStageContextForTests,
   updateDbStageContext,
 } from '@/lib/db/stage-context';
-import { logDbRuntimeStageFailure } from '@/lib/db/stage-diagnostics';
+import { logDbRuntimeStage, logDbRuntimeStageFailure } from '@/lib/db/stage-diagnostics';
 import {
   DB_CATEGORY_HEADER,
   DB_PRISMA_CLIENT_INDEX_HEADER,
@@ -30,9 +34,16 @@ import {
   attachOwnerTaskDbDiagnosticHeaders,
   buildOwnerTaskDbDiagnosticHeaders,
 } from '@/lib/db/stage-response-headers';
+import { getDb, setDbForTests } from '@/lib/db/server';
+import { resetDbRuntimeForTests, setDbRuntimeForTests } from '@/lib/db/runtime-db';
+import {
+  resetLastResolvedTracedRuntimePathForTests,
+  setLastResolvedTracedRuntimePath,
+} from '@/lib/db/traced-runtime-path';
 import { NextResponse } from 'next/server';
 import { mapOwnerTaskRouteError, mapRecipientCapabilityRouteError } from '@/lib/http/errors';
 import { TaskServiceError } from '@/lib/tasks/errors';
+import { listTasksFromDb } from '@/lib/tasks/internal';
 
 const FORBIDDEN_FRAGMENTS = [
   'postgresql://',
@@ -108,14 +119,31 @@ describe('prisma layout diagnostics probe', () => {
     return root;
   }
 
+  function installTracedLayout(artifacts: Parameters<typeof writeArtifactTree>[1] = {}) {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'prisma-traced-'));
+    tempRoots.push(root);
+    const runtimePath = path.join(root, 'runtime.js');
+    fs.writeFileSync(runtimePath, 'export {}');
+    const clientDir = path.join(root, 'generated', 'client');
+    writeArtifactTree(clientDir, artifacts);
+    setLastResolvedTracedRuntimePath(runtimePath);
+    return { root, runtimePath, clientDir };
+  }
+
   beforeEach(() => {
     process.env = { ...originalEnv };
     resetDbStageContextForTests();
+    resetDbRuntimeForTests();
+    resetLastResolvedTracedRuntimePathForTests();
+    setDbForTests(undefined);
   });
 
   afterEach(() => {
     process.env = { ...originalEnv };
     resetDbStageContextForTests();
+    resetDbRuntimeForTests();
+    resetLastResolvedTracedRuntimePathForTests();
+    setDbForTests(undefined);
     for (const root of tempRoots) {
       fs.rmSync(root, { recursive: true, force: true });
     }
@@ -126,7 +154,6 @@ describe('prisma layout diagnostics probe', () => {
   it('reports all five artifacts present', () => {
     const dir = makeTempClientDir();
     const result = inspectPrismaGeneratedClientLayout(undefined, dir);
-
     expect(result).toMatchObject({
       prismaClientIndexPresent: true,
       prismaSchemaAdjacent: true,
@@ -135,73 +162,47 @@ describe('prisma layout diagnostics probe', () => {
       prismaGeneratedPackagePresent: true,
       prismaExpectedEngineTarget: 'RHEL_OPENSSL_3',
       generatedClientDirectoryResolved: true,
-      engineFileReadable: true,
-      schemaFileReadable: true,
     });
     assertSafe(JSON.stringify(result));
   });
 
-  it('reports engine missing as ENGINE_NOT_FOUND', () => {
-    const dir = makeTempClientDir({ engine: false });
-    const result = inspectPrismaGeneratedClientLayout(undefined, dir);
-
-    expect(result.prismaEngineAdjacent).toBe(false);
-    expect(result.prismaExpectedEngineTarget).toBe('UNKNOWN');
-    expect(result.prismaFailureClass).toBe('ENGINE_NOT_FOUND');
+  it('reports engine/schema/library/package missing booleans correctly', () => {
+    expect(
+      inspectPrismaGeneratedClientLayout(undefined, makeTempClientDir({ engine: false })),
+    ).toMatchObject({ prismaEngineAdjacent: false, prismaFailureClass: 'ENGINE_NOT_FOUND' });
+    expect(
+      inspectPrismaGeneratedClientLayout(undefined, makeTempClientDir({ schema: false })),
+    ).toMatchObject({ prismaSchemaAdjacent: false, prismaFailureClass: 'SCHEMA_NOT_FOUND' });
+    expect(
+      inspectPrismaGeneratedClientLayout(undefined, makeTempClientDir({ library: false })),
+    ).toMatchObject({
+      prismaRuntimeLibraryPresent: false,
+      prismaFailureClass: 'GENERATED_CLIENT_RUNTIME_MISSING',
+    });
+    expect(
+      inspectPrismaGeneratedClientLayout(undefined, makeTempClientDir({ packageJson: false }))
+        .prismaGeneratedPackagePresent,
+    ).toBe(false);
   });
 
-  it('reports schema missing as SCHEMA_NOT_FOUND', () => {
-    const dir = makeTempClientDir({ schema: false });
-    const result = inspectPrismaGeneratedClientLayout(undefined, dir);
-
-    expect(result.prismaSchemaAdjacent).toBe(false);
-    expect(result.prismaFailureClass).toBe('SCHEMA_NOT_FOUND');
-  });
-
-  it('reports runtime/library.js missing as GENERATED_CLIENT_RUNTIME_MISSING', () => {
-    const dir = makeTempClientDir({ library: false });
-    const result = inspectPrismaGeneratedClientLayout(undefined, dir);
-
-    expect(result.prismaRuntimeLibraryPresent).toBe(false);
-    expect(result.prismaFailureClass).toBe('GENERATED_CLIENT_RUNTIME_MISSING');
-  });
-
-  it('reports generated package.json missing without changing failure class when other artifacts exist', () => {
-    const dir = makeTempClientDir({ packageJson: false });
-    const result = inspectPrismaGeneratedClientLayout(
-      { message: 'unrelated mystery failure' },
+  it('maps known engine-not-found and dlopen patterns without exposing text', () => {
+    const dir = makeTempClientDir();
+    const notFound = inspectPrismaGeneratedClientLayout(
+      { message: 'Could not locate the Query Engine for runtime rhel-openssl-3.0.x' },
       dir,
     );
+    expect(notFound.prismaFailureClass).toBe('ENGINE_NOT_FOUND');
+    assertSafe(JSON.stringify(notFound));
 
-    expect(result.prismaGeneratedPackagePresent).toBe(false);
-    expect(result.prismaClientIndexPresent).toBe(true);
-    expect(result.prismaFailureClass).toBe('UNKNOWN');
-  });
-
-  it('maps known engine-not-found message to ENGINE_NOT_FOUND without exposing text', () => {
-    const dir = makeTempClientDir();
-    const message =
-      'PrismaClientInitializationError: Could not locate the Query Engine for runtime rhel-openssl-3.0.x';
-    const result = inspectPrismaGeneratedClientLayout({ message }, dir);
-
-    expect(result.prismaFailureClass).toBe('ENGINE_NOT_FOUND');
-    assertSafe(JSON.stringify(result));
-    expect(JSON.stringify(result)).not.toContain('Could not locate');
-  });
-
-  it('maps known dlopen/shared-library pattern to ENGINE_LOAD_FAILED', () => {
-    const dir = makeTempClientDir();
-    const error = Object.assign(new Error('dlopen failed: cannot open shared object file'), {
-      code: 'ERR_DLOPEN_FAILED',
-    });
-    const result = inspectPrismaGeneratedClientLayout(error, dir);
-
-    expect(result.prismaFailureClass).toBe('ENGINE_LOAD_FAILED');
-    assertSafe(JSON.stringify(result));
+    const loadFailed = inspectPrismaGeneratedClientLayout(
+      Object.assign(new Error('cannot open shared object file'), { code: 'ERR_DLOPEN_FAILED' }),
+      dir,
+    );
+    expect(loadFailed.prismaFailureClass).toBe('ENGINE_LOAD_FAILED');
+    assertSafe(JSON.stringify(loadFailed));
   });
 
   it('maps unknown message to UNKNOWN', () => {
-    const dir = makeTempClientDir();
     expect(
       classifyPrismaLayoutFailure(
         { message: 'something completely unexpected happened' },
@@ -226,32 +227,73 @@ describe('prisma layout diagnostics probe', () => {
         },
       },
     );
-
     expect(() => inspectPrismaGeneratedClientLayout(toxic, dir)).not.toThrow();
-    const result = inspectPrismaGeneratedClientLayout(toxic, dir);
-    expect(result.generatedClientDirectoryResolved).toBe(true);
-    assertSafe(JSON.stringify(result));
+    expect(() => capturePrismaLayoutFailureDiagnostics(toxic)).not.toThrow();
   });
 
-  it('attaches allowlisted layout headers on owner-task 500 when diagnostics enabled', async () => {
+  it('getDb construction failure captures layout fields via logDbRuntimeStageFailure', async () => {
     process.env[ENABLE_DB_RUNTIME_DIAGNOSTICS_ENV] = 'true';
-    setDbStageContext({ routePathname: '/api/v1/tasks', requestId: 'req_layout' });
+    process.env.DATABASE_URL = 'postgresql://user:pass@127.0.0.1:5432/app';
+    installTracedLayout({ engine: false });
+    setDbStageContext({ routePathname: '/api/v1/tasks', requestId: 'req_ctor' });
 
-    const dir = makeTempClientDir({ engine: false });
-    const layout = inspectPrismaGeneratedClientLayout(
-      new Prisma.PrismaClientInitializationError('init', '6.19.3'),
-      dir,
+    const initError = new Prisma.PrismaClientInitializationError('init', '6.19.3');
+    setDbRuntimeForTests({
+      ...aicaaDb,
+      createPrismaClient: () => {
+        throw initError;
+      },
+    });
+
+    await expect(getDb()).rejects.toBe(initError);
+    const ctx = getDbStageContext();
+    expect(ctx?.prismaFailureClass).toBe('ENGINE_NOT_FOUND');
+    expect(ctx?.prismaEngineAdjacent).toBe(false);
+    expect(ctx?.prismaClientIndexPresent).toBe(true);
+
+    const headers = readHeaders(mapOwnerTaskRouteError(initError));
+    expect(headers[DB_PRISMA_FAILURE_HEADER.toLowerCase()]).toBe('ENGINE_NOT_FOUND');
+    expect(headers[DB_PRISMA_ENGINE_HEADER.toLowerCase()]).toBe('missing');
+    assertSafe(JSON.stringify(headers));
+  });
+
+  it('query-time PrismaClientInitializationError captures layout after PRISMA_QUERY_START clear', async () => {
+    process.env[ENABLE_DB_RUNTIME_DIAGNOSTICS_ENV] = 'true';
+    process.env.DATABASE_URL = 'postgresql://user:pass@127.0.0.1:5432/app';
+    installTracedLayout({ engine: false });
+    setDbStageContext({ routePathname: '/api/v1/tasks', requestId: 'req_query' });
+
+    updateDbStageContext({
+      prismaFailureClass: 'OTHER',
+      prismaClientIndexPresent: false,
+      prismaEngineAdjacent: true,
+    });
+    logDbRuntimeStage('PRISMA_QUERY_START', { queryOperation: 'listTasks' });
+    expect(getDbStageContext()?.prismaFailureClass).toBeUndefined();
+
+    const initError = new Prisma.PrismaClientInitializationError(
+      'Could not locate the Query Engine',
+      '6.19.3',
     );
-    updateDbStageContext({ ...layout });
-    logDbRuntimeStageFailure(
-      new Prisma.PrismaClientInitializationError('init', '6.19.3'),
-      'PRISMA_ENGINE_OR_CLIENT_LOAD',
+    const listTasks = vi.fn(async () => {
+      throw initError;
+    });
+    setDbRuntimeForTests({ ...aicaaDb, listTasks });
+    setDbForTests({} as never);
+
+    await expect(listTasksFromDb({} as never, { organizationId: 'org_x' as never })).rejects.toBe(
+      initError,
     );
 
-    const response = mapOwnerTaskRouteError(new Error('unexpected'));
+    const ctx = getDbStageContext();
+    expect(ctx?.lastStage).toBe('DB_RUNTIME_FAILURE');
+    expect(ctx?.failureCategory).toBe('PRISMA_ENGINE_OR_CLIENT_LOAD');
+    expect(ctx?.prismaFailureClass).toBe('ENGINE_NOT_FOUND');
+    expect(ctx?.prismaEngineAdjacent).toBe(false);
+
+    const response = mapOwnerTaskRouteError(initError);
     const headers = readHeaders(response);
     const body = await response.json();
-
     expect(response.status).toBe(500);
     expect(body).toEqual({
       error: {
@@ -274,21 +316,74 @@ describe('prisma layout diagnostics probe', () => {
     assertSafe(JSON.stringify(body));
   });
 
-  it('omits new layout headers when diagnostics are disabled', async () => {
-    delete process.env[ENABLE_DB_RUNTIME_DIAGNOSTICS_ENV];
-    setDbStageContext({
-      routePathname: '/api/v1/tasks',
-      requestId: 'req_off',
-      lastStage: 'DB_RUNTIME_FAILURE',
-      failureCategory: 'PRISMA_ENGINE_OR_CLIENT_LOAD',
-      prismaFailureClass: 'ENGINE_NOT_FOUND',
-      prismaClientIndexPresent: true,
-      prismaSchemaAdjacent: true,
-      prismaEngineAdjacent: false,
-      prismaRuntimeLibraryPresent: true,
-      prismaGeneratedPackagePresent: true,
-      prismaExpectedEngineTarget: 'UNKNOWN',
+  it('maps query-time engine-load failure to ENGINE_LOAD_FAILED', () => {
+    process.env[ENABLE_DB_RUNTIME_DIAGNOSTICS_ENV] = 'true';
+    installTracedLayout();
+    setDbStageContext({ routePathname: '/api/v1/tasks', requestId: 'req_dlopen' });
+    logDbRuntimeStage('PRISMA_QUERY_START', { queryOperation: 'listTasks' });
+
+    const error = Object.assign(new Error('dlopen failed'), {
+      name: 'PrismaClientInitializationError',
+      code: 'ERR_DLOPEN_FAILED',
+      clientVersion: '6.19.3',
     });
+    logDbRuntimeStageFailure(error, 'PRISMA_ENGINE_OR_CLIENT_LOAD', {
+      queryOperation: 'listTasks',
+    });
+
+    expect(getDbStageContext()?.prismaFailureClass).toBe('ENGINE_LOAD_FAILED');
+    const headers = readHeaders(mapOwnerTaskRouteError(error));
+    expect(headers[DB_PRISMA_FAILURE_HEADER.toLowerCase()]).toBe('ENGINE_LOAD_FAILED');
+    expect(JSON.stringify(headers)).not.toContain('cannot open shared object');
+    expect(JSON.stringify(headers)).not.toContain('postgresql://');
+  });
+
+  it('does not trigger layout inspection for non-Prisma query errors', () => {
+    process.env[ENABLE_DB_RUNTIME_DIAGNOSTICS_ENV] = 'true';
+    installTracedLayout({ engine: false });
+    setDbStageContext({ routePathname: '/api/v1/tasks', requestId: 'req_non_prisma' });
+
+    expect(shouldCapturePrismaLayoutDiagnostics(new Error('x'), 'DATABASE_QUERY_FAILED')).toBe(
+      false,
+    );
+    expect(
+      shouldCapturePrismaLayoutDiagnostics(new TaskServiceError('NOT_FOUND', 'x'), undefined),
+    ).toBe(false);
+
+    const queryError = Object.assign(new Error('hidden'), {
+      name: 'PrismaClientKnownRequestError',
+      code: 'P2002',
+      clientVersion: '6.19.3',
+    });
+    logDbRuntimeStageFailure(queryError, 'DATABASE_QUERY_FAILED', {
+      queryOperation: 'listTasks',
+    });
+    expect(getDbStageContext()?.prismaFailureClass).toBeUndefined();
+    expect(getDbStageContext()?.prismaEngineAdjacent).toBeUndefined();
+  });
+
+  it('preserves TaskServiceError responses without layout headers', () => {
+    process.env[ENABLE_DB_RUNTIME_DIAGNOSTICS_ENV] = 'true';
+    installTracedLayout({ engine: false });
+    setDbStageContext({ routePathname: '/api/v1/tasks', requestId: 'req_task' });
+    logDbRuntimeStageFailure(
+      new Prisma.PrismaClientInitializationError('init', '6.19.3'),
+      'PRISMA_ENGINE_OR_CLIENT_LOAD',
+    );
+
+    const response = mapOwnerTaskRouteError(new TaskServiceError('NOT_FOUND', 'Task not found.'));
+    expect(response.status).toBe(404);
+    expect(readHeaders(response)[DB_PRISMA_FAILURE_HEADER.toLowerCase()]).toBeUndefined();
+  });
+
+  it('omits layout headers when diagnostics are disabled', async () => {
+    delete process.env[ENABLE_DB_RUNTIME_DIAGNOSTICS_ENV];
+    installTracedLayout({ engine: false });
+    setDbStageContext({ routePathname: '/api/v1/tasks', requestId: 'req_off' });
+    logDbRuntimeStageFailure(
+      new Prisma.PrismaClientInitializationError('init', '6.19.3'),
+      'PRISMA_ENGINE_OR_CLIENT_LOAD',
+    );
 
     const response = mapOwnerTaskRouteError(new Error('unexpected'));
     const headers = readHeaders(response);
@@ -309,49 +404,18 @@ describe('prisma layout diagnostics probe', () => {
     const response = attachOwnerTaskDbDiagnosticHeaders(
       NextResponse.json({ items: [], nextCursor: null }, { status: 200 }),
     );
-    const headers = readHeaders(response);
-    expect(headers[DB_PRISMA_FAILURE_HEADER.toLowerCase()]).toBeUndefined();
-    expect(headers[DB_STAGE_HEADER.toLowerCase()]).toBeUndefined();
+    expect(readHeaders(response)[DB_PRISMA_FAILURE_HEADER.toLowerCase()]).toBeUndefined();
   });
 
-  it('omits layout headers on 4xx responses', () => {
+  it('omits layout headers on recipient and session routes', () => {
     process.env[ENABLE_DB_RUNTIME_DIAGNOSTICS_ENV] = 'true';
-    setDbStageContext({
-      routePathname: '/api/v1/tasks',
-      requestId: 'req_4xx',
-      lastStage: 'DB_RUNTIME_FAILURE',
-      failureCategory: 'PRISMA_ENGINE_OR_CLIENT_LOAD',
-      prismaFailureClass: 'ENGINE_NOT_FOUND',
-      prismaClientIndexPresent: true,
-      prismaSchemaAdjacent: true,
-      prismaEngineAdjacent: false,
-      prismaRuntimeLibraryPresent: true,
-      prismaGeneratedPackagePresent: true,
-      prismaExpectedEngineTarget: 'UNKNOWN',
-    });
+    installTracedLayout({ engine: false });
 
-    const response = mapOwnerTaskRouteError(new TaskServiceError('NOT_FOUND', 'Task not found.'));
-    const headers = readHeaders(response);
-    expect(response.status).toBe(404);
-    expect(headers[DB_PRISMA_FAILURE_HEADER.toLowerCase()]).toBeUndefined();
-  });
-
-  it('omits layout headers on recipient and session routes', async () => {
-    process.env[ENABLE_DB_RUNTIME_DIAGNOSTICS_ENV] = 'true';
-
-    setDbStageContext({
-      routePathname: '/api/v1/session',
-      requestId: 'req_session',
-      lastStage: 'DB_RUNTIME_FAILURE',
-      failureCategory: 'PRISMA_ENGINE_OR_CLIENT_LOAD',
-      prismaFailureClass: 'ENGINE_NOT_FOUND',
-      prismaClientIndexPresent: true,
-      prismaSchemaAdjacent: true,
-      prismaEngineAdjacent: false,
-      prismaRuntimeLibraryPresent: true,
-      prismaGeneratedPackagePresent: true,
-      prismaExpectedEngineTarget: 'UNKNOWN',
-    });
+    setDbStageContext({ routePathname: '/api/v1/session', requestId: 'req_session' });
+    logDbRuntimeStageFailure(
+      new Prisma.PrismaClientInitializationError('init', '6.19.3'),
+      'PRISMA_ENGINE_OR_CLIENT_LOAD',
+    );
     expect(
       readHeaders(mapOwnerTaskRouteError(new Error('x')))[DB_PRISMA_FAILURE_HEADER.toLowerCase()],
     ).toBeUndefined();
@@ -359,16 +423,11 @@ describe('prisma layout diagnostics probe', () => {
     setDbStageContext({
       routePathname: '/api/v1/capabilities/tok/tasks/t1',
       requestId: 'req_cap',
-      lastStage: 'DB_RUNTIME_FAILURE',
-      failureCategory: 'PRISMA_ENGINE_OR_CLIENT_LOAD',
-      prismaFailureClass: 'ENGINE_NOT_FOUND',
-      prismaClientIndexPresent: true,
-      prismaSchemaAdjacent: true,
-      prismaEngineAdjacent: false,
-      prismaRuntimeLibraryPresent: true,
-      prismaGeneratedPackagePresent: true,
-      prismaExpectedEngineTarget: 'UNKNOWN',
     });
+    logDbRuntimeStageFailure(
+      new Prisma.PrismaClientInitializationError('init', '6.19.3'),
+      'PRISMA_ENGINE_OR_CLIENT_LOAD',
+    );
     expect(
       readHeaders(mapRecipientCapabilityRouteError(new Error('x')))[
         DB_PRISMA_FAILURE_HEADER.toLowerCase()
@@ -391,7 +450,8 @@ describe('prisma layout diagnostics probe', () => {
             prismaGeneratedPackagePresent: true,
             prismaExpectedEngineTarget: 'UNKNOWN',
           });
-          logDbRuntimeStageFailure(new Error('left'), 'PRISMA_ENGINE_OR_CLIENT_LOAD');
+          // Non-capture category preserves ALS-local layout fields.
+          logDbRuntimeStageFailure(new Error('left'), 'DATABASE_QUERY_FAILED');
           return readHeaders(mapOwnerTaskRouteError(new Error('left')));
         }),
       ),
@@ -406,7 +466,7 @@ describe('prisma layout diagnostics probe', () => {
             prismaGeneratedPackagePresent: true,
             prismaExpectedEngineTarget: 'RHEL_OPENSSL_3',
           });
-          logDbRuntimeStageFailure(new Error('right'), 'PRISMA_ENGINE_OR_CLIENT_LOAD');
+          logDbRuntimeStageFailure(new Error('right'), 'DATABASE_QUERY_FAILED');
           return readHeaders(mapOwnerTaskRouteError(new Error('right')));
         }),
       ),
@@ -416,6 +476,22 @@ describe('prisma layout diagnostics probe', () => {
     expect(left[DB_PRISMA_ENGINE_HEADER.toLowerCase()]).toBe('missing');
     expect(right[DB_PRISMA_FAILURE_HEADER.toLowerCase()]).toBe('SCHEMA_NOT_FOUND');
     expect(right[DB_PRISMA_SCHEMA_HEADER.toLowerCase()]).toBe('missing');
+  });
+
+  it('probe/filesystem failure cannot alter the public response or original error', async () => {
+    process.env[ENABLE_DB_RUNTIME_DIAGNOSTICS_ENV] = 'true';
+    setDbStageContext({ routePathname: '/api/v1/tasks', requestId: 'req_fs' });
+    setLastResolvedTracedRuntimePath('/nonexistent/runtime.js');
+
+    const error = new Prisma.PrismaClientInitializationError('init', '6.19.3');
+    expect(() => logDbRuntimeStageFailure(error, 'PRISMA_ENGINE_OR_CLIENT_LOAD')).not.toThrow();
+
+    const response = mapOwnerTaskRouteError(error);
+    const body = await response.json();
+    expect(response.status).toBe(500);
+    expect(body.error.code).toBe('INTERNAL_ERROR');
+    expect(body.error.message).toBe('An unexpected error occurred.');
+    expect(error.name).toBe('PrismaClientInitializationError');
   });
 
   it('keeps buildOwnerTaskDbDiagnosticHeaders free of raw paths and messages', () => {
@@ -438,6 +514,5 @@ describe('prisma layout diagnostics probe', () => {
     const headers = buildOwnerTaskDbDiagnosticHeaders() as Record<string, string>;
     assertSafe(JSON.stringify(headers));
     expect(headers[DB_PRISMA_FAILURE_HEADER]).toBe('ENGINE_LOAD_FAILED');
-    expect(headers[DB_PRISMA_TARGET_HEADER]).toBe('RHEL_OPENSSL_3');
   });
 });

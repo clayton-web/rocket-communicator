@@ -5,8 +5,15 @@ import {
   logDbRuntimeStageFailure,
 } from '@/lib/db/stage-diagnostics';
 import { loadTracedRuntimeModule, resolveTracedRuntimePath } from './db-runtime-entry';
+import {
+  getLastResolvedTracedRuntimePath,
+  resetLastResolvedTracedRuntimePathForTests,
+  setLastResolvedTracedRuntimePath,
+} from './traced-runtime-path';
 
 export type DbRuntimeModule = Awaited<ReturnType<typeof loadTracedRuntimeModule>>;
+
+export { getLastResolvedTracedRuntimePath };
 
 const REQUIRED_EXPORTS = [
   'createPrismaClient',
@@ -32,7 +39,6 @@ const REQUIRED_EXPORTS = [
 let cachedRuntime: DbRuntimeModule | undefined;
 let testRuntimeOverride: DbRuntimeModule | undefined;
 let runtimePromise: Promise<DbRuntimeModule> | undefined;
-let lastResolvedTracedRuntimePath: string | undefined;
 
 export class DbRuntimeConfigurationError extends Error {
   constructor() {
@@ -62,17 +68,12 @@ function validateRuntimeModule(runtime: unknown): DbRuntimeModule {
   return runtimeModule;
 }
 
-/** Path of the traced runtime used for temporary layout diagnostics. */
-export function getLastResolvedTracedRuntimePath(): string | undefined {
-  return lastResolvedTracedRuntimePath;
-}
-
 /** Test-only reset for runtime loader cache. */
 export function resetDbRuntimeForTests(): void {
   cachedRuntime = undefined;
   testRuntimeOverride = undefined;
   runtimePromise = undefined;
-  lastResolvedTracedRuntimePath = undefined;
+  resetLastResolvedTracedRuntimePathForTests();
 }
 
 /** Test-only injection for Vitest and other non-serverless runtimes. */
@@ -85,9 +86,9 @@ export function setDbRuntimeForTests(runtime: DbRuntimeModule | undefined): void
 async function loadProductionRuntimeModule(): Promise<unknown> {
   const loaded = await loadTracedRuntimeModule();
   try {
-    lastResolvedTracedRuntimePath = resolveTracedRuntimePath();
+    setLastResolvedTracedRuntimePath(resolveTracedRuntimePath());
   } catch {
-    lastResolvedTracedRuntimePath = undefined;
+    setLastResolvedTracedRuntimePath(undefined);
   }
   return loaded;
 }

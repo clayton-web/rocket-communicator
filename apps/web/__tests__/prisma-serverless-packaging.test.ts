@@ -341,6 +341,31 @@ describe('Prisma serverless packaging configuration', () => {
     expect(bridgeContent).not.toMatch(/createPrismaClient:\s*void 0/);
   });
 
+  it('compiles Prisma layout capture on query-failure and construction paths when built', () => {
+    const nextDir = path.join(webRoot, '.next');
+    if (!fs.existsSync(nextDir)) {
+      return;
+    }
+
+    const combined = fs
+      .readdirSync(path.join(webRoot, '.next/server/chunks'))
+      .filter((name) => name.endsWith('.js') && !name.endsWith('.js.map'))
+      .map((name) => fs.readFileSync(path.join(webRoot, '.next/server/chunks', name), 'utf8'))
+      .join('\n');
+
+    expect(combined).toContain('X-AICAA-DB-Prisma-Failure');
+    expect(combined).toContain('libquery_engine-rhel-openssl-3.0.x.so.node');
+    expect(combined).toContain('PRISMA_ENGINE_OR_CLIENT_LOAD');
+    expect(combined).toContain('PRISMA_QUERY_START');
+    // Path derivation + layout field write remain in compiled output (export names minify).
+    expect(combined).toMatch(/"generated","client"/);
+    expect(combined).toContain('prismaFailureClass');
+    expect(combined).toMatch(
+      /prismaFailureClass[\s\S]{0,1200}?DB_RUNTIME_FAILURE|DB_RUNTIME_FAILURE[\s\S]{0,400}?prismaFailureClass/,
+    );
+    expect(combined).not.toMatch(/X-AICAA-DB-Prisma-Failure:\s*void 0/);
+  });
+
   it('loads traced runtime from simulated Vercel Lambda layout when built', () => {
     const nextDir = path.join(webRoot, '.next');
     if (!fs.existsSync(nextDir)) {

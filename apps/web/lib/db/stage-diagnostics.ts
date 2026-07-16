@@ -5,9 +5,11 @@ import {
   safeReadProperty,
   type DatabaseRuntimeFailureCategory,
 } from '@/lib/db/diagnostics';
-import type {
-  PrismaExpectedEngineTarget,
-  PrismaLayoutFailureClass,
+import {
+  capturePrismaLayoutFailureDiagnostics,
+  shouldCapturePrismaLayoutDiagnostics,
+  type PrismaExpectedEngineTarget,
+  type PrismaLayoutFailureClass,
 } from '@/lib/db/prisma-layout-diagnostics';
 import {
   getDbStageContext,
@@ -289,7 +291,8 @@ export function logDbRuntimeStage(
 
 /**
  * Emit a failure stage marker. Never throws and never changes the original error.
- * No-op unless ENABLE_DB_RUNTIME_DIAGNOSTICS=true.
+ * Captures Prisma layout diagnostics for init/engine-load failures before
+ * persisting DB_RUNTIME_FAILURE (covers construction and query-time paths).
  */
 export function logDbRuntimeStageFailure(
   error: unknown,
@@ -300,6 +303,9 @@ export function logDbRuntimeStageFailure(
   > = {},
 ): void {
   try {
+    if (shouldCapturePrismaLayoutDiagnostics(error, category)) {
+      capturePrismaLayoutFailureDiagnostics(error);
+    }
     emitStagePayload({
       ...basePayload('DB_RUNTIME_FAILURE'),
       category,

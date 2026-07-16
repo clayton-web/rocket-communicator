@@ -5,6 +5,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { safeReadProperty } from '@/lib/db/diagnostics';
+import { updateDbStageContext } from '@/lib/db/stage-context';
+import { getLastResolvedTracedRuntimePath } from '@/lib/db/traced-runtime-path';
 
 export const RHEL_ENGINE_FILENAME = 'libquery_engine-rhel-openssl-3.0.x.so.node' as const;
 export const PRISMA_SCHEMA_FILENAME = 'schema.prisma' as const;
@@ -238,4 +240,51 @@ export function presentMissing(present: boolean): 'present' | 'missing' {
 
 export function adjacentMissing(adjacent: boolean): 'adjacent' | 'missing' {
   return adjacent ? 'adjacent' : 'missing';
+}
+
+const PRISMA_LAYOUT_CAPTURE_CATEGORIES = new Set([
+  'PRISMA_ENGINE_OR_CLIENT_LOAD',
+  'PRISMA_CLIENT_INITIALIZATION',
+]);
+
+/**
+ * True when failure category indicates Prisma client/engine init load issues.
+ * Never inspects messages. Used to avoid filesystem probes for domain/auth errors.
+ */
+export function shouldCapturePrismaLayoutDiagnostics(error: unknown, category?: string): boolean {
+  try {
+    if (typeof category === 'string' && PRISMA_LAYOUT_CAPTURE_CATEGORIES.has(category)) {
+      return true;
+    }
+    return safeReadString(error, 'name') === 'PrismaClientInitializationError';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Capture allowlisted Prisma generated-client layout diagnostics into the
+ * current request-scoped DB stage context. Never throws and never mutates error.
+ */
+export function capturePrismaLayoutFailureDiagnostics(error: unknown): void {
+  try {
+    const layout = inspectPrismaGeneratedClientLayout(
+      error,
+      resolveGeneratedClientDirFromTracedRuntimePath(getLastResolvedTracedRuntimePath()),
+    );
+    updateDbStageContext({
+      prismaClientIndexPresent: layout.prismaClientIndexPresent,
+      prismaSchemaAdjacent: layout.prismaSchemaAdjacent,
+      prismaEngineAdjacent: layout.prismaEngineAdjacent,
+      prismaRuntimeLibraryPresent: layout.prismaRuntimeLibraryPresent,
+      prismaGeneratedPackagePresent: layout.prismaGeneratedPackagePresent,
+      prismaExpectedEngineTarget: layout.prismaExpectedEngineTarget,
+      prismaFailureClass: layout.prismaFailureClass,
+      generatedClientDirectoryResolved: layout.generatedClientDirectoryResolved,
+      engineFileReadable: layout.engineFileReadable,
+      schemaFileReadable: layout.schemaFileReadable,
+    });
+  } catch {
+    // Layout probe must never affect request handling.
+  }
 }
