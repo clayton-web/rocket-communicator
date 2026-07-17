@@ -18,12 +18,14 @@ Governing references: [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md) · [AI_
 ## Architecture
 
 - [ ] Matches [ARCHITECTURE.md](ARCHITECTURE.md) and Approved [DECISIONS.md](DECISIONS.md)
+- [ ] Honours Architecture Principles (D079; complete source in [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md)): logic independent of host/infra where practical; replaceable vendors; cost-aware without weakening security; free tiers preferred when sufficient; infrastructure triggers endpoints rather than embedding business logic; no unnecessary complexity/lock-in
 - [ ] No new vendor or datastore without a decision entry
 - [ ] Neon still not introduced alongside Supabase in v1
 - [ ] Android still does not write core business records directly to Supabase tables
 - [ ] Prisma used only through authorized server APIs
 - [ ] Canonical contract approach preserved (OpenAPI source of truth → generated TS/Kotlin clients; JSON Schema only if derived)
 - [ ] Reminder/retention behaviour remains deterministic (not model-driven sends)
+- [ ] Scheduled work (Gmail Application Polling Engine, reminders, retention) remains app-owned engines invoked by External Schedulers—not business logic inside the scheduler platform
 
 ## Documentation
 
@@ -79,9 +81,10 @@ Governing references: [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md) · [AI_
 ## Cost
 
 - [ ] Heuristic / cheap filter before expensive AI where appropriate
-- [ ] No unnecessary new paid service
+- [ ] No unnecessary new paid service (free tiers first-class per D079; paid only for measurable benefit)
 - [ ] FCM not added without documented justification
 - [ ] Polling/AI frequency within acceptable cost/quota assumptions
+- [ ] Security / AuthZ / audit not weakened to save cost (D079)
 
 ## Testing
 

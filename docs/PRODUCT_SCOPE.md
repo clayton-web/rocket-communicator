@@ -30,7 +30,7 @@ WhatsApp, Messenger, Signal; call recording / live-call transcription; historica
 
 - Suggestions require Owner approve/edit/dismiss/merge before a Task exists (D008). No auto-create Tasks in v1.
 - Recipient assignment requires Owner approval. Gmail-origin assign + forward + attachments + reminders = one confirmation (D037). Recipient email from Owner-managed records / secure config—not hard-coded.
-- Capability Links required for Recipient actions; GET non-mutating; POST after confirm (D050). Details: SECURITY.
+- Capability Links required for Recipient actions; GET non-mutating; POST after confirm (D050). Details: [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md).
 - Non-Gmail tasks: assignment email with summary + Capability Link (no Gmail forward).
 - Voice never creates Tasks directly (D038); audio retention D041.
 - Summaries are structured typed points (facts vs inference vs missing), not prose.
@@ -39,7 +39,7 @@ WhatsApp, Messenger, Signal; call recording / live-call transcription; historica
 
 ## Future-ready (not v1 features)
 
-Schema/architecture may later support multiple Recipients, additional sources, trusted auto-rules after approval, and Play Store—without implementing them in v1.
+Schema/architecture may later support multiple Recipients, additional sources, trusted auto-rules after approval, and Play Store—without implementing them in v1. Hosting and infrastructure remain replaceable under Architecture Principles (D079).
 
 ## MVP complete when
 

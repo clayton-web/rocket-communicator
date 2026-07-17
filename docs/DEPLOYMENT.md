@@ -4,13 +4,16 @@ Governed by [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md). Architecture: [A
 
 This runbook documents **names and procedures only**. Never commit connection strings, passwords, capability tokens, token hashes, or other secrets.
 
+Platform assumptions below describe the **current** deployment. Per Architecture Principles (D079), hosting and schedulers are replaceable; application logic must not depend on a specific vendor beyond documented adapters.
+
 ## Platform assumptions
 
-| Component    | Role                                                                                                                                  |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
-| **Vercel**   | Hosts `apps/web` (Next.js App Router). Monorepo root is the Vercel project root; `outputFileTracingRoot` includes workspace packages. |
-| **Supabase** | PostgreSQL system of record and Owner Auth (Google Workspace).                                                                        |
-| **Prisma**   | Server-only data access via `@aicaa/db`; invoked through the web runtime bridge.                                                      |
+| Component              | Role                                                                                                                                                                                                             |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Vercel**             | Current host for `apps/web` (Next.js App Router). Monorepo root is the Vercel project root; `outputFileTracingRoot` includes workspace packages. Replaceable per D079.                                           |
+| **Supabase**           | Current PostgreSQL system of record and Owner Auth (Google Workspace).                                                                                                                                           |
+| **Prisma**             | Server-only data access via `@aicaa/db`; invoked through the web runtime bridge.                                                                                                                                 |
+| **External Scheduler** | Invokes authenticated app endpoints on a schedule (Gmail poll every five minutes). Recommended initial adapter while on Vercel Hobby: **cron-job.org**. Interchangeable; not an architectural dependency (D079). |
 
 Production uses a **Supabase transaction pooler** connection for `DATABASE_URL` (serverless-friendly). Use the pooler URL Vercel expects for Prisma—not the direct session URL—for API routes and migrations unless your operator checklist specifies otherwise.
 
@@ -41,7 +44,7 @@ Configure in Vercel **Production** (and matching Preview/Development as needed).
 | `CAPABILITY_TOKEN_PEPPER` | Server-only HMAC pepper for capability hash lookup (min 32 characters).   |
 | `CAPABILITY_TTL_MS`       | Issued link TTL in milliseconds (D055 default: seven days = `604800000`). |
 
-### Gmail OAuth (A5.3; names only — do not configure production values in this chunk)
+### Gmail OAuth (A5.3; names only)
 
 Distinct from Supabase Owner authentication. Server-only; never `NEXT_PUBLIC_*`. Scope is `gmail.readonly` only.
 
@@ -53,7 +56,7 @@ Distinct from Supabase Owner authentication. Server-only; never `NEXT_PUBLIC_*`.
 | `GMAIL_TOKEN_ENCRYPTION_KEY`         | AES-256-GCM key: 32 raw bytes as 64 hex chars or standard/base64url base64. Never commit real values. |
 | `GMAIL_TOKEN_ENCRYPTION_KEY_VERSION` | Explicit key version stored with each ciphertext envelope (for example `1`).                          |
 
-`CRON_SECRET` / `InternalCronBearer` authenticate `GET|POST /api/v1/internal/gmail/poll` (A5.5). Recommend ≥32 random bytes. Configure in **Production** only; do not place the production secret on Preview. Vercel Cron (`vercel.json`, `*/5 * * * *` UTC) issues GET with `Authorization: Bearer <CRON_SECRET>`.
+`CRON_SECRET` / `InternalCronBearer` authenticate `GET|POST /api/v1/internal/gmail/poll` (A5.5). Recommend ≥32 random bytes. Configure in **Production** only; do not place the production secret on Preview. Any External Scheduler that securely issues an authenticated request every five minutes is acceptable (D079). The recommended initial adapter while the project remains on the Vercel Hobby plan is **cron-job.org** (HTTP POST with Bearer auth). Other compatible schedulers—including Vercel Cron, GitHub Actions, Google Cloud Scheduler, and AWS EventBridge—may replace it without application logic changes.
 
 ### Diagnostics (normally off)
 
@@ -118,20 +121,47 @@ Full Owner↔Recipient production E2E is classified **`A4_FULL_E2E_PASS`**. Reta
 
 ## Gmail polling operations (A5.5)
 
-Root `vercel.json` schedules `GET /api/v1/internal/gmail/poll` every five minutes UTC (`*/5 * * * *`).
+The **Application Polling Engine** is part of Rocket Communicator (eligibility, sequential sync, History ingestion, locks, audit). Scheduling is **intentionally external** and vendor-neutral (D065, D079): any External Scheduler capable of securely invoking the Authenticated Endpoint every five minutes is acceptable. The scheduler never contains polling logic, business rules, or direct database access.
 
-**Before cron is useful in production:**
+**Recommended initial scheduler:** **cron-job.org**, while the project remains on the Vercel Hobby plan. It supports five-minute HTTP scheduling, works with Hobby hosting, has a free tier suitable for current requirements, and keeps the application architecture vendor-neutral. cron-job.org is an **implementation choice / Infrastructure Adapter**, not an architectural requirement.
 
-1. Apply the A5 Prisma migration.
-2. Configure Gmail OAuth + `GMAIL_TOKEN_ENCRYPTION_KEY` + `CRON_SECRET` (Production only).
-3. Deploy.
-4. Owner connects Gmail.
-5. Owner runs **manual** `POST /api/v1/gmail/sync` once (initial no-backfill).
-6. Confirm cron invocations via Vercel Cron logs and `GmailSyncRun` rows with `trigger=cron`.
+**Vercel Hobby note:** Vercel Hobby does not support cron schedules more frequent than daily. Root `vercel.json` therefore must **not** declare a five-minute Vercel Cron for Gmail poll. Five-minute cadence remains an External Scheduler responsibility (D065, D079). No scheduler is configured or active until Production enablement intentionally turns one on.
 
-**Disable cron safely:** remove the `crons` entry from `vercel.json` and redeploy, or unset/rotate `CRON_SECRET` (auth fails closed). Overlapping invocations are safe via per-account sync locks.
+**Interchangeable alternatives** (no application logic changes required):
 
-**Eligibility:** `connected` + `historyState=valid` + non-null `historyId` + credential present. Cron never seeds unset History. At most three accounts per invocation, sequential, `maxDuration=60`, stop starting accounts with &lt;15s remaining. Per-account A5.4 bounds (5 pages / 50 messages) unchanged. Gmail 429 stops remaining accounts for that invocation.
+- Vercel Cron
+- GitHub Actions
+- Google Cloud Scheduler
+- AWS EventBridge
+- another compatible scheduler that can securely invoke the Authenticated Endpoint
+
+### External Scheduler configuration (cron-job.org initial adapter)
+
+Configure the External Scheduler to:
+
+| Setting        | Guidance                                                                                                   |
+| -------------- | ---------------------------------------------------------------------------------------------------------- |
+| Method         | **HTTP POST**                                                                                              |
+| URL            | `{NEXT_PUBLIC_APP_URL}/api/v1/internal/gmail/poll` (Production app URL; no trailing slash on the base URL) |
+| Interval       | Every **five minutes** (D065)                                                                              |
+| Authentication | `Authorization: Bearer <CRON_SECRET>` (never commit or paste the secret into docs)                         |
+| Request body   | Empty / none required                                                                                      |
+
+Do **not** enable the scheduler until all of the following are true:
+
+1. A5 Prisma migration applied in production.
+2. Gmail OAuth configured (`GOOGLE_GMAIL_CLIENT_ID`, `GOOGLE_GMAIL_CLIENT_SECRET`, redirect URL as needed).
+3. Token encryption configured (`GMAIL_TOKEN_ENCRYPTION_KEY`, `GMAIL_TOKEN_ENCRYPTION_KEY_VERSION`).
+4. `CRON_SECRET` configured in Production only (not Preview).
+5. Application deployed.
+6. Owner has connected Gmail.
+7. Owner has run **manual** `POST /api/v1/gmail/sync` once (initial no-backfill History seed).
+
+After enablement, confirm invocations via the scheduler’s execution logs and `GmailSyncRun` rows with `trigger=cron`.
+
+**Disable External Scheduler invocation safely:** pause or delete the cron-job.org job (or equivalent on another adapter), or unset/rotate `CRON_SECRET` (auth fails closed). Overlapping invocations are safe via per-account sync locks. Replacing cron-job.org with another adapter does not require Application Polling Engine changes.
+
+**Eligibility:** `connected` + `historyState=valid` + non-null `historyId` + credential present. The Application Polling Engine never seeds unset History during External Scheduler invocation. At most three accounts per invocation, sequential, `maxDuration=60`, stop starting accounts with &lt;15s remaining. Per-account A5.4 bounds (5 pages / 50 messages) unchanged. Gmail 429 stops remaining accounts for that invocation.
 
 History recovery, Gmail UI, and A6 suggestions remain out of scope.
 

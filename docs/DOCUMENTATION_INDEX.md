@@ -18,20 +18,20 @@ Root entry: [../README.md](../README.md)
 
 ## Who owns what topic
 
-| Topic                                              | Document                               |
-| -------------------------------------------------- | -------------------------------------- |
-| Mission, engineering rules                         | PROJECT_CONSTITUTION                   |
-| Term definitions                                   | GLOSSARY                               |
-| Product scope / MVP / exclusions                   | PRODUCT_SCOPE                          |
-| Binding decisions                                  | DECISIONS                              |
-| Packages, stack, boundaries                        | ARCHITECTURE                           |
-| Task / suggestion transitions                      | STATE_MACHINE                          |
-| Authentication, authorization, capability security | SECURITY_AND_PRIVACY                   |
-| HTTP paths, errors, concurrency                    | API_CONTRACT (+ OpenAPI)               |
-| End-to-end flows                                   | WORKFLOWS                              |
-| Retention                                          | DATA_RETENTION                         |
-| AI ladder / never-invent                           | AI_CONSTITUTION                        |
-| Delivery plan                                      | MILESTONES                             |
-| Deployment and operations                          | DEPLOYMENT                             |
-| Process / review gate                              | ENGINEERING_WORKFLOW, REVIEW_CHECKLIST |
-| Unresolved unknowns                                | OPEN_QUESTIONS                         |
+| Topic                                                        | Document                               |
+| ------------------------------------------------------------ | -------------------------------------- |
+| Mission, engineering rules, complete Architecture Principles | PROJECT_CONSTITUTION                   |
+| Term definitions                                             | GLOSSARY                               |
+| Product scope / MVP / exclusions                             | PRODUCT_SCOPE                          |
+| Binding decisions                                            | DECISIONS                              |
+| Packages, stack, boundaries, Architecture Principles summary | ARCHITECTURE                           |
+| Task / suggestion transitions                                | STATE_MACHINE                          |
+| Authentication, authorization, capability security           | SECURITY_AND_PRIVACY                   |
+| HTTP paths, errors, concurrency                              | API_CONTRACT (+ OpenAPI)               |
+| End-to-end flows                                             | WORKFLOWS                              |
+| Retention                                                    | DATA_RETENTION                         |
+| AI ladder / never-invent                                     | AI_CONSTITUTION                        |
+| Delivery plan and implementation/production status           | MILESTONES                             |
+| Deployment and operations                                    | DEPLOYMENT                             |
+| Process / review gate                                        | ENGINEERING_WORKFLOW, REVIEW_CHECKLIST |
+| Unresolved unknowns                                          | OPEN_QUESTIONS                         |

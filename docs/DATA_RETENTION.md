@@ -113,7 +113,8 @@ Independent of the seven-day excerpt timer.
 ## Deletion scheduling
 
 - Compute and persist purge timestamps when tasks complete/dismiss and when audio succeeds.
-- Retention worker processes due purges on a schedule (Supabase-supported scheduling or equivalent low-cost mechanism—implementation later).
+- The application-owned retention engine processes due purges. An External Scheduler invokes an authenticated retention endpoint on the approved cadence; the scheduler must not contain retention policy or purge logic (D079).
+- The scheduler implementation is replaceable. Current or future deployment adapters may use the lowest-cost suitable mechanism, provided security, auditability, and data integrity are not weakened.
 - Prefer hard deletion or irreversible scrub of content fields over soft-delete that accumulates forever.
 
 ## Failed deletion handling

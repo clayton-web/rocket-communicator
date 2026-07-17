@@ -2,7 +2,7 @@
 
 **Source of truth:** `packages/contracts/openapi/` → bundled `packages/contracts/dist/openapi.bundled.yaml`.
 
-Related: [STATE_MACHINE.md](STATE_MACHINE.md) · [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md) · [DECISIONS.md](DECISIONS.md) (D007, D044–D047, D045, D059) · [GLOSSARY.md](GLOSSARY.md) · [MILESTONES.md](MILESTONES.md) · [DEPLOYMENT.md](DEPLOYMENT.md)
+Related: [STATE_MACHINE.md](STATE_MACHINE.md) · [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md) · [DECISIONS.md](DECISIONS.md) (D007, D044–D047, D045, D059, D065–D079) · [GLOSSARY.md](GLOSSARY.md) · [MILESTONES.md](MILESTONES.md) · [DEPLOYMENT.md](DEPLOYMENT.md)
 
 ## Ownership
 
@@ -18,12 +18,13 @@ Handlers map domain ↔ DTO explicitly (D046). Domain types are not generated DT
 
 Use this table with [MILESTONES.md](MILESTONES.md). OpenAPI may describe future routes before handlers ship.
 
-| Status                                              | Meaning                                                                                   |
-| --------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| **Implemented and production-verified**             | Handler exists in `apps/web`; included in **`A4_FULL_E2E_PASS`** production verification. |
-| **Implemented, not separately production-verified** | Handler exists; not individually called out in the A4 E2E report.                         |
-| **Contract-only / planned**                         | OpenAPI + domain types exist; **no** `apps/web` route yet. Target milestone noted.        |
-| **Future milestone**                                | Product behaviour defined; not in current codebase.                                       |
+| Status                                              | Meaning                                                                                                      |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| **Implemented and production-verified**             | Handler exists in `apps/web`; included in **`A4_FULL_E2E_PASS`** production verification.                    |
+| **Implemented, not separately production-verified** | Handler exists; not individually called out in the A4 E2E report.                                            |
+| **Implemented, not production-operational**         | Handler exists in the repository; required production migration, credentials, or secrets are not configured. |
+| **Contract-only / planned**                         | OpenAPI + domain types exist; **no** `apps/web` route yet. Target milestone noted.                           |
+| **Future milestone**                                | Product behaviour defined; not in current codebase.                                                          |
 
 ## Tooling and generation
 
@@ -125,20 +126,20 @@ Return-to-Owner (either surface) clears assignment ownership; Task status unchan
 
 ### Owner Gmail routes (A5)
 
-OAuth connection routes are implemented in A5.3. Manual History ingestion and sync-run listing are implemented in A5.4. Internal cron poll is implemented in A5.5. Production migration and live Gmail credentials are not configured.
+OAuth connection routes are implemented in A5.3. Manual History ingestion, sync-run listing, and the Application Polling Engine are implemented in A5.4. Authenticated internal poll for External Schedulers is implemented in A5.5. Production migration, live Gmail credentials, and scheduler secrets are not configured.
 
-| Method | Path                           | Purpose                                      | Status             |
-| ------ | ------------------------------ | -------------------------------------------- | ------------------ |
-| GET    | `/api/v1/gmail/connection`     | Safe connection status                       | Implemented (A5.3) |
-| POST   | `/api/v1/gmail/oauth/start`    | Start OAuth redirect (`gmail.readonly`)      | Implemented (A5.3) |
-| GET    | `/api/v1/gmail/oauth/callback` | OAuth callback redirect (no tokens in query) | Implemented (A5.3) |
-| POST   | `/api/v1/gmail/disconnect`     | Disconnect and wipe credential ciphertext    | Implemented (A5.3) |
-| POST   | `/api/v1/gmail/sync`           | Owner manual sync (initial + incremental)    | Implemented (A5.4) |
-| GET    | `/api/v1/gmail/sync-runs`      | Recent safe sync-run summaries               | Implemented (A5.4) |
-| GET    | `/api/v1/internal/gmail/poll`  | Vercel Cron poll (`InternalCronBearer`)      | Implemented (A5.5) |
-| POST   | `/api/v1/internal/gmail/poll`  | Operator poll (`InternalCronBearer`)         | Implemented (A5.5) |
+| Method | Path                           | Purpose                                                | Status                                         |
+| ------ | ------------------------------ | ------------------------------------------------------ | ---------------------------------------------- |
+| GET    | `/api/v1/gmail/connection`     | Safe connection status                                 | Implemented, not production-operational (A5.3) |
+| POST   | `/api/v1/gmail/oauth/start`    | Start OAuth redirect (`gmail.readonly`)                | Implemented, not production-operational (A5.3) |
+| GET    | `/api/v1/gmail/oauth/callback` | OAuth callback redirect (no tokens in query)           | Implemented, not production-operational (A5.3) |
+| POST   | `/api/v1/gmail/disconnect`     | Disconnect and wipe credential ciphertext              | Implemented, not production-operational (A5.3) |
+| POST   | `/api/v1/gmail/sync`           | Owner manual sync (initial + incremental)              | Implemented, not production-operational (A5.4) |
+| GET    | `/api/v1/gmail/sync-runs`      | Recent safe sync-run summaries                         | Implemented, not production-operational (A5.4) |
+| GET    | `/api/v1/internal/gmail/poll`  | External Scheduler invocation (`InternalCronBearer`)   | Implemented, not production-operational (A5.5) |
+| POST   | `/api/v1/internal/gmail/poll`  | Operator / scheduler invocation (`InternalCronBearer`) | Implemented, not production-operational (A5.5) |
 
-Public Gmail DTOs never include refresh/access tokens, ciphertext, encryption key versions, OAuth codes, or PKCE secrets. Internal poll uses `InternalCronBearer` (configured `CRON_SECRET`), not Owner session and not public unauthenticated access. GET on the internal poll route is a **secret-authenticated scheduler exception** for Vercel Cron — do not copy this pattern to public Recipient routes (D050). Cron never initializes History cursors; Owner manual sync must seed first. A5 does **not** expose communication-event list/browser endpoints (D073).
+Public Gmail DTOs never include refresh/access tokens, ciphertext, encryption key versions, OAuth codes, or PKCE secrets. Internal poll uses `InternalCronBearer` (configured `CRON_SECRET`), not Owner session and not public unauthenticated access. The application owns the Application Polling Engine; the scheduler is external (D079). GET on the internal poll route is a **secret-authenticated scheduler exception** for hosts whose schedulers prefer GET (e.g. Vercel Cron)—do not copy this pattern to public Recipient routes (D050). Preferred initial production adapter is HTTP **POST** from **cron-job.org** (or any compatible External Scheduler) every five minutes; Vercel Cron, GitHub Actions, Google Cloud Scheduler, AWS EventBridge, and other schedulers remain interchangeable. External Scheduler invocations never initialize History cursors; Owner manual sync must seed first. A5 does **not** expose communication-event list/browser endpoints (D073).
 
 ## Assignment approval request semantics (D037)
 

@@ -26,16 +26,16 @@ Commit
 Next milestone
 ```
 
-| Stage                          | Required work                                                                                                                                                                                  |
-| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Architecture**               | Confirm the milestone still matches [ARCHITECTURE.md](ARCHITECTURE.md) and Approved [DECISIONS.md](DECISIONS.md). If behaviour must change, update docs **first** (Engineering Rule #1).       |
-| **Planning**                   | Define scope, acceptance criteria, out-of-scope, risks, and files likely touched. Resolve blocking items in [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md) or explicitly defer with documented impact. |
-| **Review**                     | Human review of the plan against [REVIEW_CHECKLIST.md](REVIEW_CHECKLIST.md) (scope through documentation drift).                                                                               |
-| **Implementation**             | Build only what the milestone allows.                                                                                                                                                          |
-| **Testing**                    | Prove acceptance criteria; include contract, domain, and regression tests appropriate to the change.                                                                                           |
-| **Documentation verification** | Docs match behaviour; glossary terms used correctly; no silent new behaviour.                                                                                                                  |
-| **Commit**                     | One coherent checkpoint (message aligned with [MILESTONES.md](MILESTONES.md) recommendation unless a clearer message is needed).                                                               |
-| **Next milestone**             | Only after the current milestone’s acceptance criteria and doc verification pass.                                                                                                              |
+| Stage                          | Required work                                                                                                                                                                                                             |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Architecture**               | Confirm the milestone still matches [ARCHITECTURE.md](ARCHITECTURE.md), Architecture Principles (D079), and Approved [DECISIONS.md](DECISIONS.md). If behaviour must change, update docs **first** (Engineering Rule #1). |
+| **Planning**                   | Define scope, acceptance criteria, out-of-scope, risks, and files likely touched. Resolve blocking items in [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md) or explicitly defer with documented impact.                            |
+| **Review**                     | Human review of the plan against [REVIEW_CHECKLIST.md](REVIEW_CHECKLIST.md) (scope through documentation drift).                                                                                                          |
+| **Implementation**             | Build only what the milestone allows.                                                                                                                                                                                     |
+| **Testing**                    | Prove acceptance criteria; include contract, domain, and regression tests appropriate to the change.                                                                                                                      |
+| **Documentation verification** | Docs match behaviour; glossary terms used correctly; no silent new behaviour.                                                                                                                                             |
+| **Commit**                     | One coherent checkpoint (message aligned with [MILESTONES.md](MILESTONES.md) recommendation unless a clearer message is needed).                                                                                          |
+| **Next milestone**             | Only after the current milestone’s acceptance criteria and doc verification pass.                                                                                                                                         |
 
 ## Implementation rules
 
@@ -61,19 +61,20 @@ When product behaviour must change:
 
 ## Ownership
 
-| Concern                     | Primary document owner (logical) |
-| --------------------------- | -------------------------------- |
-| Mission and principles      | PROJECT_CONSTITUTION             |
-| AI behaviour                | AI_CONSTITUTION                  |
-| What ships in v1            | PRODUCT_SCOPE                    |
-| How it is built             | ARCHITECTURE                     |
-| Step-by-step behaviour      | WORKFLOWS                        |
-| Deletion and Gmail boundary | DATA_RETENTION                   |
-| AuthZ and privacy           | SECURITY_AND_PRIVACY             |
-| Binding choices             | DECISIONS                        |
-| Sequence of work            | MILESTONES                       |
-| Unresolved                  | OPEN_QUESTIONS                   |
-| Terms                       | GLOSSARY                         |
+| Concern                     | Primary document owner (logical)                                        |
+| --------------------------- | ----------------------------------------------------------------------- |
+| Mission and principles      | PROJECT_CONSTITUTION                                                    |
+| Architecture Principles     | PROJECT_CONSTITUTION (complete source); ARCHITECTURE (summary/examples) |
+| AI behaviour                | AI_CONSTITUTION                                                         |
+| What ships in v1            | PRODUCT_SCOPE                                                           |
+| How it is built             | ARCHITECTURE                                                            |
+| Step-by-step behaviour      | WORKFLOWS                                                               |
+| Deletion and Gmail boundary | DATA_RETENTION                                                          |
+| AuthZ and privacy           | SECURITY_AND_PRIVACY                                                    |
+| Binding choices             | DECISIONS                                                               |
+| Sequence of work            | MILESTONES                                                              |
+| Unresolved                  | OPEN_QUESTIONS                                                          |
+| Terms                       | GLOSSARY                                                                |
 
 ## Definition of done (milestone)
 

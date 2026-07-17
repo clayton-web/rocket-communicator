@@ -14,15 +14,15 @@ Owner approval is required to create Tasks, Assignments, forwards, and Follow-up
 | Dismissal (Task)                                          | §13                                       | **Production-verified**                                        |
 | Recipient work request → pending Suggestion (persistence) | §8                                        | **Production-verified** (Owner review HTTP is A6)              |
 
-## Planned for A5+
+## Implemented and planned workflow map
 
-Workflows §1 (suggestion generation), §2–§7, §10–§12, §14–§15 depend on AI, Android capture, reminders, forwarding, or retention workers not yet implemented. **A5.1–A5.2** adds Gmail contracts and persistence only; OAuth/poll/HTTP remain later A5 chunks. Sections below retain target behaviour; milestone labels note when each ships.
+Workflow §1 has A5 repository implementation for Gmail connection, the Application Polling Engine, and the Authenticated Endpoint invoked by External Schedulers (events only; D077). Production migration, live Gmail credentials, and scheduler secrets remain unconfigured. Workflows §1 suggestion generation, §2–§7, §10–§12, and §14–§15 still depend on AI, Android capture, reminders, forwarding, or retention workers not yet implemented. Sections below retain target behaviour; milestone labels note when each ships.
 
 ---
 
 ## 1. Gmail → Communication Event → Task Suggestion _(A5 events; A6 suggestions)_
 
-1. Owner connects Gmail (`gmail.readonly`, Workspace domain). Poll every five minutes (D065); no historical backfill (D067); Inbox-only (D068).
+1. Owner connects Gmail (`gmail.readonly`, Workspace domain). The **application** runs the Application Polling Engine; an **External Scheduler** invokes the Authenticated Endpoint every five minutes (D065, D079)—recommended initial adapter **cron-job.org** while on Vercel Hobby; Vercel Cron and other compatible schedulers remain interchangeable. No historical backfill (D067); Inbox-only (D068).
 2. **A5:** store minimized `CommunicationEvent` (+ optional temporary capped excerpt). No Task Suggestions in A5 (D077).
 3. **A6:** heuristic (+ optional cheap AI) filter → structured `TaskSuggestion`; notify Owner on Android when available.
 
@@ -69,7 +69,7 @@ Waiting (Owner or Recipient capability): pause reminders until `waiting_until`. 
 
 ## 10. Reminder and escalation _(planned — A8)_
 
-Scheduler selects actionable, non-waiting tasks due for reminder; idempotent attempt rows. First overdue → Recipient; later stages may CC Owner. Deterministic policy sends; AI does not. Delivery via Gmail API.
+The application reminder engine selects actionable, non-waiting tasks due for reminder and records idempotent attempt rows. An External Scheduler invokes the authenticated reminder endpoint; the scheduler does not own reminder policy or selection logic. First overdue → Recipient; later stages may CC Owner. Deterministic policy sends; AI does not. Delivery via Gmail API.
 
 ## 11. Voice completion + follow-up proposal _(planned — A12)_
 

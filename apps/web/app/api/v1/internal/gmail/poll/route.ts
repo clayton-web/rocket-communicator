@@ -15,7 +15,8 @@ const NO_STORE = { 'Cache-Control': 'no-store' } as const;
 /**
  * Internal scheduled Gmail poll (A5.5).
  *
- * GET is a Vercel Cron exception (secret-auth internal), not for public APIs.
+ * Invoked by an External Scheduler (recommended initial adapter: cron-job.org).
+ * GET remains available for schedulers that prefer GET (secret-auth internal only).
  * Both GET and POST require Authorization: Bearer <CRON_SECRET>. No Owner session.
  */
 async function handlePoll(request: Request): Promise<Response> {

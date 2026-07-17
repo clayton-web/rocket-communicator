@@ -110,6 +110,22 @@ Waiting: pauses reminders until a time. Snooze: Owner-only recalculation of next
 
 Minimized inbound signal record; temporary stored content under retention; origin class (Gmail, Messages, call, voice, manual).
 
+### Application Polling Engine
+
+Application-owned Gmail sync logic: account eligibility, locking, Gmail History ingestion, message minimization, persistence, audit, and error handling. It is invoked by Owner manual sync or by an authenticated endpoint called by an External Scheduler. The scheduler does not own polling logic (D079).
+
+### External Scheduler
+
+Infrastructure that invokes an authenticated application endpoint on a schedule. The recommended initial adapter while on Vercel Hobby is **cron-job.org**; Vercel Cron, GitHub Actions, Google Cloud Scheduler, AWS EventBridge, and other compatible schedulers are interchangeable. The scheduler remains replaceable and must not contain business logic or access the database directly (D079).
+
+### Authenticated Endpoint
+
+Application HTTP entrypoint protected by Owner session, Capability, or internal Bearer authentication. External infrastructure may invoke it, but authorization and business rules remain in the application.
+
+### Infrastructure Adapter
+
+Replaceable integration layer for hosting, scheduling, storage, messaging, or cloud services. Adapters connect infrastructure to application-owned behaviour without moving business logic into the vendor platform (D079).
+
 ---
 
 ## Reminders and retention

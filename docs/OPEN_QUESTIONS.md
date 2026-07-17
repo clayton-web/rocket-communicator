@@ -7,7 +7,7 @@ Workspace domain allowlist for Owner sign-in is environment-local configuration 
 | #   | Question                                                                       | Blocks  | Notes                                                           |
 | --- | ------------------------------------------------------------------------------ | ------- | --------------------------------------------------------------- |
 | 1   | Exact primary Android dialer application (device target: Galaxy S24+ per D040) | A10–A11 | OEM dialer behaviour varies                                     |
-| 3   | Capability-link domain / production Vercel hostname                            | A7, A15 | Production uses `NEXT_PUBLIC_APP_URL`; custom domain still open |
+| 3   | Capability-link domain / production hostname                                   | A7, A15 | Production uses `NEXT_PUBLIC_APP_URL`; custom domain still open |
 | 7   | Default Recipient email: secure env vs Owner-managed contacts                  | A7      | Not hard-coded in repo                                          |
 | 9   | Partial Gmail attachment forward failure: preserve other attachments? UX?      | A7      | Must not report complete success (D042)                         |
 | 12  | Tombstone / audit retention after content purge                                | A13     |                                                                 |

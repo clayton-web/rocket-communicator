@@ -1,6 +1,6 @@
 # Security and privacy
 
-Governed by [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md). Definitions: [GLOSSARY.md](GLOSSARY.md). Decisions: D048–D064 in [DECISIONS.md](DECISIONS.md). Retention/forwarding boundary: [DATA_RETENTION.md](DATA_RETENTION.md).
+Governed by [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md). Definitions: [GLOSSARY.md](GLOSSARY.md). Decisions: D048–D079 in [DECISIONS.md](DECISIONS.md). Retention/forwarding boundary: [DATA_RETENTION.md](DATA_RETENTION.md).
 
 ## Distinctions
 
@@ -60,8 +60,8 @@ Governed by [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md). Definitions: [GL
 - Env secrets only; commit `.env.example` placeholders, never real values.
 - Encrypt Gmail OAuth tokens server-side as ciphertext only (`GmailOAuthCredential`); never ship to Android; never expose on public Gmail DTOs.
 - A5.3 uses AES-256-GCM with a random IV, authentication tag, explicit key version, and purpose-bound AAD (`gmail_refresh_token` / `gmail_pkce_verifier`) in a versioned envelope. The encryption key (`GMAIL_TOKEN_ENCRYPTION_KEY`) is server-only and must never enter browser bundles. OAuth stores only a SHA-256 `stateHash` plus an encrypted PKCE verifier; raw state and plaintext verifiers are never persisted.
-- A5.4 decrypts the refresh token only during sync to obtain a memory-only access token; access tokens are never persisted. Manual sync audits use Owner attribution; system cron attribution remains A5.5. Raw Gmail payloads, MIME, full HTML, attachment bytes, and base64 bodies are never persisted or logged.
-- A5.5 authenticates `GET|POST /api/v1/internal/gmail/poll` with `Authorization: Bearer <CRON_SECRET>` (constant-time compare). Owner session cookies/JWTs do not authorize the poll route. Cron uses `AuditActorKind.system` / `systemId=gmail_poll` (D074). Cron never initializes History cursors.
+- A5.4 decrypts the refresh token only during sync to obtain a memory-only access token; access tokens are never persisted. Manual sync audits use Owner attribution; system scheduled-poll attribution remains A5.5. Raw Gmail payloads, MIME, full HTML, attachment bytes, and base64 bodies are never persisted or logged.
+- A5.5 authenticates `GET|POST /api/v1/internal/gmail/poll` with `Authorization: Bearer <CRON_SECRET>` (constant-time compare). Owner session cookies/JWTs do not authorize the poll route. External Scheduler invocations use `AuditActorKind.system` / `systemId=gmail_poll` (D074). The Application Polling Engine never initializes History cursors. Scheduler choice is external and replaceable (D079); security of the Bearer secret is mandatory regardless of which scheduler invokes the endpoint.
 - Owner Session tokens on Android use platform secure storage.
 - Recipient emails and allowlists from secure configuration, not source hard-coding.
 
@@ -69,7 +69,7 @@ Governed by [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md). Definitions: [GL
 
 Record capability ID, bound resource IDs, action, timestamp, request ID, outcome, state/version context, truthful attribution (D057). Raw IP and full user-agent deferred. Wording must not overstate identity (D052).
 
-**A5 (D074):** scheduled Gmail polling uses `AuditActorKind.system` with a `systemId` (for example `gmail_poll`). Do not fake Owner attribution for cron. Owner and capability actor kinds remain unchanged.
+**A5 (D074):** External Scheduler invocations for Gmail polling use `AuditActorKind.system` with a `systemId` (for example `gmail_poll`). Do not fake Owner attribution for scheduler-triggered work. Owner and capability actor kinds remain unchanged.
 
 **A5.3 Owner Gmail OAuth audits** (Owner actor only): `gmail_oauth_started`, `gmail_connected`, `gmail_reconnected`, `gmail_disconnected`. Notes never contain tokens or raw OAuth errors.
 

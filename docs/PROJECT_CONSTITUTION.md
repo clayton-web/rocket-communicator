@@ -4,7 +4,7 @@
 
 All other documentation, architecture, milestones, and implementation must conform to this constitution. If another document conflicts with this one, update the subordinate document—or intentionally amend this constitution first.
 
-Related: [AI_CONSTITUTION.md](AI_CONSTITUTION.md) · [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW.md) · [DOCUMENTATION_INDEX.md](DOCUMENTATION_INDEX.md)
+Related: [AI_CONSTITUTION.md](AI_CONSTITUTION.md) · [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW.md) · [DOCUMENTATION_INDEX.md](DOCUMENTATION_INDEX.md) · Architecture Principles detail: [ARCHITECTURE.md](ARCHITECTURE.md)
 
 ---
 
@@ -57,21 +57,33 @@ The product succeeds when:
 
 ## Product principles
 
-| Principle                                 | Meaning                                                                                   |
-| ----------------------------------------- | ----------------------------------------------------------------------------------------- |
-| **Reduce cognitive load**                 | Prefer short point-form structure, clear next actions, and minimal UI chrome.             |
-| **AI should become quieter as it learns** | Better filtering and trusted rules should reduce noise, not increase prompts.             |
-| **Learn preferences, not conversations**  | Durable learning stores workflow patterns—not raw message bodies or private chat history. |
-| **Human owns decisions**                  | Consequential state changes require an authorized human act.                              |
-| **Approval before automation**            | Recommendations never silently become business actions.                                   |
-| **Every automation must be reversible**   | Approved rules and automations can be disabled, rolled back, or overridden.               |
-| **Explain AI recommendations**            | Show why (facts, inference, confidence, missing info)—not opaque scores alone.            |
-| **Temporary communication**               | Application-stored excerpts and related temp content are deleted on policy timers.        |
-| **Durable workflow intelligence**         | Preferences, approved rules, and anonymized signals may outlive message text.             |
-| **Privacy first**                         | Minimize prompts and storage; exclude OTP/financial alerts; respect contact exclusions.   |
-| **Low operational cost**                  | Prefer few vendors; avoid duplicate databases and premature platforms.                    |
-| **Keep architecture simple**              | No microservices, queues, or sprawl without a documented need.                            |
-| **Documentation is the source of truth**  | Behaviour is defined in docs; code implements docs.                                       |
+| Principle                                 | Meaning                                                                                                                          |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| **Reduce cognitive load**                 | Prefer short point-form structure, clear next actions, and minimal UI chrome.                                                    |
+| **AI should become quieter as it learns** | Better filtering and trusted rules should reduce noise, not increase prompts.                                                    |
+| **Learn preferences, not conversations**  | Durable learning stores workflow patterns—not raw message bodies or private chat history.                                        |
+| **Human owns decisions**                  | Consequential state changes require an authorized human act.                                                                     |
+| **Approval before automation**            | Recommendations never silently become business actions.                                                                          |
+| **Every automation must be reversible**   | Approved rules and automations can be disabled, rolled back, or overridden.                                                      |
+| **Explain AI recommendations**            | Show why (facts, inference, confidence, missing info)—not opaque scores alone.                                                   |
+| **Temporary communication**               | Application-stored excerpts and related temp content are deleted on policy timers.                                               |
+| **Durable workflow intelligence**         | Preferences, approved rules, and anonymized signals may outlive message text.                                                    |
+| **Privacy first**                         | Minimize prompts and storage; exclude OTP/financial alerts; respect contact exclusions.                                          |
+| **Low operational cost**                  | Prefer few vendors; avoid duplicate databases and premature platforms. See Architecture Principles (cost-aware; free tiers).     |
+| **Keep architecture simple**              | No microservices, queues, or sprawl without a documented need. See Architecture Principles (simplicity; modular infrastructure). |
+| **Documentation is the source of truth**  | Behaviour is defined in docs; code implements docs.                                                                              |
+
+## Architecture Principles
+
+Binding engineering principles for stack, hosting, and infrastructure choices (D079). Detail and examples: [ARCHITECTURE.md](ARCHITECTURE.md).
+
+1. **Architecture before infrastructure** — Business logic remains independent of hosting providers and infrastructure services whenever practical.
+2. **Vendor-neutral design** — Schedulers, storage providers, messaging systems, and cloud services should be replaceable with minimal application changes.
+3. **Cost-aware engineering** — When solutions are comparable in security, reliability, maintainability, and performance, prefer the lowest recurring operational cost.
+4. **Free tiers are first-class citizens** — Intentionally target free service tiers where they satisfy product requirements. Adopt paid services only for a measurable architectural, operational, or business benefit.
+5. **Security is never compromised** — Authentication, authorization, auditing, data integrity, and privacy always take precedence over reducing cost.
+6. **Keep infrastructure modular** — Infrastructure triggers application behaviour rather than containing application logic (for example, schedulers invoke authenticated endpoints; they do not embed business rules).
+7. **Simplicity over complexity** — Prefer simple, understandable solutions that are easy to maintain and troubleshoot. Avoid unnecessary infrastructure and vendor lock-in. Fewer components and network hops often improve reliability and performance, but performance claims must be validated with evidence.
 
 ## Engineering Rule #1
 

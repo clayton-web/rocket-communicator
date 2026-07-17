@@ -1,6 +1,6 @@
 # @aicaa/db
 
-Server-side Prisma persistence for A4 (D062, D006). Domain rules live in `@aicaa/domain`; this package stores and retrieves records.
+Server-side Prisma persistence for A4/A5 (D062, D006). Domain rules live in `@aicaa/domain`; this package stores and retrieves records.
 
 Operations: [../../docs/DEPLOYMENT.md](../../docs/DEPLOYMENT.md)
 
@@ -16,7 +16,7 @@ Operations: [../../docs/DEPLOYMENT.md](../../docs/DEPLOYMENT.md)
 | Environment              | Database                                                                                                                                                               |
 | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Ordinary Vitest**      | In-process **PGlite** (embedded Postgres) with migration SQL applied — no Docker or production database required. Use `createTestDatabase()` from `@aicaa/db/testing`. |
-| **Production / staging** | Supabase Postgres via `DATABASE_URL` on Vercel (see [DEPLOYMENT.md](../../docs/DEPLOYMENT.md)).                                                                        |
+| **Production / staging** | Current deployment uses Supabase Postgres via `DATABASE_URL` on Vercel (see [DEPLOYMENT.md](../../docs/DEPLOYMENT.md)); hosting remains replaceable under D079.        |
 
 Optional live DB: set `DATABASE_URL` and run Prisma CLI commands against your instance.
 
