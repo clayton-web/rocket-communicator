@@ -30,6 +30,14 @@ const REQUIRED_EXPORTS = [
   'deleteFinishedGmailOAuthStates',
   'persistGmailConnectionTransaction',
   'persistGmailDisconnectTransaction',
+  'acquireGmailSyncLock',
+  'releaseGmailSyncLock',
+  'markCommunicationAccountNeedsReauth',
+  'markCommunicationAccountResyncRequired',
+  'createGmailSyncRun',
+  'finishGmailSyncRun',
+  'listGmailSyncRuns',
+  'persistGmailHistoryPageTransaction',
 ] as const satisfies ReadonlyArray<keyof DbRuntimeModule>;
 
 let cachedRuntime: DbRuntimeModule | undefined;

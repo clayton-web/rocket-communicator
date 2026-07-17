@@ -98,6 +98,13 @@ describe('A5 Gmail Prisma schema contracts', () => {
     expect(a5Migration).toContain('communication_accounts_organization_id_provider_key');
   });
 
+  it('defines sync lock columns on communication_accounts', () => {
+    expect(schema).toContain('syncLockOwner');
+    expect(schema).toContain('syncLockUntil');
+    expect(a5Migration).toContain('"sync_lock_owner"');
+    expect(a5Migration).toContain('"sync_lock_until"');
+  });
+
   it('extends AuditActorKind with system and optional Gmail refs (D074)', () => {
     expect(schema).toMatch(/enum AuditActorKind/);
     expect(schema).toContain('system');

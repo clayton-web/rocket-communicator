@@ -69,6 +69,12 @@ export {
 
 // A5.3 Owner Gmail OAuth / connection surface (server-only runtime bridge).
 export { getCommunicationAccountByOrganization } from './repositories/communication-account-repository.js';
+export {
+  acquireGmailSyncLock,
+  releaseGmailSyncLock,
+  markCommunicationAccountNeedsReauth,
+  markCommunicationAccountResyncRequired,
+} from './repositories/communication-account-repository.js';
 export { getGmailOAuthCredentialByAccountId } from './repositories/gmail-credential-repository.js';
 export {
   createGmailOAuthState,
@@ -78,8 +84,17 @@ export {
   type GmailOAuthStateRecord,
 } from './repositories/gmail-oauth-state-repository.js';
 export {
+  createGmailSyncRun,
+  finishGmailSyncRun,
+  listGmailSyncRuns,
+  type ListGmailSyncRunsQuery,
+  type ListGmailSyncRunsResult,
+} from './repositories/gmail-sync-run-repository.js';
+export {
   persistGmailConnectionTransaction,
   persistGmailDisconnectTransaction,
+  persistGmailHistoryPageTransaction,
   type PersistGmailConnectionResult,
   type PersistGmailDisconnectResult,
+  type PersistGmailHistoryPageResult,
 } from './transactions/gmail-transactions.js';

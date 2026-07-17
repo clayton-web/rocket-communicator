@@ -36,11 +36,40 @@ export const DEFAULT_GMAIL_POLL_INTERVAL_MINUTES = 5;
 /** Temporary plain-text excerpt cap (D072). */
 export const MAX_GMAIL_EXCERPT_BYTES = 8_192;
 
+/** Subject character cap (A5.4). */
 export const MAX_GMAIL_SUBJECT_LENGTH = 256;
+
+/**
+ * Snippet UTF-8 byte cap (A5.4). Kept as MAX_GMAIL_SNIPPET_LENGTH for stable export name;
+ * enforcement uses UTF-8 bytes, not JavaScript string length.
+ */
 export const MAX_GMAIL_SNIPPET_LENGTH = 512;
+
+/** Cap recipient arrays persisted on CommunicationEvent. */
+export const MAX_GMAIL_TO_ADDRESSES = 50;
+
+/** Cap attachment metadata entries per event (D071). */
+export const MAX_GMAIL_ATTACHMENT_METADATA_ITEMS = 20;
+
+/** Cap attachment filenames (bytes are never stored). */
+export const MAX_GMAIL_ATTACHMENT_FILENAME_LENGTH = 255;
+
+/**
+ * Ingest-time excerpt retention window in days (D078).
+ * `purgeAt = syncedAt + DEFAULT_GMAIL_EXCERPT_RETENTION_DAYS`.
+ * Later milestones may shorten this when D020 complete/dismiss timers apply.
+ */
+export const DEFAULT_GMAIL_EXCERPT_RETENTION_DAYS = 7;
+
+/** Soft caps for one Owner manual sync request (A5.4). */
+export const MAX_GMAIL_HISTORY_PAGES_PER_RUN = 5;
+export const MAX_GMAIL_MESSAGES_PER_RUN = 50;
 
 /** Inbox-only ingestion (D068). */
 export const GMAIL_INBOX_LABEL_ID = 'INBOX';
+
+/** Labels that permanently exclude a message from A5 Inbox ingestion (D068). */
+export const GMAIL_EXCLUDED_LABEL_IDS = ['DRAFT', 'SPAM', 'TRASH'] as const;
 
 /** Required OAuth scope for A5 (D070). */
 export const GMAIL_READONLY_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
@@ -150,9 +179,69 @@ export function assertGmailMailboxMatchesWorkspaceDomain(
   }
 }
 
-/** Inbox-only eligibility (D068). */
+/** Inbox-only eligibility (D068): requires INBOX; excludes Draft/Spam/Trash; Sent-only excluded. */
 export function isGmailInboxEligible(labelIds: readonly string[]): boolean {
-  return labelIds.includes(GMAIL_INBOX_LABEL_ID);
+  if (!labelIds.includes(GMAIL_INBOX_LABEL_ID)) {
+    return false;
+  }
+  for (const excluded of GMAIL_EXCLUDED_LABEL_IDS) {
+    if (labelIds.includes(excluded)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Ingest-time excerpt purgeAt (D078): syncedAt + 7 days.
+ * D020 may replace this deadline once a suggestion/task owns the excerpt.
+ */
+export function computeDefaultGmailExcerptPurgeAt(
+  syncedAt: string,
+  retentionDays: number = DEFAULT_GMAIL_EXCERPT_RETENTION_DAYS,
+): string {
+  const base = Date.parse(syncedAt);
+  if (!Number.isFinite(base)) {
+    throw validationError('syncedAt must be a valid UTC instant for excerpt purgeAt.');
+  }
+  if (!Number.isInteger(retentionDays) || retentionDays < 1) {
+    throw validationError('Excerpt retention days must be a positive integer.');
+  }
+  return new Date(base + retentionDays * 24 * 60 * 60 * 1000).toISOString();
+}
+
+/** Cap a string to at most `maxBytes` UTF-8 bytes without splitting a code point. */
+export function truncateUtf8Bytes(text: string, maxBytes: number): string {
+  if (maxBytes <= 0) {
+    return '';
+  }
+  // Portable UTF-8 truncation without Node Buffer (domain package constraint).
+  let bytes = 0;
+  let endIndex = 0;
+  while (endIndex < text.length) {
+    const code = text.charCodeAt(endIndex);
+    let charBytes = 1;
+    let advance = 1;
+    if (code <= 0x7f) {
+      charBytes = 1;
+    } else if (code <= 0x7ff) {
+      charBytes = 2;
+    } else if (code >= 0xd800 && code <= 0xdbff) {
+      charBytes = 4;
+      advance = 2;
+    } else if (code >= 0xdc00 && code <= 0xdfff) {
+      // Orphan surrogate — treat as 3-byte replacement unit.
+      charBytes = 3;
+    } else {
+      charBytes = 3;
+    }
+    if (bytes + charBytes > maxBytes) {
+      break;
+    }
+    bytes += charBytes;
+    endIndex += advance;
+  }
+  return text.slice(0, endIndex);
 }
 
 /** UTF-8 byte length without Node/DOM globals (domain stays portable). */
@@ -202,9 +291,8 @@ export function truncateGmailSnippet(snippet: string | null | undefined): string
   if (!trimmed) {
     return null;
   }
-  return trimmed.length <= MAX_GMAIL_SNIPPET_LENGTH
-    ? trimmed
-    : trimmed.slice(0, MAX_GMAIL_SNIPPET_LENGTH);
+  const capped = truncateUtf8Bytes(trimmed, MAX_GMAIL_SNIPPET_LENGTH);
+  return capped.length > 0 ? capped : null;
 }
 
 /** Stable org-scoped dedupe key for a Gmail provider message id. */

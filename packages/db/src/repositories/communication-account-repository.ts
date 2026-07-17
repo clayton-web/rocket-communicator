@@ -189,6 +189,7 @@ export async function disconnectCommunicationAccount(
       status: 'disconnected',
       disconnectedAt: fromIso(disconnectedAt)!,
       syncLockUntil: null,
+      syncLockOwner: null,
       lastErrorCode: null,
       lastErrorAt: null,
     },
@@ -205,6 +206,7 @@ export async function acquireGmailSyncLock(
   accountId: string,
   lockUntil: string,
   now: string,
+  lockOwner: string,
 ): Promise<{ acquired: boolean; account: CommunicationAccount | null }> {
   const nowDate = fromIso(now)!;
   const result = await db.communicationAccount.updateMany({
@@ -215,6 +217,7 @@ export async function acquireGmailSyncLock(
     },
     data: {
       syncLockUntil: fromIso(lockUntil)!,
+      syncLockOwner: lockOwner,
     },
   });
 
@@ -227,17 +230,45 @@ export async function acquireGmailSyncLock(
   return { acquired: true, account };
 }
 
+/**
+ * Release a sync lock. Only the owning token may clear a non-expired lock.
+ * Expired locks may be cleared by any caller (stale reclaim cleanup).
+ */
 export async function releaseGmailSyncLock(
   db: Client,
   organizationId: string,
   accountId: string,
-): Promise<CommunicationAccount> {
-  const row = await db.communicationAccount.update({
-    where: { id: accountId },
-    data: { syncLockUntil: null },
+  lockOwner: string,
+  now: string,
+): Promise<{ released: boolean; account: CommunicationAccount }> {
+  const nowDate = fromIso(now)!;
+  const owned = await db.communicationAccount.updateMany({
+    where: {
+      id: accountId,
+      organizationId,
+      syncLockOwner: lockOwner,
+    },
+    data: {
+      syncLockUntil: null,
+      syncLockOwner: null,
+    },
   });
-  if (row.organizationId !== organizationId) {
-    throw organizationMismatch('CommunicationAccount belongs to a different organization.');
+  if (owned.count === 1) {
+    const account = await getCommunicationAccountById(db, organizationId, accountId);
+    return { released: true, account };
   }
-  return mapCommunicationAccount(row);
+
+  const stale = await db.communicationAccount.updateMany({
+    where: {
+      id: accountId,
+      organizationId,
+      syncLockUntil: { lt: nowDate },
+    },
+    data: {
+      syncLockUntil: null,
+      syncLockOwner: null,
+    },
+  });
+  const account = await getCommunicationAccountById(db, organizationId, accountId);
+  return { released: stale.count === 1, account };
 }

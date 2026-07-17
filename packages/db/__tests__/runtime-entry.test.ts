@@ -36,6 +36,14 @@ const REQUIRED_RUNTIME_EXPORTS = [
   'deleteFinishedGmailOAuthStates',
   'persistGmailConnectionTransaction',
   'persistGmailDisconnectTransaction',
+  'acquireGmailSyncLock',
+  'releaseGmailSyncLock',
+  'markCommunicationAccountNeedsReauth',
+  'markCommunicationAccountResyncRequired',
+  'createGmailSyncRun',
+  'finishGmailSyncRun',
+  'listGmailSyncRuns',
+  'persistGmailHistoryPageTransaction',
 ];
 
 describe('@aicaa/db/runtime entry', () => {

@@ -213,6 +213,8 @@ model CommunicationAccount {
   lastErrorCode      String?                    @map("last_error_code") @db.VarChar(64)
   lastErrorAt        DateTime?                  @map("last_error_at") @db.Timestamptz(3)
   syncLockUntil      DateTime?                  @map("sync_lock_until") @db.Timestamptz(3)
+  /// Opaque lock owner (sync run / request id). Only the owner may release a non-expired lock.
+  syncLockOwner      String?                    @map("sync_lock_owner") @db.VarChar(64)
   createdAt          DateTime                   @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt          DateTime                   @updatedAt @map("updated_at") @db.Timestamptz(3)
 

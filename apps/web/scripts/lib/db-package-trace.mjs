@@ -58,6 +58,14 @@ export const REQUIRED_RUNTIME_EXPORTS = [
   'deleteFinishedGmailOAuthStates',
   'persistGmailConnectionTransaction',
   'persistGmailDisconnectTransaction',
+  'acquireGmailSyncLock',
+  'releaseGmailSyncLock',
+  'markCommunicationAccountNeedsReauth',
+  'markCommunicationAccountResyncRequired',
+  'createGmailSyncRun',
+  'finishGmailSyncRun',
+  'listGmailSyncRuns',
+  'persistGmailHistoryPageTransaction',
 ];
 
 export const PGLITE_MARKERS = [

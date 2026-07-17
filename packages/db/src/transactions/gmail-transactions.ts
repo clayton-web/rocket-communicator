@@ -11,6 +11,9 @@ import {
   type AuditEventRecord,
 } from '../mappers/domain-mappers.js';
 import {
+  getCommunicationEventByProviderMessageId,
+  getTemporaryCommunicationExcerptByEventId,
+  purgeTemporaryCommunicationExcerpt,
   upsertCommunicationEvent,
   upsertTemporaryCommunicationExcerpt,
 } from '../repositories/communication-event-repository.js';
@@ -62,8 +65,47 @@ export async function persistGmailHistoryPageTransaction(input: {
     const events: CommunicationEvent[] = [];
 
     for (const message of input.messages) {
-      if (!isGmailInboxEligible(message.labelIds)) {
-        messagesSkipped += 1;
+      const inboxEligible = isGmailInboxEligible(message.labelIds);
+      if (!inboxEligible) {
+        // Do not create a durable event for an ineligible message. If Gmail truth says a
+        // previously-ingested message left Inbox, retain its durable identity, update its
+        // current labels/metadata, and promptly purge any TemporaryCommunicationExcerpt.
+        const existing = await getCommunicationEventByProviderMessageId(
+          tx,
+          input.organizationId,
+          message.providerMessageId,
+        );
+        if (!existing) {
+          messagesSkipped += 1;
+          continue;
+        }
+
+        const { event, created } = await upsertCommunicationEvent(tx, {
+          organizationId: input.organizationId,
+          accountId: input.accountId,
+          ingestRunId: input.ingestRunId,
+          message: { ...message, eventId: existing.id },
+        });
+        if (created) {
+          eventsCreated += 1;
+        } else {
+          eventsUpdated += 1;
+        }
+        events.push(event);
+
+        const excerpt = await getTemporaryCommunicationExcerptByEventId(
+          tx,
+          input.organizationId,
+          event.id,
+        );
+        if (excerpt && excerpt.purgedAt == null) {
+          await purgeTemporaryCommunicationExcerpt(
+            tx,
+            input.organizationId,
+            event.id,
+            input.syncedAt,
+          );
+        }
         continue;
       }
 

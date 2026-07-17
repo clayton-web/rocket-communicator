@@ -101,7 +101,10 @@ export {
   createGmailSyncRun,
   finishGmailSyncRun,
   getGmailSyncRunById,
+  listGmailSyncRuns,
   listRecentGmailSyncRuns,
+  type ListGmailSyncRunsQuery,
+  type ListGmailSyncRunsResult,
 } from './repositories/gmail-sync-run-repository.js';
 
 export {

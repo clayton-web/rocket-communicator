@@ -609,8 +609,8 @@ export interface paths {
         put?: never;
         /**
          * Trigger manual Gmail sync
-         * @description Owner-triggered Inbox sync.
-         *     **Status: Contract defined; persistence foundation implemented; HTTP pending.**
+         * @description Owner-triggered Inbox sync (initial no-backfill cursor or incremental History).
+         *     **Status: Implemented in A5.4.**
          *
          */
         post: operations["syncGmail"];
@@ -630,7 +630,7 @@ export interface paths {
         /**
          * List recent Gmail sync runs
          * @description Cursor-paginated safe sync-run summaries.
-         *     **Status: Contract defined; persistence foundation implemented; HTTP pending.**
+         *     **Status: Implemented in A5.4.**
          *
          */
         get: operations["listGmailSyncRuns"];

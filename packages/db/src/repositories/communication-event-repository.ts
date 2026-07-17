@@ -67,10 +67,6 @@ export async function upsertCommunicationEvent(
     message: ParsedGmailMessageFixture;
   },
 ): Promise<{ event: CommunicationEvent; created: boolean }> {
-  if (!isGmailInboxEligible(input.message.labelIds)) {
-    throw persistenceValidation('CommunicationEvent requires INBOX label eligibility (D068).');
-  }
-
   const dedupeKey = buildGmailDedupeKey(input.message.providerMessageId);
   const subject = truncateGmailSubject(input.message.subject);
   const snippet = truncateGmailSnippet(input.message.snippet);
@@ -106,6 +102,10 @@ export async function upsertCommunicationEvent(
       },
     });
     return { event: mapCommunicationEvent(row), created: false };
+  }
+
+  if (!isGmailInboxEligible(input.message.labelIds)) {
+    throw persistenceValidation('New CommunicationEvent requires INBOX label eligibility (D068).');
   }
 
   const row = await db.communicationEvent.create({

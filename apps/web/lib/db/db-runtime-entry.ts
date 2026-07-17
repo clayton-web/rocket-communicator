@@ -83,6 +83,14 @@ export type TracedRuntimeModule = {
   deleteFinishedGmailOAuthStates: typeof TracedRuntimeBindings.deleteFinishedGmailOAuthStates;
   persistGmailConnectionTransaction: typeof TracedRuntimeBindings.persistGmailConnectionTransaction;
   persistGmailDisconnectTransaction: typeof TracedRuntimeBindings.persistGmailDisconnectTransaction;
+  acquireGmailSyncLock: typeof TracedRuntimeBindings.acquireGmailSyncLock;
+  releaseGmailSyncLock: typeof TracedRuntimeBindings.releaseGmailSyncLock;
+  markCommunicationAccountNeedsReauth: typeof TracedRuntimeBindings.markCommunicationAccountNeedsReauth;
+  markCommunicationAccountResyncRequired: typeof TracedRuntimeBindings.markCommunicationAccountResyncRequired;
+  createGmailSyncRun: typeof TracedRuntimeBindings.createGmailSyncRun;
+  finishGmailSyncRun: typeof TracedRuntimeBindings.finishGmailSyncRun;
+  listGmailSyncRuns: typeof TracedRuntimeBindings.listGmailSyncRuns;
+  persistGmailHistoryPageTransaction: typeof TracedRuntimeBindings.persistGmailHistoryPageTransaction;
 };
 
 export async function loadTracedRuntimeModule(): Promise<TracedRuntimeModule> {
@@ -116,5 +124,13 @@ export async function loadTracedRuntimeModule(): Promise<TracedRuntimeModule> {
     deleteFinishedGmailOAuthStates: tracedRuntime.deleteFinishedGmailOAuthStates,
     persistGmailConnectionTransaction: tracedRuntime.persistGmailConnectionTransaction,
     persistGmailDisconnectTransaction: tracedRuntime.persistGmailDisconnectTransaction,
+    acquireGmailSyncLock: tracedRuntime.acquireGmailSyncLock,
+    releaseGmailSyncLock: tracedRuntime.releaseGmailSyncLock,
+    markCommunicationAccountNeedsReauth: tracedRuntime.markCommunicationAccountNeedsReauth,
+    markCommunicationAccountResyncRequired: tracedRuntime.markCommunicationAccountResyncRequired,
+    createGmailSyncRun: tracedRuntime.createGmailSyncRun,
+    finishGmailSyncRun: tracedRuntime.finishGmailSyncRun,
+    listGmailSyncRuns: tracedRuntime.listGmailSyncRuns,
+    persistGmailHistoryPageTransaction: tracedRuntime.persistGmailHistoryPageTransaction,
   };
 }

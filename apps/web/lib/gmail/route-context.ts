@@ -10,6 +10,7 @@ import { logDatabaseRuntimeFailure } from '@/lib/db/diagnostics';
 import { getDb } from '@/lib/db/server';
 import { GmailConfigError } from './config';
 import { GmailRequestError } from './errors';
+import { GmailSyncError } from './sync-errors';
 
 type ErrorResponse = components['schemas']['ErrorResponse'];
 
@@ -46,6 +47,15 @@ export async function requireOwnerGmailContext(
 }
 
 export function mapGmailRequestError(error: unknown): NextResponse<ErrorResponse> {
+  if (error instanceof GmailSyncError) {
+    if (error.code === 'lock_conflict') {
+      return jsonErrorResponse('DOMAIN_CONFLICT', error.message, 409);
+    }
+    if (error.code === 'configuration_error') {
+      return jsonErrorResponse('INTERNAL_ERROR', 'Gmail is not configured.', 500);
+    }
+    return jsonErrorResponse('INTERNAL_ERROR', 'An unexpected error occurred.', 500);
+  }
   if (error instanceof GmailRequestError) {
     switch (error.code) {
       case 'unauthorized':
@@ -55,6 +65,7 @@ export function mapGmailRequestError(error: unknown): NextResponse<ErrorResponse
       case 'not_found':
         return jsonErrorResponse('NOT_FOUND', error.message, 404);
       case 'conflict':
+      case 'lock_conflict':
         return jsonErrorResponse('DOMAIN_CONFLICT', error.message, 409);
       case 'configuration_error':
         return jsonErrorResponse('INTERNAL_ERROR', 'Gmail is not configured.', 500);

@@ -125,17 +125,17 @@ Return-to-Owner (either surface) clears assignment ownership; Task status unchan
 
 ### Owner Gmail routes (A5)
 
-OAuth connection routes are implemented in A5.3. Sync, poll, and ingestion remain pending. Production migration and live Gmail credentials are not configured in this chunk.
+OAuth connection routes are implemented in A5.3. Manual History ingestion and sync-run listing are implemented in A5.4. Internal cron poll remains pending (A5.5). Production migration and live Gmail credentials are not configured.
 
-| Method | Path                           | Purpose                                        | Status                                                                  |
-| ------ | ------------------------------ | ---------------------------------------------- | ----------------------------------------------------------------------- |
-| GET    | `/api/v1/gmail/connection`     | Safe connection status                         | Implemented (A5.3)                                                      |
-| POST   | `/api/v1/gmail/oauth/start`    | Start OAuth redirect (`gmail.readonly`)        | Implemented (A5.3)                                                      |
-| GET    | `/api/v1/gmail/oauth/callback` | OAuth callback redirect (no tokens in query)   | Implemented (A5.3)                                                      |
-| POST   | `/api/v1/gmail/disconnect`     | Disconnect and wipe credential ciphertext      | Implemented (A5.3)                                                      |
-| POST   | `/api/v1/gmail/sync`           | Owner manual sync                              | Contract defined; persistence foundation implemented; HTTP pending      |
-| GET    | `/api/v1/gmail/sync-runs`      | Recent safe sync-run summaries                 | Contract defined; persistence foundation implemented; HTTP pending      |
-| POST   | `/api/v1/internal/gmail/poll`  | Cron poll (`InternalCronBearer`; system audit) | Contract defined; persistence foundation implemented; HTTP/cron pending |
+| Method | Path                           | Purpose                                        | Status                                     |
+| ------ | ------------------------------ | ---------------------------------------------- | ------------------------------------------ |
+| GET    | `/api/v1/gmail/connection`     | Safe connection status                         | Implemented (A5.3)                         |
+| POST   | `/api/v1/gmail/oauth/start`    | Start OAuth redirect (`gmail.readonly`)        | Implemented (A5.3)                         |
+| GET    | `/api/v1/gmail/oauth/callback` | OAuth callback redirect (no tokens in query)   | Implemented (A5.3)                         |
+| POST   | `/api/v1/gmail/disconnect`     | Disconnect and wipe credential ciphertext      | Implemented (A5.3)                         |
+| POST   | `/api/v1/gmail/sync`           | Owner manual sync (initial + incremental)      | Implemented (A5.4)                         |
+| GET    | `/api/v1/gmail/sync-runs`      | Recent safe sync-run summaries                 | Implemented (A5.4)                         |
+| POST   | `/api/v1/internal/gmail/poll`  | Cron poll (`InternalCronBearer`; system audit) | Contract defined; HTTP/cron pending (A5.5) |
 
 Public Gmail DTOs never include refresh/access tokens, ciphertext, encryption key versions, OAuth codes, or PKCE secrets. Internal poll uses `InternalCronBearer` (configured CRON_SECRET), not Owner session and not public unauthenticated access. A5 does **not** expose communication-event list/browser endpoints (D073).
 

@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DEFAULT_GMAIL_EXCERPT_RETENTION_DAYS,
   DEFAULT_GMAIL_POLL_INTERVAL_MINUTES,
   DomainError,
   GMAIL_INBOX_LABEL_ID,
   GMAIL_READONLY_SCOPE,
   MAX_GMAIL_EXCERPT_BYTES,
+  MAX_GMAIL_SNIPPET_LENGTH,
   assertExcerptWithinCap,
   assertGmailMailboxMatchesWorkspaceDomain,
   buildGmailDedupeKey,
+  computeDefaultGmailExcerptPurgeAt,
   isGmailInboxEligible,
   isSystem,
   measureExcerptByteLength,
@@ -36,8 +39,15 @@ describe('A5 Gmail domain invariants', () => {
 
   it('treats only INBOX-labelled messages as eligible (D068)', () => {
     expect(isGmailInboxEligible([GMAIL_INBOX_LABEL_ID, 'UNREAD'])).toBe(true);
+    expect(isGmailInboxEligible([GMAIL_INBOX_LABEL_ID, 'CATEGORY_PERSONAL'])).toBe(true);
     expect(isGmailInboxEligible(['SENT'])).toBe(false);
     expect(isGmailInboxEligible([])).toBe(false);
+    expect(isGmailInboxEligible([GMAIL_INBOX_LABEL_ID, 'DRAFT'])).toBe(false);
+    expect(isGmailInboxEligible([GMAIL_INBOX_LABEL_ID, 'SPAM'])).toBe(false);
+    expect(isGmailInboxEligible([GMAIL_INBOX_LABEL_ID, 'TRASH'])).toBe(false);
+    expect(isGmailInboxEligible(['DRAFT'])).toBe(false);
+    expect(isGmailInboxEligible(['SPAM'])).toBe(false);
+    expect(isGmailInboxEligible(['TRASH'])).toBe(false);
   });
 
   it('enforces excerpt byte cap (D072)', () => {
@@ -48,10 +58,21 @@ describe('A5 Gmail domain invariants', () => {
     expect(() => assertExcerptWithinCap(tooBig)).toThrow(DomainError);
   });
 
-  it('truncates subject and snippet to documented caps', () => {
+  it('truncates subject by characters and snippet by UTF-8 bytes', () => {
     expect(truncateGmailSubject('x'.repeat(300))?.length).toBe(256);
-    expect(truncateGmailSnippet('y'.repeat(600))?.length).toBe(512);
+    expect(truncateGmailSnippet('y'.repeat(600))?.length).toBe(MAX_GMAIL_SNIPPET_LENGTH);
+    // Multibyte: each 'é' is 2 UTF-8 bytes → 512-byte cap keeps 256 code units.
+    const multibyte = 'é'.repeat(300);
+    const capped = truncateGmailSnippet(multibyte)!;
+    expect(measureExcerptByteLength(capped)).toBe(MAX_GMAIL_SNIPPET_LENGTH);
     expect(truncateGmailSubject('   ')).toBeNull();
+  });
+
+  it('computes ingest-time excerpt purgeAt as syncedAt + 7 days (D078)', () => {
+    expect(DEFAULT_GMAIL_EXCERPT_RETENTION_DAYS).toBe(7);
+    expect(computeDefaultGmailExcerptPurgeAt('2026-07-16T12:00:00.000Z')).toBe(
+      '2026-07-23T12:00:00.000Z',
+    );
   });
 
   it('builds stable gmail dedupe keys', () => {

@@ -1,6 +1,6 @@
 # Data retention
 
-Governed by [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md). Terms: [GLOSSARY.md](GLOSSARY.md). Decisions: [DECISIONS.md](DECISIONS.md) (D020, D021, D028, D031).
+Governed by [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md). Terms: [GLOSSARY.md](GLOSSARY.md). Decisions: [DECISIONS.md](DECISIONS.md) (D020, D021, D028, D031, D078).
 
 ## Purpose
 
@@ -15,25 +15,28 @@ This product must not become a permanent communication archive. Retention separa
 
 ## Data classification
 
-| Class                                    | Examples                                                            | Default fate                                                                             |
-| ---------------------------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| Temporary communication excerpts         | Gmail body snippets, notification text stored for AI/task context   | Delete 7 days after related task completed or suggestion dismissed                       |
-| Active operational task data             | Title, structured summary points, assignee, due, status, notes      | Kept while active; then enter completed/dismissed retention path                         |
-| Completed task visibility                | Operational summary and completion outcome                          | Visible 30 days after completion                                                         |
-| Raw voice audio                          | Uploaded recordings                                                 | Delete immediately after successful transcription and validation                         |
-| Transcripts                              | Text from speech                                                    | Treated as task/suggestion content under task retention; not kept as a permanent archive |
-| Forwarded Gmail messages and attachments | Copies in Recipient (and Sent) mailboxes                            | **Outside app deletion control** — Workspace/Gmail retention                             |
-| Durable workflow intelligence            | Approved preferences/rules, anonymized patterns, confidence signals | May be retained longer; **no raw message bodies**                                        |
-| Audit metadata                           | Who approved what, when, message ids, reminder attempts             | Minimal metadata retained as required; scrub free-text payloads when content purges      |
+| Class                                    | Examples                                                            | Default fate                                                                                                                                   |
+| ---------------------------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Temporary communication excerpts         | Gmail body snippets, notification text stored for AI/task context   | At ingest: delete eligible after `syncedAt + 7 days` (D078); after suggestion/task association: delete 7 days after complete or dismiss (D020) |
+| Active operational task data             | Title, structured summary points, assignee, due, status, notes      | Kept while active; then enter completed/dismissed retention path                                                                               |
+| Completed task visibility                | Operational summary and completion outcome                          | Visible 30 days after completion                                                                                                               |
+| Raw voice audio                          | Uploaded recordings                                                 | Delete immediately after successful transcription and validation                                                                               |
+| Transcripts                              | Text from speech                                                    | Treated as task/suggestion content under task retention; not kept as a permanent archive                                                       |
+| Forwarded Gmail messages and attachments | Copies in Recipient (and Sent) mailboxes                            | **Outside app deletion control** — Workspace/Gmail retention                                                                                   |
+| Durable workflow intelligence            | Approved preferences/rules, anonymized patterns, confidence signals | May be retained longer; **no raw message bodies**                                                                                              |
+| Audit metadata                           | Who approved what, when, message ids, reminder attempts             | Minimal metadata retained as required; scrub free-text payloads when content purges                                                            |
 
 ## Temporary communication excerpts
 
 - Store the minimum text needed for suggestion quality and short-term Owner review.
 - Do not store full attachment binaries in the application for version-one ingest.
 - **A5 (D071–D072):** attachment **metadata only**; temporary capped plain-text excerpts only; no full MIME or full HTML archives. Gmail remains source of truth.
-- **Delete seven days after** the related task is completed **or** the suggestion is dismissed. A5 persistence includes `purgeAt` / `purgedAt` on `TemporaryCommunicationExcerpt`; retention workers remain A13.
+- **Ingest-time maximum (D078):** when an eligible Gmail message is ingested, create/update its `TemporaryCommunicationExcerpt` with `purgeAt = syncedAt + 7 days`. This is the maximum ingest-only retention window.
+- **Workflow retention (D020):** later milestones may replace that deadline when an excerpt is associated with a suggestion or task — then delete seven days after complete or dismiss. If no later workflow retains the communication, the excerpt remains eligible for deletion at the ingest seven-day deadline.
+- **Leave-Inbox:** if a previously ingested message no longer satisfies Inbox eligibility, update durable event label/status metadata, retain provider identity, and promptly purge its TemporaryCommunicationExcerpt. Do not delete the CommunicationEvent.
+- A5 persistence includes `purgeAt` / `purgedAt` on `TemporaryCommunicationExcerpt`; retention workers remain A13.
 - Disconnect wipes encrypted OAuth credential ciphertext; durable provider message ids on `CommunicationEvent` may remain for dedupe/threading after content scrub.
-- During the completed-task 30-day visibility window, the **excerpt still follows the seven-day rule** and should already be gone after day seven.
+- During the completed-task 30-day visibility window, the **excerpt still follows the applicable seven-day rule** and should already be gone after day seven.
 
 ## Active task data
 

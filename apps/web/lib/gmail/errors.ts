@@ -28,9 +28,15 @@ export class GmailCallbackError extends Error {
   }
 }
 
-/** Safe categories for the authenticated JSON endpoints (connection status, disconnect, start). */
+/** Safe categories for the authenticated JSON endpoints (connection, disconnect, start, sync). */
 export type GmailRequestErrorCode =
-  'unauthorized' | 'validation' | 'not_found' | 'conflict' | 'configuration_error' | 'server_error';
+  | 'unauthorized'
+  | 'validation'
+  | 'not_found'
+  | 'conflict'
+  | 'lock_conflict'
+  | 'configuration_error'
+  | 'server_error';
 
 export class GmailRequestError extends Error {
   readonly code: GmailRequestErrorCode;

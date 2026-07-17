@@ -118,8 +118,8 @@ paths:
       tags: [Gmail]
       summary: Trigger manual Gmail sync
       description: |
-        Owner-triggered Inbox sync.
-        **Status: Contract defined; persistence foundation implemented; HTTP pending.**
+        Owner-triggered Inbox sync (initial no-backfill cursor or incremental History).
+        **Status: Implemented in A5.4.**
       requestBody:
         required: false
         content:
@@ -144,7 +144,7 @@ paths:
       summary: List recent Gmail sync runs
       description: |
         Cursor-paginated safe sync-run summaries.
-        **Status: Contract defined; persistence foundation implemented; HTTP pending.**
+        **Status: Implemented in A5.4.**
       parameters:
         - $ref: '../components/parameters.yaml#/components/parameters/Cursor'
         - $ref: '../components/parameters.yaml#/components/parameters/Limit'

@@ -230,6 +230,7 @@ describe('A5 Gmail persistence repositories (PGlite)', () => {
           eventId: asCommunicationEventId('evt_1_retry'),
           providerMessageId: 'msg_1',
           subject: 'Hello again',
+          labelIds: ['SENT'],
         }),
         inboxMessage({
           eventId: asCommunicationEventId('evt_skip'),
@@ -248,6 +249,15 @@ describe('A5 Gmail persistence repositories (PGlite)', () => {
       where: { organizationId: orgA, providerMessageId: 'msg_1' },
     });
     expect(count).toBe(1);
+    const updated = await getCommunicationEventByProviderMessageId(db.prisma, orgA, 'msg_1');
+    expect(updated?.labelIds).toEqual(['SENT']);
+    expect(updated?.subject).toBe('Hello again');
+
+    // Leave-Inbox: durable event retained; TemporaryCommunicationExcerpt promptly purged.
+    const excerpt = await getTemporaryCommunicationExcerptByEventId(db.prisma, orgA, 'evt_1');
+    expect(excerpt?.content).toBe('');
+    expect(excerpt?.byteLength).toBe(0);
+    expect(excerpt?.purgedAt).toBe(later);
   });
 
   it('marks resync_required without silently resetting the cursor (D076)', async () => {
@@ -280,6 +290,7 @@ describe('A5 Gmail persistence repositories (PGlite)', () => {
       'acct_a1',
       '2026-07-16T12:10:00.000Z',
       later,
+      'lock_owner_1',
     );
     expect(first.acquired).toBe(true);
 
@@ -289,22 +300,62 @@ describe('A5 Gmail persistence repositories (PGlite)', () => {
       'acct_a1',
       '2026-07-16T12:15:00.000Z',
       later,
+      'lock_owner_2',
     );
     expect(second.acquired).toBe(false);
 
-    await releaseGmailSyncLock(db.prisma, orgA, 'acct_a1');
+    const wrongRelease = await releaseGmailSyncLock(
+      db.prisma,
+      orgA,
+      'acct_a1',
+      'lock_owner_2',
+      later,
+    );
+    expect(wrongRelease.released).toBe(false);
+
+    const rightRelease = await releaseGmailSyncLock(
+      db.prisma,
+      orgA,
+      'acct_a1',
+      'lock_owner_1',
+      later,
+    );
+    expect(rightRelease.released).toBe(true);
+
     const third = await acquireGmailSyncLock(
       db.prisma,
       orgA,
       'acct_a1',
       '2026-07-16T12:20:00.000Z',
       later,
+      'lock_owner_3',
     );
     expect(third.acquired).toBe(true);
-    await releaseGmailSyncLock(db.prisma, orgA, 'acct_a1');
+    await releaseGmailSyncLock(db.prisma, orgA, 'acct_a1', 'lock_owner_3', later);
+
+    // Expired lock can be reclaimed by a new owner.
+    await acquireGmailSyncLock(
+      db.prisma,
+      orgA,
+      'acct_a1',
+      '2026-07-16T12:01:00.000Z',
+      '2026-07-16T12:00:00.000Z',
+      'lock_expired',
+    );
+    const reclaim = await acquireGmailSyncLock(
+      db.prisma,
+      orgA,
+      'acct_a1',
+      '2026-07-16T12:30:00.000Z',
+      later,
+      'lock_reclaim',
+    );
+    expect(reclaim.acquired).toBe(true);
+    await releaseGmailSyncLock(db.prisma, orgA, 'acct_a1', 'lock_reclaim', later);
   });
 
   it('supports excerpt purge state and sync-run listing', async () => {
+    // Leave-Inbox already purged evt_1; re-purge is idempotent for content clearing.
     const purged = await purgeTemporaryCommunicationExcerpt(db.prisma, orgA, 'evt_1', later);
     expect(purged.content).toBe('');
     expect(purged.byteLength).toBe(0);

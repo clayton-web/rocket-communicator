@@ -60,6 +60,7 @@ Governed by [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md). Definitions: [GL
 - Env secrets only; commit `.env.example` placeholders, never real values.
 - Encrypt Gmail OAuth tokens server-side as ciphertext only (`GmailOAuthCredential`); never ship to Android; never expose on public Gmail DTOs.
 - A5.3 uses AES-256-GCM with a random IV, authentication tag, explicit key version, and purpose-bound AAD (`gmail_refresh_token` / `gmail_pkce_verifier`) in a versioned envelope. The encryption key (`GMAIL_TOKEN_ENCRYPTION_KEY`) is server-only and must never enter browser bundles. OAuth stores only a SHA-256 `stateHash` plus an encrypted PKCE verifier; raw state and plaintext verifiers are never persisted.
+- A5.4 decrypts the refresh token only during sync to obtain a memory-only access token; access tokens are never persisted. Manual sync audits use Owner attribution; system cron attribution remains A5.5. Raw Gmail payloads, MIME, full HTML, attachment bytes, and base64 bodies are never persisted or logged.
 - Owner Session tokens on Android use platform secure storage.
 - Recipient emails and allowlists from secure configuration, not source hard-coding.
 

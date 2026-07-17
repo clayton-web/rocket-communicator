@@ -54,6 +54,7 @@ CREATE TABLE "communication_accounts" (
     "last_error_code" VARCHAR(64),
     "last_error_at" TIMESTAMPTZ(3),
     "sync_lock_until" TIMESTAMPTZ(3),
+    "sync_lock_owner" VARCHAR(64),
     "created_at" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMPTZ(3) NOT NULL,
     CONSTRAINT "communication_accounts_pkey" PRIMARY KEY ("id")
