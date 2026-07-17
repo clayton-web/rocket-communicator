@@ -13,7 +13,7 @@ import {
   type GmailSyncTrigger,
   type ParsedGmailMessageFixture,
 } from '@aicaa/domain';
-import type { CreateAuditEventInput } from '@aicaa/db';
+import type { CreateAuditEventInput, DbClient } from '@aicaa/db';
 import { loadDbRuntime } from '@/lib/db/runtime-db';
 import { GmailConfigError } from './config';
 import { GmailRequestError } from './errors';
@@ -44,6 +44,29 @@ export interface GmailSyncEngineDeps {
   getAccessToken?: GmailAccessTokenProvider;
 }
 
+export type GmailSyncActorRef =
+  { kind: 'owner'; ownerId: string } | { kind: 'system'; systemId: string };
+
+export interface GmailAccountSyncContext {
+  db: DbClient;
+  organizationId: string;
+  accountId: string;
+  /** Caller-supplied trigger. Owner wrapper computes initial|manual. Cron always passes 'cron'. */
+  trigger: GmailSyncTrigger;
+  actor: GmailSyncActorRef;
+  now: string;
+  requestId: string;
+  /**
+   * Cron must never initial-seed. When false and account needs initial, refuse without calling Gmail.
+   * Cron path sets allowInitial=false. Owner path sets allowInitial=true.
+   */
+  allowInitial: boolean;
+}
+
+export type GmailAccountSyncResult =
+  | { status: 'completed'; run: GmailSyncRun; connection: GmailConnectionDto }
+  | { status: 'skipped_locked'; connection: GmailConnectionDto | null };
+
 export interface OwnerGmailSyncResult {
   run: GmailSyncRun;
   connection: GmailConnectionDto;
@@ -67,6 +90,28 @@ function ownerAudit(input: {
     organizationId: input.organizationId,
     actorKind: 'owner',
     ownerId: input.ownerId,
+    communicationAccountId: input.communicationAccountId,
+    action: input.action,
+    outcome: input.outcome ?? 'succeeded',
+    requestId: input.requestId,
+    recordedAt: input.now,
+  };
+}
+
+function systemAudit(input: {
+  action: string;
+  organizationId: string;
+  systemId: string;
+  communicationAccountId?: string;
+  now: string;
+  requestId?: string;
+  outcome?: 'succeeded' | 'failed';
+}): CreateAuditEventInput {
+  return {
+    id: newId('audit'),
+    organizationId: input.organizationId,
+    actorKind: 'system',
+    systemId: input.systemId,
     communicationAccountId: input.communicationAccountId,
     action: input.action,
     outcome: input.outcome ?? 'succeeded',
@@ -141,33 +186,51 @@ export function resolveHistoryIdAfter(
   return String(page.historyId ?? fallback);
 }
 
+function needsInitialCursor(account: CommunicationAccount): boolean {
+  return account.historyState === 'unset' || account.historyId == null;
+}
+
 /**
- * Owner-triggered Gmail History sync (A5.4). No cron. Bounded pages/messages per request.
- * Cursor advances only inside persistGmailHistoryPageTransaction (per page).
+ * Shared Gmail History sync for Owner manual/initial and system cron (A5.4 / A5.5).
+ * Lock conflicts never throw — callers receive skipped_locked.
  */
-export async function runOwnerGmailSync(
-  ctx: OwnerGmailContext,
+export async function runGmailAccountSync(
+  ctx: GmailAccountSyncContext,
   deps: GmailSyncEngineDeps = {},
-): Promise<OwnerGmailSyncResult> {
+): Promise<GmailAccountSyncResult> {
   const runtime = await loadDbRuntime();
   const gmailClient = deps.gmailClient ?? defaultGmailApiClient;
   const tokenProvider = deps.getAccessToken ?? getGmailAccessToken;
-  const orgId = ctx.owner.organizationId;
+  const orgId = ctx.organizationId;
 
-  const account = await runtime.getCommunicationAccountByOrganization(ctx.db, orgId);
-  if (!account || account.status === 'disconnected') {
+  let account: CommunicationAccount;
+  try {
+    account = await runtime.getCommunicationAccountById(ctx.db, orgId, ctx.accountId);
+  } catch {
+    throw new GmailRequestError('not_found', 'No Gmail account is connected.');
+  }
+  if (account.status === 'disconnected') {
     throw new GmailRequestError('not_found', 'No Gmail account is connected.');
   }
 
+  if (!ctx.allowInitial && needsInitialCursor(account)) {
+    throw new GmailRequestError('conflict', 'Gmail account requires initial sync before polling.');
+  }
+
   const runId = newId('gsrun');
-  const isInitial = account.historyState === 'unset' || account.historyId == null;
-  const trigger: GmailSyncTrigger = isInitial ? 'initial' : 'manual';
+  const isInitial = needsInitialCursor(account);
 
   if (account.status === 'needs_reauth') {
-    return finishEarly(ctx, runtime, account, runId, trigger, 'needs_reauth', 'needs_reauth');
+    return {
+      status: 'completed',
+      ...(await finishEarly(ctx, runtime, account, runId, 'needs_reauth', 'needs_reauth')),
+    };
   }
   if (account.status === 'resync_required' || account.historyState === 'resync_required') {
-    return finishEarly(ctx, runtime, account, runId, trigger, 'resync_required', 'resync_required');
+    return {
+      status: 'completed',
+      ...(await finishEarly(ctx, runtime, account, runId, 'resync_required', 'resync_required')),
+    };
   }
   if (account.status !== 'connected') {
     throw new GmailRequestError('conflict', 'Gmail account is not ready to synchronize.');
@@ -183,10 +246,13 @@ export async function runOwnerGmailSync(
     runId,
   );
   if (!lock.acquired) {
-    throw new GmailSyncError('lock_conflict');
+    return {
+      status: 'skipped_locked',
+      connection: lock.account ? mapConnectionToDto(lock.account) : null,
+    };
   }
 
-  let result: OwnerGmailSyncResult | undefined;
+  let completed: OwnerGmailSyncResult | undefined;
   let runCreated = false;
 
   try {
@@ -194,7 +260,7 @@ export async function runOwnerGmailSync(
       id: runId,
       organizationId: orgId,
       accountId: account.id,
-      trigger,
+      trigger: ctx.trigger,
       startedAt: ctx.now,
       historyIdBefore: account.historyId,
       requestId: ctx.requestId,
@@ -202,17 +268,19 @@ export async function runOwnerGmailSync(
     runCreated = true;
     void run;
 
-    await runtime.createAuditEvent(
-      ctx.db,
-      ownerAudit({
-        action: 'gmail_manual_sync_started',
-        organizationId: orgId,
-        ownerId: ctx.owner.ownerId,
-        communicationAccountId: account.id,
-        now: ctx.now,
-        requestId: ctx.requestId,
-      }),
-    );
+    if (ctx.actor.kind === 'owner') {
+      await runtime.createAuditEvent(
+        ctx.db,
+        ownerAudit({
+          action: 'gmail_manual_sync_started',
+          organizationId: orgId,
+          ownerId: ctx.actor.ownerId,
+          communicationAccountId: account.id,
+          now: ctx.now,
+          requestId: ctx.requestId,
+        }),
+      );
+    }
 
     let accessToken: string | undefined;
     try {
@@ -247,32 +315,47 @@ export async function runOwnerGmailSync(
           retryable: false,
           errorCode: syncError.code,
         });
-        await runtime.createAuditEvent(
-          ctx.db,
-          ownerAudit({
-            action: 'gmail_manual_sync_failed',
-            organizationId: orgId,
-            ownerId: ctx.owner.ownerId,
-            communicationAccountId: account.id,
-            now: ctx.now,
-            requestId: ctx.requestId,
-            outcome: 'failed',
-          }),
-        );
-        result = { run: finished, connection: mapConnectionToDto(marked) };
+        if (ctx.actor.kind === 'owner') {
+          await runtime.createAuditEvent(
+            ctx.db,
+            ownerAudit({
+              action: 'gmail_manual_sync_failed',
+              organizationId: orgId,
+              ownerId: ctx.actor.ownerId,
+              communicationAccountId: account.id,
+              now: ctx.now,
+              requestId: ctx.requestId,
+              outcome: 'failed',
+            }),
+          );
+        } else {
+          await runtime.createAuditEvent(
+            ctx.db,
+            systemAudit({
+              action: 'gmail_needs_reauth',
+              organizationId: orgId,
+              systemId: ctx.actor.systemId,
+              communicationAccountId: account.id,
+              now: ctx.now,
+              requestId: ctx.requestId,
+              outcome: 'failed',
+            }),
+          );
+        }
+        completed = { run: finished, connection: mapConnectionToDto(marked) };
       } else {
         const finished = await finishFailure(runtime, ctx, runId, account.id, syncError);
         const latest =
           (await runtime.getCommunicationAccountByOrganization(ctx.db, orgId)) ?? account;
-        result = { run: finished, connection: mapConnectionToDto(latest) };
+        completed = { run: finished, connection: mapConnectionToDto(latest) };
       }
     }
 
-    if (!result && accessToken) {
+    if (!completed && accessToken) {
       if (isInitial) {
-        result = await runInitialCursor(ctx, runtime, gmailClient, accessToken, account, runId);
+        completed = await runInitialCursor(ctx, runtime, gmailClient, accessToken, account, runId);
       } else {
-        result = await runIncrementalHistory(
+        completed = await runIncrementalHistory(
           ctx,
           runtime,
           gmailClient,
@@ -283,9 +366,6 @@ export async function runOwnerGmailSync(
       }
     }
   } catch (error) {
-    if (error instanceof GmailSyncError && error.code === 'lock_conflict') {
-      throw error;
-    }
     if (error instanceof GmailRequestError) {
       throw error;
     }
@@ -308,24 +388,39 @@ export async function runOwnerGmailSync(
         errorCode: syncError.code,
         historyIdAfter: account.historyId,
       });
-      await runtime.createAuditEvent(
-        ctx.db,
-        ownerAudit({
-          action: 'gmail_resync_required',
-          organizationId: orgId,
-          ownerId: ctx.owner.ownerId,
-          communicationAccountId: account.id,
-          now: ctx.now,
-          requestId: ctx.requestId,
-          outcome: 'failed',
-        }),
-      );
-      result = { run: finished, connection: mapConnectionToDto(marked) };
+      if (ctx.actor.kind === 'owner') {
+        await runtime.createAuditEvent(
+          ctx.db,
+          ownerAudit({
+            action: 'gmail_resync_required',
+            organizationId: orgId,
+            ownerId: ctx.actor.ownerId,
+            communicationAccountId: account.id,
+            now: ctx.now,
+            requestId: ctx.requestId,
+            outcome: 'failed',
+          }),
+        );
+      } else {
+        await runtime.createAuditEvent(
+          ctx.db,
+          systemAudit({
+            action: 'gmail_resync_required',
+            organizationId: orgId,
+            systemId: ctx.actor.systemId,
+            communicationAccountId: account.id,
+            now: ctx.now,
+            requestId: ctx.requestId,
+            outcome: 'failed',
+          }),
+        );
+      }
+      completed = { run: finished, connection: mapConnectionToDto(marked) };
     } else if (runCreated) {
       const finished = await finishFailure(runtime, ctx, runId, account.id, syncError);
       const latest =
         (await runtime.getCommunicationAccountByOrganization(ctx.db, orgId)) ?? account;
-      result = { run: finished, connection: mapConnectionToDto(latest) };
+      completed = { run: finished, connection: mapConnectionToDto(latest) };
     } else {
       throw syncError;
     }
@@ -338,42 +433,80 @@ export async function runOwnerGmailSync(
         runId,
         new Date().toISOString(),
       );
-      if (result) {
-        result.connection = mapConnectionToDto(released.account);
+      if (completed) {
+        completed.connection = mapConnectionToDto(released.account);
       }
     } catch {
       // Lock release is best-effort; expiry reclaim covers stale locks.
     }
   }
 
-  if (!result) {
+  if (!completed) {
     throw new GmailSyncError('unknown');
   }
-  return result;
+  return { status: 'completed', run: completed.run, connection: completed.connection };
+}
+
+/**
+ * Owner-triggered Gmail History sync (A5.4). Thin wrapper over runGmailAccountSync.
+ * Lock conflicts throw GmailSyncError('lock_conflict') for HTTP 409 mapping.
+ */
+export async function runOwnerGmailSync(
+  ctx: OwnerGmailContext,
+  deps: GmailSyncEngineDeps = {},
+): Promise<OwnerGmailSyncResult> {
+  const runtime = await loadDbRuntime();
+  const orgId = ctx.owner.organizationId;
+
+  const account = await runtime.getCommunicationAccountByOrganization(ctx.db, orgId);
+  if (!account || account.status === 'disconnected') {
+    throw new GmailRequestError('not_found', 'No Gmail account is connected.');
+  }
+
+  const isInitial = needsInitialCursor(account);
+  const trigger: GmailSyncTrigger = isInitial ? 'initial' : 'manual';
+
+  const result = await runGmailAccountSync(
+    {
+      db: ctx.db,
+      organizationId: orgId,
+      accountId: account.id,
+      trigger,
+      actor: { kind: 'owner', ownerId: ctx.owner.ownerId },
+      now: ctx.now,
+      requestId: ctx.requestId,
+      allowInitial: true,
+    },
+    deps,
+  );
+
+  if (result.status === 'skipped_locked') {
+    throw new GmailSyncError('lock_conflict');
+  }
+  return { run: result.run, connection: result.connection };
 }
 
 type DbRuntime = Awaited<ReturnType<typeof loadDbRuntime>>;
 
 async function finishEarly(
-  ctx: OwnerGmailContext,
+  ctx: GmailAccountSyncContext,
   runtime: DbRuntime,
   account: CommunicationAccount,
   runId: string,
-  trigger: GmailSyncTrigger,
   outcome: GmailSyncOutcome,
   errorCode: string,
 ): Promise<OwnerGmailSyncResult> {
   await runtime.createGmailSyncRun(ctx.db, {
     id: runId,
-    organizationId: ctx.owner.organizationId,
+    organizationId: ctx.organizationId,
     accountId: account.id,
-    trigger,
+    trigger: ctx.trigger,
     startedAt: ctx.now,
     historyIdBefore: account.historyId,
     requestId: ctx.requestId,
   });
   const run = await runtime.finishGmailSyncRun(ctx.db, {
-    organizationId: ctx.owner.organizationId,
+    organizationId: ctx.organizationId,
     runId,
     outcome,
     finishedAt: ctx.now,
@@ -381,11 +514,42 @@ async function finishEarly(
     errorCode,
     historyIdAfter: account.historyId,
   });
+
+  if (ctx.actor.kind === 'system') {
+    if (outcome === 'needs_reauth') {
+      await runtime.createAuditEvent(
+        ctx.db,
+        systemAudit({
+          action: 'gmail_needs_reauth',
+          organizationId: ctx.organizationId,
+          systemId: ctx.actor.systemId,
+          communicationAccountId: account.id,
+          now: ctx.now,
+          requestId: ctx.requestId,
+          outcome: 'failed',
+        }),
+      );
+    } else if (outcome === 'resync_required') {
+      await runtime.createAuditEvent(
+        ctx.db,
+        systemAudit({
+          action: 'gmail_resync_required',
+          organizationId: ctx.organizationId,
+          systemId: ctx.actor.systemId,
+          communicationAccountId: account.id,
+          now: ctx.now,
+          requestId: ctx.requestId,
+          outcome: 'failed',
+        }),
+      );
+    }
+  }
+
   return { run, connection: mapConnectionToDto(account) };
 }
 
 async function runInitialCursor(
-  ctx: OwnerGmailContext,
+  ctx: GmailAccountSyncContext,
   runtime: DbRuntime,
   gmailClient: GmailApiClient,
   accessToken: string,
@@ -397,7 +561,7 @@ async function runInitialCursor(
 
   const page = await runtime.persistGmailHistoryPageTransaction({
     db: ctx.db,
-    organizationId: ctx.owner.organizationId,
+    organizationId: ctx.organizationId,
     accountId: account.id,
     historyIdBefore: null,
     historyIdAfter,
@@ -407,7 +571,7 @@ async function runInitialCursor(
   });
 
   const run = await runtime.finishGmailSyncRun(ctx.db, {
-    organizationId: ctx.owner.organizationId,
+    organizationId: ctx.organizationId,
     runId,
     outcome: 'succeeded',
     finishedAt: ctx.now,
@@ -420,23 +584,25 @@ async function runInitialCursor(
     errorCode: null,
   });
 
-  await runtime.createAuditEvent(
-    ctx.db,
-    ownerAudit({
-      action: 'gmail_manual_sync_succeeded',
-      organizationId: ctx.owner.organizationId,
-      ownerId: ctx.owner.ownerId,
-      communicationAccountId: account.id,
-      now: ctx.now,
-      requestId: ctx.requestId,
-    }),
-  );
+  if (ctx.actor.kind === 'owner') {
+    await runtime.createAuditEvent(
+      ctx.db,
+      ownerAudit({
+        action: 'gmail_manual_sync_succeeded',
+        organizationId: ctx.organizationId,
+        ownerId: ctx.actor.ownerId,
+        communicationAccountId: account.id,
+        now: ctx.now,
+        requestId: ctx.requestId,
+      }),
+    );
+  }
 
   return { run, connection: mapConnectionToDto(page.account) };
 }
 
 async function runIncrementalHistory(
-  ctx: OwnerGmailContext,
+  ctx: GmailAccountSyncContext,
   runtime: DbRuntime,
   gmailClient: GmailApiClient,
   accessToken: string,
@@ -499,7 +665,7 @@ async function runIncrementalHistory(
 
     const persisted = await runtime.persistGmailHistoryPageTransaction({
       db: ctx.db,
-      organizationId: ctx.owner.organizationId,
+      organizationId: ctx.organizationId,
       accountId: account.id,
       historyIdBefore: currentHistoryId,
       historyIdAfter,
@@ -528,7 +694,7 @@ async function runIncrementalHistory(
 
   const outcome: GmailSyncOutcome = stoppedEarly ? 'partial' : 'succeeded';
   const run = await runtime.finishGmailSyncRun(ctx.db, {
-    organizationId: ctx.owner.organizationId,
+    organizationId: ctx.organizationId,
     runId,
     outcome,
     finishedAt: ctx.now,
@@ -541,49 +707,53 @@ async function runIncrementalHistory(
     errorCode: null,
   });
 
-  await runtime.createAuditEvent(
-    ctx.db,
-    ownerAudit({
-      action: 'gmail_manual_sync_succeeded',
-      organizationId: ctx.owner.organizationId,
-      ownerId: ctx.owner.ownerId,
-      communicationAccountId: account.id,
-      now: ctx.now,
-      requestId: ctx.requestId,
-    }),
-  );
+  if (ctx.actor.kind === 'owner') {
+    await runtime.createAuditEvent(
+      ctx.db,
+      ownerAudit({
+        action: 'gmail_manual_sync_succeeded',
+        organizationId: ctx.organizationId,
+        ownerId: ctx.actor.ownerId,
+        communicationAccountId: account.id,
+        now: ctx.now,
+        requestId: ctx.requestId,
+      }),
+    );
+  }
 
   return { run, connection: mapConnectionToDto(latestAccount) };
 }
 
 async function finishFailure(
   runtime: DbRuntime,
-  ctx: OwnerGmailContext,
+  ctx: GmailAccountSyncContext,
   runId: string,
   accountId: string,
   syncError: GmailSyncError,
 ): Promise<GmailSyncRun> {
   const outcome: GmailSyncOutcome = syncError.retryable ? 'retryable_failure' : 'permanent_failure';
   const run = await runtime.finishGmailSyncRun(ctx.db, {
-    organizationId: ctx.owner.organizationId,
+    organizationId: ctx.organizationId,
     runId,
     outcome,
     finishedAt: ctx.now,
     retryable: syncError.retryable,
     errorCode: syncError.code,
   });
-  await runtime.createAuditEvent(
-    ctx.db,
-    ownerAudit({
-      action: 'gmail_manual_sync_failed',
-      organizationId: ctx.owner.organizationId,
-      ownerId: ctx.owner.ownerId,
-      communicationAccountId: accountId,
-      now: ctx.now,
-      requestId: ctx.requestId,
-      outcome: 'failed',
-    }),
-  );
+  if (ctx.actor.kind === 'owner') {
+    await runtime.createAuditEvent(
+      ctx.db,
+      ownerAudit({
+        action: 'gmail_manual_sync_failed',
+        organizationId: ctx.organizationId,
+        ownerId: ctx.actor.ownerId,
+        communicationAccountId: accountId,
+        now: ctx.now,
+        requestId: ctx.requestId,
+        outcome: 'failed',
+      }),
+    );
+  }
   return run;
 }
 

@@ -76,6 +76,8 @@ export {
   disconnectCommunicationAccount,
   acquireGmailSyncLock,
   releaseGmailSyncLock,
+  listEligibleGmailAccountsForPoll,
+  type EligibleGmailAccountForPoll,
 } from './repositories/communication-account-repository.js';
 export {
   persistEncryptedGmailCredential,

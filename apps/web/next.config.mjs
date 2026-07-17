@@ -43,6 +43,7 @@ const nextConfig = {
     '/api/v1/tasks/**/*': dbBackedRouteTraceFiles,
     '/api/v1/capabilities/**/*': dbBackedRouteTraceFiles,
     '/api/v1/gmail/**/*': dbBackedRouteTraceFiles,
+    '/api/v1/internal/**/*': dbBackedRouteTraceFiles,
     '/c/[token]': dbBackedRouteTraceFiles,
     '/c/**/*': dbBackedRouteTraceFiles,
   },

@@ -230,6 +230,45 @@ export async function acquireGmailSyncLock(
   return { acquired: true, account };
 }
 
+export type EligibleGmailAccountForPoll = {
+  id: string;
+  organizationId: string;
+};
+
+function clampEligiblePollLimit(limit?: number): number {
+  if (limit == null || !Number.isFinite(limit)) {
+    return 3;
+  }
+  return Math.min(3, Math.max(1, Math.trunc(limit)));
+}
+
+/**
+ * Accounts safe for cron incremental History poll (A5.5).
+ * Requires connected + valid cursor + credential row. Never includes unset/initial accounts.
+ */
+export async function listEligibleGmailAccountsForPoll(
+  db: Client,
+  options?: { limit?: number },
+): Promise<EligibleGmailAccountForPoll[]> {
+  const limit = clampEligiblePollLimit(options?.limit);
+  const rows = await db.communicationAccount.findMany({
+    where: {
+      provider: 'gmail',
+      status: 'connected',
+      historyState: 'valid',
+      historyId: { not: null },
+      credential: { isNot: null },
+    },
+    orderBy: [{ lastSuccessAt: { sort: 'asc', nulls: 'first' } }, { id: 'asc' }],
+    take: limit,
+    select: {
+      id: true,
+      organizationId: true,
+    },
+  });
+  return rows;
+}
+
 /**
  * Release a sync lock. Only the owning token may clear a non-expired lock.
  * Expired locks may be cleared by any caller (stale reclaim cleanup).

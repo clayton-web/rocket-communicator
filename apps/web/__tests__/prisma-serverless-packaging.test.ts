@@ -95,6 +95,7 @@ describe('Prisma serverless packaging configuration', () => {
     expect(config).toContain("'/api/v1/tasks/**/*'");
     expect(config).toContain("'/api/v1/capabilities/**/*'");
     expect(config).toContain("'/api/v1/gmail/**/*'");
+    expect(config).toContain("'/api/v1/internal/**/*'");
     expect(config).toContain("'/c/[token]'");
     expect(config).toContain("'/c/**/*'");
     expect(config).not.toContain("'/api/v1/session'");

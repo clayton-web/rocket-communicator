@@ -165,15 +165,41 @@ paths:
         '401':
           $ref: '../components/responses.yaml#/components/responses/Unauthorized'
   /api/v1/internal/gmail/poll:
+    get:
+      operationId: pollGmailInternalGet
+      tags: [Gmail]
+      summary: Internal scheduled Gmail poll (Vercel Cron)
+      description: |
+        Bodyless cron poll for eligible accounts. Uses system audit attribution (D074).
+        Requires `InternalCronBearer` (configured `CRON_SECRET`). Not an Owner session.
+        **GET is the Vercel Cron entrypoint** (platform issues GET). This is a
+        secret-authenticated internal scheduler action — not a public Recipient
+        capability route and must not be copied as a pattern for public GET mutations.
+        Never initializes History cursors (Owner manual sync only). Processes at most
+        three eligible accounts sequentially with existing A5.4 per-account bounds.
+        **Status: Implemented in A5.5.**
+      security:
+        - InternalCronBearer: []
+      responses:
+        '200':
+          description: Poll aggregate result
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/GmailPollResponse'
+        '401':
+          $ref: '../components/responses.yaml#/components/responses/Unauthorized'
+        '500':
+          $ref: '../components/responses.yaml#/components/responses/InternalError'
     post:
       operationId: pollGmailInternal
       tags: [Gmail]
-      summary: Internal scheduled Gmail poll
+      summary: Internal scheduled Gmail poll (operator)
       description: |
-        Bodyless cron poll for eligible accounts. Uses system audit attribution (D074).
-        Requires `InternalCronBearer` (configured CRON_SECRET). Not an Owner session.
-        Handler secret validation is implemented in a later A5 chunk.
-        **Status: Contract defined; persistence foundation implemented; HTTP/cron implementation pending.**
+        Same handler as GET. POST exists for controlled operator testing with
+        `Authorization: Bearer <CRON_SECRET>`. Uses system audit attribution (D074).
+        Not an Owner session. Never initializes History cursors.
+        **Status: Implemented in A5.5.**
       security:
         - InternalCronBearer: []
       responses:

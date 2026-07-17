@@ -15,7 +15,9 @@ components:
       scheme: bearer
       bearerFormat: opaque
       description: |
-        Internal scheduled-job Authorization bearer credential.
-        The configured CRON_SECRET value is validated by the handler in a later A5 chunk.
-        This is not an Owner session JWT and must never be documented as a secret
-        value in schemas or examples. Public unauthenticated access is forbidden.
+        Internal scheduled-job Authorization bearer credential (A5.5).
+        Compare `Authorization: Bearer <CRON_SECRET>` with constant-time equality.
+        Recommend ≥32 random bytes. Configure in Production only.
+        This is not an Owner session JWT and must never appear in schemas or examples.
+        Public unauthenticated access is forbidden. Owner cookies/JWTs do not authorize
+        internal poll routes.

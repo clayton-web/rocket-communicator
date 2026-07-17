@@ -76,7 +76,9 @@ export type TracedRuntimeModule = {
   persistCapabilityAction: typeof TracedRuntimeBindings.persistCapabilityAction;
   persistWorkRequest: typeof TracedRuntimeBindings.persistWorkRequest;
   getCommunicationAccountByOrganization: typeof TracedRuntimeBindings.getCommunicationAccountByOrganization;
+  getCommunicationAccountById: typeof TracedRuntimeBindings.getCommunicationAccountById;
   getGmailOAuthCredentialByAccountId: typeof TracedRuntimeBindings.getGmailOAuthCredentialByAccountId;
+  listEligibleGmailAccountsForPoll: typeof TracedRuntimeBindings.listEligibleGmailAccountsForPoll;
   createGmailOAuthState: typeof TracedRuntimeBindings.createGmailOAuthState;
   consumeGmailOAuthState: typeof TracedRuntimeBindings.consumeGmailOAuthState;
   inspectGmailOAuthState: typeof TracedRuntimeBindings.inspectGmailOAuthState;
@@ -117,7 +119,9 @@ export async function loadTracedRuntimeModule(): Promise<TracedRuntimeModule> {
     persistCapabilityAction: tracedRuntime.persistCapabilityAction,
     persistWorkRequest: tracedRuntime.persistWorkRequest,
     getCommunicationAccountByOrganization: tracedRuntime.getCommunicationAccountByOrganization,
+    getCommunicationAccountById: tracedRuntime.getCommunicationAccountById,
     getGmailOAuthCredentialByAccountId: tracedRuntime.getGmailOAuthCredentialByAccountId,
+    listEligibleGmailAccountsForPoll: tracedRuntime.listEligibleGmailAccountsForPoll,
     createGmailOAuthState: tracedRuntime.createGmailOAuthState,
     consumeGmailOAuthState: tracedRuntime.consumeGmailOAuthState,
     inspectGmailOAuthState: tracedRuntime.inspectGmailOAuthState,

@@ -68,12 +68,15 @@ export {
 } from './transactions/a4-transactions.js';
 
 // A5.3 Owner Gmail OAuth / connection surface (server-only runtime bridge).
-export { getCommunicationAccountByOrganization } from './repositories/communication-account-repository.js';
 export {
+  getCommunicationAccountByOrganization,
+  getCommunicationAccountById,
   acquireGmailSyncLock,
   releaseGmailSyncLock,
   markCommunicationAccountNeedsReauth,
   markCommunicationAccountResyncRequired,
+  listEligibleGmailAccountsForPoll,
+  type EligibleGmailAccountForPoll,
 } from './repositories/communication-account-repository.js';
 export { getGmailOAuthCredentialByAccountId } from './repositories/gmail-credential-repository.js';
 export {

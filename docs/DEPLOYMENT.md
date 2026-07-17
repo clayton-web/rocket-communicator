@@ -53,7 +53,7 @@ Distinct from Supabase Owner authentication. Server-only; never `NEXT_PUBLIC_*`.
 | `GMAIL_TOKEN_ENCRYPTION_KEY`         | AES-256-GCM key: 32 raw bytes as 64 hex chars or standard/base64url base64. Never commit real values. |
 | `GMAIL_TOKEN_ENCRYPTION_KEY_VERSION` | Explicit key version stored with each ciphertext envelope (for example `1`).                          |
 
-`CRON_SECRET` / `InternalCronBearer` remain reserved for a later A5 polling chunk and are not required for A5.3.
+`CRON_SECRET` / `InternalCronBearer` authenticate `GET|POST /api/v1/internal/gmail/poll` (A5.5). Recommend ≥32 random bytes. Configure in **Production** only; do not place the production secret on Preview. Vercel Cron (`vercel.json`, `*/5 * * * *` UTC) issues GET with `Authorization: Bearer <CRON_SECRET>`.
 
 ### Diagnostics (normally off)
 
@@ -87,7 +87,7 @@ These are durable safeguards for Linux/Vercel Prisma packaging—not temporary i
 
 A4 foundation migration: `packages/db/prisma/migrations/20260713190000_a4_persistence_foundation/` (**applied in production** as part of A4).
 
-A5 Gmail persistence migration: `packages/db/prisma/migrations/20260716140000_a5_gmail_persistence/` (**forward-only; still unapplied to production through A5.3** — apply only after Owner approval). The A5.3 OAuth-state table lives in the same migration because it has never been applied.
+A5 Gmail persistence migration: `packages/db/prisma/migrations/20260716140000_a5_gmail_persistence/` (**forward-only; still unapplied to production through A5.5** — apply only after Owner approval). The A5.3 OAuth-state table lives in the same migration because it has never been applied.
 
 **Apply to production** (with production `DATABASE_URL` configured for the target):
 
@@ -115,6 +115,25 @@ After deploy, confirm (authenticated Owner session required for protected routes
 | Recipient capability `POST` | Mutations require `confirmation: "confirmed"` and `If-Match` |
 
 Full Owner↔Recipient production E2E is classified **`A4_FULL_E2E_PASS`**. Retained operator E2E artifacts are intentional runbook data—not repository secrets.
+
+## Gmail polling operations (A5.5)
+
+Root `vercel.json` schedules `GET /api/v1/internal/gmail/poll` every five minutes UTC (`*/5 * * * *`).
+
+**Before cron is useful in production:**
+
+1. Apply the A5 Prisma migration.
+2. Configure Gmail OAuth + `GMAIL_TOKEN_ENCRYPTION_KEY` + `CRON_SECRET` (Production only).
+3. Deploy.
+4. Owner connects Gmail.
+5. Owner runs **manual** `POST /api/v1/gmail/sync` once (initial no-backfill).
+6. Confirm cron invocations via Vercel Cron logs and `GmailSyncRun` rows with `trigger=cron`.
+
+**Disable cron safely:** remove the `crons` entry from `vercel.json` and redeploy, or unset/rotate `CRON_SECRET` (auth fails closed). Overlapping invocations are safe via per-account sync locks.
+
+**Eligibility:** `connected` + `historyState=valid` + non-null `historyId` + credential present. Cron never seeds unset History. At most three accounts per invocation, sequential, `maxDuration=60`, stop starting accounts with &lt;15s remaining. Per-account A5.4 bounds (5 pages / 50 messages) unchanged. Gmail 429 stops remaining accounts for that invocation.
+
+History recovery, Gmail UI, and A6 suggestions remain out of scope.
 
 ## Capability links in production
 

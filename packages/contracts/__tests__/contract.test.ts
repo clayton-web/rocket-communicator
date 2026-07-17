@@ -88,8 +88,9 @@ describe('contracts package', () => {
     expect(bundled.paths?.['/api/v1/internal/gmail/poll']).toBeDefined();
     expect(bundled.paths?.['/api/v1/communication-events']).toBeUndefined();
     expect(schemas.GmailPollRequest).toBeUndefined();
-    const pollSecurity = bundled.paths?.['/api/v1/internal/gmail/poll']?.post?.security;
-    expect(pollSecurity).toEqual([{ InternalCronBearer: [] }]);
+    const pollPath = bundled.paths?.['/api/v1/internal/gmail/poll'];
+    expect(pollPath?.get?.security).toEqual([{ InternalCronBearer: [] }]);
+    expect(pollPath?.post?.security).toEqual([{ InternalCronBearer: [] }]);
     expect(bundled.components?.securitySchemes?.InternalCronBearer).toBeDefined();
   });
 

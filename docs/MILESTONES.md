@@ -54,7 +54,9 @@ Connect one inbox; poll every **five minutes** (D065); create communication even
 
 **A5.4:** Manual Owner sync (`POST /gmail/sync`), sync-run listing, Gmail History API ingestion (no-backfill initial cursor + incremental Inbox), message normalization/minimization, CommunicationEvent + TemporaryCommunicationExcerpt persistence (`purgeAt = syncedAt + 7 days`, D078), leave-Inbox metadata update with excerpt purge, sync lock ownership, and invalid-history `resync_required` (no recovery). **No Vercel Cron, internal poll handler, UI, or A6 suggestions.** Production migration remains unapplied; live Gmail is not accessed.
 
-Later A5 chunks: internal cron poll (A5.5), settings UI.
+**A5.5:** Internal poll (`GET|POST /api/v1/internal/gmail/poll`) with `CRON_SECRET` Bearer auth, Vercel Cron every five minutes UTC, system audit attribution (D074), sequential poll of at most three eligible accounts (connected + valid history + credential; never initial seed), shared A5.4 sync engine with `trigger=cron`. **No UI, History recovery, or A6.** Production migration and live Gmail/cron secrets remain unconfigured.
+
+Later A5 chunks: settings UI.
 
 ### A6 — AI relevance and task suggestions
 

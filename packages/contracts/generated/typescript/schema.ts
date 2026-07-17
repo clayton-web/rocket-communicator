@@ -649,14 +649,26 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Internal scheduled Gmail poll (Vercel Cron)
+         * @description Bodyless cron poll for eligible accounts. Uses system audit attribution (D074).
+         *     Requires `InternalCronBearer` (configured `CRON_SECRET`). Not an Owner session.
+         *     **GET is the Vercel Cron entrypoint** (platform issues GET). This is a
+         *     secret-authenticated internal scheduler action — not a public Recipient
+         *     capability route and must not be copied as a pattern for public GET mutations.
+         *     Never initializes History cursors (Owner manual sync only). Processes at most
+         *     three eligible accounts sequentially with existing A5.4 per-account bounds.
+         *     **Status: Implemented in A5.5.**
+         *
+         */
+        get: operations["pollGmailInternalGet"];
         put?: never;
         /**
-         * Internal scheduled Gmail poll
-         * @description Bodyless cron poll for eligible accounts. Uses system audit attribution (D074).
-         *     Requires `InternalCronBearer` (configured CRON_SECRET). Not an Owner session.
-         *     Handler secret validation is implemented in a later A5 chunk.
-         *     **Status: Contract defined; persistence foundation implemented; HTTP/cron implementation pending.**
+         * Internal scheduled Gmail poll (operator)
+         * @description Same handler as GET. POST exists for controlled operator testing with
+         *     `Authorization: Bearer <CRON_SECRET>`. Uses system audit attribution (D074).
+         *     Not an Owner session. Never initializes History cursors.
+         *     **Status: Implemented in A5.5.**
          *
          */
         post: operations["pollGmailInternal"];
@@ -2625,6 +2637,28 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+        };
+    };
+    pollGmailInternalGet: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Poll aggregate result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GmailPollResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalError"];
         };
     };
     pollGmailInternal: {
