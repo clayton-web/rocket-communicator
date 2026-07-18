@@ -104,7 +104,7 @@ Full rules: [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md).
 
 ### Owner task suggestion routes
 
-**Status: contract-only / planned for A6** (OpenAPI aligned in A6.0; no `apps/web` handlers yet). Binding: D080–D085. See [MILESTONES.md](MILESTONES.md) A6.
+**Status: implemented and production-operational (A6 closed).** Binding: D080–D085. See [MILESTONES.md](MILESTONES.md) A6.
 
 | Method | Path                                              | Purpose                                   |
 | ------ | ------------------------------------------------- | ----------------------------------------- |
@@ -117,9 +117,9 @@ Full rules: [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md).
 
 Recipient **work requests** in A4 create pending suggestions in persistence without these Owner review routes.
 
-### Internal suggestion processing (A6.3)
+### Internal suggestion processing (A6)
 
-**Status: implemented locally (A6.3); Production rollout and scheduler enablement deferred until after commit + verification.**
+**Status: implemented and production-operational (A6 closed).** External Scheduler (cron-job.org) invokes this endpoint every five minutes, separate from Gmail poll.
 
 | Method | Path                                   | Purpose                                                              |
 | ------ | -------------------------------------- | -------------------------------------------------------------------- |

@@ -1,6 +1,6 @@
 # Milestones
 
-**Current:** A6.3 Application Suggestion Engine is **code-complete locally** (awaiting review/commit, then Production rollout). A6.0–A6.2 are on `main`. A5 Gmail connection and polling remains **closed and healthy in Production**. **Do not begin A7/A8/A9 until A6 closes** (migration applied, deploy, Production LLM verify, suggestion scheduler enabled, tag). Roadmap after A6: **A7 → A8 → A9** (no early separate A9.0).
+**Current:** A6 Application Suggestion Engine is **CLOSED** in Production (tag `v0.6.0-a6-complete`). A5 Gmail connection and polling remains **closed and healthy**. Next milestone: **A7** (do not begin until explicitly started). Roadmap after A6: **A7 → A8 → A9** (no early separate A9.0).
 
 Process: [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW.md) · [REVIEW_CHECKLIST.md](REVIEW_CHECKLIST.md) · Operations: [DEPLOYMENT.md](DEPLOYMENT.md)
 
@@ -59,42 +59,28 @@ Connect one inbox; poll every **five minutes** (D065); create communication even
 - Sync locking, duplicate protection, and system audit attribution (D074) verified
 - A4 functionality remains intact; Production remains healthy
 
-**Deferred (do not block A6):** Gmail settings UI; History recovery / `resync_required` operator recovery UX.
+**Deferred (do not block A7):** Gmail settings UI; History recovery / `resync_required` operator recovery UX.
 
 **Binding decisions:** D065–D079.
 
 ---
 
-## In progress
+### A6 — AI relevance and task suggestions
 
-### A6.0 — Documentation, decisions, and contract alignment
+**Status:** Complete and **Production-operational**. A6 is **CLOSED**. Completion tag: `v0.6.0-a6-complete`.
 
-**Status:** Complete on `main`. Docs + Decision Records D080–D085 + OpenAPI/API contract aligned.
+**Production-verified capabilities:**
 
-### A6.1 — Suggestion persistence foundation
+- A6.0–A6.3 on `main` (docs/decisions D080–D085, persistence, Owner suggestion HTTP, Application Suggestion Engine + `packages/ai`)
+- Production migration applied; Production LLM path verified (D085)
+- Owner dismiss/approve workflow verified; approve creates **unassigned Task only** (D080)
+- D082 excerpt retention confirmed: dismissed **+7 days**, approved **+30 days**
+- Separate External Scheduler job (**cron-job.org**) invokes `POST /api/v1/internal/suggestions/process` every five minutes
+- Four consecutive automatic scheduler executions observed healthy (HTTP 200, no run overlap, claim fairness: fresh `unprocessed` before `failed_retryable`, no duplicate suggestions/Tasks, no stuck leases)
+- Gmail poll remains healthy and isolated on its own scheduler job
+- Privacy-safe AI diagnostics only (fingerprints; no bodies/prompts in audits)
 
-**Status:** Complete on `main`. Claim/lease, processing statuses, suggestion↔event uniqueness, D082 retention helpers. Migration present in repo; **not applied to Production until A6 rollout**.
-
-### A6.2 — Owner suggestion HTTP
-
-**Status:** Complete on `main`. List/get/edit/dismiss/approve/merge under `/api/v1/task-suggestions`. Approve creates **unassigned Task only** (D080). Owner transactions split from processing transactions.
-
-### A6.3 — Application Suggestion Engine (local code-complete)
-
-**Status:** Local implementation complete; **awaiting review/commit**. Includes:
-
-- `packages/ai` (provider-neutral extraction + OpenAI-compatible adapter; mocked in tests)
-- Deterministic heuristic relevance gate (before AI)
-- `POST /api/v1/internal/suggestions/process` (`CRON_SECRET` / `InternalCronBearer`)
-- Claim → heuristic → AI → persist orchestration with soft Hobby deadline
-- Runtime bridge exports for processing; NFT packaging for the process route
-- Separation from Gmail poll (D075, D084)
-
-**Not done in A6.3:** Production migration apply, deploy, live LLM verification, External Scheduler enablement, A6 completion tag.
-
-### A6 — AI relevance and task suggestions (milestone closure)
-
-**Status:** Not closed. Closure requires A6.3 on `main`, Production migration + deploy, Production LLM path verification (D085), then enable the **separate** suggestion-process scheduler job. Do **not** mark A6 complete or add the completion tag until those steps finish. After A6 closes → **A7 → A8 → A9** (no early separate A9.0).
+**Binding decisions:** D080–D085.
 
 ---
 

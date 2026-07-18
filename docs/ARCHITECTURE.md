@@ -33,25 +33,22 @@ The following are **implemented** in the repository and included in production v
 
 Deployment and smoke checks: [DEPLOYMENT.md](DEPLOYMENT.md). HTTP status by route: [API_CONTRACT.md](API_CONTRACT.md).
 
-## Implemented through A5 (production-operational; A5 closed)
+## Implemented through A6 (production-operational; A5 and A6 closed)
 
-The following are **implemented** and **production-operational**. A5 is closed except for future bug fixes. Gmail settings UI and History recovery remain deferred and do not block A6:
+The following are **implemented** and **production-operational**. A5 and A6 are closed except for future bug fixes. Gmail settings UI and History recovery remain deferred and do not block A7:
 
 - Gmail account connection and polling (A5)
 - Communication event ingestion tables and Application Polling Engine (A5)
 - Owner Gmail OAuth connection routes (A5.3) with encrypted tokens
 - Manual Gmail sync, History ingestion (seed + incremental), safe sync-run listing (A5.4)
-- Authenticated internal poll endpoint for External Schedulers (A5.5); cron-job.org every five minutes
+- Authenticated internal Gmail poll endpoint for External Schedulers (A5.5); cron-job.org every five minutes
 - Sync locking, duplicate protection, system audit (D074)
-
-## Contracted for A6 (A6.0 docs/OpenAPI; handlers not yet implemented)
-
-- Heuristic relevance + LLM extraction via `packages/ai` (D085)
-- Application Suggestion Engine invoked by `POST /api/v1/internal/suggestions/process` (D084)
+- Heuristic relevance + LLM extraction via `packages/ai` (A6, D085)
+- Application Suggestion Engine via `POST /api/v1/internal/suggestions/process` (A6, D084); separate cron-job.org job every five minutes
 - Owner task-suggestion HTTP (list/get/approve/edit/dismiss/merge)
 - Approve creates **unassigned Task only** (D080); merge dual-resource concurrency (D083)
 - Relational event↔suggestion idempotency and processing state (D081)
-- Excerpt workflow safety-ceiling retention (D082)
+- Excerpt workflow safety-ceiling retention (D082: dismiss +7d / approve +30d)
 
 ## Planned for A7 and later (target architecture)
 

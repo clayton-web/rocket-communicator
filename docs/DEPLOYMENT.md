@@ -13,7 +13,7 @@ Platform assumptions below describe the **current** deployment. Per Architecture
 | **Vercel**             | Current host for `apps/web` (Next.js App Router). Monorepo root is the Vercel project root; `outputFileTracingRoot` includes workspace packages. Replaceable per D079.                                           |
 | **Supabase**           | Current PostgreSQL system of record and Owner Auth (Google Workspace).                                                                                                                                           |
 | **Prisma**             | Server-only data access via `@aicaa/db`; invoked through the web runtime bridge.                                                                                                                                 |
-| **External Scheduler** | Invokes authenticated app endpoints on a schedule (Gmail poll every five minutes). Recommended initial adapter while on Vercel Hobby: **cron-job.org**. Interchangeable; not an architectural dependency (D079). |
+| **External Scheduler** | Invokes authenticated app endpoints on a schedule (Gmail poll and suggestion process, each every five minutes on **separate** jobs). Recommended initial adapter while on Vercel Hobby: **cron-job.org**. Interchangeable; not an architectural dependency (D079). |
 
 Production uses a **Supabase transaction pooler** connection for `DATABASE_URL` (serverless-friendly). Use the pooler URL Vercel expects for Prisma—not the direct session URL—for API routes and migrations unless your operator checklist specifies otherwise.
 
@@ -166,25 +166,27 @@ After enablement, confirm invocations via the scheduler’s execution logs and `
 
 **A5 closed.** History recovery and Gmail settings UI remain deferred and do **not** block A6. A6 suggestion processing uses a **separate** authenticated endpoint (`POST /api/v1/internal/suggestions/process`, D084) and must not run inside Gmail History sync transactions.
 
-### Suggestion processing operations (A6.3; scheduler disabled until Production verification)
+### Suggestion processing operations (A6 — Production-enabled)
 
-After A6.3 is committed, migrated, deployed, and Production LLM verification passes, configure a **separate** External Scheduler job (do **not** enable before verification):
+A6 is **closed**. A **separate** External Scheduler job (cron-job.org initial adapter) invokes suggestion processing every five minutes, independent of the Gmail poll job:
 
 | Setting        | Guidance                                                                            |
 | -------------- | ----------------------------------------------------------------------------------- |
 | Method         | **HTTP POST**                                                                       |
 | URL            | `{NEXT_PUBLIC_APP_URL}/api/v1/internal/suggestions/process`                         |
-| Interval       | Same cadence family as Gmail poll (for example every five minutes); independent job |
+| Interval       | Same cadence family as Gmail poll (every five minutes); **independent** job         |
 | Authentication | `Authorization: Bearer <CRON_SECRET>`                                               |
 | Request body   | Empty / none required                                                               |
 
 **Credential distinction (names only):** `CRON_SECRET` authenticates the application process endpoint (same secret family as Gmail poll). `CRON_JOB_ORG_API_KEY` (or equivalent scheduler management credential) is used only outside the app to administer the scheduler account — never committed, never logged, never sent to application routes.
 
-Do not enable until A6 handlers, the A6.1 migration, and AI credentials (`OPENAI_API_KEY` / related) are production-ready and verified. Response is aggregate counts only — never raw bodies (D084, D085). Overlapping or repeated invocations are **safe** (claim leases + relational 0..1 suggestion uniqueness, D081). Heuristic relevance runs before AI; AI failure does not create heuristic-only fallback suggestions (D085). Claim batches prefer fresh `unprocessed` events before reclaiming `failed_retryable` so a retryable AI failure cohort cannot monopolize every invocation.
+Response is aggregate counts only — never raw bodies (D084, D085). Overlapping or repeated invocations are **safe** (claim leases + relational 0..1 suggestion uniqueness, D081). Heuristic relevance runs before AI; AI failure does not create heuristic-only fallback suggestions (D085). Claim batches prefer fresh `unprocessed` events before reclaiming `failed_retryable` so a retryable AI failure cohort cannot monopolize every invocation.
 
-**`AI_INVALID_OUTPUT` / `AI_SCHEMA_INVALID` runbook:** Prefer reading `suggestion_last_error_code` plus the audit `note` fingerprint (`code|status=…|keys=…|issues=…`) — never re-enable content logging. Typical causes: model emitted non-contract fields (`details` instead of `value`, numeric `id`). After the A6 stabilization deploy, re-run **one** controlled `POST /api/v1/internal/suggestions/process` and confirm `suggestionsCreated > 0` or `skippedIrrelevant` with no private content in logs. Distinguish `AI_INSUFFICIENT_QUOTA` (billing) from `AI_RATE_LIMIT` (true 429 throttle).
+**`AI_INVALID_OUTPUT` / `AI_EMPTY_OUTPUT` / `AI_SCHEMA_INVALID` runbook:** Prefer reading `suggestion_last_error_code` plus the audit `note` fingerprint (`code|status=…|keys=…|issues=…`) — never re-enable content logging. Typical causes: model emitted non-contract fields (`details` instead of `value`, numeric `id`), or empty `summaryPoints`. Confirm via scheduler/automatic runs or a single controlled `POST` that aggregate counts move and audits stay privacy-safe. Distinguish `AI_INSUFFICIENT_QUOTA` (billing) from `AI_RATE_LIMIT` (true 429 throttle).
 
-**Production rollout order (after A6.3 commit):** apply A6.1 migration → deploy web → configure AI credentials → Production LLM verification → enable suggestion-process scheduler → A6 closure/tag → then **A7 → A8 → A9** (no early separate A9.0).
+**D082 retention (Production-confirmed):** dismissed suggestion excerpts → `updatedAt + 7 days`; approved suggestion excerpts → `updatedAt + 30 days` (workflow safety ceiling).
+
+**Roadmap after A6:** **A7 → A8 → A9** (no early separate A9.0). Do not begin A7 until explicitly started.
 
 ## Capability links in production
 
