@@ -104,7 +104,7 @@ Full rules: [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md).
 
 ### Owner task suggestion routes
 
-**Status: implemented locally (A6.2)** in `apps/web` (list/get/approve/edit/dismiss/merge). OpenAPI remains canonical (D080–D085). **Not production-verified** until A6 Production rollout (migration apply, deploy, live LLM path, and suggestion scheduler enablement). See [MILESTONES.md](MILESTONES.md) A6.
+**Status: contract-only / planned for A6** (OpenAPI aligned in A6.0; no `apps/web` handlers yet). Binding: D080–D085. See [MILESTONES.md](MILESTONES.md) A6.
 
 | Method | Path                                              | Purpose                                   |
 | ------ | ------------------------------------------------- | ----------------------------------------- |
@@ -115,7 +115,7 @@ Full rules: [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md).
 | POST   | `/api/v1/task-suggestions/{suggestionId}/dismiss` | Dismiss                                   |
 | POST   | `/api/v1/task-suggestions/{suggestionId}/merge`   | Merge into task (dual If-Match, D083)     |
 
-Recipient **work requests** in A4 create pending suggestions in persistence without these Owner review routes. LLM `proposedRecipientHint` (when present on extraction) is informational only in A6 and is **not** persisted to `proposedRecipientId` or used for handoff — Recipient assignment remains A7.
+Recipient **work requests** in A4 create pending suggestions in persistence without these Owner review routes.
 
 ### Internal suggestion processing (A6.3)
 

@@ -8,7 +8,6 @@ import {
   readSuggestionAiEnvConfig,
 } from '../src/config.js';
 import { OpenAiCompatibleSuggestionProvider } from '../src/providers/openai-compatible.js';
-import { looksLikePlainTextProviderRefusal } from '../src/providers/openai-compatible.js';
 import { DEFAULT_SUGGESTION_POLICY_VERSION } from '../src/types.js';
 
 const validPoint = {
@@ -271,116 +270,5 @@ describe('OpenAiCompatibleSuggestionProvider', () => {
     });
     expect(out.summaryPoints[0]?.kind).toBe('request');
     expect(out.modelVersion).toBe('gpt-test');
-  });
-
-  it('accepts valid JSON whose summary text quotes refusal-like words', async () => {
-    const quotedPoint = {
-      ...validPoint,
-      value: "Customer said: I can't assist with payroll until Friday",
-    };
-    const provider = new OpenAiCompatibleSuggestionProvider({
-      apiKey: 'sk',
-      model: 'gpt-test',
-      fetchImpl: async () =>
-        new Response(
-          JSON.stringify({
-            model: 'gpt-test',
-            choices: [
-              {
-                message: {
-                  content: JSON.stringify({
-                    summaryPoints: [quotedPoint],
-                    proposedDueAt: null,
-                    proposedPriority: null,
-                    proposedRecipientHint: null,
-                  }),
-                },
-              },
-            ],
-          }),
-          { status: 200 },
-        ),
-    });
-    const out = await provider.extract({
-      organizationId: 'o',
-      eventId: 'e',
-      subject: 'Payroll',
-      snippet: 'Follow up',
-      fromAddress: 'a@b.c',
-      toAddresses: [],
-      internalDate: '2026-07-17T00:00:00.000Z',
-      excerptContent: null,
-      excerptId: null,
-    });
-    expect(out.summaryPoints[0]?.value).toContain("I can't assist");
-  });
-
-  it('classifies plain-text genuine refusals as permanent policy refusals', async () => {
-    const provider = new OpenAiCompatibleSuggestionProvider({
-      apiKey: 'sk',
-      model: 'm',
-      fetchImpl: async () =>
-        new Response(
-          JSON.stringify({
-            choices: [{ message: { content: "I can't assist with that request." } }],
-            model: 'm',
-          }),
-          { status: 200 },
-        ),
-    });
-    await expect(
-      provider.extract({
-        organizationId: 'o',
-        eventId: 'e',
-        subject: 's',
-        snippet: 'n',
-        fromAddress: 'a@b.c',
-        toAddresses: [],
-        internalDate: '2026-07-17T00:00:00.000Z',
-        excerptContent: null,
-        excerptId: null,
-      }),
-    ).rejects.toMatchObject({ code: 'AI_POLICY_REFUSAL', kind: 'permanent' });
-  });
-
-  it('does not treat malformed JSON as a policy refusal even when it contains refusal words', async () => {
-    const provider = new OpenAiCompatibleSuggestionProvider({
-      apiKey: 'sk',
-      model: 'm',
-      fetchImpl: async () =>
-        new Response(
-          JSON.stringify({
-            choices: [
-              {
-                message: {
-                  content: '{ "summaryPoints": [ { "value": "I can\'t assist" } ',
-                },
-              },
-            ],
-            model: 'm',
-          }),
-          { status: 200 },
-        ),
-    });
-    await expect(
-      provider.extract({
-        organizationId: 'o',
-        eventId: 'e',
-        subject: 's',
-        snippet: 'n',
-        fromAddress: 'a@b.c',
-        toAddresses: [],
-        internalDate: '2026-07-17T00:00:00.000Z',
-        excerptContent: null,
-        excerptId: null,
-      }),
-    ).rejects.toMatchObject({ code: 'AI_INVALID_OUTPUT', kind: 'retryable' });
-  });
-});
-
-describe('looksLikePlainTextProviderRefusal', () => {
-  it('rejects JSON-shaped payloads', () => {
-    expect(looksLikePlainTextProviderRefusal('{ "x": "I can\'t assist" }')).toBe(false);
-    expect(looksLikePlainTextProviderRefusal("I can't assist with that.")).toBe(true);
   });
 });

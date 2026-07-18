@@ -11,9 +11,7 @@
     "generate": "pnpm bundle && pnpm generate:typescript && pnpm generate:kotlin",
     "validate": "pnpm lint && pnpm bundle",
     "test": "vitest run",
-    "check-drift": "node scripts/check-drift.mjs",
-    "generate:kotlin:docker": "node scripts/generate-kotlin-docker.mjs",
-    "generate:docker": "pnpm bundle && pnpm generate:typescript && pnpm generate:kotlin:docker"
+    "check-drift": "node scripts/check-drift.mjs"
   },
   "exports": {
     "./schema": "./generated/typescript/schema.ts"
