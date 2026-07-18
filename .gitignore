@@ -58,6 +58,8 @@ coverage/
 *.tsbuildinfo
 .turbo/
 .cache/
+# OpenAPI Generator CLI jar cache for Docker JDK Kotlin generation
+packages/contracts/.cache/
 
 # Next.js
 .next/
