@@ -25,9 +25,9 @@ import java.io.Serializable
 /**
  * 
  *
- * @param acknowledgement Owner intent approving the edited suggestion and Recipient assignment. Future server logic derives task creation, reminder scheduling, Gmail forwarding, capability link issuance, and standard assignment email without client-side side-effect toggles. 
+ * @param acknowledgement Owner confirms creating an unassigned Task from this suggestion (D080). Does not approve Recipient assignment, capability issuance, assignment email, Gmail forward, or reminder scheduling. 
  * @param summaryPoints 
- * @param recipientId Selected Recipient for the approved task and assignment.
+ * @param recipientId Must not be sent in A6. If present, the server returns HTTP 400 with error code RECIPIENT_HANDOFF_NOT_AVAILABLE (D080). Recipient assignment, capability issuance, assignment email, and Gmail forward remain A7 (D037). 
  * @param priority 
  * @param dueAt 
  */
@@ -35,14 +35,14 @@ import java.io.Serializable
 
 data class ApproveTaskSuggestionRequest (
 
-    /* Owner intent approving the edited suggestion and Recipient assignment. Future server logic derives task creation, reminder scheduling, Gmail forwarding, capability link issuance, and standard assignment email without client-side side-effect toggles.  */
+    /* Owner confirms creating an unassigned Task from this suggestion (D080). Does not approve Recipient assignment, capability issuance, assignment email, Gmail forward, or reminder scheduling.  */
     @Json(name = "acknowledgement")
     val acknowledgement: ApproveTaskSuggestionRequest.Acknowledgement,
 
     @Json(name = "summaryPoints")
     val summaryPoints: kotlin.collections.List<TaskSummaryPoint>? = null,
 
-    /* Selected Recipient for the approved task and assignment. */
+    /* Must not be sent in A6. If present, the server returns HTTP 400 with error code RECIPIENT_HANDOFF_NOT_AVAILABLE (D080). Recipient assignment, capability issuance, assignment email, and Gmail forward remain A7 (D037).  */
     @Json(name = "recipientId")
     val recipientId: kotlin.String? = null,
 
@@ -58,13 +58,13 @@ data class ApproveTaskSuggestionRequest (
     }
 
     /**
-     * Owner intent approving the edited suggestion and Recipient assignment. Future server logic derives task creation, reminder scheduling, Gmail forwarding, capability link issuance, and standard assignment email without client-side side-effect toggles. 
+     * Owner confirms creating an unassigned Task from this suggestion (D080). Does not approve Recipient assignment, capability issuance, assignment email, Gmail forward, or reminder scheduling. 
      *
-     * Values: assignment_approved
+     * Values: suggestion_approved
      */
     @JsonClass(generateAdapter = false)
     enum class Acknowledgement(val value: kotlin.String) {
-        @Json(name = "assignment_approved") assignment_approved("assignment_approved");
+        @Json(name = "suggestion_approved") suggestion_approved("suggestion_approved");
     }
 
 }

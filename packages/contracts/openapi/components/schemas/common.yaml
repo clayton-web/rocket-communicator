@@ -13,6 +13,7 @@ components:
         - DOMAIN_CONFLICT
         - RATE_LIMITED
         - DEPENDENCY_UNAVAILABLE
+        - RECIPIENT_HANDOFF_NOT_AVAILABLE
         - INTERNAL_ERROR
     ErrorDetail:
       type: object

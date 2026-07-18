@@ -56,7 +56,7 @@ Distinct from Supabase Owner authentication. Server-only; never `NEXT_PUBLIC_*`.
 | `GMAIL_TOKEN_ENCRYPTION_KEY`         | AES-256-GCM key: 32 raw bytes as 64 hex chars or standard/base64url base64. Never commit real values. |
 | `GMAIL_TOKEN_ENCRYPTION_KEY_VERSION` | Explicit key version stored with each ciphertext envelope (for example `1`).                          |
 
-`CRON_SECRET` / `InternalCronBearer` authenticate `GET|POST /api/v1/internal/gmail/poll` (A5.5). Recommend ≥32 random bytes. Configure in **Production** only; do not place the production secret on Preview. Any External Scheduler that securely issues an authenticated request every five minutes is acceptable (D079). The recommended initial adapter while the project remains on the Vercel Hobby plan is **cron-job.org** (HTTP POST with Bearer auth). Other compatible schedulers—including Vercel Cron, GitHub Actions, Google Cloud Scheduler, and AWS EventBridge—may replace it without application logic changes.
+`CRON_SECRET` / `InternalCronBearer` authenticate internal scheduler endpoints: `GET|POST /api/v1/internal/gmail/poll` (A5.5) and, after A6 implementation, `POST /api/v1/internal/suggestions/process` (D084). **The same Production `CRON_SECRET` may authenticate both endpoints**; no separate secret is required by current decisions. Recommend ≥32 random bytes. Configure in **Production** only; do not place the production secret on Preview. Any External Scheduler that securely issues an authenticated request every five minutes is acceptable (D079). The recommended initial adapter while the project remains on the Vercel Hobby plan is **cron-job.org** (HTTP POST with Bearer auth). Other compatible schedulers—including Vercel Cron, GitHub Actions, Google Cloud Scheduler, and AWS EventBridge—may replace it without application logic changes.
 
 ### Diagnostics (normally off)
 
@@ -90,7 +90,7 @@ These are durable safeguards for Linux/Vercel Prisma packaging—not temporary i
 
 A4 foundation migration: `packages/db/prisma/migrations/20260713190000_a4_persistence_foundation/` (**applied in production** as part of A4).
 
-A5 Gmail persistence migration: `packages/db/prisma/migrations/20260716140000_a5_gmail_persistence/` (**forward-only; still unapplied to production through A5.5** — apply only after Owner approval). The A5.3 OAuth-state table lives in the same migration because it has never been applied.
+A5 Gmail persistence migration: `packages/db/prisma/migrations/20260716140000_a5_gmail_persistence/` (**applied in production** as part of closed A5). Forward-only; do not rewrite history.
 
 **Apply to production** (with production `DATABASE_URL` configured for the target):
 
@@ -147,7 +147,7 @@ Configure the External Scheduler to:
 | Authentication | `Authorization: Bearer <CRON_SECRET>` (never commit or paste the secret into docs)                         |
 | Request body   | Empty / none required                                                                                      |
 
-Do **not** enable the scheduler until all of the following are true:
+Do **not** enable the Gmail poll scheduler until all of the following are true (A5 checklist — now satisfied in Production):
 
 1. A5 Prisma migration applied in production.
 2. Gmail OAuth configured (`GOOGLE_GMAIL_CLIENT_ID`, `GOOGLE_GMAIL_CLIENT_SECRET`, redirect URL as needed).
@@ -163,7 +163,21 @@ After enablement, confirm invocations via the scheduler’s execution logs and `
 
 **Eligibility:** `connected` + `historyState=valid` + non-null `historyId` + credential present. The Application Polling Engine never seeds unset History during External Scheduler invocation. At most three accounts per invocation, sequential, `maxDuration=60`, stop starting accounts with &lt;15s remaining. Per-account A5.4 bounds (5 pages / 50 messages) unchanged. Gmail 429 stops remaining accounts for that invocation.
 
-History recovery, Gmail UI, and A6 suggestions remain out of scope.
+**A5 closed.** History recovery and Gmail settings UI remain deferred and do **not** block A6. A6 suggestion processing uses a **separate** authenticated endpoint (`POST /api/v1/internal/suggestions/process`, D084) and must not run inside Gmail History sync transactions.
+
+### Suggestion processing operations (A6; contracted)
+
+After A6 implementation ships, configure a **separate** External Scheduler job:
+
+| Setting        | Guidance                                                                            |
+| -------------- | ----------------------------------------------------------------------------------- |
+| Method         | **HTTP POST**                                                                       |
+| URL            | `{NEXT_PUBLIC_APP_URL}/api/v1/internal/suggestions/process`                         |
+| Interval       | Same cadence family as Gmail poll (for example every five minutes); independent job |
+| Authentication | `Authorization: Bearer <CRON_SECRET>`                                               |
+| Request body   | Empty / none required                                                               |
+
+Do not enable until A6 handlers, migration, and AI credentials are production-ready. Response is aggregate counts only — never raw bodies (D084, D085). Overlapping or repeated invocations are **safe** (claim leases + relational 0..1 suggestion uniqueness, D081). Use the **same** Production `CRON_SECRET` as Gmail poll unless a future Decision requires secret separation.
 
 ## Capability links in production
 

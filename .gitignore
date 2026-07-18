@@ -130,6 +130,9 @@ junit.xml
 .cursor/cache/
 .cursor/*.log
 
+# Supabase CLI local linkage / version cache (never commit)
+**/supabase/.temp/
+
 # OS / misc
 *.bak
 *.orig

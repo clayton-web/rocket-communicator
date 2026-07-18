@@ -9,10 +9,10 @@ info:
     Canonical HTTP contract for the AI Communication Action Assistant.
     OpenAPI is the source of truth (D007). A3 Owner session authentication and A4
     Owner task + Recipient capability routes are implemented and production-verified.
-    Task suggestion HTTP handlers are contract-only until A6. A5 Gmail OAuth connection
-    routes (status, start, callback, disconnect) are implemented in A5.3; sync, poll,
-    and ingestion handlers remain pending. Persistence foundation is A5.1–A5.2.
-    Owner and capability authorization surfaces are separate (D059).
+    A5 Gmail OAuth, History sync, and internal poll are implemented and production-operational.
+    A6 Owner task-suggestion HTTP and internal suggestion processing are contracted
+    (handlers in A6 implementation phases; D080–D085). Owner and capability authorization
+    surfaces are separate (D059).
 servers:
   - url: https://api.example.invalid
     description: Placeholder server URL for contract generation only
@@ -20,16 +20,18 @@ tags:
   - name: Session
     description: Authenticated Owner session shape (A3).
   - name: TaskSuggestions
-    description: Pre-task AI and user proposals requiring Owner approval.
+    description: |
+      Pre-task proposals requiring Owner approval (A6). Includes Owner suggestion HTTP
+      and internal suggestion processing (D080–D085). Does not create Recipient handoffs.
   - name: Tasks
     description: Owner-authorized actionable work items.
   - name: Capabilities
     description: Recipient capability-token routes (separate from Owner session APIs).
   - name: Gmail
     description: |
-      Owner Gmail connection and sync (A5). OAuth connection routes implemented in A5.3;
-      sync/poll/ingestion pending. Does not create Task Suggestions (D077).
-      Internal poll uses InternalCronBearer (CRON_SECRET), not Owner session.
+      Owner Gmail connection and sync (A5). OAuth, manual sync, History ingestion, and
+      internal poll are implemented and production-operational. Does not create Task
+      Suggestions (D077). Internal poll uses InternalCronBearer (CRON_SECRET), not Owner session.
 security:
   - bearerAuth: []
 paths:
@@ -47,6 +49,8 @@ paths:
     $ref: './paths/task-suggestions.yaml#/paths/~1api~1v1~1task-suggestions~1{suggestionId}~1dismiss'
   /api/v1/task-suggestions/{suggestionId}/merge:
     $ref: './paths/task-suggestions.yaml#/paths/~1api~1v1~1task-suggestions~1{suggestionId}~1merge'
+  /api/v1/internal/suggestions/process:
+    $ref: './paths/task-suggestions.yaml#/paths/~1api~1v1~1internal~1suggestions~1process'
   /api/v1/tasks:
     $ref: './paths/tasks.yaml#/paths/~1api~1v1~1tasks'
   /api/v1/tasks/{taskId}:
@@ -151,6 +155,8 @@ components:
       $ref: './components/schemas/task-suggestion.yaml#/components/schemas/DismissTaskSuggestionRequest'
     MergeTaskSuggestionRequest:
       $ref: './components/schemas/task-suggestion.yaml#/components/schemas/MergeTaskSuggestionRequest'
+    SuggestionProcessResponse:
+      $ref: './components/schemas/task-suggestion.yaml#/components/schemas/SuggestionProcessResponse'
     Task:
       $ref: './components/schemas/task.yaml#/components/schemas/Task'
     TaskStatus:

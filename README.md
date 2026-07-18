@@ -12,14 +12,15 @@ Not a permanent communication archive.
 
 ## Current status
 
-| Area                            | Status                                                                                                                         |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| A3 Owner authentication         | Complete; production-verified (`GET /api/v1/session` → 200, `organizationId` = `axford`)                                       |
-| A4 task + capability            | Complete — **`A4_FULL_E2E_PASS`**: migration applied; full production Owner↔Recipient E2E passed                               |
-| Production baseline             | Healthy; Prisma/Supabase connectivity confirmed; capability links via production app URL                                       |
-| A5 Gmail connection and polling | Implemented in repository through A5.5; production migration, live Gmail credentials, and scheduler secrets are not configured |
-| Next                            | Remaining A5 production enablement / settings UI, then A6 AI suggestions ([MILESTONES](docs/MILESTONES.md))                    |
-| Later                           | Gmail forward (A7), Android task UI, notifications, voice, workers                                                             |
+| Area                            | Status                                                                                                                            |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| A3 Owner authentication         | Complete; production-verified (`GET /api/v1/session` → 200, `organizationId` = `axford`)                                          |
+| A4 task + capability            | Complete — **`A4_FULL_E2E_PASS`**: migration applied; full production Owner↔Recipient E2E passed                                  |
+| A5 Gmail connection and polling | **Complete and Production-operational** (OAuth, encrypted tokens, History seed + incremental poll, locks, dedupe, audit, cron 5m) |
+| Production baseline             | Healthy; A4 and A5 operational                                                                                                    |
+| Next                            | A6 AI relevance and task suggestions after A6.0 contract/docs approval ([MILESTONES](docs/MILESTONES.md))                         |
+| Deferred (non-blocking)         | Gmail settings UI; History recovery                                                                                               |
+| Later                           | Gmail forward / Recipient handoff (A7), reminders (A8), Android task UI (A9), notifications, voice, workers                       |
 
 Operations: [DEPLOYMENT](docs/DEPLOYMENT.md). Terms: [GLOSSARY](docs/GLOSSARY.md). Plan: [MILESTONES](docs/MILESTONES.md).
 
@@ -31,6 +32,7 @@ apps/web/               Next.js App Router (Owner auth + capability runtime)
 packages/contracts/     OpenAPI 3.1 source + generated TS/Kotlin DTOs
 packages/domain/        Pure TypeScript state machines and policies
 packages/db/            Prisma schema, migrations, repositories (server-only)
+packages/ai/            LLM extraction adapters (introduced in A6; D085)
 packages/eslint-config/
 packages/typescript-config/
 docs/

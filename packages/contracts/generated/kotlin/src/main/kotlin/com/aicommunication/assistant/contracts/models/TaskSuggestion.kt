@@ -37,7 +37,7 @@ import java.io.Serializable
  * @param createdAt 
  * @param updatedAt 
  * @param sourceReference 
- * @param proposedRecipientId 
+ * @param proposedRecipientId Optional AI- or work-request-proposed Recipient. Informational in A6. Approving with recipientId is rejected (D080); Recipient handoff is A7 (D037). 
  * @param proposedDueAt 
  * @param proposedPriority 
  * @param voiceOriginated 
@@ -75,6 +75,7 @@ data class TaskSuggestion (
     @Json(name = "sourceReference")
     val sourceReference: SourceReference? = null,
 
+    /* Optional AI- or work-request-proposed Recipient. Informational in A6. Approving with recipientId is rejected (D080); Recipient handoff is A7 (D037).  */
     @Json(name = "proposedRecipientId")
     val proposedRecipientId: kotlin.String? = null,
 

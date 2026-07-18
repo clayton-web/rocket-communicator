@@ -4,9 +4,9 @@
 ## Properties
 | Name | Type | Description | Notes |
 | ------------ | ------------- | ------------- | ------------- |
-| **acknowledgement** | [**inline**](#Acknowledgement) | Owner intent approving the edited suggestion and Recipient assignment. Future server logic derives task creation, reminder scheduling, Gmail forwarding, capability link issuance, and standard assignment email without client-side side-effect toggles.  |  |
+| **acknowledgement** | [**inline**](#Acknowledgement) | Owner confirms creating an unassigned Task from this suggestion (D080). Does not approve Recipient assignment, capability issuance, assignment email, Gmail forward, or reminder scheduling.  |  |
 | **summaryPoints** | [**kotlin.collections.List&lt;TaskSummaryPoint&gt;**](TaskSummaryPoint.md) |  |  [optional] |
-| **recipientId** | **kotlin.String** | Selected Recipient for the approved task and assignment. |  [optional] |
+| **recipientId** | **kotlin.String** | Must not be sent in A6. If present, the server returns HTTP 400 with error code RECIPIENT_HANDOFF_NOT_AVAILABLE (D080). Recipient assignment, capability issuance, assignment email, and Gmail forward remain A7 (D037).  |  [optional] |
 | **priority** | [**TaskPriority**](TaskPriority.md) |  |  [optional] |
 | **dueAt** | **kotlin.String** |  |  [optional] |
 
@@ -15,7 +15,7 @@
 ## Enum: acknowledgement
 | Name | Value |
 | ---- | ----- |
-| acknowledgement | assignment_approved |
+| acknowledgement | suggestion_approved |
 
 
 

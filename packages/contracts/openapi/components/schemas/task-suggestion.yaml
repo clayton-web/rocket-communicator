@@ -40,6 +40,9 @@ components:
             - string
             - 'null'
           maxLength: 64
+          description: |
+            Optional AI- or work-request-proposed Recipient. Informational in A6.
+            Approving with recipientId is rejected (D080); Recipient handoff is A7 (D037).
         proposedDueAt:
           type:
             - string
@@ -81,7 +84,10 @@ components:
         recipientId:
           type: string
           maxLength: 64
-          description: Selected Recipient for the approved task and assignment.
+          description: |
+            Must not be sent in A6. If present, the server returns HTTP 400 with
+            error code RECIPIENT_HANDOFF_NOT_AVAILABLE (D080). Recipient assignment,
+            capability issuance, assignment email, and Gmail forward remain A7 (D037).
         priority:
           $ref: './assignment.yaml#/components/schemas/TaskPriority'
         dueAt:
@@ -90,11 +96,11 @@ components:
         acknowledgement:
           type: string
           enum:
-            - assignment_approved
+            - suggestion_approved
           description: |
-            Owner intent approving the edited suggestion and Recipient assignment.
-            Future server logic derives task creation, reminder scheduling, Gmail forwarding,
-            capability link issuance, and standard assignment email without client-side side-effect toggles.
+            Owner confirms creating an unassigned Task from this suggestion (D080).
+            Does not approve Recipient assignment, capability issuance, assignment email,
+            Gmail forward, or reminder scheduling.
     EditTaskSuggestionRequest:
       type: object
       properties:
@@ -125,10 +131,52 @@ components:
       type: object
       required:
         - targetTaskId
+        - targetTaskIfMatch
       properties:
         targetTaskId:
           type: string
           maxLength: 64
+        targetTaskIfMatch:
+          type: string
+          description: |
+            Strong ETag of the target Task (including quotes), matching D045 / VersionedResource.etag.
+            Required in addition to the suggestion If-Match header (D083).
         appendSummaryPoints:
           type: boolean
           default: true
+    SuggestionProcessResponse:
+      type: object
+      required:
+        - claimed
+        - skippedIrrelevant
+        - suggestionsCreated
+        - failedRetryable
+        - failedPermanent
+        - requestId
+      properties:
+        claimed:
+          type: integer
+          minimum: 0
+          description: Events successfully claim-leased in this invocation.
+        skippedIrrelevant:
+          type: integer
+          minimum: 0
+          description: Events marked skipped_irrelevant by heuristic relevance (no suggestion).
+        suggestionsCreated:
+          type: integer
+          minimum: 0
+          description: Pending TaskSuggestions created via LLM extraction.
+        failedRetryable:
+          type: integer
+          minimum: 0
+          description: Events left or set to failed_retryable (no suggestion created).
+        failedPermanent:
+          type: integer
+          minimum: 0
+          description: Events set to failed_permanent (no suggestion created).
+        requestId:
+          type: string
+          maxLength: 64
+      description: |
+        Aggregate suggestion-processing outcome (D084, D085). No raw communication bodies,
+        excerpts, tokens, or per-message content.

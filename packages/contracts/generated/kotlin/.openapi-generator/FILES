@@ -68,6 +68,7 @@ docs/SourceSpanRef.md
 docs/SourceType.md
 docs/SubmitWorkRequestRequest.md
 docs/SubmitWorkRequestResponse.md
+docs/SuggestionProcessResponse.md
 docs/SummaryPointBase.md
 docs/SummaryPointKind.md
 docs/Task.md
@@ -154,6 +155,7 @@ src/main/kotlin/com/aicommunication/assistant/contracts/models/SourceSpanRef.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/SourceType.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/SubmitWorkRequestRequest.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/SubmitWorkRequestResponse.kt
+src/main/kotlin/com/aicommunication/assistant/contracts/models/SuggestionProcessResponse.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/SummaryPointBase.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/SummaryPointKind.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/Task.kt

@@ -1,6 +1,6 @@
 # Milestones
 
-**Current:** A5.5 Gmail connection and polling is implemented in the repository. Production remains verified through A4 (`A4_FULL_E2E_PASS`); A5 migration, live Gmail credentials, and scheduler secrets are not configured in production. **Next:** remaining A5 production enablement / settings UI, then A6 AI relevance and task suggestions.
+**Current:** A6.0 documentation, Decision Records (D080–D085), OpenAPI/API contract alignment, and authentic generated clients — **ready for human approval to commit**. A5 Gmail connection and polling is **closed and healthy in Production**. **Next after A6.0 commit approval:** A6.1 persistence (no application handlers yet).
 
 Process: [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW.md) · [REVIEW_CHECKLIST.md](REVIEW_CHECKLIST.md) · Operations: [DEPLOYMENT.md](DEPLOYMENT.md)
 
@@ -44,37 +44,44 @@ Process: [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW.md) · [REVIEW_CHECKLIST
 
 **Binding decisions:** D055–D064. OPEN #21 deferred to A7.
 
----
-
-## Implemented in repository, not production-operational
-
 ### A5 — Gmail connection and polling
 
-Connect one inbox; poll every **five minutes** (D065); create communication events only (D077). Polling-only in A5 (D066); Pub/Sub deferred. Application owns the Application Polling Engine; scheduling is external and vendor-neutral (D079). No AI suggestions or forwarding yet.
+**Status:** Complete and **Production-operational**. A5 is **CLOSED** except for future bug fixes.
 
-**A5.1–A5.2:** Implemented in repository. OpenAPI Gmail contracts, domain types/invariants, Prisma models, forward-only migration, repositories, and DB tests.
+Connect one inbox; poll every **five minutes** (D065); create communication events only (D077). Application owns the Application Polling Engine; scheduling is external and vendor-neutral (D079).
 
-**A5.3:** Implemented in repository. Owner Gmail OAuth start (**POST**) / callback (state hash + encrypted PKCE), AES-256-GCM purpose-bound token encryption, connection status, and disconnect/revoke. **No Application Polling Engine, external schedule wiring, ingestion, sync handlers, or UI in A5.3.** Production migration remains unapplied; live Gmail credentials are not configured.
+**Production-verified capabilities:**
 
-**A5.4:** Implemented in repository. Manual Owner sync (`POST /gmail/sync`), sync-run listing, Application Polling Engine, Gmail History API ingestion (no-backfill initial cursor + incremental Inbox), message normalization/minimization, CommunicationEvent + TemporaryCommunicationExcerpt persistence (`purgeAt = syncedAt + 7 days`, D078), leave-Inbox metadata update with excerpt purge, sync lock ownership, and invalid-history `resync_required` (no recovery). **No internal poll handler, external schedule wiring, UI, or A6 suggestions in A5.4.** Production migration remains unapplied; live Gmail is not accessed.
+- Gmail OAuth connected (`gmail.readonly`, D070)
+- Tokens encrypted at rest (purpose-bound AES-256-GCM)
+- Initial History cursor seeded (no historical backfill, D067)
+- Incremental History polling stable via External Scheduler (**cron-job.org**) every five minutes
+- Sync locking, duplicate protection, and system audit attribution (D074) verified
+- A4 functionality remains intact; Production remains healthy
 
-**A5.5:** Implemented in repository. Internal poll (`GET|POST /api/v1/internal/gmail/poll`) with `CRON_SECRET` Bearer auth; Application Polling Engine shared with A5.4 (`trigger=cron`); system audit attribution (D074); sequential poll of at most three eligible accounts (connected + valid history + credential; never initial seed). External Scheduler invokes the endpoint every five minutes (D065); recommended initial adapter is **cron-job.org** (Vercel Hobby), not a required dependency (D079). **No UI, History recovery, or A6.** Production migration and live Gmail/scheduler secrets remain unconfigured.
+**Deferred (do not block A6):** Gmail settings UI; History recovery / `resync_required` operator recovery UX.
+
+**Binding decisions:** D065–D079.
+
+---
+
+## In progress
+
+### A6.0 — Documentation, decisions, and contract alignment
+
+**Status:** Complete (awaiting human review). Docs + Decision Records D080–D085 + OpenAPI/API contract aligned. **No application code, migrations, or Production changes in A6.0.**
+
+### A6 — AI relevance and task suggestions
+
+**Next after A6.0 approval.** Heuristic relevance + LLM extraction (`packages/ai`, D085); Owner approve/edit/dismiss/merge HTTP; approve creates **unassigned Task only** (D080); separate internal process endpoint (D084); no auto-create Tasks; no Recipient handoff, Gmail send/forward, capability, or reminders (A7/A8). No Android acceptance requirement.
 
 ---
 
 ## Planned
 
-### Remaining A5 — production enablement and settings UI
-
-Apply the A5 migration and configure live Gmail/scheduler secrets only after Owner approval. Settings UI remains a later A5 chunk.
-
-### A6 — AI relevance and task suggestions
-
-Filter/extract suggestions; Owner approve/edit/dismiss/merge HTTP; no auto-create tasks.
-
 ### A7 — Gmail forwarding and assignment email
 
-Single Owner confirmation for assign + forward + attachments + capability + reminders (D037). OPEN #21 (re-forward vs prior links) resolved here.
+Single Owner confirmation for assign + forward + attachments + capability + reminders (D037). OPEN #21 (re-forward vs prior links) resolved here. Consumes A6 unassigned Tasks / proposed recipient metadata for Recipient handoff.
 
 ### A8 — Reminder and escalation engine
 
@@ -98,7 +105,7 @@ Record → transcribe → confirm; audio delete on success; voice never creates 
 
 ### A13 — Retention workers
 
-7-day excerpt and 30-day completed scrub; Gmail mailbox copies untouched (D031). OPEN #12 (tombstone duration).
+7-day excerpt and 30-day completed scrub; Gmail mailbox copies untouched (D031). OPEN #12 (tombstone duration). Honours A6 workflow safety ceilings (D082).
 
 ### A14 — Learning signals and proposed rules
 

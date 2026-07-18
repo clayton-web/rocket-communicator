@@ -71,6 +71,8 @@ Record capability ID, bound resource IDs, action, timestamp, request ID, outcome
 
 **A5 (D074):** External Scheduler invocations for Gmail polling use `AuditActorKind.system` with a `systemId` (for example `gmail_poll`). Do not fake Owner attribution for scheduler-triggered work. Owner and capability actor kinds remain unchanged.
 
+**A6 (D084):** Suggestion processing invocations use the same truthful `system` actor pattern with a distinct `systemId` (for example `suggestion_process`). Generation must not share the Gmail sync transaction.
+
 **A5.3 Owner Gmail OAuth audits** (Owner actor only): `gmail_oauth_started`, `gmail_connected`, `gmail_reconnected`, `gmail_disconnected`. Notes never contain tokens or raw OAuth errors.
 
 Also audit: suggestion decisions, assignment/forward approvals, reminder attempts, retention runs, authz denials, Gmail reauth, work-request Suggestions.

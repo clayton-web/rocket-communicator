@@ -22,12 +22,12 @@ AI and voice create suggestions, never tasks (D038).
 
 ### Transitions
 
-| From                          | To        | Actor | Notes                                                 |
-| ----------------------------- | --------- | ----- | ----------------------------------------------------- |
-| pending                       | approved  | Owner | Creates task in future API layer; schedules retention |
-| pending                       | dismissed | Owner | Excerpt purge +7 days                                 |
-| pending                       | merged    | Owner | Links to `targetTaskId`                               |
-| approved / dismissed / merged | —         | —     | terminal                                              |
+| From                          | To        | Actor | Notes                                                                  |
+| ----------------------------- | --------- | ----- | ---------------------------------------------------------------------- |
+| pending                       | approved  | Owner | Creates **unassigned** Task (D080); excerpt safety ceiling (D082)      |
+| pending                       | dismissed | Owner | Excerpt `purgeAt = dismissedAt + 7 days` (D020, D082)                  |
+| pending                       | merged    | Owner | Requires suggestion If-Match + `targetTaskIfMatch` (D083); excerpt +7d |
+| approved / dismissed / merged | —         | —     | terminal                                                               |
 
 ## Task
 
@@ -87,14 +87,17 @@ Voice cannot create tasks directly. Follow-up proposals always become task sugge
 
 ## Retention side effects
 
-| Event                        | Retention                                                 |
-| ---------------------------- | --------------------------------------------------------- |
-| complete                     | excerpt purge +7d; visible until +30d; content scrub +30d |
-| dismiss (task or suggestion) | excerpt purge +7d                                         |
-| successful transcription     | audio delete immediately                                  |
-| failed transcription         | audio delete no later than +48h (D041)                    |
+| Event                        | Retention                                                                   |
+| ---------------------------- | --------------------------------------------------------------------------- |
+| suggestion associated        | excerpt `purgeAt = associatedAt + 30 days` bounded ceiling (D082)           |
+| suggestion approved          | excerpt `purgeAt = approvedAt + 30 days` once; Task unassigned (D080, D082) |
+| complete (task)              | if excerpt still present: purge +7d; visible until +30d; content scrub +30d |
+| dismiss (task or suggestion) | excerpt purge +7d                                                           |
+| merge (suggestion)           | excerpt purge +7d                                                           |
+| successful transcription     | audio delete immediately                                                    |
+| failed transcription         | audio delete no later than +48h (D041)                                      |
 
-Waiting and snooze do not alter retention clocks.
+Waiting and snooze do not alter retention clocks. Long-lived active Tasks do **not** refresh the excerpt safety ceiling (D082).
 
 Tombstone duration after scrub remains open (OPEN #12).
 
@@ -103,3 +106,5 @@ Tombstone duration after scrub remains open (OPEN #12).
 All mutating transitions require matching strong ETag / `If-Match` against current `version`.
 
 Applies to both Owner session mutations and Recipient capability mutations when the view exposes task version.
+
+**Suggestion merge (D083):** also requires body `targetTaskIfMatch` for the target Task. Missing either precondition → 428; stale suggestion or target Task → 412.

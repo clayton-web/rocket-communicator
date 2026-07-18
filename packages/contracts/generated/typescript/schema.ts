@@ -28,7 +28,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List task suggestions */
+        /**
+         * List task suggestions
+         * @description Lists Task Suggestions for the authenticated Owner organization.
+         *     **Status: Contracted for A6** (handlers in A6 implementation phases).
+         *
+         */
         get: operations["listTaskSuggestions"];
         put?: never;
         post?: never;
@@ -45,7 +50,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get a task suggestion */
+        /**
+         * Get a task suggestion
+         * @description Returns one Task Suggestion with ETag.
+         *     **Status: Contracted for A6.**
+         *
+         */
         get: operations["getTaskSuggestion"];
         put?: never;
         post?: never;
@@ -64,7 +74,16 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Approve a task suggestion and assignment intent */
+        /**
+         * Approve a task suggestion (create unassigned Task)
+         * @description Approves a pending suggestion and creates an **unassigned Task** (D080).
+         *     Does not create TaskAssignment, issue a Capability, send assignment email,
+         *     Gmail-forward, or schedule reminders. Recipient handoff is A7 (D037).
+         *     If the body includes `recipientId`, respond 400 with
+         *     `RECIPIENT_HANDOFF_NOT_AVAILABLE`.
+         *     **Status: Contracted for A6.**
+         *
+         */
         post: operations["approveTaskSuggestion"];
         delete?: never;
         options?: never;
@@ -81,7 +100,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Edit a pending task suggestion */
+        /**
+         * Edit a pending task suggestion
+         * @description Edits a pending suggestion. **Status: Contracted for A6.**
+         *
+         */
         post: operations["editTaskSuggestion"];
         delete?: never;
         options?: never;
@@ -98,7 +121,13 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Dismiss a task suggestion */
+        /**
+         * Dismiss a task suggestion
+         * @description Dismisses a pending suggestion and applies excerpt retention
+         *     `purgeAt = dismissedAt + 7 days` when an excerpt is associated (D082).
+         *     **Status: Contracted for A6.**
+         *
+         */
         post: operations["dismissTaskSuggestion"];
         delete?: never;
         options?: never;
@@ -115,8 +144,48 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Merge a suggestion into an existing task */
+        /**
+         * Merge a suggestion into an existing task
+         * @description Merges a pending suggestion into an existing Task (D083).
+         *     Requires suggestion If-Match **and** body `targetTaskIfMatch`.
+         *     Missing either → 428; stale suggestion or target Task → 412.
+         *     Must not append to a stale Task. Associated excerpt
+         *     `purgeAt = mergedAt + 7 days` (D082).
+         *     **Status: Contracted for A6.**
+         *
+         */
         post: operations["mergeTaskSuggestion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/suggestions/process": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Internal scheduled suggestion processing
+         * @description Runs the Application Suggestion Engine for a bounded batch of
+         *     CommunicationEvents (D084, D085): claim-lease eligible events, heuristic
+         *     relevance filter, then LLM extraction via packages/ai for events that pass.
+         *     Creates at most one pending TaskSuggestion per event (D081).
+         *     On AI disabled/failure, records failed_retryable or failed_permanent and
+         *     creates no fallback suggestion (D085).
+         *     Requires `InternalCronBearer` (`CRON_SECRET`). Not an Owner session.
+         *     Safe to invoke repeatedly. Independent of Gmail History sync/poll (D075, D084).
+         *     Never returns raw communication bodies or excerpts.
+         *     **Status: Contracted for A6** (POST only; preferred External Scheduler method
+         *     matches cron-job.org / A5.5 production adapter guidance).
+         *
+         */
+        post: operations["processSuggestionsInternal"];
         delete?: never;
         options?: never;
         head?: never;
@@ -694,7 +763,7 @@ export interface components {
             };
         };
         /** @enum {string} */
-        ErrorCode: "VALIDATION_ERROR" | "UNAUTHORIZED" | "FORBIDDEN" | "NOT_FOUND" | "INVALID_STATE_TRANSITION" | "PRECONDITION_REQUIRED" | "PRECONDITION_FAILED" | "DOMAIN_CONFLICT" | "RATE_LIMITED" | "DEPENDENCY_UNAVAILABLE" | "INTERNAL_ERROR";
+        ErrorCode: "VALIDATION_ERROR" | "UNAUTHORIZED" | "FORBIDDEN" | "NOT_FOUND" | "INVALID_STATE_TRANSITION" | "PRECONDITION_REQUIRED" | "PRECONDITION_FAILED" | "DOMAIN_CONFLICT" | "RATE_LIMITED" | "DEPENDENCY_UNAVAILABLE" | "RECIPIENT_HANDOFF_NOT_AVAILABLE" | "INTERNAL_ERROR";
         ErrorDetail: {
             field: string;
             message: string;
@@ -839,6 +908,9 @@ export interface components {
             status: components["schemas"]["TaskSuggestionStatus"];
             summaryPoints: components["schemas"]["TaskSummaryPoint"][];
             sourceReference?: components["schemas"]["SourceReference"];
+            /** @description Optional AI- or work-request-proposed Recipient. Informational in A6.
+             *     Approving with recipientId is rejected (D080); Recipient handoff is A7 (D037).
+             *      */
             proposedRecipientId?: string | null;
             /** Format: date-time */
             proposedDueAt?: string | null;
@@ -858,19 +930,22 @@ export interface components {
         TaskSuggestionStatus: "pending" | "approved" | "dismissed" | "merged";
         ApproveTaskSuggestionRequest: {
             summaryPoints?: components["schemas"]["TaskSummaryPoint"][];
-            /** @description Selected Recipient for the approved task and assignment. */
+            /** @description Must not be sent in A6. If present, the server returns HTTP 400 with
+             *     error code RECIPIENT_HANDOFF_NOT_AVAILABLE (D080). Recipient assignment,
+             *     capability issuance, assignment email, and Gmail forward remain A7 (D037).
+             *      */
             recipientId?: string;
             priority?: components["schemas"]["TaskPriority"];
             /** Format: date-time */
             dueAt?: string;
             /**
-             * @description Owner intent approving the edited suggestion and Recipient assignment.
-             *     Future server logic derives task creation, reminder scheduling, Gmail forwarding,
-             *     capability link issuance, and standard assignment email without client-side side-effect toggles.
+             * @description Owner confirms creating an unassigned Task from this suggestion (D080).
+             *     Does not approve Recipient assignment, capability issuance, assignment email,
+             *     Gmail forward, or reminder scheduling.
              *
              * @enum {string}
              */
-            acknowledgement: "assignment_approved";
+            acknowledgement: "suggestion_approved";
         };
         EditTaskSuggestionRequest: {
             summaryPoints?: components["schemas"]["TaskSummaryPoint"][];
@@ -884,8 +959,28 @@ export interface components {
         };
         MergeTaskSuggestionRequest: {
             targetTaskId: string;
+            /** @description Strong ETag of the target Task (including quotes), matching D045 / VersionedResource.etag.
+             *     Required in addition to the suggestion If-Match header (D083).
+             *      */
+            targetTaskIfMatch: string;
             /** @default true */
             appendSummaryPoints: boolean;
+        };
+        /** @description Aggregate suggestion-processing outcome (D084, D085). No raw communication bodies,
+         *     excerpts, tokens, or per-message content.
+         *      */
+        SuggestionProcessResponse: {
+            /** @description Events successfully claim-leased in this invocation. */
+            claimed: number;
+            /** @description Events marked skipped_irrelevant by heuristic relevance (no suggestion). */
+            skippedIrrelevant: number;
+            /** @description Pending TaskSuggestions created via LLM extraction. */
+            suggestionsCreated: number;
+            /** @description Events left or set to failed_retryable (no suggestion created). */
+            failedRetryable: number;
+            /** @description Events set to failed_permanent (no suggestion created). */
+            failedPermanent: number;
+            requestId: string;
         };
         Task: {
             id: string;
@@ -1531,7 +1626,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Approved suggestion and created task */
+            /** @description Approved suggestion and created unassigned task */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1543,7 +1638,17 @@ export interface operations {
                     };
                 };
             };
-            400: components["responses"]["BadRequest"];
+            /** @description Validation failure or recipientId present
+             *     (`RECIPIENT_HANDOFF_NOT_AVAILABLE`, D080).
+             *      */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
@@ -1665,6 +1770,28 @@ export interface operations {
             409: components["responses"]["Conflict"];
             412: components["responses"]["PreconditionFailed"];
             428: components["responses"]["PreconditionRequired"];
+        };
+    };
+    processSuggestionsInternal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Aggregate processing counts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuggestionProcessResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalError"];
         };
     };
     listTasks: {

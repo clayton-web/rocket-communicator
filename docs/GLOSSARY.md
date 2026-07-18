@@ -52,17 +52,17 @@ Phone number treated as recognized for completed-call prompts (contact match, Ow
 
 ### Task Suggestion
 
-Candidate work that is **not** yet a Task. Requires Owner approve/edit/dismiss/merge. Voice-originated work starts here (D038). Recipient work requests become Suggestions.
+Candidate work that is **not** yet a Task. Requires Owner approve/edit/dismiss/merge. Voice-originated work starts here (D038). Recipient work requests become Suggestions. A6 approve creates an **unassigned Task** only (D080); Recipient handoff is A7 (D037).
 
 ### Task
 
-Approved actionable work with status, summary, assignment attribute, scheduling, and audit. Never created directly by voice (D038).
+Approved actionable work with status, summary, assignment attribute, scheduling, and audit. Never created directly by voice (D038). A6 suggestion approval yields an unassigned Task (D080).
 
 ### Assignment
 
 Persisted binding of a Task to a Recipient (and intended email), including allowed Recipient actions for that handoff. Assignment is an **attribute of the Task**, not a Task status ([STATE_MACHINE.md](STATE_MACHINE.md)). A Task may have historical assignment rows over time; at most one assignment is active.
 
-For Gmail-origin handoffs, approval of assignment and Gmail forward is one confirmation (D037).
+For Gmail-origin handoffs, approval of assignment and Gmail forward is one confirmation (D037). A6 does not create Assignments (D080).
 
 Assignment ≠ Capability: assignment records who should receive work and which actions are allowed; a Capability is the issued authorization grant for an active assignment.
 
@@ -113,6 +113,10 @@ Minimized inbound signal record; temporary stored content under retention; origi
 ### Application Polling Engine
 
 Application-owned Gmail sync logic: account eligibility, locking, Gmail History ingestion, message minimization, persistence, audit, and error handling. It is invoked by Owner manual sync or by an authenticated endpoint called by an External Scheduler. The scheduler does not own polling logic (D079).
+
+### Application Suggestion Engine
+
+Application-owned A6 logic: claim-lease eligible CommunicationEvents, heuristic relevance filtering, LLM extraction via `packages/ai`, and persistence of at most one pending TaskSuggestion per event (D081, D085). Invoked by `POST /api/v1/internal/suggestions/process` from an External Scheduler (D084). Must not run inside Gmail History sync transactions (D075, D084).
 
 ### External Scheduler
 

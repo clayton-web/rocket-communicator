@@ -24,6 +24,7 @@ import java.io.Serializable
  * 
  *
  * @param targetTaskId 
+ * @param targetTaskIfMatch Strong ETag of the target Task (including quotes), matching D045 / VersionedResource.etag. Required in addition to the suggestion If-Match header (D083). 
  * @param appendSummaryPoints 
  */
 
@@ -32,6 +33,10 @@ data class MergeTaskSuggestionRequest (
 
     @Json(name = "targetTaskId")
     val targetTaskId: kotlin.String,
+
+    /* Strong ETag of the target Task (including quotes), matching D045 / VersionedResource.etag. Required in addition to the suggestion If-Match header (D083).  */
+    @Json(name = "targetTaskIfMatch")
+    val targetTaskIfMatch: kotlin.String,
 
     @Json(name = "appendSummaryPoints")
     val appendSummaryPoints: kotlin.Boolean? = true

@@ -2,7 +2,7 @@
 
 **Source of truth:** `packages/contracts/openapi/` → bundled `packages/contracts/dist/openapi.bundled.yaml`.
 
-Related: [STATE_MACHINE.md](STATE_MACHINE.md) · [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md) · [DECISIONS.md](DECISIONS.md) (D007, D044–D047, D045, D059, D065–D079) · [GLOSSARY.md](GLOSSARY.md) · [MILESTONES.md](MILESTONES.md) · [DEPLOYMENT.md](DEPLOYMENT.md)
+Related: [STATE_MACHINE.md](STATE_MACHINE.md) · [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md) · [DECISIONS.md](DECISIONS.md) (D007, D044–D047, D045, D059, D065–D085) · [GLOSSARY.md](GLOSSARY.md) · [MILESTONES.md](MILESTONES.md) · [DEPLOYMENT.md](DEPLOYMENT.md)
 
 ## Ownership
 
@@ -28,11 +28,11 @@ Use this table with [MILESTONES.md](MILESTONES.md). OpenAPI may describe future 
 
 ## Tooling and generation
 
-| Tool                                  | Version                   | Purpose            |
-| ------------------------------------- | ------------------------- | ------------------ |
-| `@redocly/cli`                        | 1.34.3                    | Lint and bundle    |
-| `openapi-typescript`                  | 7.6.1                     | TypeScript DTOs    |
-| `@openapitools/openapi-generator-cli` | 2.18.4 (generator 7.12.0) | Kotlin models only |
+| Tool                                  | Version                                                                         | Purpose            |
+| ------------------------------------- | ------------------------------------------------------------------------------- | ------------------ |
+| `@redocly/cli`                        | 1.34.3                                                                          | Lint and bundle    |
+| `openapi-typescript`                  | 7.6.1                                                                           | TypeScript DTOs    |
+| `@openapitools/openapi-generator-cli` | 2.18.4 (generator per `packages/contracts/openapitools.json`, currently 7.14.0) | Kotlin models only |
 
 Committed outputs; `pnpm contracts:generate` / `contracts:check-drift` (D044). Kotlin generation removes stale orphans via `cleanup-kotlin-orphans.mjs`.
 
@@ -93,18 +93,28 @@ Full rules: [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md).
 
 ### Owner task suggestion routes
 
-**Status: contract-only / planned for A6** (OpenAPI + domain; no `apps/web` handlers yet). See [MILESTONES.md](MILESTONES.md) A6.
+**Status: contract-only / planned for A6** (OpenAPI aligned in A6.0; no `apps/web` handlers yet). Binding: D080–D085. See [MILESTONES.md](MILESTONES.md) A6.
 
-| Method | Path                                              | Purpose                       |
-| ------ | ------------------------------------------------- | ----------------------------- |
-| GET    | `/api/v1/task-suggestions`                        | List suggestions              |
-| GET    | `/api/v1/task-suggestions/{suggestionId}`         | Get suggestion                |
-| POST   | `/api/v1/task-suggestions/{suggestionId}/approve` | Approve (+ assignment intent) |
-| POST   | `/api/v1/task-suggestions/{suggestionId}/edit`    | Edit pending                  |
-| POST   | `/api/v1/task-suggestions/{suggestionId}/dismiss` | Dismiss                       |
-| POST   | `/api/v1/task-suggestions/{suggestionId}/merge`   | Merge into task               |
+| Method | Path                                              | Purpose                                   |
+| ------ | ------------------------------------------------- | ----------------------------------------- |
+| GET    | `/api/v1/task-suggestions`                        | List suggestions                          |
+| GET    | `/api/v1/task-suggestions/{suggestionId}`         | Get suggestion                            |
+| POST   | `/api/v1/task-suggestions/{suggestionId}/approve` | Approve → **unassigned Task** only (D080) |
+| POST   | `/api/v1/task-suggestions/{suggestionId}/edit`    | Edit pending                              |
+| POST   | `/api/v1/task-suggestions/{suggestionId}/dismiss` | Dismiss                                   |
+| POST   | `/api/v1/task-suggestions/{suggestionId}/merge`   | Merge into task (dual If-Match, D083)     |
 
 Recipient **work requests** in A4 create pending suggestions in persistence without these Owner review routes.
+
+### Internal suggestion processing (A6)
+
+**Status: contract-only / planned for A6** (D084, D085).
+
+| Method | Path                                   | Purpose                                                              |
+| ------ | -------------------------------------- | -------------------------------------------------------------------- |
+| POST   | `/api/v1/internal/suggestions/process` | External Scheduler invocation (`InternalCronBearer` / `CRON_SECRET`) |
+
+**POST only** (matches preferred cron-job.org / A5 production adapter method). Bounded batch; returns aggregate counts (`claimed`, `skippedIrrelevant`, `suggestionsCreated`, `failedRetryable`, `failedPermanent`, `requestId`). No raw communication bodies. Independent of Gmail History ingestion (D075, D084). Safe to invoke repeatedly.
 
 ### Recipient capability routes and pages
 
@@ -126,34 +136,48 @@ Return-to-Owner (either surface) clears assignment ownership; Task status unchan
 
 ### Owner Gmail routes (A5)
 
-OAuth connection routes are implemented in A5.3. Manual History ingestion, sync-run listing, and the Application Polling Engine are implemented in A5.4. Authenticated internal poll for External Schedulers is implemented in A5.5. Production migration, live Gmail credentials, and scheduler secrets are not configured.
+OAuth, History sync, and internal poll are **implemented and production-operational**. A5 is closed. Gmail settings UI and History recovery are deferred and do not block A6.
 
-| Method | Path                           | Purpose                                                | Status                                         |
-| ------ | ------------------------------ | ------------------------------------------------------ | ---------------------------------------------- |
-| GET    | `/api/v1/gmail/connection`     | Safe connection status                                 | Implemented, not production-operational (A5.3) |
-| POST   | `/api/v1/gmail/oauth/start`    | Start OAuth redirect (`gmail.readonly`)                | Implemented, not production-operational (A5.3) |
-| GET    | `/api/v1/gmail/oauth/callback` | OAuth callback redirect (no tokens in query)           | Implemented, not production-operational (A5.3) |
-| POST   | `/api/v1/gmail/disconnect`     | Disconnect and wipe credential ciphertext              | Implemented, not production-operational (A5.3) |
-| POST   | `/api/v1/gmail/sync`           | Owner manual sync (initial + incremental)              | Implemented, not production-operational (A5.4) |
-| GET    | `/api/v1/gmail/sync-runs`      | Recent safe sync-run summaries                         | Implemented, not production-operational (A5.4) |
-| GET    | `/api/v1/internal/gmail/poll`  | External Scheduler invocation (`InternalCronBearer`)   | Implemented, not production-operational (A5.5) |
-| POST   | `/api/v1/internal/gmail/poll`  | Operator / scheduler invocation (`InternalCronBearer`) | Implemented, not production-operational (A5.5) |
+| Method | Path                           | Purpose                                                | Status                        |
+| ------ | ------------------------------ | ------------------------------------------------------ | ----------------------------- |
+| GET    | `/api/v1/gmail/connection`     | Safe connection status                                 | Production-operational (A5.3) |
+| POST   | `/api/v1/gmail/oauth/start`    | Start OAuth redirect (`gmail.readonly`)                | Production-operational (A5.3) |
+| GET    | `/api/v1/gmail/oauth/callback` | OAuth callback redirect (no tokens in query)           | Production-operational (A5.3) |
+| POST   | `/api/v1/gmail/disconnect`     | Disconnect and wipe credential ciphertext              | Production-operational (A5.3) |
+| POST   | `/api/v1/gmail/sync`           | Owner manual sync (initial + incremental)              | Production-operational (A5.4) |
+| GET    | `/api/v1/gmail/sync-runs`      | Recent safe sync-run summaries                         | Production-operational (A5.4) |
+| GET    | `/api/v1/internal/gmail/poll`  | External Scheduler invocation (`InternalCronBearer`)   | Production-operational (A5.5) |
+| POST   | `/api/v1/internal/gmail/poll`  | Operator / scheduler invocation (`InternalCronBearer`) | Production-operational (A5.5) |
 
-Public Gmail DTOs never include refresh/access tokens, ciphertext, encryption key versions, OAuth codes, or PKCE secrets. Internal poll uses `InternalCronBearer` (configured `CRON_SECRET`), not Owner session and not public unauthenticated access. The application owns the Application Polling Engine; the scheduler is external (D079). GET on the internal poll route is a **secret-authenticated scheduler exception** for hosts whose schedulers prefer GET (e.g. Vercel Cron)—do not copy this pattern to public Recipient routes (D050). Preferred initial production adapter is HTTP **POST** from **cron-job.org** (or any compatible External Scheduler) every five minutes; Vercel Cron, GitHub Actions, Google Cloud Scheduler, AWS EventBridge, and other schedulers remain interchangeable. External Scheduler invocations never initialize History cursors; Owner manual sync must seed first. A5 does **not** expose communication-event list/browser endpoints (D073).
+Public Gmail DTOs never include refresh/access tokens, ciphertext, encryption key versions, OAuth codes, or PKCE secrets. Internal poll uses `InternalCronBearer` (configured `CRON_SECRET`), not Owner session and not public unauthenticated access. The application owns the Application Polling Engine; the scheduler is external (D079). GET on the internal Gmail poll route is a **secret-authenticated scheduler exception** for hosts whose schedulers prefer GET (e.g. Vercel Cron)—do not copy this pattern to public Recipient routes (D050). Preferred initial production adapter is HTTP **POST** from **cron-job.org** (or any compatible External Scheduler) every five minutes. External Scheduler invocations never initialize History cursors; Owner manual sync must seed first. A5 does **not** expose communication-event list/browser endpoints (D073).
 
-## Assignment approval request semantics (D037)
+## Suggestion approval semantics (D080)
 
-`ApproveTaskSuggestionRequest` records Owner intent (summary, Recipient, priority/due, `acknowledgement: assignment_approved`). It does not expose internal side-effect toggles. Server derives task creation, assignment, reminders, capability issuance, and Gmail forward/email as applicable. **Future milestone:** A6/A7 handlers.
+`ApproveTaskSuggestionRequest` requires `acknowledgement: suggestion_approved`. Optional `summaryPoints`, `priority`, and `dueAt` may refine the created **unassigned Task**.
 
-## Concurrency (D045)
+**A6 server behaviour:**
 
-Mutable Task / TaskSuggestion: integer `version` and strong `etag`. Mutations require `If-Match`.
+- Create unassigned Task from the suggestion.
+- Do **not** create TaskAssignment, issue Capability, send assignment email, Gmail-forward, or schedule reminders.
+- If `recipientId` is present → HTTP **400** with error code **`RECIPIENT_HANDOFF_NOT_AVAILABLE`**.
+- Recipient handoff remains **A7** under D037.
 
-| Condition          | HTTP | Code                    |
-| ------------------ | ---- | ----------------------- |
-| Missing `If-Match` | 428  | `PRECONDITION_REQUIRED` |
-| Stale `If-Match`   | 412  | `PRECONDITION_FAILED`   |
-| Domain conflict    | 409  | `DOMAIN_CONFLICT`       |
+`assignment_approved` is **removed** from the contract (never relied upon by shipped handlers).
+
+## Concurrency (D045, D083)
+
+Mutable Task / TaskSuggestion: integer `version` and strong `etag`. Mutations require `If-Match` on the primary resource.
+
+| Condition                                     | HTTP | Code                              |
+| --------------------------------------------- | ---- | --------------------------------- |
+| Missing suggestion `If-Match`                 | 428  | `PRECONDITION_REQUIRED`           |
+| Stale suggestion `If-Match`                   | 412  | `PRECONDITION_FAILED`             |
+| Merge missing `targetTaskIfMatch`             | 428  | `PRECONDITION_REQUIRED`           |
+| Merge stale `targetTaskIfMatch` (target Task) | 412  | `PRECONDITION_FAILED`             |
+| Domain conflict                               | 409  | `DOMAIN_CONFLICT`                 |
+| Approve with `recipientId` (A6)               | 400  | `RECIPIENT_HANDOFF_NOT_AVAILABLE` |
+
+Merge must not append to a stale Task (D083).
 
 ## Recipient capability errors
 

@@ -4,7 +4,7 @@ End-to-end flows. Terms: [GLOSSARY.md](GLOSSARY.md). Transitions: [STATE_MACHINE
 
 Owner approval is required to create Tasks, Assignments, forwards, and Follow-up Assignments. Recipient capability actions on an already assigned Task use POST after confirm ([STATE_MACHINE.md](STATE_MACHINE.md)).
 
-## Implemented through A4
+## Implemented through A5
 
 | Workflow                                                  | Section                                   | Status                                                         |
 | --------------------------------------------------------- | ----------------------------------------- | -------------------------------------------------------------- |
@@ -13,18 +13,19 @@ Owner approval is required to create Tasks, Assignments, forwards, and Follow-up
 | Waiting and snooze (Owner; Recipient waiting only)        | §9                                        | **Production-verified** (reminder side effects deferred to A8) |
 | Dismissal (Task)                                          | §13                                       | **Production-verified**                                        |
 | Recipient work request → pending Suggestion (persistence) | §8                                        | **Production-verified** (Owner review HTTP is A6)              |
+| Gmail → Communication Event (no suggestions)              | §1 A5 portion                             | **Production-operational** (A5 closed)                         |
 
 ## Implemented and planned workflow map
 
-Workflow §1 has A5 repository implementation for Gmail connection, the Application Polling Engine, and the Authenticated Endpoint invoked by External Schedulers (events only; D077). Production migration, live Gmail credentials, and scheduler secrets remain unconfigured. Workflows §1 suggestion generation, §2–§7, §10–§12, and §14–§15 still depend on AI, Android capture, reminders, forwarding, or retention workers not yet implemented. Sections below retain target behaviour; milestone labels note when each ships.
+Workflow §1 A5 portion (Gmail connection, Application Polling Engine, Authenticated Endpoint, events only; D077) is **production-operational**. A6 owns suggestion generation and Owner suggestion HTTP (D080–D085). Workflows §2–§7 (Recipient handoff aspects), §10–§12 (beyond A6 merge), and §14–§15 still depend on forwarding, reminders, Android capture, or retention workers not yet implemented. Sections below retain target behaviour; milestone labels note when each ships.
 
 ---
 
 ## 1. Gmail → Communication Event → Task Suggestion _(A5 events; A6 suggestions)_
 
 1. Owner connects Gmail (`gmail.readonly`, Workspace domain). The **application** runs the Application Polling Engine; an **External Scheduler** invokes the Authenticated Endpoint every five minutes (D065, D079)—recommended initial adapter **cron-job.org** while on Vercel Hobby; Vercel Cron and other compatible schedulers remain interchangeable. No historical backfill (D067); Inbox-only (D068).
-2. **A5:** store minimized `CommunicationEvent` (+ optional temporary capped excerpt). No Task Suggestions in A5 (D077).
-3. **A6:** heuristic (+ optional cheap AI) filter → structured `TaskSuggestion`; notify Owner on Android when available.
+2. **A5:** store minimized `CommunicationEvent` (+ optional temporary capped excerpt). No Task Suggestions in A5 (D077). History commit is independent of suggestion processing (D075, D084).
+3. **A6:** a separate External Scheduler job invokes `POST /api/v1/internal/suggestions/process` (D084). Heuristic relevance filter, then LLM extraction via `packages/ai` for events that pass (D085). At most one pending `TaskSuggestion` per event (D081). AI failure creates no fallback suggestion. Android notify is **not** an A6 acceptance requirement (A9 / D017).
 
 No Task created; no email sent in this workflow.
 
@@ -33,7 +34,7 @@ No Task created; no email sent in this workflow.
 1. Owner confirms one dialog disclosing: create/activate Task, Assignment, forward original + all attachments, Capability Link, reminders.
 2. On confirm: create Task/Assignment; issue Capability; forward via Gmail API with AI summary **above** original (D042); schedule reminders; record forwarded message id (idempotent).
 
-One confirmation only. Recipient email from Owner-managed records—not hard-coded. Partial forward failure must not be reported as complete success (D042; OPEN #9).
+One confirmation only. Recipient email from Owner-managed records—not hard-coded. Partial forward failure must not be reported as complete success (D042; OPEN #9). A6 may have already created an **unassigned** Task from a suggestion (D080); A7 performs the Recipient handoff on that Task (or equivalent Owner-owned Task).
 
 ## 3. Google Messages → Task Suggestion _(planned — A10)_
 
@@ -57,7 +58,7 @@ Record → transcribe → structure → `Task Suggestion` until workflow 7. Voic
 
 ## 7. Suggestion approval → Task _(planned — A6; partial today via Owner typed task create)_
 
-Owner approves (after edits if any) → create `Task`; schedule retention. Self-assignment needs no Recipient email. Recipient handoff for Gmail-origin uses workflow 2’s single bundled confirmation—not a second forward step. Non-Gmail Recipient assignment: one confirmation without Gmail forward.
+Owner approves (after edits if any) with `acknowledgement: suggestion_approved` → create **unassigned** `Task` (D080); apply excerpt retention per D082. Self/Owner work needs no Recipient. **Do not** create TaskAssignment, capability, assignment email, Gmail forward, or reminders in A6. If `recipientId` is present → HTTP 400 `RECIPIENT_HANDOFF_NOT_AVAILABLE`. Recipient handoff for Gmail-origin uses workflow 2 (A7). Non-Gmail Recipient assignment email remains A7.
 
 ## 8. Recipient actions via Capability Link _(implemented — A4 production-verified)_
 
@@ -77,11 +78,11 @@ Structure multi-intent utterance. On Owner confirm: complete **current** Task; c
 
 ## 12. Merge duplicate suggestion _(planned — A6)_
 
-Owner merges into existing Task; mark suggestion `merged`; optional summary append; learning signal. No extra assignment email by default.
+Owner merges into existing Task; requires suggestion `If-Match` and `targetTaskIfMatch` (D083); mark suggestion `merged`; optional summary append; no assignment email by default. Excerpt `purgeAt = mergedAt + 7 days` (D082).
 
-## 13. Dismissal _(implemented — A4 for Tasks)_
+## 13. Dismissal _(implemented — A4 for Tasks; A6 for Suggestions)_
 
-Owner dismisses suggestion or Task → terminal dismiss; excerpt purge +7 days; learning signal if provided. No assignment email.
+Owner dismisses suggestion or Task → terminal dismiss; excerpt purge deadline `terminalAt + 7 days` (D020, D082); learning signal if provided (durable learning A14). No assignment email.
 
 ## 14. Retention cleanup _(planned — A13)_
 

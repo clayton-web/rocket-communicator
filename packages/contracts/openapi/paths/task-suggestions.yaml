@@ -4,6 +4,9 @@ paths:
       operationId: listTaskSuggestions
       tags: [TaskSuggestions]
       summary: List task suggestions
+      description: |
+        Lists Task Suggestions for the authenticated Owner organization.
+        **Status: Contracted for A6** (handlers in A6 implementation phases).
       parameters:
         - $ref: '../components/parameters.yaml#/components/parameters/Cursor'
         - $ref: '../components/parameters.yaml#/components/parameters/Limit'
@@ -28,6 +31,9 @@ paths:
       operationId: getTaskSuggestion
       tags: [TaskSuggestions]
       summary: Get a task suggestion
+      description: |
+        Returns one Task Suggestion with ETag.
+        **Status: Contracted for A6.**
       parameters:
         - $ref: '../components/parameters.yaml#/components/parameters/SuggestionId'
       responses:
@@ -49,7 +55,14 @@ paths:
     post:
       operationId: approveTaskSuggestion
       tags: [TaskSuggestions]
-      summary: Approve a task suggestion and assignment intent
+      summary: Approve a task suggestion (create unassigned Task)
+      description: |
+        Approves a pending suggestion and creates an **unassigned Task** (D080).
+        Does not create TaskAssignment, issue a Capability, send assignment email,
+        Gmail-forward, or schedule reminders. Recipient handoff is A7 (D037).
+        If the body includes `recipientId`, respond 400 with
+        `RECIPIENT_HANDOFF_NOT_AVAILABLE`.
+        **Status: Contracted for A6.**
       parameters:
         - $ref: '../components/parameters.yaml#/components/parameters/SuggestionId'
         - $ref: '../components/parameters.yaml#/components/parameters/IfMatch'
@@ -61,7 +74,7 @@ paths:
               $ref: '../openapi.yaml#/components/schemas/ApproveTaskSuggestionRequest'
       responses:
         '200':
-          description: Approved suggestion and created task
+          description: Approved suggestion and created unassigned task
           content:
             application/json:
               schema:
@@ -73,7 +86,13 @@ paths:
                   task:
                     $ref: '../openapi.yaml#/components/schemas/Task'
         '400':
-          $ref: '../components/responses.yaml#/components/responses/BadRequest'
+          description: |
+            Validation failure or recipientId present
+            (`RECIPIENT_HANDOFF_NOT_AVAILABLE`, D080).
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
         '401':
           $ref: '../components/responses.yaml#/components/responses/Unauthorized'
         '403':
@@ -91,6 +110,8 @@ paths:
       operationId: editTaskSuggestion
       tags: [TaskSuggestions]
       summary: Edit a pending task suggestion
+      description: |
+        Edits a pending suggestion. **Status: Contracted for A6.**
       parameters:
         - $ref: '../components/parameters.yaml#/components/parameters/SuggestionId'
         - $ref: '../components/parameters.yaml#/components/parameters/IfMatch'
@@ -124,6 +145,10 @@ paths:
       operationId: dismissTaskSuggestion
       tags: [TaskSuggestions]
       summary: Dismiss a task suggestion
+      description: |
+        Dismisses a pending suggestion and applies excerpt retention
+        `purgeAt = dismissedAt + 7 days` when an excerpt is associated (D082).
+        **Status: Contracted for A6.**
       parameters:
         - $ref: '../components/parameters.yaml#/components/parameters/SuggestionId'
         - $ref: '../components/parameters.yaml#/components/parameters/IfMatch'
@@ -157,6 +182,13 @@ paths:
       operationId: mergeTaskSuggestion
       tags: [TaskSuggestions]
       summary: Merge a suggestion into an existing task
+      description: |
+        Merges a pending suggestion into an existing Task (D083).
+        Requires suggestion If-Match **and** body `targetTaskIfMatch`.
+        Missing either → 428; stale suggestion or target Task → 412.
+        Must not append to a stale Task. Associated excerpt
+        `purgeAt = mergedAt + 7 days` (D082).
+        **Status: Contracted for A6.**
       parameters:
         - $ref: '../components/parameters.yaml#/components/parameters/SuggestionId'
         - $ref: '../components/parameters.yaml#/components/parameters/IfMatch'
@@ -187,3 +219,33 @@ paths:
           $ref: '../components/responses.yaml#/components/responses/PreconditionFailed'
         '428':
           $ref: '../components/responses.yaml#/components/responses/PreconditionRequired'
+  /api/v1/internal/suggestions/process:
+    post:
+      operationId: processSuggestionsInternal
+      tags: [TaskSuggestions]
+      summary: Internal scheduled suggestion processing
+      description: |
+        Runs the Application Suggestion Engine for a bounded batch of
+        CommunicationEvents (D084, D085): claim-lease eligible events, heuristic
+        relevance filter, then LLM extraction via packages/ai for events that pass.
+        Creates at most one pending TaskSuggestion per event (D081).
+        On AI disabled/failure, records failed_retryable or failed_permanent and
+        creates no fallback suggestion (D085).
+        Requires `InternalCronBearer` (`CRON_SECRET`). Not an Owner session.
+        Safe to invoke repeatedly. Independent of Gmail History sync/poll (D075, D084).
+        Never returns raw communication bodies or excerpts.
+        **Status: Contracted for A6** (POST only; preferred External Scheduler method
+        matches cron-job.org / A5.5 production adapter guidance).
+      security:
+        - InternalCronBearer: []
+      responses:
+        '200':
+          description: Aggregate processing counts
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/SuggestionProcessResponse'
+        '401':
+          $ref: '../components/responses.yaml#/components/responses/Unauthorized'
+        '500':
+          $ref: '../components/responses.yaml#/components/responses/InternalError'

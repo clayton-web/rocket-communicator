@@ -13,7 +13,7 @@
 | **createdAt** | **kotlin.String** |  |  |
 | **updatedAt** | **kotlin.String** |  |  |
 | **sourceReference** | [**SourceReference**](SourceReference.md) |  |  [optional] |
-| **proposedRecipientId** | **kotlin.String** |  |  [optional] |
+| **proposedRecipientId** | **kotlin.String** | Optional AI- or work-request-proposed Recipient. Informational in A6. Approving with recipientId is rejected (D080); Recipient handoff is A7 (D037).  |  [optional] |
 | **proposedDueAt** | **kotlin.String** |  |  [optional] |
 | **proposedPriority** | [**TaskPriority**](TaskPriority.md) |  |  [optional] |
 | **voiceOriginated** | **kotlin.Boolean** |  |  [optional] |

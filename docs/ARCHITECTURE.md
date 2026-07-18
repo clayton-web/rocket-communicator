@@ -33,22 +33,31 @@ The following are **implemented** in the repository and included in production v
 
 Deployment and smoke checks: [DEPLOYMENT.md](DEPLOYMENT.md). HTTP status by route: [API_CONTRACT.md](API_CONTRACT.md).
 
-## Implemented through A5.5 (repository; not production-operational)
+## Implemented through A5 (production-operational; A5 closed)
 
-The following are implemented in the repository through A5.5 but are not deployed/configured as an operational production Gmail integration. The A5 Prisma migration remains unapplied to production, live Gmail credentials are not configured, and scheduler secrets are not configured:
+The following are **implemented** and **production-operational**. A5 is closed except for future bug fixes. Gmail settings UI and History recovery remain deferred and do not block A6:
 
 - Gmail account connection and polling (A5)
 - Communication event ingestion tables and Application Polling Engine (A5)
-- Owner Gmail OAuth connection routes (A5.3)
-- Manual Gmail sync, History ingestion, safe sync-run listing (A5.4)
-- Authenticated internal poll endpoint for External Schedulers (A5.5)
+- Owner Gmail OAuth connection routes (A5.3) with encrypted tokens
+- Manual Gmail sync, History ingestion (seed + incremental), safe sync-run listing (A5.4)
+- Authenticated internal poll endpoint for External Schedulers (A5.5); cron-job.org every five minutes
+- Sync locking, duplicate protection, system audit (D074)
 
-## Planned for A6 and later (target architecture)
+## Contracted for A6 (A6.0 docs/OpenAPI; handlers not yet implemented)
 
-The following remain **planned future scope**—described here and in [WORKFLOWS.md](WORKFLOWS.md), outside the current repository implementation:
+- Heuristic relevance + LLM extraction via `packages/ai` (D085)
+- Application Suggestion Engine invoked by `POST /api/v1/internal/suggestions/process` (D084)
+- Owner task-suggestion HTTP (list/get/approve/edit/dismiss/merge)
+- Approve creates **unassigned Task only** (D080); merge dual-resource concurrency (D083)
+- Relational event↔suggestion idempotency and processing state (D081)
+- Excerpt workflow safety-ceiling retention (D082)
 
-- AI relevance filtering and task suggestion HTTP (A6)
-- Gmail assignment email and forward-with-attachments (A7)
+## Planned for A7 and later (target architecture)
+
+The following remain **planned future scope**—described here and in [WORKFLOWS.md](WORKFLOWS.md):
+
+- Gmail assignment email and forward-with-attachments (A7, D037)
 - Reminder and retention workers; optional Supabase Realtime
 - Future `CommunicationAccount` schema (multiple inboxes later; v1 targets one)
 - Android Owner task UI, Messages/call capture, voice, learning (A9–A14)
@@ -64,8 +73,9 @@ Do not delete this target architecture; label it accurately when implementing.
 | `packages/contracts`                                    | Canonical OpenAPI 3.1; generated TypeScript and Kotlin DTOs (D007)                                                           |
 | `packages/domain`                                       | Pure TypeScript state machines, policies, retention helpers—no I/O                                                           |
 | `packages/db`                                           | Prisma schema, migrations, repositories, transactions (server-only; D006, D062)                                              |
+| `packages/ai`                                           | LLM extraction adapters for A6+ (D085); introduced in A6                                                                     |
 | `packages/eslint-config` / `packages/typescript-config` | Shared tooling                                                                                                               |
-| `packages/ai` / `packages/ui`                           | Deferred                                                                                                                     |
+| `packages/ui`                                           | Deferred                                                                                                                     |
 
 Do not share Zod types with Kotlin. Generate clients from OpenAPI. Neon is not used in v1 (D005).
 
@@ -88,13 +98,13 @@ Do not share Zod types with Kotlin. Generate clients from OpenAPI. Neon is not u
 
 **Web:** Owner-authenticated routes for Owner APIs (D048). Recipient mutations use `/api/v1/capabilities/{token}/…` (D059). Browser view `GET /c/[token]` is non-mutating. Capability secrets: hash at rest; one-time raw reveal to Owner (D063); seven-day default TTL with persisted `expiresAt` (D055); multi-use until invalidation (D056). Persistence: `@aicaa/db`. Dismiss, not physical delete (D064).
 
-**Gmail (A5):** One Owner inbox per organization; poll every five minutes (D065); polling-only in A5 (D066). Inbox-only ingestion (D068); Workspace-domain mailbox gate (D069); `gmail.readonly` only (D070). Persistence models (`CommunicationAccount`, encrypted credential ciphertext, `CommunicationEvent`, temporary excerpts, `GmailSyncRun`, short-lived `GmailOAuthState` with `stateHash` + encrypted PKCE) are implemented in the repository. **A5.3 implements OAuth connection routes** (status, POST start, callback, disconnect) with purpose-bound AES-256-GCM encryption. **A5.4 implements the Application Polling Engine** (manual sync + History ingestion + CommunicationEvent/excerpt persistence (D078 ingest `purgeAt`) + leave-Inbox excerpt purge + sync-run listing). **A5.5 exposes authenticated internal poll** (`GET|POST /api/v1/internal/gmail/poll` with `CRON_SECRET`, system actor D074) that reuses the A5.4 engine (`trigger=cron`). An **External Scheduler** invokes that endpoint every five minutes; the recommended initial adapter is **cron-job.org** (Vercel Hobby), replaceable by Vercel Cron or other compatible schedulers without application logic changes (D079). Production migration, live Gmail credentials, and scheduler secrets remain unconfigured. UI remains pending. A5 creates communication events only — not suggestions (D077). On approved Gmail-origin assignment (A7): forward original with attachments after single confirmation (D037).
+**Gmail (A5):** One Owner inbox per organization; poll every five minutes (D065); polling-only in A5 (D066). Inbox-only ingestion (D068); Workspace-domain mailbox gate (D069); `gmail.readonly` only (D070). Persistence models and Application Polling Engine are **production-operational**. An **External Scheduler** invokes `GET|POST /api/v1/internal/gmail/poll` every five minutes; recommended initial adapter **cron-job.org** (D079). A5 creates communication events only — not suggestions (D077). Gmail settings UI and History recovery are deferred and do not block A6. On approved Gmail-origin Recipient handoff (A7): forward original with attachments after single confirmation (D037).
 
-**AI:** Tiered jobs (relevance → extract → recommend → transcribe → outcomes → learning suggestions). Recommendations never silently become tasks, assignments, or emails. Learning Owner-only (D054).
+**AI / suggestions (A6):** Application Suggestion Engine is separate from Gmail sync (D084). Heuristic relevance then LLM extraction via `packages/ai` (D085). Owner suggestion HTTP; approve creates unassigned Task only (D080). Recommendations never silently become assignments or emails.
 
-**Reminders:** Deterministic policies; timezone `America/Vancouver` (D034); first overdue → Recipient; later may CC Owner; waiting pauses; snooze recalculates; completion stops.
+**Reminders:** Deterministic policies; timezone `America/Vancouver` (D034); first overdue → Recipient; later may CC Owner; waiting pauses; snooze recalculates; completion stops. Scheduling side effects are A8.
 
-**Retention:** 7-day excerpts; 30-day completed visibility scrub; immediate audio delete on success; does not delete Gmail mailbox copies (D031). Details: [DATA_RETENTION.md](DATA_RETENTION.md).
+**Retention:** Concrete excerpt `purgeAt` always (D082); ingest `syncedAt + 7 days` (D078); bounded 30-day workflow safety ceiling (not refreshed for long-lived active Tasks) / terminal + 7 days (D020, D082); 30-day completed visibility scrub; immediate audio delete on success; does not delete Gmail mailbox copies (D031). Details: [DATA_RETENTION.md](DATA_RETENTION.md).
 
 ## Contract strategy
 
