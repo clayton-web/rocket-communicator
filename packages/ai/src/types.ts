@@ -18,7 +18,7 @@ export interface SuggestionExtractionResult {
   summaryPoints: TaskSummaryPoint[];
   proposedDueAt?: string | null;
   proposedPriority?: 'low' | 'normal' | 'high' | 'urgent' | null;
-  /** Informational only in A6 — never triggers handoff. */
+  /** Informational extraction field only in A6 — not persisted to proposedRecipientId; A7 handoff. */
   proposedRecipientHint?: string | null;
   policyVersion: string;
   modelVersion: string;

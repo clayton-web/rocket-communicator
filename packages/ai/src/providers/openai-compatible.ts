@@ -31,6 +31,18 @@ Kinds: confirmed_fact|request|commitment|amount|deadline|risk|inference|missing_
 Do not invent facts not supported by the input. Do not include raw email headers beyond the provided fields.`;
 
 /**
+ * Plain-text provider refusal heuristic. Never applied to JSON-shaped payloads so
+ * user-derived summary text cannot permanently poison extraction (stabilization).
+ */
+export function looksLikePlainTextProviderRefusal(content: string): boolean {
+  const trimmed = content.trim();
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    return false;
+  }
+  return /i\s+can'?t\s+assist|i\s+cannot\s+assist|against\s+my\s+guidelines/i.test(trimmed);
+}
+
+/**
  * OpenAI-compatible Chat Completions adapter (fetch-based; no SDK).
  * Sends only minimized event/excerpt fields — never OAuth or tokens.
  */
@@ -145,20 +157,28 @@ export class OpenAiCompatibleSuggestionProvider implements SuggestionExtractionP
         );
       }
 
-      // Detect common refusal phrasing without storing the content.
-      if (/i\s+can'?t\s+assist|i\s+cannot\s+assist|against\s+my\s+guidelines/i.test(content)) {
-        throw new AiProviderError(
-          'AI_POLICY_REFUSAL',
-          'permanent',
-          'AI provider refused the request.',
-        );
+      // Prefer structured parse/validation. Textual refusal detection is fallback-only
+      // for non-JSON provider content so quoted phrases in summary fields cannot poison.
+      try {
+        const parsed = parseModelJsonText(content);
+        return parseAndValidateExtractionOutput(parsed, {
+          policyVersion: this.config.policyVersion,
+          modelVersion: typeof payload.model === 'string' ? payload.model : this.config.model,
+        });
+      } catch (parseError) {
+        if (
+          parseError instanceof AiProviderError &&
+          (parseError.code === 'AI_INVALID_OUTPUT' || parseError.code === 'AI_EMPTY_OUTPUT') &&
+          looksLikePlainTextProviderRefusal(content)
+        ) {
+          throw new AiProviderError(
+            'AI_POLICY_REFUSAL',
+            'permanent',
+            'AI provider refused the request.',
+          );
+        }
+        throw parseError;
       }
-
-      const parsed = parseModelJsonText(content);
-      return parseAndValidateExtractionOutput(parsed, {
-        policyVersion: this.config.policyVersion,
-        modelVersion: typeof payload.model === 'string' ? payload.model : this.config.model,
-      });
     } catch (error) {
       if (error instanceof AiProviderError) {
         throw error;
