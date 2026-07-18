@@ -49,6 +49,38 @@ describe('A5.4 Gmail access token refresh', () => {
     expect(JSON.stringify(caught)).not.toContain(refreshToken);
   });
 
+  it('maps Gaxios-style HTTP 400 invalid_grant (generic message) to needs_reauth', async () => {
+    mockGetAccessToken.mockRejectedValue(
+      Object.assign(new Error('Request failed with status code 400'), {
+        response: {
+          status: 400,
+          data: { error: 'invalid_grant', error_description: 'Token has been expired or revoked.' },
+        },
+      }),
+    );
+
+    await expect(getGmailAccessToken({ refreshToken })).rejects.toMatchObject({
+      name: 'GmailSyncError',
+      code: 'needs_reauth',
+    });
+  });
+
+  it('maps unauthorized_client on HTTP 400 to needs_reauth', async () => {
+    mockGetAccessToken.mockRejectedValue(
+      Object.assign(new Error('Request failed with status code 400'), {
+        response: {
+          status: 400,
+          data: { error: 'unauthorized_client' },
+        },
+      }),
+    );
+
+    await expect(getGmailAccessToken({ refreshToken })).rejects.toMatchObject({
+      name: 'GmailSyncError',
+      code: 'needs_reauth',
+    });
+  });
+
   it('maps empty token refresh to needs_reauth without leaking the refresh token', async () => {
     mockGetAccessToken.mockResolvedValue({ token: null });
 

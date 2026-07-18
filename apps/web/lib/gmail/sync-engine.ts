@@ -789,6 +789,10 @@ function toSyncError(error: unknown): GmailSyncError {
     ) {
       return new GmailSyncError('database_failure');
     }
+    // Prisma known-request codes (e.g. P2022 missing column) must not collapse to `unknown`.
+    if (/^P\d{4}$/.test(code)) {
+      return new GmailSyncError('database_failure');
+    }
   }
   return new GmailSyncError('unknown');
 }

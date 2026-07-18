@@ -36,11 +36,21 @@ export async function getGmailAccessToken(input: {
 function mapAccessTokenError(error: unknown): GmailSyncError {
   const status = readHttpStatus(error);
   const message = readErrorMessage(error);
+  const oauthError = readOAuthErrorCode(error);
 
-  if (status === 401 || status === 403 || /invalid_grant/i.test(message)) {
+  // google-auth-library / Gaxios often returns HTTP 400 with data.error=invalid_grant
+  // and a generic message ("Request failed with status code 400"), which previously
+  // collapsed to `unknown` and left the account stuck in `connected`.
+  if (
+    status === 401 ||
+    status === 403 ||
+    oauthError === 'invalid_grant' ||
+    oauthError === 'unauthorized_client' ||
+    /invalid_grant/i.test(message)
+  ) {
     return new GmailSyncError('needs_reauth');
   }
-  if (status === 429) {
+  if (status === 429 || oauthError === 'rate_limit_exceeded') {
     return new GmailSyncError('rate_limited');
   }
   if (typeof status === 'number' && status >= 500 && status <= 599) {
@@ -71,6 +81,22 @@ function readHttpStatus(error: unknown): number | undefined {
     return record.code;
   }
   return undefined;
+}
+
+/**
+ * Reads OAuth error codes from Gaxios-style errors without embedding response bodies
+ * or tokens into thrown messages.
+ */
+function readOAuthErrorCode(error: unknown): string | undefined {
+  if (!error || typeof error !== 'object') {
+    return undefined;
+  }
+  const data = (error as { response?: { data?: unknown } }).response?.data;
+  if (!data || typeof data !== 'object') {
+    return undefined;
+  }
+  const code = (data as { error?: unknown }).error;
+  return typeof code === 'string' && code.length > 0 ? code : undefined;
 }
 
 function readErrorMessage(error: unknown): string {
