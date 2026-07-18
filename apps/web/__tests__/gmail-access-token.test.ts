@@ -93,4 +93,46 @@ describe('A5.4 Gmail access token refresh', () => {
       expect(String((error as Error).message)).not.toContain(refreshToken);
     }
   });
+
+  it('does not treat generic Gaxios HTTP 400 without OAuth grant evidence as needs_reauth', async () => {
+    mockGetAccessToken.mockRejectedValue(
+      Object.assign(new Error('Request failed with status code 400'), {
+        response: {
+          status: 400,
+          data: { error: 'invalid_request', error_description: 'Malformed token request.' },
+        },
+      }),
+    );
+
+    await expect(getGmailAccessToken({ refreshToken })).rejects.toMatchObject({
+      name: 'GmailSyncError',
+      code: 'unknown',
+    });
+  });
+
+  it('maps HTTP 503 provider failures to google_unavailable', async () => {
+    mockGetAccessToken.mockRejectedValue(
+      Object.assign(new Error('Request failed with status code 503'), {
+        response: { status: 503, data: { error: 'server_error' } },
+      }),
+    );
+
+    await expect(getGmailAccessToken({ refreshToken })).rejects.toMatchObject({
+      name: 'GmailSyncError',
+      code: 'google_unavailable',
+    });
+  });
+
+  it('maps rate_limit_exceeded OAuth code to rate_limited', async () => {
+    mockGetAccessToken.mockRejectedValue(
+      Object.assign(new Error('Request failed with status code 400'), {
+        response: { status: 400, data: { error: 'rate_limit_exceeded' } },
+      }),
+    );
+
+    await expect(getGmailAccessToken({ refreshToken })).rejects.toMatchObject({
+      name: 'GmailSyncError',
+      code: 'rate_limited',
+    });
+  });
 });
