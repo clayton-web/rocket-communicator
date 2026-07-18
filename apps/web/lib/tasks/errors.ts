@@ -7,7 +7,9 @@ export type TaskServiceErrorCode =
   | 'DOMAIN_CONFLICT'
   | 'FORBIDDEN'
   | 'ASSIGNMENT_PRECONDITION'
-  | 'PERSISTENCE_CONFLICT';
+  | 'PERSISTENCE_CONFLICT'
+  /** D080: Approve with recipientId is rejected in A6. Maps to HTTP 400. */
+  | 'RECIPIENT_HANDOFF_NOT_AVAILABLE';
 
 export class TaskServiceError extends Error {
   readonly code: TaskServiceErrorCode;

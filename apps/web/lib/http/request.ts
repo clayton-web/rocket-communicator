@@ -73,3 +73,15 @@ export function assertTaskId(
   }
   return { ok: true };
 }
+
+export function assertSuggestionId(
+  suggestionId: string,
+): { ok: true } | { ok: false; response: NextResponse<ErrorResponse> } {
+  if (!suggestionId || suggestionId.length > 64) {
+    return {
+      ok: false,
+      response: jsonErrorResponse('VALIDATION_ERROR', 'suggestionId is invalid.', 400),
+    };
+  }
+  return { ok: true };
+}

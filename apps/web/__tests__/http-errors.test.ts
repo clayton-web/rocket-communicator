@@ -161,6 +161,17 @@ describe('safe HTTP error mapping', () => {
     expect(body.error.message).toBe('Task not found.');
   });
 
+  it('maps RECIPIENT_HANDOFF_NOT_AVAILABLE to HTTP 400 with stable code', async () => {
+    const error = new TaskServiceError(
+      'RECIPIENT_HANDOFF_NOT_AVAILABLE',
+      'Recipient handoff is not available when approving a suggestion.',
+    );
+    const response = mapOwnerTaskRouteError(error);
+    const body = await response.json();
+    expect(response.status).toBe(400);
+    expect(body.error.code).toBe('RECIPIENT_HANDOFF_NOT_AVAILABLE');
+  });
+
   it('preserves Recipient capability route mappings', async () => {
     const error = recipientCapabilityServiceError('UNAUTHORIZED', 'internal');
     const response = mapRecipientCapabilityRouteError(error);

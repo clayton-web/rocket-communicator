@@ -50,6 +50,12 @@ export const REQUIRED_RUNTIME_EXPORTS = [
   'markCapabilityExpiredRecord',
   'persistCapabilityAction',
   'persistWorkRequest',
+  'listTaskSuggestions',
+  'getTaskSuggestionById',
+  'persistApproveTaskSuggestion',
+  'persistEditTaskSuggestion',
+  'persistDismissTaskSuggestion',
+  'persistMergeTaskSuggestion',
   'getCommunicationAccountByOrganization',
   'getCommunicationAccountById',
   'getGmailOAuthCredentialByAccountId',
@@ -79,7 +85,34 @@ export const PGLITE_MARKERS = [
 export const DB_BACKED_API_ROUTE_NFTS = [
   'app/api/v1/tasks/route.js.nft.json',
   'app/api/v1/tasks/[taskId]/route.js.nft.json',
+  'app/api/v1/task-suggestions/route.js.nft.json',
   'app/api/v1/capabilities/[token]/tasks/[taskId]/route.js.nft.json',
+];
+
+/** All A6.2 Owner suggestion HTTP entrypoints (final .next NFT traces). */
+export const A6_2_SUGGESTION_ROUTE_NFTS = [
+  'app/api/v1/task-suggestions/route.js.nft.json',
+  'app/api/v1/task-suggestions/[suggestionId]/route.js.nft.json',
+  'app/api/v1/task-suggestions/[suggestionId]/edit/route.js.nft.json',
+  'app/api/v1/task-suggestions/[suggestionId]/dismiss/route.js.nft.json',
+  'app/api/v1/task-suggestions/[suggestionId]/approve/route.js.nft.json',
+  'app/api/v1/task-suggestions/[suggestionId]/merge/route.js.nft.json',
+];
+
+/** Owner suggestion routes must load these via the production runtime bridge. */
+export const A6_2_REQUIRED_RUNTIME_MODULES = [
+  'packages/db/dist/runtime.js',
+  'packages/db/dist/transactions/a6-owner-suggestion-transactions.js',
+];
+
+/**
+ * A6.3 processing modules must not appear in the runtime.js import graph.
+ * Note: NFT traces may still list unused packages/db/dist JS files because
+ * next.config outputFileTracingIncludes uses a blanket dist glob for DB-backed routes.
+ */
+export const A6_3_PROCESSING_MODULES_EXCLUDED_FROM_RUNTIME_GRAPH = [
+  'packages/db/dist/transactions/a6-transactions.js',
+  'packages/db/dist/repositories/suggestion-processing-repository.js',
 ];
 
 export const DB_BACKED_PAGE_ROUTE_NFTS = ['app/c/[token]/page.js.nft.json'];

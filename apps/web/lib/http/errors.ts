@@ -60,6 +60,7 @@ function httpStatusForTaskCode(code: TaskServiceErrorCode): number {
     case 'FORBIDDEN':
       return 403;
     case 'VALIDATION_ERROR':
+    case 'RECIPIENT_HANDOFF_NOT_AVAILABLE':
       return 400;
     case 'INVALID_STATE_TRANSITION':
     case 'DOMAIN_CONFLICT':
@@ -83,6 +84,8 @@ function contractCodeForTaskCode(code: TaskServiceErrorCode): ErrorCode {
       return 'FORBIDDEN';
     case 'VALIDATION_ERROR':
       return 'VALIDATION_ERROR';
+    case 'RECIPIENT_HANDOFF_NOT_AVAILABLE':
+      return 'RECIPIENT_HANDOFF_NOT_AVAILABLE';
     case 'INVALID_STATE_TRANSITION':
       return 'INVALID_STATE_TRANSITION';
     case 'DOMAIN_CONFLICT':
@@ -242,6 +245,13 @@ function mapOwnerPersistenceErrorToHttpResponse(
       'PRECONDITION_FAILED',
       'The resource has changed since the provided ETag.',
       412,
+    );
+  }
+  if (code === 'RECIPIENT_HANDOFF_NOT_AVAILABLE') {
+    return jsonErrorResponse(
+      'RECIPIENT_HANDOFF_NOT_AVAILABLE',
+      'Recipient handoff is not available when approving a suggestion.',
+      400,
     );
   }
   return ownerTaskUnexpectedInternalErrorResponse();

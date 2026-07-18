@@ -41,6 +41,8 @@ const nextConfig = {
   outputFileTracingIncludes: {
     '/api/v1/tasks': dbBackedRouteTraceFiles,
     '/api/v1/tasks/**/*': dbBackedRouteTraceFiles,
+    '/api/v1/task-suggestions': dbBackedRouteTraceFiles,
+    '/api/v1/task-suggestions/**/*': dbBackedRouteTraceFiles,
     '/api/v1/capabilities/**/*': dbBackedRouteTraceFiles,
     '/api/v1/gmail/**/*': dbBackedRouteTraceFiles,
     '/api/v1/internal/**/*': dbBackedRouteTraceFiles,

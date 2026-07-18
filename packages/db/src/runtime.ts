@@ -45,6 +45,9 @@ export {
 export {
   createTaskSuggestion,
   getTaskSuggestionById,
+  listTaskSuggestions,
+  type ListTaskSuggestionsQuery,
+  type ListTaskSuggestionsResult,
 } from './repositories/suggestion-repository.js';
 export {
   createCapability,
@@ -67,6 +70,13 @@ export {
   persistOwnerTaskMutation,
   persistWorkRequest,
 } from './transactions/a4-transactions.js';
+
+export {
+  persistApproveTaskSuggestion,
+  persistEditTaskSuggestion,
+  persistDismissTaskSuggestion,
+  persistMergeTaskSuggestion,
+} from './transactions/a6-owner-suggestion-transactions.js';
 
 // A5.3 Owner Gmail OAuth / connection surface (server-only runtime bridge).
 export {

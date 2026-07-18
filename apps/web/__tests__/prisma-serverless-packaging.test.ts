@@ -5,6 +5,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
+  A6_2_REQUIRED_RUNTIME_MODULES,
+  A6_2_SUGGESTION_ROUTE_NFTS,
+  A6_3_PROCESSING_MODULES_EXCLUDED_FROM_RUNTIME_GRAPH,
   DB_BACKED_ROUTE_NFTS,
   DB_RUNTIME_RELATIVE,
   DOMAIN_NODE_MODULES_DIST_INDEX_RELATIVE,
@@ -93,6 +96,8 @@ describe('Prisma serverless packaging configuration', () => {
     expect(config).toContain('schema.prisma');
     expect(config).toContain("'/api/v1/tasks'");
     expect(config).toContain("'/api/v1/tasks/**/*'");
+    expect(config).toContain("'/api/v1/task-suggestions'");
+    expect(config).toContain("'/api/v1/task-suggestions/**/*'");
     expect(config).toContain("'/api/v1/capabilities/**/*'");
     expect(config).toContain("'/api/v1/gmail/**/*'");
     expect(config).toContain("'/api/v1/internal/**/*'");
@@ -261,6 +266,63 @@ describe('Prisma serverless packaging configuration', () => {
       const nftPath = path.join(webRoot, '.next/server', relativeNft);
       expect(fs.existsSync(nftPath), relativeNft).toBe(true);
     }
+  });
+
+  it('includes db runtime and owner A6.2 modules in every suggestion route NFT when built', () => {
+    const nextDir = path.join(webRoot, '.next');
+    if (!fs.existsSync(nextDir)) {
+      return;
+    }
+
+    const runtimeGraph = getRequiredDbPackageRuntimeFiles(repoRoot).importGraphJs.map((filePath) =>
+      path.relative(repoRoot, filePath).replace(/\\/g, '/'),
+    );
+
+    for (const excluded of A6_3_PROCESSING_MODULES_EXCLUDED_FROM_RUNTIME_GRAPH) {
+      expect(
+        runtimeGraph.includes(excluded),
+        `runtime.js import graph must not require ${excluded}`,
+      ).toBe(false);
+    }
+    expect(runtimeGraph).toEqual(
+      expect.arrayContaining([
+        'packages/db/dist/runtime.js',
+        'packages/db/dist/transactions/a6-owner-suggestion-transactions.js',
+        'packages/db/dist/transactions/a4-transactions.js',
+        'packages/db/dist/transactions/gmail-transactions.js',
+      ]),
+    );
+
+    for (const relativeNft of A6_2_SUGGESTION_ROUTE_NFTS) {
+      const nftPath = path.join(webRoot, '.next/server', relativeNft);
+      expect(fs.existsSync(nftPath), relativeNft).toBe(true);
+      const nft = JSON.parse(fs.readFileSync(nftPath, 'utf8')) as { files?: string[] };
+      const files = Array.isArray(nft.files) ? nft.files : [];
+
+      for (const required of A6_2_REQUIRED_RUNTIME_MODULES) {
+        expect(nftIncludesRepoFile(files, repoRoot, required), `${relativeNft} → ${required}`).toBe(
+          true,
+        );
+      }
+      expect(nftIncludesNodeModulesDomainIndex(files), relativeNft).toBe(true);
+      assertNftIncludesDbPackageRuntime(files, repoRoot, relativeNft);
+    }
+
+    const listResult = simulateRouteRuntimeRequire({
+      webRoot,
+      repoRoot,
+      nftRelativePath: 'app/api/v1/task-suggestions/route.js.nft.json',
+    });
+    expect(listResult.exportNames).toEqual(
+      expect.arrayContaining([
+        'listTaskSuggestions',
+        'persistApproveTaskSuggestion',
+        'persistOwnerTaskMutation',
+        'persistGmailHistoryPageTransaction',
+      ]),
+    );
+    expect(listResult.exportNames).not.toContain('persistSuggestionFromClaimedEvent');
+    expect(listResult.exportNames).not.toContain('claimSuggestionProcessingBatch');
   });
 
   it('passes post-build serverless trace verification when .next output exists', () => {

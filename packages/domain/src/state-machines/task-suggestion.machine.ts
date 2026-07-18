@@ -146,7 +146,10 @@ export function mergeTaskSuggestion(
 
   const append = context.appendSummaryPoints !== false;
   const nextSummaryPoints = append
-    ? [...targetTask.summaryPoints, ...suggestion.summaryPoints]
+    ? [...targetTask.summaryPoints, ...suggestion.summaryPoints].map((point, index) => ({
+        ...point,
+        order: index,
+      }))
     : targetTask.summaryPoints;
   if (append) {
     validateSummaryPoints(nextSummaryPoints);

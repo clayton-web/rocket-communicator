@@ -18,6 +18,7 @@ export const PERSISTENCE_ERROR_CODES = new Set<PersistenceErrorCode>([
   'UNIQUE_VIOLATION',
   'VALIDATION',
   'TRANSACTION_FAILED',
+  'RECIPIENT_HANDOFF_NOT_AVAILABLE',
 ]);
 
 const DOMAIN_ERROR_NAME = 'DomainError';
@@ -36,6 +37,7 @@ const TASK_SERVICE_ERROR_CODES = new Set<TaskServiceErrorCode>([
   'FORBIDDEN',
   'ASSIGNMENT_PRECONDITION',
   'PERSISTENCE_CONFLICT',
+  'RECIPIENT_HANDOFF_NOT_AVAILABLE',
 ]);
 
 /** Read a property without throwing on proxies, getters, or non-objects. */

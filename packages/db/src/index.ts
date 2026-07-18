@@ -133,11 +133,13 @@ export {
   persistSkippedIrrelevantOutcome,
   persistFailedRetryableOutcome,
   persistFailedPermanentOutcome,
+} from './transactions/a6-transactions.js';
+export {
   persistApproveTaskSuggestion,
   persistEditTaskSuggestion,
   persistDismissTaskSuggestion,
   persistMergeTaskSuggestion,
-} from './transactions/a6-transactions.js';
+} from './transactions/a6-owner-suggestion-transactions.js';
 export {
   persistGmailHistoryPageTransaction,
   persistGmailConnectionTransaction,

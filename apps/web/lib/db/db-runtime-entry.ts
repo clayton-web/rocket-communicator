@@ -75,6 +75,12 @@ export type TracedRuntimeModule = {
   markCapabilityExpiredRecord: typeof TracedRuntimeBindings.markCapabilityExpiredRecord;
   persistCapabilityAction: typeof TracedRuntimeBindings.persistCapabilityAction;
   persistWorkRequest: typeof TracedRuntimeBindings.persistWorkRequest;
+  listTaskSuggestions: typeof TracedRuntimeBindings.listTaskSuggestions;
+  getTaskSuggestionById: typeof TracedRuntimeBindings.getTaskSuggestionById;
+  persistApproveTaskSuggestion: typeof TracedRuntimeBindings.persistApproveTaskSuggestion;
+  persistEditTaskSuggestion: typeof TracedRuntimeBindings.persistEditTaskSuggestion;
+  persistDismissTaskSuggestion: typeof TracedRuntimeBindings.persistDismissTaskSuggestion;
+  persistMergeTaskSuggestion: typeof TracedRuntimeBindings.persistMergeTaskSuggestion;
   getCommunicationAccountByOrganization: typeof TracedRuntimeBindings.getCommunicationAccountByOrganization;
   getCommunicationAccountById: typeof TracedRuntimeBindings.getCommunicationAccountById;
   getGmailOAuthCredentialByAccountId: typeof TracedRuntimeBindings.getGmailOAuthCredentialByAccountId;
@@ -118,6 +124,12 @@ export async function loadTracedRuntimeModule(): Promise<TracedRuntimeModule> {
     markCapabilityExpiredRecord: tracedRuntime.markCapabilityExpiredRecord,
     persistCapabilityAction: tracedRuntime.persistCapabilityAction,
     persistWorkRequest: tracedRuntime.persistWorkRequest,
+    listTaskSuggestions: tracedRuntime.listTaskSuggestions,
+    getTaskSuggestionById: tracedRuntime.getTaskSuggestionById,
+    persistApproveTaskSuggestion: tracedRuntime.persistApproveTaskSuggestion,
+    persistEditTaskSuggestion: tracedRuntime.persistEditTaskSuggestion,
+    persistDismissTaskSuggestion: tracedRuntime.persistDismissTaskSuggestion,
+    persistMergeTaskSuggestion: tracedRuntime.persistMergeTaskSuggestion,
     getCommunicationAccountByOrganization: tracedRuntime.getCommunicationAccountByOrganization,
     getCommunicationAccountById: tracedRuntime.getCommunicationAccountById,
     getGmailOAuthCredentialByAccountId: tracedRuntime.getGmailOAuthCredentialByAccountId,

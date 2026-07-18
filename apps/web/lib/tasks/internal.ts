@@ -110,6 +110,8 @@ function mapPersistenceCode(code: PersistenceErrorCode): TaskServiceErrorCode {
       return 'PERSISTENCE_CONFLICT';
     case 'VALIDATION':
       return 'VALIDATION_ERROR';
+    case 'RECIPIENT_HANDOFF_NOT_AVAILABLE':
+      return 'RECIPIENT_HANDOFF_NOT_AVAILABLE';
     default:
       return 'PERSISTENCE_CONFLICT';
   }
@@ -126,6 +128,8 @@ function sanitizePersistenceMessage(code: PersistenceErrorCode): string {
       return 'A conflicting resource already exists.';
     case 'VALIDATION':
       return 'Request validation failed.';
+    case 'RECIPIENT_HANDOFF_NOT_AVAILABLE':
+      return 'Recipient handoff is not available when approving a suggestion.';
     default:
       return 'Persistence operation failed.';
   }
@@ -144,8 +148,10 @@ export function buildOwnerAudit(input: {
   id: string;
   owner: OwnerActor;
   action: string;
-  taskId: string;
   now: UtcInstant;
+  taskId?: string;
+  suggestionId?: string;
+  communicationEventId?: string;
   resourceVersion?: number;
   taskStatus?: string;
   assignmentId?: string;
@@ -159,6 +165,8 @@ export function buildOwnerAudit(input: {
     actorKind: 'owner',
     ownerId: input.owner.ownerId,
     taskId: input.taskId,
+    suggestionId: input.suggestionId,
+    communicationEventId: input.communicationEventId,
     assignmentId: input.assignmentId,
     action: input.action,
     outcome: 'succeeded',
