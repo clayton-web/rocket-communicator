@@ -16,6 +16,7 @@
     "test:db": "pnpm --filter @aicaa/db test",
     "test:ai": "pnpm --filter @aicaa/ai test",
     "build": "pnpm build:domain && pnpm build:ai && pnpm build:db && pnpm build:web",
+    "build:vercel": "pnpm build:domain && pnpm build:ai && pnpm build:db && pnpm --filter @aicaa/web build",
     "build:web": "pnpm --filter @aicaa/web build",
     "build:domain": "pnpm --filter @aicaa/domain build",
     "build:ai": "pnpm --filter @aicaa/ai build",

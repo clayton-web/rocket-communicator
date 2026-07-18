@@ -73,11 +73,12 @@ From repository root:
 ```bash
 pnpm install
 pnpm build:domain
+pnpm build:ai          # packages/ai dist (required by @aicaa/web suggestion process)
 pnpm build:db          # includes prisma generate
-pnpm build:web         # next build for apps/web
+pnpm build:web         # builds @aicaa/ai if needed, then next build for apps/web
 ```
 
-`pnpm build` runs domain → db → web in that order. Vercel production builds should succeed only when `@aicaa/db` and `@aicaa/domain` are built before the Next.js bundle so Prisma engines and traced runtime files are present.
+`pnpm build` and `pnpm build:vercel` run **domain → ai → db → web** in that order. `@aicaa/ai` exports compiled `dist/` only (not source) and depends on `@aicaa/domain`. `@aicaa/db` does not import `@aicaa/ai`. Vercel production builds must build `@aicaa/domain`, `@aicaa/ai`, and `@aicaa/db` before the Next.js bundle so workspace `dist` outputs, Prisma engines, and traced runtime files are present. Prefer `pnpm build:vercel` as the Production build command when the app root is `apps/web` (`cd ../.. && pnpm build:vercel`).
 
 Repository verification also includes:
 

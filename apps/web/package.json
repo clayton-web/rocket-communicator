@@ -17,7 +17,7 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "pnpm --filter @aicaa/ai build && next build",
     "start": "next start",
     "lint": "eslint .",
     "test": "pnpm --filter @aicaa/domain build && pnpm --filter @aicaa/ai build && pnpm --filter @aicaa/db build && vitest run"
