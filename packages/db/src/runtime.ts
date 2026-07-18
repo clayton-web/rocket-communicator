@@ -78,6 +78,29 @@ export {
   persistMergeTaskSuggestion,
 } from './transactions/a6-owner-suggestion-transactions.js';
 
+// A6.3 Application Suggestion Engine processing surface (claim + outcomes).
+// Owner suggestion routes use a6-owner-suggestion-transactions only; they must not
+// import @aicaa/ai. Processing symbols are available on the shared runtime module.
+export {
+  claimSuggestionProcessingBatch,
+  releaseSuggestionProcessingClaim,
+  type ClaimSuggestionProcessingBatchInput,
+  type CompleteSuggestionProcessingOutcomeInput,
+} from './repositories/suggestion-processing-repository.js';
+export {
+  persistSuggestionFromClaimedEvent,
+  persistSkippedIrrelevantOutcome,
+  persistFailedRetryableOutcome,
+  persistFailedPermanentOutcome,
+  persistClaimResolvedForExistingSuggestion,
+  persistClaimReleasedWithoutOutcome,
+} from './transactions/a6-transactions.js';
+export {
+  getCommunicationEventById,
+  getTemporaryCommunicationExcerptByEventId,
+} from './repositories/communication-event-repository.js';
+export { getTaskSuggestionBySourceEventId } from './repositories/suggestion-repository.js';
+
 // A5.3 Owner Gmail OAuth / connection surface (server-only runtime bridge).
 export {
   getCommunicationAccountByOrganization,

@@ -91,7 +91,7 @@ function assertNextConfig() {
 
   const requiredSnippets = [
     "serverExternalPackages: ['@aicaa/db', 'google-auth-library']",
-    "transpilePackages: ['@aicaa/domain']",
+    "transpilePackages: ['@aicaa/domain', '@aicaa/ai']",
     'outputFileTracingRoot',
     'outputFileTracingIncludes',
     'dbPackageRuntimeTraceFiles',

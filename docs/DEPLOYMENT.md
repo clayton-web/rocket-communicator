@@ -165,9 +165,9 @@ After enablement, confirm invocations via the scheduler’s execution logs and `
 
 **A5 closed.** History recovery and Gmail settings UI remain deferred and do **not** block A6. A6 suggestion processing uses a **separate** authenticated endpoint (`POST /api/v1/internal/suggestions/process`, D084) and must not run inside Gmail History sync transactions.
 
-### Suggestion processing operations (A6; contracted)
+### Suggestion processing operations (A6.3; scheduler disabled until Production verification)
 
-After A6 implementation ships, configure a **separate** External Scheduler job:
+After A6.3 is committed, migrated, deployed, and Production LLM verification passes, configure a **separate** External Scheduler job (do **not** enable before verification):
 
 | Setting        | Guidance                                                                            |
 | -------------- | ----------------------------------------------------------------------------------- |
@@ -177,7 +177,11 @@ After A6 implementation ships, configure a **separate** External Scheduler job:
 | Authentication | `Authorization: Bearer <CRON_SECRET>`                                               |
 | Request body   | Empty / none required                                                               |
 
-Do not enable until A6 handlers, migration, and AI credentials are production-ready. Response is aggregate counts only — never raw bodies (D084, D085). Overlapping or repeated invocations are **safe** (claim leases + relational 0..1 suggestion uniqueness, D081). Use the **same** Production `CRON_SECRET` as Gmail poll unless a future Decision requires secret separation.
+**Credential distinction (names only):** `CRON_SECRET` authenticates the application process endpoint (same secret family as Gmail poll). `CRON_JOB_ORG_API_KEY` (or equivalent scheduler management credential) is used only outside the app to administer the scheduler account — never committed, never logged, never sent to application routes.
+
+Do not enable until A6 handlers, the A6.1 migration, and AI credentials (`OPENAI_API_KEY` / related) are production-ready and verified. Response is aggregate counts only — never raw bodies (D084, D085). Overlapping or repeated invocations are **safe** (claim leases + relational 0..1 suggestion uniqueness, D081). Heuristic relevance runs before AI; AI failure does not create heuristic-only fallback suggestions (D085).
+
+**Production rollout order (after A6.3 commit):** apply A6.1 migration → deploy web → configure AI credentials → Production LLM verification → enable suggestion-process scheduler → A6 closure/tag → then A9.0.
 
 ## Capability links in production
 

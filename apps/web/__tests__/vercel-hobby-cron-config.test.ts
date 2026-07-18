@@ -76,4 +76,23 @@ describe('vercel Hobby cron configuration', () => {
     expect(source).toMatch(/authorizeCronRequest/);
     expect(source).toMatch(/CRON_SECRET/);
   });
+
+  it('keeps the internal suggestion process route present and separate from Gmail poll', () => {
+    const processRoutePath = path.join(
+      repoRoot,
+      'apps/web/app/api/v1/internal/suggestions/process/route.ts',
+    );
+    expect(existsSync(processRoutePath)).toBe(true);
+    const source = readFileSync(processRoutePath, 'utf8');
+    expect(source).toMatch(/export async function POST/);
+    expect(source).toMatch(/authorizeCronRequest/);
+    expect(source).not.toMatch(/runInternalGmailPoll/);
+
+    const config = JSON.parse(readFileSync(vercelJsonPath, 'utf8')) as {
+      crons?: Array<{ path?: string; schedule?: string }>;
+    };
+    expect(
+      (config.crons ?? []).some((cron) => cron.path === '/api/v1/internal/suggestions/process'),
+    ).toBe(false);
+  });
 });

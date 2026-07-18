@@ -81,6 +81,16 @@ export type TracedRuntimeModule = {
   persistEditTaskSuggestion: typeof TracedRuntimeBindings.persistEditTaskSuggestion;
   persistDismissTaskSuggestion: typeof TracedRuntimeBindings.persistDismissTaskSuggestion;
   persistMergeTaskSuggestion: typeof TracedRuntimeBindings.persistMergeTaskSuggestion;
+  claimSuggestionProcessingBatch: typeof TracedRuntimeBindings.claimSuggestionProcessingBatch;
+  persistSuggestionFromClaimedEvent: typeof TracedRuntimeBindings.persistSuggestionFromClaimedEvent;
+  persistSkippedIrrelevantOutcome: typeof TracedRuntimeBindings.persistSkippedIrrelevantOutcome;
+  persistFailedRetryableOutcome: typeof TracedRuntimeBindings.persistFailedRetryableOutcome;
+  persistFailedPermanentOutcome: typeof TracedRuntimeBindings.persistFailedPermanentOutcome;
+  persistClaimResolvedForExistingSuggestion: typeof TracedRuntimeBindings.persistClaimResolvedForExistingSuggestion;
+  persistClaimReleasedWithoutOutcome: typeof TracedRuntimeBindings.persistClaimReleasedWithoutOutcome;
+  getCommunicationEventById: typeof TracedRuntimeBindings.getCommunicationEventById;
+  getTemporaryCommunicationExcerptByEventId: typeof TracedRuntimeBindings.getTemporaryCommunicationExcerptByEventId;
+  getTaskSuggestionBySourceEventId: typeof TracedRuntimeBindings.getTaskSuggestionBySourceEventId;
   getCommunicationAccountByOrganization: typeof TracedRuntimeBindings.getCommunicationAccountByOrganization;
   getCommunicationAccountById: typeof TracedRuntimeBindings.getCommunicationAccountById;
   getGmailOAuthCredentialByAccountId: typeof TracedRuntimeBindings.getGmailOAuthCredentialByAccountId;
@@ -130,6 +140,18 @@ export async function loadTracedRuntimeModule(): Promise<TracedRuntimeModule> {
     persistEditTaskSuggestion: tracedRuntime.persistEditTaskSuggestion,
     persistDismissTaskSuggestion: tracedRuntime.persistDismissTaskSuggestion,
     persistMergeTaskSuggestion: tracedRuntime.persistMergeTaskSuggestion,
+    claimSuggestionProcessingBatch: tracedRuntime.claimSuggestionProcessingBatch,
+    persistSuggestionFromClaimedEvent: tracedRuntime.persistSuggestionFromClaimedEvent,
+    persistSkippedIrrelevantOutcome: tracedRuntime.persistSkippedIrrelevantOutcome,
+    persistFailedRetryableOutcome: tracedRuntime.persistFailedRetryableOutcome,
+    persistFailedPermanentOutcome: tracedRuntime.persistFailedPermanentOutcome,
+    persistClaimResolvedForExistingSuggestion:
+      tracedRuntime.persistClaimResolvedForExistingSuggestion,
+    persistClaimReleasedWithoutOutcome: tracedRuntime.persistClaimReleasedWithoutOutcome,
+    getCommunicationEventById: tracedRuntime.getCommunicationEventById,
+    getTemporaryCommunicationExcerptByEventId:
+      tracedRuntime.getTemporaryCommunicationExcerptByEventId,
+    getTaskSuggestionBySourceEventId: tracedRuntime.getTaskSuggestionBySourceEventId,
     getCommunicationAccountByOrganization: tracedRuntime.getCommunicationAccountByOrganization,
     getCommunicationAccountById: tracedRuntime.getCommunicationAccountById,
     getGmailOAuthCredentialByAccountId: tracedRuntime.getGmailOAuthCredentialByAccountId,

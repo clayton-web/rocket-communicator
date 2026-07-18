@@ -189,3 +189,64 @@ export async function completeSuggestionProcessingOutcome(
   }
   return mapCommunicationEvent(row);
 }
+
+/**
+ * Release a claim without recording a processing outcome (soft deadline / global config abort).
+ * Clears the lease and refunds the attempt that was incremented at claim time so time-budget
+ * or deployment-config aborts cannot starve otherwise healthy events toward the attempt ceiling.
+ */
+export async function releaseSuggestionProcessingClaim(
+  db: Client,
+  input: {
+    organizationId: string;
+    eventId: string;
+    claimOwner: string;
+    /** When true (default), decrement suggestionProcessingAttempts by one (floor 0). */
+    refundAttempt?: boolean;
+  },
+): Promise<CommunicationEvent> {
+  const refundAttempt = input.refundAttempt !== false;
+  const row = await db.communicationEvent.findFirst({
+    where: {
+      id: input.eventId,
+      organizationId: input.organizationId,
+      suggestionClaimOwner: input.claimOwner,
+    },
+  });
+  if (!row) {
+    throw optimisticConcurrency(
+      `CommunicationEvent ${input.eventId} claim owner ${input.claimOwner} was not current.`,
+    );
+  }
+
+  const nextAttempts = refundAttempt
+    ? Math.max(0, row.suggestionProcessingAttempts - 1)
+    : row.suggestionProcessingAttempts;
+
+  const result = await db.communicationEvent.updateMany({
+    where: {
+      id: input.eventId,
+      organizationId: input.organizationId,
+      suggestionClaimOwner: input.claimOwner,
+    },
+    data: {
+      suggestionClaimOwner: null,
+      suggestionClaimUntil: null,
+      suggestionProcessingAttempts: nextAttempts,
+    },
+  });
+
+  if (result.count !== 1) {
+    throw optimisticConcurrency(
+      `CommunicationEvent ${input.eventId} claim owner ${input.claimOwner} was not current.`,
+    );
+  }
+
+  const updated = await db.communicationEvent.findFirst({
+    where: { id: input.eventId, organizationId: input.organizationId },
+  });
+  if (!updated) {
+    throw notFound(`CommunicationEvent ${input.eventId} not found for organization.`);
+  }
+  return mapCommunicationEvent(updated);
+}

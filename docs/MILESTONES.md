@@ -1,6 +1,6 @@
 # Milestones
 
-**Current:** A6.0 documentation, Decision Records (D080–D085), OpenAPI/API contract alignment, and authentic generated clients — **ready for human approval to commit**. A5 Gmail connection and polling is **closed and healthy in Production**. **Next after A6.0 commit approval:** A6.1 persistence (no application handlers yet).
+**Current:** A6.3 Application Suggestion Engine is **code-complete locally** (awaiting review/commit, then Production rollout). A6.0–A6.2 are on `main`. A5 Gmail connection and polling remains **closed and healthy in Production**. **Do not begin A7/A8/A9.0 until A6 closes** (migration applied, deploy, Production LLM verify, suggestion scheduler enabled, tag).
 
 Process: [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW.md) · [REVIEW_CHECKLIST.md](REVIEW_CHECKLIST.md) · Operations: [DEPLOYMENT.md](DEPLOYMENT.md)
 
@@ -69,11 +69,32 @@ Connect one inbox; poll every **five minutes** (D065); create communication even
 
 ### A6.0 — Documentation, decisions, and contract alignment
 
-**Status:** Complete (awaiting human review). Docs + Decision Records D080–D085 + OpenAPI/API contract aligned. **No application code, migrations, or Production changes in A6.0.**
+**Status:** Complete on `main`. Docs + Decision Records D080–D085 + OpenAPI/API contract aligned.
 
-### A6 — AI relevance and task suggestions
+### A6.1 — Suggestion persistence foundation
 
-**Next after A6.0 approval.** Heuristic relevance + LLM extraction (`packages/ai`, D085); Owner approve/edit/dismiss/merge HTTP; approve creates **unassigned Task only** (D080); separate internal process endpoint (D084); no auto-create Tasks; no Recipient handoff, Gmail send/forward, capability, or reminders (A7/A8). No Android acceptance requirement.
+**Status:** Complete on `main`. Claim/lease, processing statuses, suggestion↔event uniqueness, D082 retention helpers. Migration present in repo; **not applied to Production until A6 rollout**.
+
+### A6.2 — Owner suggestion HTTP
+
+**Status:** Complete on `main`. List/get/edit/dismiss/approve/merge under `/api/v1/task-suggestions`. Approve creates **unassigned Task only** (D080). Owner transactions split from processing transactions.
+
+### A6.3 — Application Suggestion Engine (local code-complete)
+
+**Status:** Local implementation complete; **awaiting review/commit**. Includes:
+
+- `packages/ai` (provider-neutral extraction + OpenAI-compatible adapter; mocked in tests)
+- Deterministic heuristic relevance gate (before AI)
+- `POST /api/v1/internal/suggestions/process` (`CRON_SECRET` / `InternalCronBearer`)
+- Claim → heuristic → AI → persist orchestration with soft Hobby deadline
+- Runtime bridge exports for processing; NFT packaging for the process route
+- Separation from Gmail poll (D075, D084)
+
+**Not done in A6.3:** Production migration apply, deploy, live LLM verification, External Scheduler enablement, A6 completion tag.
+
+### A6 — AI relevance and task suggestions (milestone closure)
+
+**Status:** Not closed. Closure requires A6.3 on `main`, Production migration + deploy, Production LLM path verification (D085), then enable the **separate** suggestion-process scheduler job. Do **not** mark A6 complete or add the completion tag until those steps finish. After A6 closes → A9.0 (interim Android), not A7 first unless operator reorders.
 
 ---
 

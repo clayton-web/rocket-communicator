@@ -3,6 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "dependencies": {
+    "@aicaa/ai": "workspace:*",
     "@aicaa/contracts": "workspace:*",
     "@aicaa/db": "workspace:*",
     "@aicaa/domain": "workspace:*",
@@ -19,7 +20,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "test": "pnpm --filter @aicaa/domain build && pnpm --filter @aicaa/db build && vitest run"
+    "test": "pnpm --filter @aicaa/domain build && pnpm --filter @aicaa/ai build && pnpm --filter @aicaa/db build && vitest run"
   },
   "devDependencies": {
     "@aicaa/eslint-config": "workspace:*",

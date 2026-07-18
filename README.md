@@ -12,15 +12,15 @@ Not a permanent communication archive.
 
 ## Current status
 
-| Area                            | Status                                                                                                                            |
-| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| A3 Owner authentication         | Complete; production-verified (`GET /api/v1/session` → 200, `organizationId` = `axford`)                                          |
-| A4 task + capability            | Complete — **`A4_FULL_E2E_PASS`**: migration applied; full production Owner↔Recipient E2E passed                                  |
-| A5 Gmail connection and polling | **Complete and Production-operational** (OAuth, encrypted tokens, History seed + incremental poll, locks, dedupe, audit, cron 5m) |
-| Production baseline             | Healthy; A4 and A5 operational                                                                                                    |
-| Next                            | A6 AI relevance and task suggestions after A6.0 contract/docs approval ([MILESTONES](docs/MILESTONES.md))                         |
-| Deferred (non-blocking)         | Gmail settings UI; History recovery                                                                                               |
-| Later                           | Gmail forward / Recipient handoff (A7), reminders (A8), Android task UI (A9), notifications, voice, workers                       |
+| Area                            | Status                                                                                                                                                |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A3 Owner authentication         | Complete; production-verified (`GET /api/v1/session` → 200, `organizationId` = `axford`)                                                              |
+| A4 task + capability            | Complete — **`A4_FULL_E2E_PASS`**: migration applied; full production Owner↔Recipient E2E passed                                                      |
+| A5 Gmail connection and polling | **Complete and Production-operational** (OAuth, encrypted tokens, History seed + incremental poll, locks, dedupe, audit, cron 5m)                     |
+| Production baseline             | Healthy; A4 and A5 operational                                                                                                                        |
+| Next                            | A6.3 local code-complete → review/commit → Production rollout/verify → enable suggestion scheduler → A6 tag → A9.0 ([MILESTONES](docs/MILESTONES.md)) |
+| Deferred (non-blocking)         | Gmail settings UI; History recovery                                                                                                                   |
+| Later                           | Gmail forward / Recipient handoff (A7), reminders (A8), Android task UI (A9), notifications, voice, workers                                           |
 
 Operations: [DEPLOYMENT](docs/DEPLOYMENT.md). Terms: [GLOSSARY](docs/GLOSSARY.md). Plan: [MILESTONES](docs/MILESTONES.md).
 
@@ -54,6 +54,8 @@ pnpm --filter @aicaa/web dev
 ```
 
 Capability / DB env placeholders: `apps/web/.env.example`, `packages/db/.env.example` (no secrets in repo).
+
+Contract generation: `pnpm contracts:generate` (needs local JDK 17 for Kotlin). If Java is not installed, use optional `pnpm contracts:generate:docker` (Docker Desktop + pinned Temurin 17; host Node/pnpm still run the rest). Docker is not required for tests or day-to-day app work — details in [docs/API_CONTRACT.md](docs/API_CONTRACT.md).
 
 ## Documentation map
 

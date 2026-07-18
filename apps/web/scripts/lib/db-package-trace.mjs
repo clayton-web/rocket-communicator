@@ -56,6 +56,16 @@ export const REQUIRED_RUNTIME_EXPORTS = [
   'persistEditTaskSuggestion',
   'persistDismissTaskSuggestion',
   'persistMergeTaskSuggestion',
+  'claimSuggestionProcessingBatch',
+  'persistSuggestionFromClaimedEvent',
+  'persistSkippedIrrelevantOutcome',
+  'persistFailedRetryableOutcome',
+  'persistFailedPermanentOutcome',
+  'persistClaimResolvedForExistingSuggestion',
+  'persistClaimReleasedWithoutOutcome',
+  'getCommunicationEventById',
+  'getTemporaryCommunicationExcerptByEventId',
+  'getTaskSuggestionBySourceEventId',
   'getCommunicationAccountByOrganization',
   'getCommunicationAccountById',
   'getGmailOAuthCredentialByAccountId',
@@ -105,15 +115,18 @@ export const A6_2_REQUIRED_RUNTIME_MODULES = [
   'packages/db/dist/transactions/a6-owner-suggestion-transactions.js',
 ];
 
-/**
- * A6.3 processing modules must not appear in the runtime.js import graph.
- * Note: NFT traces may still list unused packages/db/dist JS files because
- * next.config outputFileTracingIncludes uses a blanket dist glob for DB-backed routes.
- */
-export const A6_3_PROCESSING_MODULES_EXCLUDED_FROM_RUNTIME_GRAPH = [
+/** A6.3 processing modules required on the production runtime bridge import graph. */
+export const A6_3_REQUIRED_RUNTIME_MODULES = [
+  'packages/db/dist/runtime.js',
   'packages/db/dist/transactions/a6-transactions.js',
   'packages/db/dist/repositories/suggestion-processing-repository.js',
 ];
+
+/** Internal suggestion process route NFT entrypoint. */
+export const A6_3_PROCESS_ROUTE_NFT = 'app/api/v1/internal/suggestions/process/route.js.nft.json';
+
+/** Process route must include compiled @aicaa/ai output (repo or workspace link). */
+export const A6_3_AI_PACKAGE_MARKERS = ['packages/ai/dist/index.js', 'packages/ai/package.json'];
 
 export const DB_BACKED_PAGE_ROUTE_NFTS = ['app/c/[token]/page.js.nft.json'];
 

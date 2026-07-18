@@ -1,0 +1,5 @@
+{
+  "extends": "@aicaa/typescript-config/base.json",
+  "include": ["src/**/*.ts", "vitest.config.ts", "__tests__/**/*.ts"],
+  "exclude": ["dist"]
+}

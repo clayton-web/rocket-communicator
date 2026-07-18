@@ -60,6 +60,7 @@ export {
 export {
   claimSuggestionProcessingBatch,
   completeSuggestionProcessingOutcome,
+  releaseSuggestionProcessingClaim,
   type ClaimSuggestionProcessingBatchInput,
   type CompleteSuggestionProcessingOutcomeInput,
 } from './repositories/suggestion-processing-repository.js';
@@ -133,6 +134,8 @@ export {
   persistSkippedIrrelevantOutcome,
   persistFailedRetryableOutcome,
   persistFailedPermanentOutcome,
+  persistClaimResolvedForExistingSuggestion,
+  persistClaimReleasedWithoutOutcome,
 } from './transactions/a6-transactions.js';
 export {
   persistApproveTaskSuggestion,

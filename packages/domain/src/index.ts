@@ -55,7 +55,11 @@ export type {
   SummaryPointKind,
   Sensitivity,
 } from './value-objects/task-summary-point.js';
-export { MAX_SUMMARY_POINTS, MAX_TEXT_VALUE_LENGTH } from './value-objects/task-summary-point.js';
+export {
+  MAX_SUMMARY_POINTS,
+  MAX_TEXT_VALUE_LENGTH,
+  MAX_LABEL_LENGTH,
+} from './value-objects/task-summary-point.js';
 export type { SourceReference, SourceType } from './value-objects/source-reference.js';
 export type {
   CommunicationProvider,

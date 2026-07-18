@@ -7,7 +7,8 @@ import { describe, expect, it } from 'vitest';
 import {
   A6_2_REQUIRED_RUNTIME_MODULES,
   A6_2_SUGGESTION_ROUTE_NFTS,
-  A6_3_PROCESSING_MODULES_EXCLUDED_FROM_RUNTIME_GRAPH,
+  A6_3_PROCESS_ROUTE_NFT,
+  A6_3_REQUIRED_RUNTIME_MODULES,
   DB_BACKED_ROUTE_NFTS,
   DB_RUNTIME_RELATIVE,
   DOMAIN_NODE_MODULES_DIST_INDEX_RELATIVE,
@@ -74,12 +75,14 @@ describe('Prisma serverless packaging configuration', () => {
   it('externalizes @aicaa/db and sets monorepo Prisma trace includes in next.config.mjs', () => {
     const config = fs.readFileSync(nextConfigPath, 'utf8');
     expect(config).toContain("serverExternalPackages: ['@aicaa/db', 'google-auth-library']");
-    expect(config).toContain("transpilePackages: ['@aicaa/domain']");
+    expect(config).toContain("transpilePackages: ['@aicaa/domain', '@aicaa/ai']");
     expect(config).not.toMatch(/transpilePackages:\s*\[[^\]]*@aicaa\/db/);
     expect(config).toContain('outputFileTracingRoot');
     expect(config).toContain('outputFileTracingIncludes');
     expect(config).toContain('dbPackageRuntimeTraceFiles');
     expect(config).toContain('domainPackageRuntimeTraceFiles');
+    expect(config).toContain('aiPackageRuntimeTraceFiles');
+    expect(config).toContain('suggestionProcessRouteTraceFiles');
     expect(config).toContain('workspacePackageEntryTraceFiles');
     expect(config).toContain('dbPackageRoot');
     expect(config).toContain('${dbPackageRoot}/package.json');
@@ -87,9 +90,14 @@ describe('Prisma serverless packaging configuration', () => {
     expect(config).toContain('domainPackageRoot');
     expect(config).toContain('${domainPackageRoot}/package.json');
     expect(config).toContain('${domainPackageRoot}/dist/**/*.js');
+    expect(config).toContain('aiPackageRoot');
+    expect(config).toContain('${aiPackageRoot}/package.json');
+    expect(config).toContain('${aiPackageRoot}/dist/**/*.js');
     expect(config).toContain('node_modules/@aicaa/db/package.json');
     expect(config).toContain('node_modules/@aicaa/domain/package.json');
     expect(config).toContain('node_modules/@aicaa/domain/dist/**/*.js');
+    expect(config).toContain('node_modules/@aicaa/ai/package.json');
+    expect(config).toContain("'/api/v1/internal/suggestions/process'");
     expect(config).toContain('turbopack:');
     expect(config).toContain('root: monorepoRoot');
     expect(config).toContain(RHEL_ENGINE);
@@ -278,16 +286,12 @@ describe('Prisma serverless packaging configuration', () => {
       path.relative(repoRoot, filePath).replace(/\\/g, '/'),
     );
 
-    for (const excluded of A6_3_PROCESSING_MODULES_EXCLUDED_FROM_RUNTIME_GRAPH) {
-      expect(
-        runtimeGraph.includes(excluded),
-        `runtime.js import graph must not require ${excluded}`,
-      ).toBe(false);
-    }
     expect(runtimeGraph).toEqual(
       expect.arrayContaining([
         'packages/db/dist/runtime.js',
         'packages/db/dist/transactions/a6-owner-suggestion-transactions.js',
+        'packages/db/dist/transactions/a6-transactions.js',
+        'packages/db/dist/repositories/suggestion-processing-repository.js',
         'packages/db/dist/transactions/a4-transactions.js',
         'packages/db/dist/transactions/gmail-transactions.js',
       ]),
@@ -308,6 +312,16 @@ describe('Prisma serverless packaging configuration', () => {
       assertNftIncludesDbPackageRuntime(files, repoRoot, relativeNft);
     }
 
+    // Owner suggestion route sources must not import @aicaa/ai (process route owns that dependency).
+    const ownerSuggestionLib = path.join(webRoot, 'lib/suggestions');
+    for (const fileName of ['mutations.ts', 'queries.ts', 'validate-body.ts', 'index.ts']) {
+      const source = fs.readFileSync(path.join(ownerSuggestionLib, fileName), 'utf8');
+      expect(source, fileName).not.toMatch(/@aicaa\/ai/);
+    }
+    expect(fs.readFileSync(path.join(ownerSuggestionLib, 'heuristic.ts'), 'utf8')).not.toMatch(
+      /@aicaa\/ai/,
+    );
+
     const listResult = simulateRouteRuntimeRequire({
       webRoot,
       repoRoot,
@@ -319,10 +333,52 @@ describe('Prisma serverless packaging configuration', () => {
         'persistApproveTaskSuggestion',
         'persistOwnerTaskMutation',
         'persistGmailHistoryPageTransaction',
+        'claimSuggestionProcessingBatch',
+        'persistSuggestionFromClaimedEvent',
       ]),
     );
-    expect(listResult.exportNames).not.toContain('persistSuggestionFromClaimedEvent');
-    expect(listResult.exportNames).not.toContain('claimSuggestionProcessingBatch');
+  });
+
+  it('includes A6.3 processing runtime modules and packages/ai in process-route NFT when built', () => {
+    const nextDir = path.join(webRoot, '.next');
+    if (!fs.existsSync(nextDir)) {
+      return;
+    }
+
+    const nftPath = path.join(webRoot, '.next/server', A6_3_PROCESS_ROUTE_NFT);
+    expect(fs.existsSync(nftPath), A6_3_PROCESS_ROUTE_NFT).toBe(true);
+    const nft = JSON.parse(fs.readFileSync(nftPath, 'utf8')) as { files?: string[] };
+    const files = Array.isArray(nft.files) ? nft.files : [];
+
+    for (const required of A6_3_REQUIRED_RUNTIME_MODULES) {
+      expect(
+        nftIncludesRepoFile(files, repoRoot, required),
+        `${A6_3_PROCESS_ROUTE_NFT} → ${required}`,
+      ).toBe(true);
+    }
+    expect(
+      nftIncludesRepoFile(files, repoRoot, 'packages/ai/dist/index.js') ||
+        files.some((entry) => entry.includes('@aicaa/ai') && entry.includes('dist/index.js')),
+      `${A6_3_PROCESS_ROUTE_NFT} must include @aicaa/ai`,
+    ).toBe(true);
+    assertNftIncludesDbPackageRuntime(files, repoRoot, A6_3_PROCESS_ROUTE_NFT);
+
+    const processResult = simulateRouteRuntimeRequire({
+      webRoot,
+      repoRoot,
+      nftRelativePath: A6_3_PROCESS_ROUTE_NFT,
+    });
+    expect(processResult.exportNames).toEqual(
+      expect.arrayContaining([
+        'claimSuggestionProcessingBatch',
+        'persistSuggestionFromClaimedEvent',
+        'persistSkippedIrrelevantOutcome',
+        'persistFailedRetryableOutcome',
+        'persistFailedPermanentOutcome',
+        'persistClaimResolvedForExistingSuggestion',
+        'persistClaimReleasedWithoutOutcome',
+      ]),
+    );
   });
 
   it('passes post-build serverless trace verification when .next output exists', () => {

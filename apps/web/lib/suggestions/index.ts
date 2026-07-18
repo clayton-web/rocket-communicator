@@ -11,3 +11,4 @@ export {
   parseDismissSuggestionBody,
   parseMergeSuggestionBody,
 } from './validate-body';
+export { evaluateSuggestionRelevance } from './heuristic';

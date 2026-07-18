@@ -73,7 +73,7 @@ Do not delete this target architecture; label it accurately when implementing.
 | `packages/contracts`                                    | Canonical OpenAPI 3.1; generated TypeScript and Kotlin DTOs (D007)                                                           |
 | `packages/domain`                                       | Pure TypeScript state machines, policies, retention helpers—no I/O                                                           |
 | `packages/db`                                           | Prisma schema, migrations, repositories, transactions (server-only; D006, D062)                                              |
-| `packages/ai`                                           | LLM extraction adapters for A6+ (D085); introduced in A6                                                                     |
+| `packages/ai`                                           | LLM extraction adapters for A6+ (D085); **exists as of A6.3** (`@aicaa/ai`)                                                  |
 | `packages/eslint-config` / `packages/typescript-config` | Shared tooling                                                                                                               |
 | `packages/ui`                                           | Deferred                                                                                                                     |
 

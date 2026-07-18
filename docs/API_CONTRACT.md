@@ -38,6 +38,17 @@ Committed outputs; `pnpm contracts:generate` / `contracts:check-drift` (D044). K
 
 Kotlin (D047): model-only (`apis=false`, `supportingFiles=false`); `library=jvm-okhttp4`; `serializationLibrary=moshi`; no HTTP client runtime. Android networking client deferred.
 
+### Generating clients locally
+
+| Command                          | When to use                                                                                                                                                                           |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm contracts:generate`        | Default. Requires a local **JDK 17** (same major as CI Temurin 17) for Kotlin generation.                                                                                             |
+| `pnpm contracts:generate:docker` | Optional. When host `java` is unavailable; Docker Desktop must be running. Supplies a pinned Temurin JDK 17 image for Kotlin only; bundle and TypeScript still run on host Node/pnpm. |
+
+Docker is **optional** tooling for Kotlin generation. It is **not** required for ordinary tests (PGlite), application development, or production (Vercel + Supabase + cron-job.org). Do not treat Docker as a general monorepo runtime.
+
+After either generate path, `pnpm contracts:check-drift` must pass — committed TypeScript and Kotlin outputs stay the source of CI truth (D044).
+
 ## Base path
 
 `/api/v1`
@@ -106,15 +117,17 @@ Full rules: [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md).
 
 Recipient **work requests** in A4 create pending suggestions in persistence without these Owner review routes.
 
-### Internal suggestion processing (A6)
+### Internal suggestion processing (A6.3)
 
-**Status: contract-only / planned for A6** (D084, D085).
+**Status: implemented locally (A6.3); Production rollout and scheduler enablement deferred until after commit + verification.**
 
 | Method | Path                                   | Purpose                                                              |
 | ------ | -------------------------------------- | -------------------------------------------------------------------- |
 | POST   | `/api/v1/internal/suggestions/process` | External Scheduler invocation (`InternalCronBearer` / `CRON_SECRET`) |
 
-**POST only** (matches preferred cron-job.org / A5 production adapter method). Bounded batch; returns aggregate counts (`claimed`, `skippedIrrelevant`, `suggestionsCreated`, `failedRetryable`, `failedPermanent`, `requestId`). No raw communication bodies. Independent of Gmail History ingestion (D075, D084). Safe to invoke repeatedly.
+**POST only.** Empty body. Bounded batch with Hobby-safe soft time budget. Returns aggregate counts (`claimed`, `skippedIrrelevant`, `suggestionsCreated`, `failedRetryable`, `failedPermanent`, `requestId`). Lifecycle: claim/lease → deterministic heuristic → LLM extraction via `packages/ai` only for heuristic-pass events → at most one pending suggestion per event (D081, D085). No raw communication bodies, excerpts, prompts, or model payloads in responses. Independent of Gmail History ingestion (D075, D084). Safe to invoke repeatedly. Global AI misconfiguration fails the invocation (or releases claims without permanently poisoning events).
+
+**Credentials (names only):** application auth uses `CRON_SECRET`. The External Scheduler management credential (for example cron-job.org’s API key env name `CRON_JOB_ORG_API_KEY`) is never stored in the repository and is not used by the application endpoint.
 
 ### Recipient capability routes and pages
 
