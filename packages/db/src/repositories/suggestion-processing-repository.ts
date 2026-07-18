@@ -35,6 +35,10 @@ export interface ClaimSuggestionProcessingBatchInput {
  * - claim is absent or expired
  * - event lifecycle status is `active`
  *
+ * Selection order (fairness): `unprocessed` before `failed_retryable`, then fewer
+ * attempts, then older `internalDate`, then `id`. Retries fill remaining batch slots
+ * only after fresh work is claimed (or when no fresh work remains).
+ *
  * On successful claim: sets claim owner/expiry and increments `suggestionProcessingAttempts`
  * exactly once per successful claim.
  *
@@ -84,7 +88,14 @@ export async function claimSuggestionProcessingBatch(
         ...eligibilityWhere,
         ...(claimedIds.size > 0 ? { id: { notIn: [...claimedIds] } } : {}),
       },
-      orderBy: [{ internalDate: 'asc' }, { id: 'asc' }],
+      // Prefer fresh `unprocessed` over `failed_retryable` so retries cannot starve new work.
+      // Enum declaration order: unprocessed < … < failed_retryable. Then fewer attempts, then age.
+      orderBy: [
+        { suggestionProcessingStatus: 'asc' },
+        { suggestionProcessingAttempts: 'asc' },
+        { internalDate: 'asc' },
+        { id: 'asc' },
+      ],
       take: Math.max(need * 3, need),
       select: { id: true, organizationId: true },
     });

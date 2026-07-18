@@ -389,6 +389,9 @@ export async function runInternalSuggestionProcess(input: {
       }
 
       if (isAiProviderError(error) && error.kind === 'permanent') {
+        const permanentNote = error.diagnosticFingerprint
+          ? `${error.code}|${error.diagnosticFingerprint}`
+          : error.code;
         await runtime.persistFailedPermanentOutcome({
           db: input.db,
           organizationId: event.organizationId,
@@ -402,7 +405,7 @@ export async function runInternalSuggestionProcess(input: {
             now: failAt,
             requestId: input.requestId,
             action: 'suggestion.process.failed_permanent',
-            note: error.code,
+            note: permanentNote,
           }),
         });
         failedPermanent += 1;
@@ -414,6 +417,10 @@ export async function runInternalSuggestionProcess(input: {
         : isPersistenceError(error)
           ? error.code
           : 'AI_UNKNOWN_RETRYABLE';
+      const retryNote =
+        isAiProviderError(error) && error.diagnosticFingerprint
+          ? `${errorCode}|${error.diagnosticFingerprint}`
+          : errorCode;
 
       await runtime.persistFailedRetryableOutcome({
         db: input.db,
@@ -428,7 +435,7 @@ export async function runInternalSuggestionProcess(input: {
           now: failAt,
           requestId: input.requestId,
           action: 'suggestion.process.failed_retryable',
-          note: errorCode,
+          note: retryNote,
         }),
       });
       failedRetryable += 1;

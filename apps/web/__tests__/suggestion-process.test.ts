@@ -240,22 +240,39 @@ describe('A6.3 suggestion process service + route', () => {
   });
 
   it('does not permanently poison events on global AI misconfiguration', async () => {
+    const previousKey = process.env.OPENAI_API_KEY;
+    const previousEnabled = process.env.SUGGESTION_AI_ENABLED;
+    delete process.env.OPENAI_API_KEY;
+    process.env.SUGGESTION_AI_ENABLED = 'true';
     await seedEvent('evt_cfg', 'msg_cfg');
-    await expect(
-      runInternalSuggestionProcess({
-        db: db.prisma,
-        requestId: 'req_cfg',
-        now,
-        deps: {
-          // Force config assert path without skip
-          skipConfigAssert: false,
-        },
-      }),
-    ).rejects.toBeInstanceOf(SuggestionProcessConfigurationError);
+    try {
+      await expect(
+        runInternalSuggestionProcess({
+          db: db.prisma,
+          requestId: 'req_cfg',
+          now,
+          deps: {
+            // Force config assert path without skip
+            skipConfigAssert: false,
+          },
+        }),
+      ).rejects.toBeInstanceOf(SuggestionProcessConfigurationError);
 
-    const event = await getCommunicationEventById(db.prisma, org, 'evt_cfg');
-    expect(event.suggestionProcessingStatus).toBe('unprocessed');
-    expect(event.suggestionClaimOwner).toBeNull();
+      const event = await getCommunicationEventById(db.prisma, org, 'evt_cfg');
+      expect(event.suggestionProcessingStatus).toBe('unprocessed');
+      expect(event.suggestionClaimOwner).toBeNull();
+    } finally {
+      if (previousKey !== undefined) {
+        process.env.OPENAI_API_KEY = previousKey;
+      } else {
+        delete process.env.OPENAI_API_KEY;
+      }
+      if (previousEnabled !== undefined) {
+        process.env.SUGGESTION_AI_ENABLED = previousEnabled;
+      } else {
+        delete process.env.SUGGESTION_AI_ENABLED;
+      }
+    }
   });
 
   it('treats existing unique suggestion as success-equivalent after verify', async () => {

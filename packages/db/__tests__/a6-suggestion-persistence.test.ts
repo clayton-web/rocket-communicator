@@ -921,6 +921,73 @@ describe('A6.1 suggestion persistence foundation (PGlite)', () => {
     expect(refill).toHaveLength(0);
   });
 
+  it('prefers unprocessed events over older failed_retryable (claim fairness)', async () => {
+    const fairnessOrg = 'org_claim_fairness';
+    await createOrUpdatePendingCommunicationAccount(db.prisma, {
+      organizationId: fairnessOrg,
+      accountId: 'acct_fair',
+      emailAddress: 'owner@fair.example',
+      externalAccountId: 'google-sub-fair',
+    });
+    await persistConnectedCommunicationAccount(db.prisma, {
+      organizationId: fairnessOrg,
+      accountId: 'acct_fair',
+      emailAddress: 'owner@fair.example',
+      externalAccountId: 'google-sub-fair',
+      connectedAt: now,
+      historyId: 'hist_fair',
+    });
+
+    // Older retryable failures (would monopolize if ordered by internalDate alone).
+    for (let i = 0; i < 5; i += 1) {
+      await upsertCommunicationEvent(db.prisma, {
+        organizationId: fairnessOrg,
+        accountId: 'acct_fair',
+        message: inboxMessage({
+          eventId: `evt_retry_${i}`,
+          providerMessageId: `msg_retry_${i}`,
+          internalDate: `2026-07-01T12:0${i}:00.000Z`,
+        }),
+      });
+      await db.prisma.communicationEvent.update({
+        where: { id: `evt_retry_${i}` },
+        data: {
+          suggestionProcessingStatus: 'failed_retryable',
+          suggestionProcessingAttempts: 2,
+          suggestionLastErrorCode: 'AI_SCHEMA_INVALID',
+          suggestionClaimOwner: null,
+          suggestionClaimUntil: null,
+        },
+      });
+    }
+
+    // Fresh unprocessed (newer dates — must still win the batch).
+    for (let i = 0; i < 3; i += 1) {
+      await upsertCommunicationEvent(db.prisma, {
+        organizationId: fairnessOrg,
+        accountId: 'acct_fair',
+        message: inboxMessage({
+          eventId: `evt_fresh_${i}`,
+          providerMessageId: `msg_fresh_${i}`,
+          internalDate: `2026-07-17T18:0${i}:00.000Z`,
+        }),
+      });
+    }
+
+    const claimed = await claimSuggestionProcessingBatch(db.prisma, {
+      claimOwner: 'fair_worker',
+      claimUntil,
+      now,
+      limit: 5,
+      organizationId: fairnessOrg,
+    });
+
+    const ids = claimed.map((e) => e.id);
+    expect(ids.filter((id) => id.startsWith('evt_fresh_'))).toHaveLength(3);
+    expect(ids.filter((id) => id.startsWith('evt_retry_'))).toHaveLength(2);
+    expect(ids.slice(0, 3).every((id) => id.startsWith('evt_fresh_'))).toBe(true);
+  });
+
   it('requires audit records for processing outcomes and Owner approve', async () => {
     await seedEventWithExcerpt(db, 'evt_audit_req', 'msg_audit_req');
     const [claimed] = await claimSuggestionProcessingBatch(db.prisma, {

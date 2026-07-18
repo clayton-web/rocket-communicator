@@ -27,13 +27,18 @@ export interface SuggestionExtractionResult {
 export type AiProviderErrorCode =
   | 'AI_DISABLED'
   | 'AI_MISSING_CREDENTIALS'
+  | 'AI_INVALID_CREDENTIALS'
   | 'AI_TIMEOUT'
   | 'AI_RATE_LIMIT'
+  | 'AI_INSUFFICIENT_QUOTA'
   | 'AI_PROVIDER_5XX'
   | 'AI_NETWORK'
   | 'AI_INVALID_OUTPUT'
+  | 'AI_MALFORMED_JSON'
+  | 'AI_SCHEMA_INVALID'
   | 'AI_POLICY_REFUSAL'
-  | 'AI_EMPTY_OUTPUT';
+  | 'AI_EMPTY_OUTPUT'
+  | 'AI_UNSUPPORTED_RESPONSE';
 
 export type AiProviderErrorKind = 'configuration' | 'retryable' | 'permanent';
 
