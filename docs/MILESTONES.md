@@ -1,6 +1,6 @@
 # Milestones
 
-**Current:** A6.3 Application Suggestion Engine is **code-complete locally** (awaiting review/commit, then Production rollout). A6.0–A6.2 are on `main`. A5 Gmail connection and polling remains **closed and healthy in Production**. **Do not begin A7/A8/A9.0 until A6 closes** (migration applied, deploy, Production LLM verify, suggestion scheduler enabled, tag).
+**Current:** A6.3 Application Suggestion Engine is **code-complete locally** (awaiting review/commit, then Production rollout). A6.0–A6.2 are on `main`. A5 Gmail connection and polling remains **closed and healthy in Production**. **Do not begin A7/A8/A9 until A6 closes** (migration applied, deploy, Production LLM verify, suggestion scheduler enabled, tag). Roadmap after A6: **A7 → A8 → A9** (no early separate A9.0).
 
 Process: [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW.md) · [REVIEW_CHECKLIST.md](REVIEW_CHECKLIST.md) · Operations: [DEPLOYMENT.md](DEPLOYMENT.md)
 
@@ -94,7 +94,7 @@ Connect one inbox; poll every **five minutes** (D065); create communication even
 
 ### A6 — AI relevance and task suggestions (milestone closure)
 
-**Status:** Not closed. Closure requires A6.3 on `main`, Production migration + deploy, Production LLM path verification (D085), then enable the **separate** suggestion-process scheduler job. Do **not** mark A6 complete or add the completion tag until those steps finish. After A6 closes → A9.0 (interim Android), not A7 first unless operator reorders.
+**Status:** Not closed. Closure requires A6.3 on `main`, Production migration + deploy, Production LLM path verification (D085), then enable the **separate** suggestion-process scheduler job. Do **not** mark A6 complete or add the completion tag until those steps finish. After A6 closes → **A7 → A8 → A9** (no early separate A9.0).
 
 ---
 

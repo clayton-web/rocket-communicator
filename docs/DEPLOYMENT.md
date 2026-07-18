@@ -180,9 +180,11 @@ After A6.3 is committed, migrated, deployed, and Production LLM verification pas
 
 **Credential distinction (names only):** `CRON_SECRET` authenticates the application process endpoint (same secret family as Gmail poll). `CRON_JOB_ORG_API_KEY` (or equivalent scheduler management credential) is used only outside the app to administer the scheduler account — never committed, never logged, never sent to application routes.
 
-Do not enable until A6 handlers, the A6.1 migration, and AI credentials (`OPENAI_API_KEY` / related) are production-ready and verified. Response is aggregate counts only — never raw bodies (D084, D085). Overlapping or repeated invocations are **safe** (claim leases + relational 0..1 suggestion uniqueness, D081). Heuristic relevance runs before AI; AI failure does not create heuristic-only fallback suggestions (D085).
+Do not enable until A6 handlers, the A6.1 migration, and AI credentials (`OPENAI_API_KEY` / related) are production-ready and verified. Response is aggregate counts only — never raw bodies (D084, D085). Overlapping or repeated invocations are **safe** (claim leases + relational 0..1 suggestion uniqueness, D081). Heuristic relevance runs before AI; AI failure does not create heuristic-only fallback suggestions (D085). Claim batches prefer fresh `unprocessed` events before reclaiming `failed_retryable` so a retryable AI failure cohort cannot monopolize every invocation.
 
-**Production rollout order (after A6.3 commit):** apply A6.1 migration → deploy web → configure AI credentials → Production LLM verification → enable suggestion-process scheduler → A6 closure/tag → then A9.0.
+**`AI_INVALID_OUTPUT` / `AI_SCHEMA_INVALID` runbook:** Prefer reading `suggestion_last_error_code` plus the audit `note` fingerprint (`code|status=…|keys=…|issues=…`) — never re-enable content logging. Typical causes: model emitted non-contract fields (`details` instead of `value`, numeric `id`). After the A6 stabilization deploy, re-run **one** controlled `POST /api/v1/internal/suggestions/process` and confirm `suggestionsCreated > 0` or `skippedIrrelevant` with no private content in logs. Distinguish `AI_INSUFFICIENT_QUOTA` (billing) from `AI_RATE_LIMIT` (true 429 throttle).
+
+**Production rollout order (after A6.3 commit):** apply A6.1 migration → deploy web → configure AI credentials → Production LLM verification → enable suggestion-process scheduler → A6 closure/tag → then **A7 → A8 → A9** (no early separate A9.0).
 
 ## Capability links in production
 
