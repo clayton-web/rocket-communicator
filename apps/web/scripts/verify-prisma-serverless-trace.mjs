@@ -2,6 +2,9 @@
 /**
  * Post-build verification for Prisma serverless packaging (no database access).
  *
+ * Also proves A6.2 Owner suggestion route NFTs, A6.3 process-route NFT, and
+ * traced @aicaa/db / @aicaa/ai / Prisma runtime artifacts after `pnpm build:web`.
+ *
  * Usage (from repo root after Vercel-equivalent build):
  *   node apps/web/scripts/verify-prisma-serverless-trace.mjs
  */
@@ -9,6 +12,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  A6_2_REQUIRED_RUNTIME_MODULES,
+  A6_2_SUGGESTION_ROUTE_NFTS,
+  A6_3_AI_PACKAGE_MARKERS,
+  A6_3_PROCESS_ROUTE_NFT,
+  A6_3_REQUIRED_RUNTIME_MODULES,
   INVALID_ROOT_PATTERN,
   RHEL_ENGINE,
   SCHEMA_FILE,
@@ -16,6 +24,8 @@ import {
   assertNftIncludesResolvableDomainPackage,
   getRequiredDbPackageRuntimeFiles,
   nftIncludesNodeModulesDomainIndex,
+  nftIncludesRepoFile,
+  normalizeNftEntry,
 } from './lib/db-package-trace.mjs';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
@@ -36,6 +46,12 @@ function readJson(filePath) {
     fail(`missing file: ${path.relative(repoRoot, filePath)}`);
   }
   return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+}
+
+function readNftFiles(relativeNft) {
+  const nftPath = path.join(webRoot, '.next/server', relativeNft);
+  const nft = readJson(nftPath);
+  return Array.isArray(nft.files) ? nft.files : [];
 }
 
 function collectJsFiles(dir, results = []) {
@@ -64,6 +80,59 @@ function assertTasksRouteNftTrace() {
   if (!nftIncludesNodeModulesDomainIndex(files)) {
     fail('task route NFT trace is missing node_modules/@aicaa/domain/dist/index.js');
   }
+}
+
+function assertRequiredModulesInNft(files, relativeNft, requiredModules) {
+  for (const required of requiredModules) {
+    if (!nftIncludesRepoFile(files, repoRoot, required)) {
+      fail(`${relativeNft} NFT trace is missing required runtime module: ${required}`);
+    }
+  }
+}
+
+function nftIncludesAiPackage(files) {
+  if (A6_3_AI_PACKAGE_MARKERS.every((marker) => nftIncludesRepoFile(files, repoRoot, marker))) {
+    return true;
+  }
+  const hasIndex = files.some((entry) => {
+    const normalized = normalizeNftEntry(entry);
+    return (
+      normalized.includes('@aicaa/ai') &&
+      (normalized.endsWith('/dist/index.js') || normalized.endsWith('packages/ai/dist/index.js'))
+    );
+  });
+  const hasPackageJson = files.some((entry) => {
+    const normalized = normalizeNftEntry(entry);
+    return (
+      normalized.endsWith('packages/ai/package.json') ||
+      normalized.endsWith('node_modules/@aicaa/ai/package.json')
+    );
+  });
+  return hasIndex && hasPackageJson;
+}
+
+function assertA62SuggestionRouteNfts() {
+  for (const relativeNft of A6_2_SUGGESTION_ROUTE_NFTS) {
+    const files = readNftFiles(relativeNft);
+    assertRequiredModulesInNft(files, relativeNft, A6_2_REQUIRED_RUNTIME_MODULES);
+    assertNftIncludesDbPackageRuntime(files, repoRoot, relativeNft);
+    assertNftIncludesResolvableDomainPackage(files, repoRoot, relativeNft);
+    if (!nftIncludesNodeModulesDomainIndex(files)) {
+      fail(`${relativeNft} NFT trace is missing node_modules/@aicaa/domain/dist/index.js`);
+    }
+  }
+}
+
+function assertA63ProcessRouteNft() {
+  const files = readNftFiles(A6_3_PROCESS_ROUTE_NFT);
+  assertRequiredModulesInNft(files, A6_3_PROCESS_ROUTE_NFT, A6_3_REQUIRED_RUNTIME_MODULES);
+  if (!nftIncludesAiPackage(files)) {
+    fail(
+      `${A6_3_PROCESS_ROUTE_NFT} NFT trace is missing @aicaa/ai runtime artifacts (${A6_3_AI_PACKAGE_MARKERS.join(', ')} or workspace-linked equivalents)`,
+    );
+  }
+  assertNftIncludesDbPackageRuntime(files, repoRoot, A6_3_PROCESS_ROUTE_NFT);
+  assertNftIncludesResolvableDomainPackage(files, repoRoot, A6_3_PROCESS_ROUTE_NFT);
 }
 
 function assertNoInvalidRootBundling() {
@@ -101,9 +170,17 @@ function assertNextConfig() {
     'domainPackageRoot',
     '${domainPackageRoot}/package.json',
     '${domainPackageRoot}/dist/**/*.js',
+    'aiPackageRoot',
+    '${aiPackageRoot}/package.json',
+    '${aiPackageRoot}/dist/**/*.js',
     'node_modules/@aicaa/db/package.json',
     'node_modules/@aicaa/domain/package.json',
     'node_modules/@aicaa/domain/dist/**/*.js',
+    'node_modules/@aicaa/ai/package.json',
+    'node_modules/@aicaa/ai/dist/**/*.js',
+    "'/api/v1/task-suggestions'",
+    "'/api/v1/internal/suggestions/process'",
+    'suggestionProcessRouteTraceFiles',
     RHEL_ENGINE,
     SCHEMA_FILE,
     "'/c/[token]'",
@@ -134,6 +211,8 @@ function main() {
   assertNextConfig();
   getRequiredDbPackageRuntimeFiles(repoRoot);
   assertTasksRouteNftTrace();
+  assertA62SuggestionRouteNfts();
+  assertA63ProcessRouteNft();
   assertNoInvalidRootBundling();
   console.log('verify-prisma-serverless-trace: ok');
 }

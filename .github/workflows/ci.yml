@@ -120,6 +120,9 @@ jobs:
       - name: Database tests (PGlite)
         run: pnpm test:db
 
+      - name: AI package tests
+        run: pnpm test:ai
+
       - name: Format check
         run: pnpm format:check
         env:
