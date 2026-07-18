@@ -208,3 +208,26 @@ export async function getTemporaryCommunicationExcerptByEventId(
   });
   return row ? mapTemporaryCommunicationExcerpt(row) : null;
 }
+
+/**
+ * Replace TemporaryCommunicationExcerpt.purgeAt when the excerpt still exists and is not purged.
+ * No-op (returns false) when missing or already purged — never restores content (D082).
+ */
+export async function updateExcerptPurgeAtIfPresent(
+  db: Client,
+  organizationId: string,
+  communicationEventId: string,
+  purgeAt: string,
+): Promise<boolean> {
+  const result = await db.temporaryCommunicationExcerpt.updateMany({
+    where: {
+      communicationEventId,
+      organizationId,
+      purgedAt: null,
+    },
+    data: {
+      purgeAt: fromIso(purgeAt)!,
+    },
+  });
+  return result.count === 1;
+}

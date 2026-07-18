@@ -14,6 +14,7 @@ export {
   optimisticConcurrency,
   uniqueViolation,
   persistenceValidation,
+  recipientHandoffNotAvailable,
 } from './errors/persistence-errors.js';
 
 export {

@@ -30,6 +30,20 @@ export type GmailSyncOutcome =
 
 export type CommunicationEventStatus = 'active' | 'purged';
 
+/**
+ * Durable suggestion-processing outcome on CommunicationEvent (D081).
+ * A5 ingestion leaves events as `unprocessed`; A6 process workers advance the status.
+ */
+export type SuggestionProcessingStatus =
+  | 'unprocessed'
+  | 'skipped_irrelevant'
+  | 'suggestion_created'
+  | 'failed_retryable'
+  | 'failed_permanent';
+
+/** Default max claim attempts before a retryable failure becomes ineligible (A6.1). */
+export const DEFAULT_SUGGESTION_PROCESSING_MAX_ATTEMPTS = 5;
+
 /** A5 default poll interval (D065). */
 export const DEFAULT_GMAIL_POLL_INTERVAL_MINUTES = 5;
 
@@ -131,6 +145,14 @@ export interface CommunicationEvent {
   status: CommunicationEventStatus;
   ingestRunId: GmailSyncRunId | null;
   purgeAt: UtcInstant | null;
+  /** D081 suggestion-processing fields (A6). Defaults to unprocessed at A5 ingest. */
+  suggestionProcessingStatus: SuggestionProcessingStatus;
+  suggestionProcessedAt: UtcInstant | null;
+  suggestionProcessingAttempts: number;
+  suggestionLastErrorCode: string | null;
+  suggestionClaimUntil: UtcInstant | null;
+  suggestionClaimOwner: string | null;
+  suggestionPolicyVersion: string | null;
 }
 
 export interface TemporaryCommunicationExcerpt {

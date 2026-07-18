@@ -64,6 +64,7 @@ export type {
   GmailSyncTrigger,
   GmailSyncOutcome,
   CommunicationEventStatus,
+  SuggestionProcessingStatus,
   CommunicationAccount,
   CommunicationEvent,
   TemporaryCommunicationExcerpt,
@@ -74,6 +75,7 @@ export type {
 export {
   DEFAULT_GMAIL_POLL_INTERVAL_MINUTES,
   DEFAULT_GMAIL_EXCERPT_RETENTION_DAYS,
+  DEFAULT_SUGGESTION_PROCESSING_MAX_ATTEMPTS,
   MAX_GMAIL_EXCERPT_BYTES,
   MAX_GMAIL_SUBJECT_LENGTH,
   MAX_GMAIL_SNIPPET_LENGTH,
@@ -142,6 +144,7 @@ export {
 
 export {
   computeExcerptPurgeAt,
+  computeWorkflowSafetyCeilingPurgeAt,
   computeVisibleUntil,
   computeContentScrubAt,
   computeSuccessfulAudioDeletionAt,

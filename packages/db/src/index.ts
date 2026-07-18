@@ -15,6 +15,7 @@ export {
   optimisticConcurrency,
   uniqueViolation,
   persistenceValidation,
+  recipientHandoffNotAvailable,
 } from './errors/persistence-errors.js';
 
 export {
@@ -50,7 +51,18 @@ export {
 export {
   createTaskSuggestion,
   getTaskSuggestionById,
+  getTaskSuggestionBySourceEventId,
+  listTaskSuggestions,
+  updateTaskSuggestionWithExpectedVersion,
+  type ListTaskSuggestionsQuery,
+  type ListTaskSuggestionsResult,
 } from './repositories/suggestion-repository.js';
+export {
+  claimSuggestionProcessingBatch,
+  completeSuggestionProcessingOutcome,
+  type ClaimSuggestionProcessingBatchInput,
+  type CompleteSuggestionProcessingOutcomeInput,
+} from './repositories/suggestion-processing-repository.js';
 export {
   createCapability,
   getCapabilityById,
@@ -98,6 +110,7 @@ export {
   upsertTemporaryCommunicationExcerpt,
   purgeTemporaryCommunicationExcerpt,
   getTemporaryCommunicationExcerptByEventId,
+  updateExcerptPurgeAtIfPresent,
 } from './repositories/communication-event-repository.js';
 export {
   createGmailSyncRun,
@@ -115,6 +128,16 @@ export {
   persistOwnerTaskMutation,
   persistWorkRequest,
 } from './transactions/a4-transactions.js';
+export {
+  persistSuggestionFromClaimedEvent,
+  persistSkippedIrrelevantOutcome,
+  persistFailedRetryableOutcome,
+  persistFailedPermanentOutcome,
+  persistApproveTaskSuggestion,
+  persistEditTaskSuggestion,
+  persistDismissTaskSuggestion,
+  persistMergeTaskSuggestion,
+} from './transactions/a6-transactions.js';
 export {
   persistGmailHistoryPageTransaction,
   persistGmailConnectionTransaction,

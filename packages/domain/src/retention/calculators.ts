@@ -5,8 +5,19 @@ const SEVEN_DAYS_MS = 7 * MS_PER_DAY;
 const THIRTY_DAYS_MS = 30 * MS_PER_DAY;
 const FORTY_EIGHT_HOURS_MS = 48 * 60 * 60 * 1000;
 
+/** Terminal suggestion / task complete-dismiss excerpt window (D020, D082). */
 export function computeExcerptPurgeAt(completedOrDismissedAt: UtcInstant): UtcInstant {
   return addMilliseconds(completedOrDismissedAt, SEVEN_DAYS_MS);
+}
+
+/**
+ * Bounded workflow safety ceiling for associated/approved excerpts (D082).
+ * `purgeAt = associatedAt|approvedAt + 30 days`. Not refreshed while a Task stays active.
+ */
+export function computeWorkflowSafetyCeilingPurgeAt(
+  associatedOrApprovedAt: UtcInstant,
+): UtcInstant {
+  return addMilliseconds(associatedOrApprovedAt, THIRTY_DAYS_MS);
 }
 
 export function computeVisibleUntil(completedAt: UtcInstant): UtcInstant {

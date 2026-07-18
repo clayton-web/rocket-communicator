@@ -145,3 +145,48 @@ describe('A5 Gmail Prisma schema contracts', () => {
     expect(a5Migration).toContain('ALTER TABLE "gmail_oauth_states" ENABLE ROW LEVEL SECURITY');
   });
 });
+
+const a6Migration = readFileSync(
+  path.join(root, 'prisma/migrations/20260717180000_a6_suggestion_persistence/migration.sql'),
+  'utf8',
+);
+
+describe('A6 suggestion Prisma schema contracts', () => {
+  it('adds nullable unique sourceCommunicationEventId without CommunicationEvent.suggestionId', () => {
+    expect(schema).toContain('sourceCommunicationEventId');
+    expect(schema).toContain('approvedTaskId');
+    expect(a6Migration).toContain('source_communication_event_id');
+    expect(a6Migration).toContain('approved_task_id');
+    expect(a6Migration).toContain('task_suggestions_source_communication_event_id_key');
+    expect(a6Migration).toContain('task_suggestions_approved_task_id_key');
+    expect(schema).toMatch(/model CommunicationEvent \{[\s\S]*?@@map\("communication_events"\)/);
+    const eventBlock = schema.match(
+      /model CommunicationEvent \{[\s\S]*?@@map\("communication_events"\)/,
+    )?.[0];
+    expect(eventBlock).toBeDefined();
+    expect(eventBlock).not.toMatch(/\bsuggestionId\b/);
+    expect(a6Migration).not.toMatch(/communication_events[\s\S]*suggestion_id/);
+  });
+
+  it('adds SuggestionProcessingStatus and claim fields on CommunicationEvent', () => {
+    expect(schema).toContain('enum SuggestionProcessingStatus');
+    expect(schema).toContain('unprocessed');
+    expect(schema).toContain('skipped_irrelevant');
+    expect(schema).toContain('suggestion_created');
+    expect(schema).toContain('failed_retryable');
+    expect(schema).toContain('failed_permanent');
+    expect(schema).toContain('suggestionProcessingStatus');
+    expect(schema).toContain('suggestionClaimUntil');
+    expect(schema).toContain('suggestionClaimOwner');
+    expect(a6Migration).toContain('CREATE TYPE "SuggestionProcessingStatus"');
+    expect(a6Migration).toContain("DEFAULT 'unprocessed'");
+    expect(a6Migration).toContain('suggestion_claim_until');
+  });
+
+  it('keeps TemporaryCommunicationExcerpt.purgeAt required', () => {
+    expect(schema).toMatch(/purgeAt\s+DateTime\s+@map\("purge_at"\)/);
+    expect(a6Migration).not.toMatch(
+      /temporary_communication_excerpts[\s\S]*purge_at.*DROP NOT NULL/i,
+    );
+  });
+});

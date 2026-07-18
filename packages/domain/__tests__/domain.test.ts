@@ -149,12 +149,20 @@ describe('task suggestion machine', () => {
 
   it('preserves terminal suggestion transitions', () => {
     const dismissed = { ...baseSuggestion(), status: 'dismissed' as const };
+    const targetTask = createStandaloneTask({
+      actor: owner,
+      now,
+      id: asTaskId('task_2'),
+      organizationId: asOrganizationId('org_1'),
+      summaryPoints: [{ id: 'p1', kind: 'next_action', label: 'Act', order: 0, value: 'Existing' }],
+    });
     expect(() =>
-      mergeTaskSuggestion(dismissed, {
+      mergeTaskSuggestion(dismissed, targetTask, {
         actor: owner,
         ifMatch: formatETag('task-suggestion', dismissed.id, 1),
         now,
         targetTaskId: asTaskId('task_2'),
+        targetTaskIfMatch: formatETag('task', targetTask.id, targetTask.version),
       }),
     ).toThrow(/cannot transition/);
   });

@@ -134,6 +134,10 @@ export function mapSuggestion(row: PrismaSuggestion): TaskSuggestion {
     proposedDueAt: row.proposedDueAt ? toIso(row.proposedDueAt) : undefined,
     proposedPriority: row.proposedPriority ?? undefined,
     voiceOriginated: row.voiceOriginated,
+    sourceCommunicationEventId: row.sourceCommunicationEventId
+      ? asCommunicationEventId(row.sourceCommunicationEventId)
+      : null,
+    approvedTaskId: row.approvedTaskId ? asTaskId(row.approvedTaskId) : null,
     mergedIntoTaskId: row.mergedIntoTaskId ? asTaskId(row.mergedIntoTaskId) : null,
     retention: row.retention as unknown as RetentionMetadata,
     version: row.version,
@@ -265,6 +269,13 @@ export function mapCommunicationEvent(row: PrismaCommunicationEvent): Communicat
     status: row.status,
     ingestRunId: row.ingestRunId ? asGmailSyncRunId(row.ingestRunId) : null,
     purgeAt: row.purgeAt ? toIso(row.purgeAt) : null,
+    suggestionProcessingStatus: row.suggestionProcessingStatus,
+    suggestionProcessedAt: row.suggestionProcessedAt ? toIso(row.suggestionProcessedAt) : null,
+    suggestionProcessingAttempts: row.suggestionProcessingAttempts,
+    suggestionLastErrorCode: row.suggestionLastErrorCode,
+    suggestionClaimUntil: row.suggestionClaimUntil ? toIso(row.suggestionClaimUntil) : null,
+    suggestionClaimOwner: row.suggestionClaimOwner,
+    suggestionPolicyVersion: row.suggestionPolicyVersion,
   };
 }
 

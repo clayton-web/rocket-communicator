@@ -1,8 +1,10 @@
 import type { ActionAttribution, Task, TaskNote, TaskSuggestion } from '@aicaa/domain';
-import type { DbClient } from '../client/create-prisma-client.js';
+import { computeExcerptPurgeAt } from '../../../domain/dist/index.js';
+import type { DbClient, DbTransaction } from '../client/create-prisma-client.js';
 import { createAuditEvent, type CreateAuditEventInput } from '../repositories/audit-repository.js';
 import { revokeCapabilityRecord } from '../repositories/capability-repository.js';
 import { createTaskSuggestion } from '../repositories/suggestion-repository.js';
+import { updateExcerptPurgeAtIfPresent } from '../repositories/communication-event-repository.js';
 import {
   appendTaskNote,
   clearAssignment,
@@ -10,6 +12,46 @@ import {
   updateTaskWithExpectedVersion,
 } from '../repositories/task-repository.js';
 import type { AuditEventRecord } from '../mappers/domain-mappers.js';
+
+type Client = DbClient | DbTransaction;
+
+/**
+ * D082 automatic terminal retention path:
+ * Task → TaskSuggestion.approvedTaskId → sourceCommunicationEventId → TemporaryCommunicationExcerpt
+ *
+ * Applies only when the persisted Task status is completed or dismissed.
+ * Missing / purged excerpts do not fail the Task transition.
+ */
+export async function applyApprovedSuggestionTerminalExcerptRetention(
+  db: Client,
+  organizationId: string,
+  task: Task,
+): Promise<boolean> {
+  if (task.status !== 'completed' && task.status !== 'dismissed') {
+    return false;
+  }
+
+  const suggestion = await db.taskSuggestion.findFirst({
+    where: {
+      organizationId,
+      approvedTaskId: task.id,
+      status: 'approved',
+      sourceCommunicationEventId: { not: null },
+    },
+    select: { sourceCommunicationEventId: true },
+  });
+
+  if (!suggestion?.sourceCommunicationEventId) {
+    return false;
+  }
+
+  return updateExcerptPurgeAtIfPresent(
+    db,
+    organizationId,
+    suggestion.sourceCommunicationEventId,
+    computeExcerptPurgeAt(task.updatedAt),
+  );
+}
 
 /**
  * Atomic return-to-Owner unit of work (Phase 2 invariant for Phase 3 orchestration):
@@ -55,8 +97,9 @@ export async function persistReturnToOwner(input: {
 }
 
 /**
- * Atomic capability action: task transition (+ optional note) + audit.
- * Token validation remains Phase 3 / application layer.
+ * Atomic capability action: task transition (+ optional note) + required audit.
+ * When the Task becomes completed/dismissed, automatically applies D082 excerpt retention
+ * via TaskSuggestion.approvedTaskId → sourceCommunicationEventId (no caller wiring required).
  */
 export async function persistCapabilityAction(input: {
   db: DbClient;
@@ -65,7 +108,7 @@ export async function persistCapabilityAction(input: {
   task: Task;
   note?: TaskNote;
   audit: CreateAuditEventInput;
-}): Promise<{ task: Task; audit: AuditEventRecord }> {
+}): Promise<{ task: Task; audit: AuditEventRecord; excerptUpdated: boolean }> {
   return input.db.$transaction(async (tx) => {
     await updateTaskWithExpectedVersion(
       tx,
@@ -76,9 +119,16 @@ export async function persistCapabilityAction(input: {
     if (input.note) {
       await appendTaskNote(tx, input.organizationId, input.task.id, input.note);
     }
+
+    const excerptUpdated = await applyApprovedSuggestionTerminalExcerptRetention(
+      tx,
+      input.organizationId,
+      input.task,
+    );
+
     const audit = await createAuditEvent(tx, input.audit);
     const task = await getTaskById(tx, input.organizationId, input.task.id);
-    return { task, audit };
+    return { task, audit, excerptUpdated };
   });
 }
 
@@ -88,7 +138,7 @@ export async function persistCapabilityAction(input: {
  */
 export async function persistOwnerTaskMutation(
   input: Parameters<typeof persistCapabilityAction>[0],
-): Promise<{ task: Task; audit: AuditEventRecord }> {
+): Promise<{ task: Task; audit: AuditEventRecord; excerptUpdated: boolean }> {
   return persistCapabilityAction(input);
 }
 

@@ -4,7 +4,9 @@ export type PersistenceErrorCode =
   | 'OPTIMISTIC_CONCURRENCY'
   | 'UNIQUE_VIOLATION'
   | 'VALIDATION'
-  | 'TRANSACTION_FAILED';
+  | 'TRANSACTION_FAILED'
+  /** D080: Approve must not include recipientId in A6. Maps to HTTP 400 in A6.2. */
+  | 'RECIPIENT_HANDOFF_NOT_AVAILABLE';
 
 export class PersistenceError extends Error {
   readonly code: PersistenceErrorCode;
@@ -34,4 +36,10 @@ export function uniqueViolation(message: string): PersistenceError {
 
 export function persistenceValidation(message: string): PersistenceError {
   return new PersistenceError('VALIDATION', message);
+}
+
+export function recipientHandoffNotAvailable(
+  message = 'Approve must not include recipientId in A6 (D080).',
+): PersistenceError {
+  return new PersistenceError('RECIPIENT_HANDOFF_NOT_AVAILABLE', message);
 }
