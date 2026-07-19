@@ -50,6 +50,12 @@ export interface GmailForwardInput {
   ownerIntro: string;
   /** Already-issued capability URL. Included once per alternative in the intro. */
   capabilityUrl: string;
+  /**
+   * Persisted Task summary points (A7 binding requirement). Rendered as safe data (escaped) above
+   * the forwarded original — NEVER regenerated, reinterpreted, or produced by a fresh LLM call. They
+   * supplement the forwarded original and never replace or truncate it. Order is preserved.
+   */
+  summaryLines?: string[];
   source: GmailForwardSource;
 }
 
@@ -185,6 +191,31 @@ function buildForwardedHeaderHtmlBlock(headers: ExtractedSource['headers']): str
   if (headers.to) lines.push(`To: ${escapeHtml(headers.to)}<br />`);
   lines.push('</p>');
   return lines.join('\n');
+}
+
+/** Normalize summary points to non-empty, single-line, trimmed data (defence against injection). */
+function normalizeSummaryLines(summaryLines: string[] | undefined): string[] {
+  if (!summaryLines) {
+    return [];
+  }
+  return summaryLines
+    .map((line) => line.replace(/[\r\n]+/g, ' ').trim())
+    .filter((line) => line.length > 0);
+}
+
+function buildSummaryTextBlock(summaryLines: string[]): string[] {
+  if (summaryLines.length === 0) {
+    return [];
+  }
+  return ['', 'Assignment summary:', ...summaryLines.map((line) => `- ${line}`)];
+}
+
+function buildSummaryHtmlBlock(summaryLines: string[]): string {
+  if (summaryLines.length === 0) {
+    return '';
+  }
+  const items = summaryLines.map((line) => `<li>${escapeHtml(line)}</li>`).join('');
+  return `<p>Assignment summary:</p>\n<ul>${items}</ul>`;
 }
 
 /** Assemble the forward, fetching source + attachments. Fails before send when incomplete. */
@@ -323,6 +354,8 @@ export async function buildGmailForward(
   const subject = normalizeForwardSubject(extracted.headers.subject);
   const intro = input.ownerIntro.trim();
 
+  const summaryLines = normalizeSummaryLines(input.summaryLines);
+
   const originalText =
     extracted.plainText ?? (extracted.html ? stripHtmlToText(extracted.html) : '');
   const textBody = [
@@ -330,6 +363,7 @@ export async function buildGmailForward(
     '',
     'Open your assignment:',
     input.capabilityUrl,
+    ...buildSummaryTextBlock(summaryLines),
     '',
     buildForwardedHeaderTextBlock(extracted.headers),
     '',
@@ -338,10 +372,12 @@ export async function buildGmailForward(
 
   let htmlBody: string | undefined;
   if (extracted.html) {
+    const summaryHtml = buildSummaryHtmlBlock(summaryLines);
     htmlBody = [
       '<!DOCTYPE html><html><body>',
       `<p>${escapeHtml(intro)}</p>`,
       `<p><a href="${escapeHtmlAttribute(input.capabilityUrl)}">Open your assignment</a></p>`,
+      ...(summaryHtml ? [summaryHtml] : []),
       buildForwardedHeaderHtmlBlock(extracted.headers),
       '<div>',
       extracted.html,

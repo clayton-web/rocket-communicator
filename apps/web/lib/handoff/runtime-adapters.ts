@@ -93,17 +93,25 @@ export function createGmailAccessResolver(deps: {
   };
 }
 
+/** Extract the persisted Task summary points as trimmed text lines (never source excerpts). */
+function deriveTaskSummaryLines(task: Task): string[] {
+  const points = task.summaryPoints ?? [];
+  return points
+    .map((point) =>
+      ('value' in point && typeof point.value === 'string' ? point.value : point.label).trim(),
+    )
+    .filter((line) => line.length > 0);
+}
+
 /** Derive privacy-safe assignment_email content from the Task summary (never source excerpts). */
 function deriveAssignmentContent(task: Task): {
   taskTitle: string;
   taskSummary: string;
   ownerContext: string;
 } {
-  const points = task.summaryPoints ?? [];
-  const pointText = (point: (typeof points)[number]): string =>
-    ('value' in point && typeof point.value === 'string' ? point.value : point.label).trim();
-  const taskTitle = points[0] ? pointText(points[0]) || 'New assignment' : 'New assignment';
-  const taskSummary = points.map((point) => `- ${pointText(point)}`).join('\n') || taskTitle;
+  const lines = deriveTaskSummaryLines(task);
+  const taskTitle = lines[0] || 'New assignment';
+  const taskSummary = lines.map((line) => `- ${line}`).join('\n') || taskTitle;
   return {
     taskTitle,
     taskSummary,
@@ -190,6 +198,9 @@ export function createOutboundMessagePreparer(deps: {
           to,
           ownerIntro: input.ownerNote?.trim() || 'Please see the forwarded message below.',
           capabilityUrl: input.capabilityUrl,
+          // Persisted Task summary points (A7 binding requirement). Rendered as safe data alongside
+          // — never replacing — the forwarded original. No fresh LLM call; no regeneration.
+          summaryLines: deriveTaskSummaryLines(input.task),
           source,
         },
         { accessToken: input.access.accessToken, getMessage, getAttachment },

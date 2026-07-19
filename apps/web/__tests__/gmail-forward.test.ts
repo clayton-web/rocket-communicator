@@ -243,4 +243,60 @@ describe('A7.4 gmail_forward builder', () => {
       expect((result.message.htmlBody as string).split(url).length - 1).toBe(1);
     }
   });
+
+  it('includes every persisted Task summary point (order preserved) alongside the original', async () => {
+    const summaryLines = ['First action', 'Second detail', 'Third note'];
+    const result = await buildGmailForward(
+      baseInput({ summaryLines }),
+      makeDeps(htmlWithAttachment()),
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // All summary points appear in order; original body is not replaced/truncated.
+    expect(result.message.textBody).toContain('Assignment summary:');
+    expect(result.message.textBody.indexOf('First action')).toBeLessThan(
+      result.message.textBody.indexOf('Second detail'),
+    );
+    expect(result.message.textBody.indexOf('Second detail')).toBeLessThan(
+      result.message.textBody.indexOf('Third note'),
+    );
+    // Plain-text alternative carries the plain part; HTML body carries the HTML part + summary.
+    expect(result.message.textBody).toContain('Plain version');
+    expect(result.message.htmlBody).toContain('<li>First action</li>');
+    expect(result.message.htmlBody).toContain('<li>Second detail</li>');
+    expect(result.message.htmlBody).toContain('<li>Third note</li>');
+    expect(result.message.htmlBody).toContain('HTML version');
+    expect(result.message.attachments?.length).toBe(1);
+  });
+
+  it('escapes summary points so they cannot inject HTML or MIME headers', async () => {
+    const result = await buildGmailForward(
+      baseInput({
+        summaryLines: [
+          '</li><script>alert(1)</script>',
+          'Bcc: evil@example.com\r\nSubject: inject',
+        ],
+      }),
+      makeDeps(htmlWithAttachment()),
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.message.htmlBody).toContain('&lt;/li&gt;&lt;script&gt;');
+    expect(result.message.htmlBody).not.toContain('<script>');
+    // Newlines collapsed before render — no header injection into MIME.
+    expect(result.message.textBody).not.toMatch(/\r\nSubject:/);
+    const raw = buildMimeMessage(result.message);
+    expect(raw).not.toMatch(/^Bcc:/m);
+  });
+
+  it('omits the summary block when summary points are empty (safe fallback)', async () => {
+    const result = await buildGmailForward(
+      baseInput({ summaryLines: ['', '   '] }),
+      makeDeps(plainTextMessage()),
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.message.textBody).not.toContain('Assignment summary:');
+    expect(result.message.textBody).toContain('This is the original body.');
+  });
 });
