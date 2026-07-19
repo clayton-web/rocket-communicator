@@ -193,7 +193,7 @@ describe('A5.3 Gmail OAuth HTTP routes', () => {
       expect(res.status).toBe(401);
     });
 
-    it('redirects to Google with readonly scopes; stores hash only; no-store', async () => {
+    it('redirects to Google with readonly + send scopes (A7.4); stores hash only; no-store', async () => {
       const res = await startOAuth(
         new Request('http://localhost/api/v1/gmail/oauth/start?returnPath=/settings/gmail', {
           method: 'POST',
@@ -208,7 +208,8 @@ describe('A5.3 Gmail OAuth HTTP routes', () => {
       expect(url.searchParams.get('prompt')).toBe('consent');
       expect(url.searchParams.get('code_challenge_method')).toBe('S256');
       expect(url.searchParams.get('scope')).toContain(GMAIL_READONLY_SCOPE);
-      expect(url.searchParams.get('scope')).not.toMatch(/gmail\.(modify|compose|send)/);
+      expect(url.searchParams.get('scope')).toContain('gmail.send');
+      expect(url.searchParams.get('scope')).not.toMatch(/gmail\.(modify|compose)/);
 
       const rawState = url.searchParams.get('state');
       expect(rawState).toBeTruthy();

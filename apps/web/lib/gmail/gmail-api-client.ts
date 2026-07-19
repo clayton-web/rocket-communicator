@@ -3,16 +3,20 @@ import { GMAIL_INBOX_LABEL_ID } from '@aicaa/domain';
 import { classifyGmailHttpError, GmailSyncError } from './sync-errors';
 
 /**
- * Direct Gmail REST client (A5.4). Uses fetch only — no `googleapis` dependency.
- * Access tokens are caller-supplied and never logged. Message bodies are returned to the
- * sync engine for minimization; this module does not persist anything.
+ * Direct Gmail REST client (A5.4, extended for A7.4 send + attachment read). Uses fetch only —
+ * no `googleapis` dependency. Access tokens are caller-supplied and never logged. Message bodies
+ * are returned to callers for minimization/transport; this module does not persist anything.
  *
  * `users.messages.get` uses `format=full` in a single request so headers, labels, snippet,
  * and MIME structure (for text/plain excerpt + attachment metadata) arrive together without
- * a second round-trip. Attachment bytes are never fetched via attachments.get.
+ * a second round-trip. A5 ingest never fetches attachment bytes; A7.4 forward construction uses
+ * `getAttachment` (users.messages.attachments.get) only for an already-authorized forward.
  */
 
 const GMAIL_API_BASE = 'https://gmail.googleapis.com/gmail/v1/users/me';
+
+/** Default timeout for the outbound send request. */
+const GMAIL_SEND_TIMEOUT_MS = 30_000;
 
 export interface GmailProfile {
   emailAddress?: string;
@@ -235,14 +239,125 @@ export function extractMessageIdsFromHistory(
   return [...ids];
 }
 
+/**
+ * users.messages.attachments.get — fetch one attachment's bytes for A7.4 forward construction.
+ * Returns Gmail's base64url `data` and byte `size`. Never logged; callers release the bytes after
+ * MIME assembly. A 404 maps to `malformed_message` so the forward path treats it as unavailable.
+ */
+export async function getAttachment(input: {
+  accessToken: string;
+  messageId: string;
+  attachmentId: string;
+}): Promise<{ data: string; size: number }> {
+  const raw = await gmailFetch<{ data?: string; size?: number }>(
+    input.accessToken,
+    `/messages/${encodeURIComponent(input.messageId)}/attachments/${encodeURIComponent(
+      input.attachmentId,
+    )}`,
+    { treat404As: 'malformed_message' },
+  );
+  if (typeof raw.data !== 'string' || raw.data.length === 0) {
+    throw new GmailSyncError('malformed_message', 'Gmail attachment is missing data.');
+  }
+  return { data: raw.data, size: typeof raw.size === 'number' ? raw.size : 0 };
+}
+
+/** Low-level send failure kinds that fetch/parse cannot classify by HTTP status. */
+export type GmailSendRawFailureKind = 'network' | 'timeout' | 'parse';
+
+export class GmailSendRawError extends Error {
+  readonly kind: GmailSendRawFailureKind;
+  constructor(kind: GmailSendRawFailureKind, message?: string) {
+    super(message ?? `Gmail send transport failure: ${kind}`);
+    this.kind = kind;
+    this.name = 'GmailSendRawError';
+  }
+}
+
+export interface GmailSendRawResponse {
+  status: number;
+  id?: string;
+  threadId?: string;
+}
+
+/**
+ * users.messages.send (simple JSON `{ raw }` path). Returns the raw HTTP status plus the accepted
+ * message id/thread id when Google returns 2xx, so the transport layer can classify outcomes.
+ *
+ * - fetch rejection (connection error) → GmailSendRawError('network') — request not submitted.
+ * - abort/timeout → GmailSendRawError('timeout') — outcome is unknown (may have been accepted).
+ * - 2xx with unparseable/absent id → GmailSendRawError('parse') — outcome is unknown.
+ * The response body is never logged; only status + id/threadId are surfaced.
+ */
+export async function sendRawMessage(input: {
+  accessToken: string;
+  raw: string;
+  threadId?: string;
+  timeoutMs?: number;
+}): Promise<GmailSendRawResponse> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), input.timeoutMs ?? GMAIL_SEND_TIMEOUT_MS);
+  const body: { raw: string; threadId?: string } = { raw: input.raw };
+  if (input.threadId) {
+    body.threadId = input.threadId;
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`${GMAIL_API_BASE}/messages/send`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${input.accessToken}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify(body),
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new GmailSendRawError('timeout');
+    }
+    throw new GmailSendRawError('network');
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (!response.ok) {
+    // Drain the body without surfacing it, then return the status for classification.
+    try {
+      await response.text();
+    } catch {
+      // ignore
+    }
+    return { status: response.status };
+  }
+
+  let parsed: { id?: string; threadId?: string };
+  try {
+    parsed = (await response.json()) as { id?: string; threadId?: string };
+  } catch {
+    throw new GmailSendRawError('parse');
+  }
+  if (!parsed.id) {
+    throw new GmailSendRawError('parse');
+  }
+  return { status: response.status, id: parsed.id, threadId: parsed.threadId };
+}
+
 export type GmailApiClient = {
   getProfile: typeof getProfile;
   listHistory: typeof listHistory;
   getMessage: typeof getMessage;
+  getAttachment: typeof getAttachment;
+  sendRawMessage: typeof sendRawMessage;
 };
 
 export const defaultGmailApiClient: GmailApiClient = {
   getProfile,
   listHistory,
   getMessage,
+  getAttachment,
+  sendRawMessage,
 };

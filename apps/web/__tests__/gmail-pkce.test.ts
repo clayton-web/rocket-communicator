@@ -44,9 +44,12 @@ describe('Gmail PKCE, state hashing, and return-path allowlist', () => {
     expect(resolveSafeReturnPath(null, '/fallback')).toBe('/fallback');
   });
 
-  it('requests offline access, consent, and gmail.readonly only', () => {
-    expect(GMAIL_OAUTH_SCOPES).toEqual(['openid', 'email', GMAIL_READONLY_SCOPE]);
-    expect(GMAIL_OAUTH_SCOPES.join(' ')).not.toMatch(/gmail\.(modify|compose|send)/);
+  it('requests offline access, consent, readonly + send (A7.4), and incremental scopes', () => {
+    // A7.4: send scope is added for outbound handoff; modify/compose/full-mailbox stay excluded.
+    expect(GMAIL_OAUTH_SCOPES).toContain(GMAIL_READONLY_SCOPE);
+    expect(GMAIL_OAUTH_SCOPES.join(' ')).toContain('gmail.send');
+    expect(GMAIL_OAUTH_SCOPES.join(' ')).not.toMatch(/gmail\.(modify|compose)/);
+    expect(GMAIL_OAUTH_SCOPES.join(' ')).not.toContain('https://mail.google.com/');
 
     const url = new URL(
       buildGmailAuthUrl({
@@ -67,7 +70,10 @@ describe('Gmail PKCE, state hashing, and return-path allowlist', () => {
     expect(url.searchParams.get('code_challenge_method')).toBe('S256');
     expect(url.searchParams.get('code_challenge')).toBe('challenge_test');
     expect(url.searchParams.get('state')).toBe('state_test');
+    // Incremental authorization lets an existing read-only Owner add send without a hard reconnect.
+    expect(url.searchParams.get('include_granted_scopes')).toBe('true');
     expect(url.searchParams.get('scope')).toContain(GMAIL_READONLY_SCOPE);
-    expect(url.searchParams.get('scope')).not.toMatch(/gmail\.(modify|compose|send)/);
+    expect(url.searchParams.get('scope')).toContain('gmail.send');
+    expect(url.searchParams.get('scope')).not.toMatch(/gmail\.(modify|compose)/);
   });
 });
