@@ -19,6 +19,9 @@ export const PERSISTENCE_ERROR_CODES = new Set<PersistenceErrorCode>([
   'VALIDATION',
   'TRANSACTION_FAILED',
   'RECIPIENT_HANDOFF_NOT_AVAILABLE',
+  // A7.3: the in-transaction admin-issuance gate surfaces HANDOFF_IN_PROGRESS, which
+  // issue.ts normalizes to the existing public ISSUANCE_CONFLICT code.
+  'HANDOFF_IN_PROGRESS',
 ]);
 
 const DOMAIN_ERROR_NAME = 'DomainError';

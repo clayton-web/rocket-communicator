@@ -6,7 +6,15 @@ export type PersistenceErrorCode =
   | 'VALIDATION'
   | 'TRANSACTION_FAILED'
   /** D080: Approve must not include recipientId in A6. Maps to HTTP 400 in A6.2. */
-  | 'RECIPIENT_HANDOFF_NOT_AVAILABLE';
+  | 'RECIPIENT_HANDOFF_NOT_AVAILABLE'
+  /** Same Idempotency-Key reused with a conflicting fingerprint (A7). */
+  | 'IDEMPOTENCY_KEY_CONFLICT'
+  /** Durable handoff attempt already pending for this key/task (A7). */
+  | 'HANDOFF_IN_PROGRESS'
+  /** Domain/state conflict for handoff transitions (A7). */
+  | 'DOMAIN_CONFLICT'
+  /** Illegal attempt lifecycle transition (A7). */
+  | 'INVALID_STATE';
 
 export class PersistenceError extends Error {
   readonly code: PersistenceErrorCode;
@@ -42,4 +50,20 @@ export function recipientHandoffNotAvailable(
   message = 'Approve must not include recipientId in A6 (D080).',
 ): PersistenceError {
   return new PersistenceError('RECIPIENT_HANDOFF_NOT_AVAILABLE', message);
+}
+
+export function idempotencyKeyConflict(message: string): PersistenceError {
+  return new PersistenceError('IDEMPOTENCY_KEY_CONFLICT', message);
+}
+
+export function handoffInProgress(message: string): PersistenceError {
+  return new PersistenceError('HANDOFF_IN_PROGRESS', message);
+}
+
+export function domainConflict(message: string): PersistenceError {
+  return new PersistenceError('DOMAIN_CONFLICT', message);
+}
+
+export function invalidState(message: string): PersistenceError {
+  return new PersistenceError('INVALID_STATE', message);
 }

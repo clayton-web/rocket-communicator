@@ -10,11 +10,16 @@ datasource db {
 }
 
 /// Recipient contact record for an Owner organization. Not an application account (D049).
+/// Active-email uniqueness within an organization is enforced by a partial unique index in
+/// migration SQL on `email_normalized` WHERE `active` (Prisma cannot express partial uniques).
+/// Inactive rows retain historical identity and may share a normalized email with a later active row.
 model Recipient {
   id                   String   @id @db.VarChar(64)
   organizationId       String   @map("organization_id") @db.VarChar(64)
   displayName          String   @map("display_name") @db.VarChar(256)
   email                String   @db.VarChar(320)
+  /// Lowercased trimmed email for uniqueness/lookup (D087).
+  emailNormalized      String   @map("email_normalized") @db.VarChar(320)
   relationshipLabel    String?  @map("relationship_label") @db.VarChar(64)
   active               Boolean  @default(true)
   reminderPreferences  Json?    @map("reminder_preferences")
@@ -22,11 +27,12 @@ model Recipient {
   createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  assignments  TaskAssignment[]
-  capabilities TaskCapability[]
+  assignments     TaskAssignment[]
+  capabilities    TaskCapability[]
+  handoffAttempts HandoffAttempt[]
 
-  @@unique([organizationId, email])
   @@index([organizationId])
+  @@index([organizationId, emailNormalized])
   @@map("recipients")
 }
 
@@ -50,6 +56,7 @@ model Task {
   assignments            TaskAssignment[]
   notes                  TaskNote[]
   capabilities           TaskCapability[]
+  handoffAttempts        HandoffAttempt[]
   suggestionsMerged      TaskSuggestion[] @relation("MergedIntoTask")
   /// Suggestion that created this Task via Owner approve (D080/D082). At most one.
   approvedFromSuggestion TaskSuggestion?  @relation("ApprovedTask")
@@ -83,6 +90,7 @@ model TaskAssignment {
   task         Task             @relation(fields: [taskId], references: [id], onDelete: Restrict)
   recipient    Recipient        @relation(fields: [recipientId], references: [id], onDelete: Restrict)
   capabilities TaskCapability[]
+  handoffAttempts HandoffAttempt[]
 
   @@index([taskId])
   @@index([organizationId])
@@ -138,35 +146,90 @@ model TaskSuggestion {
 }
 
 /// Capability authorization record. Stores token HASH only — never raw secrets (D063).
+/// At most one `status = active` capability per assignment is enforced by a partial unique
+/// index in migration SQL (Prisma cannot express it). Actionability for A7 handoff uses
+/// `actionableAt` (null until Gmail send acceptance); legacy A4 rows backfilled to issuedAt.
 model TaskCapability {
-  id                     String           @id @db.VarChar(64)
-  organizationId         String           @map("organization_id") @db.VarChar(64)
-  taskId                 String           @map("task_id") @db.VarChar(64)
-  assignmentId           String           @map("assignment_id") @db.VarChar(64)
-  recipientId            String?          @map("recipient_id") @db.VarChar(64)
-  intendedRecipientEmail String           @map("intended_recipient_email") @db.VarChar(320)
+  id                     String                       @id @db.VarChar(64)
+  organizationId         String                       @map("organization_id") @db.VarChar(64)
+  taskId                 String                       @map("task_id") @db.VarChar(64)
+  assignmentId           String                       @map("assignment_id") @db.VarChar(64)
+  recipientId            String?                      @map("recipient_id") @db.VarChar(64)
+  intendedRecipientEmail String                       @map("intended_recipient_email") @db.VarChar(320)
   scope                  Json
   status                 CapabilityStatus
   /// SHA-256 (or stronger) hex/base64url fingerprint of the raw secret. Unique.
-  tokenHash              String           @unique @map("token_hash") @db.VarChar(128)
-  issuedAt               DateTime         @map("issued_at") @db.Timestamptz(3)
+  tokenHash              String                       @unique @map("token_hash") @db.VarChar(128)
+  issuedAt               DateTime                     @map("issued_at") @db.Timestamptz(3)
   /// Explicit persisted expiry (D055).
-  expiresAt              DateTime         @map("expires_at") @db.Timestamptz(3)
-  revokedAt              DateTime?        @map("revoked_at") @db.Timestamptz(3)
-  revocationReason       String?          @map("revocation_reason") @db.VarChar(256)
+  expiresAt              DateTime                     @map("expires_at") @db.Timestamptz(3)
+  /// Null until the capability becomes Recipient-actionable (A7: after send acceptance).
+  actionableAt           DateTime?                    @map("actionable_at") @db.Timestamptz(3)
+  revokedAt              DateTime?                    @map("revoked_at") @db.Timestamptz(3)
+  /// Internal D086 reason. Only `superseded` maps publicly to CAPABILITY_NO_LONGER_ACTIVE.
+  revocationReason       CapabilityRevocationReason?  @map("revocation_reason")
   /// Optional activity stamp; does not imply CapabilityStatus.used (D056).
-  lastUsedAt             DateTime?        @map("last_used_at") @db.Timestamptz(3)
-  createdAt              DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt              DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+  lastUsedAt             DateTime?                    @map("last_used_at") @db.Timestamptz(3)
+  createdAt              DateTime                     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt              DateTime                     @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  task       Task           @relation(fields: [taskId], references: [id], onDelete: Restrict)
-  assignment TaskAssignment @relation(fields: [assignmentId], references: [id], onDelete: Restrict)
-  recipient  Recipient?     @relation(fields: [recipientId], references: [id], onDelete: SetNull)
+  task            Task            @relation(fields: [taskId], references: [id], onDelete: Restrict)
+  assignment      TaskAssignment  @relation(fields: [assignmentId], references: [id], onDelete: Restrict)
+  recipient       Recipient?      @relation(fields: [recipientId], references: [id], onDelete: SetNull)
+  handoffAttempts HandoffAttempt[]
 
   @@index([organizationId, taskId])
   @@index([organizationId, status, expiresAt])
   @@index([assignmentId])
   @@map("task_capabilities")
+}
+
+/// Durable A7 handoff/delivery attempt (D092). Authoritative delivery status lives here;
+/// TaskAssignment.deliveryStatus is denormalized and kept in sync by handoff transactions.
+/// Provider message id uniqueness is org-scoped via migration partial unique
+/// `handoff_attempts_org_provider_message_id_key` WHERE provider_message_id IS NOT NULL
+/// (Prisma cannot express partial uniques).
+model HandoffAttempt {
+  id                 String                  @id @db.VarChar(64)
+  organizationId     String                  @map("organization_id") @db.VarChar(64)
+  taskId             String                  @map("task_id") @db.VarChar(64)
+  recipientId        String                  @map("recipient_id") @db.VarChar(64)
+  assignmentId       String                  @map("assignment_id") @db.VarChar(64)
+  capabilityId       String                  @map("capability_id") @db.VarChar(64)
+  /// Stable D037 acknowledgement version token (e.g. handoff_confirmed_v1).
+  acknowledgement    String                  @db.VarChar(64)
+  deliveryPath       HandoffDeliveryPath     @map("delivery_path")
+  status             HandoffAttemptStatus
+  intent             HandoffIntent
+  idempotencyKey     String                  @map("idempotency_key") @db.VarChar(128)
+  /// Digest of canonical security-relevant fingerprint (org, task, recipient, acknowledgement).
+  requestFingerprint String                  @map("request_fingerprint") @db.VarChar(128)
+  /// Gmail provider message id after send acceptance; null until sent. Immutable once set.
+  providerMessageId  String?                 @map("provider_message_id") @db.VarChar(128)
+  providerAcceptedAt DateTime?               @map("provider_accepted_at") @db.Timestamptz(3)
+  failureCode        String?                 @map("failure_code") @db.VarChar(64)
+  failureCategory    HandoffFailureCategory? @map("failure_category")
+  /// Privacy-safe opaque fingerprint — never raw provider text or message content.
+  failureFingerprint String?                 @map("failure_fingerprint") @db.VarChar(128)
+  retryable          Boolean?
+  attemptCount       Int                     @default(1) @map("attempt_count")
+  priorAttemptId     String?                 @map("prior_attempt_id") @db.VarChar(64)
+  rootAttemptId      String?                 @map("root_attempt_id") @db.VarChar(64)
+  createdAt          DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime                @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  task       Task           @relation(fields: [taskId], references: [id], onDelete: Restrict)
+  recipient  Recipient      @relation(fields: [recipientId], references: [id], onDelete: Restrict)
+  assignment TaskAssignment @relation(fields: [assignmentId], references: [id], onDelete: Restrict)
+  capability TaskCapability @relation(fields: [capabilityId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, idempotencyKey])
+  @@index([organizationId, taskId, status])
+  @@index([organizationId, status, updatedAt])
+  @@index([assignmentId])
+  @@index([capabilityId])
+  @@index([providerMessageId])
+  @@map("handoff_attempts")
 }
 
 /// A4 audit events (D057). Extended in A5 with system actor (D074) and optional Gmail refs.
@@ -404,6 +467,42 @@ enum AssignmentDeliveryStatus {
   pending
   sent
   failed
+}
+
+/// Internal capability revocation reason (D086 / A7.2). Not generally exposed on public errors.
+enum CapabilityRevocationReason {
+  superseded
+  manual
+  assignment_ended
+  expired
+}
+
+enum HandoffDeliveryPath {
+  gmail_forward
+  assignment_email
+}
+
+enum HandoffAttemptStatus {
+  pending
+  sent
+  failed
+}
+
+enum HandoffIntent {
+  initial
+  retry_failed
+  explicit_reforward
+  reassignment
+}
+
+enum HandoffFailureCategory {
+  validation
+  authorization
+  concurrency
+  domain_conflict
+  retryable_dependency
+  not_found
+  provider
 }
 
 enum AuditActorKind {

@@ -73,6 +73,57 @@ describe('A4 Prisma schema contracts', () => {
   });
 });
 
+describe('A7 handoff Prisma schema contracts', () => {
+  const a7Migration = readFileSync(
+    path.join(root, 'prisma/migrations/20260718210000_a7_handoff_persistence/migration.sql'),
+    'utf8',
+  );
+
+  it('defines HandoffAttempt and related enums', () => {
+    expect(schema).toContain('model HandoffAttempt');
+    expect(schema).toContain('enum HandoffDeliveryPath');
+    expect(schema).toContain('enum HandoffAttemptStatus');
+    expect(schema).toContain('enum HandoffIntent');
+    expect(schema).toContain('enum CapabilityRevocationReason');
+    expect(a7Migration).toContain('handoff_attempts');
+    expect(a7Migration).toContain('CREATE TYPE "CapabilityRevocationReason"');
+  });
+
+  it('enforces one active capability per assignment via partial unique index', () => {
+    expect(a7Migration).toContain('task_capabilities_one_active_per_assignment_idx');
+    expect(a7Migration).toMatch(/WHERE\s+"status"\s*=\s*'active'/);
+  });
+
+  it('scopes idempotency uniquely by organizationId + idempotencyKey', () => {
+    expect(schema).toContain('@@unique([organizationId, idempotencyKey])');
+    expect(a7Migration).toContain('handoff_attempts_organization_id_idempotency_key_key');
+  });
+
+  it('adds actionableAt and typed revocation reasons', () => {
+    expect(schema).toContain('actionableAt');
+    expect(a7Migration).toContain('actionable_at');
+    expect(schema).toContain('CapabilityRevocationReason');
+  });
+
+  it('uses partial unique for active Recipient emails', () => {
+    expect(schema).not.toContain('@@unique([organizationId, email])');
+    expect(a7Migration).toContain('recipients_one_active_email_per_org_idx');
+    expect(a7Migration).toMatch(/WHERE\s+"active"\s*=\s*true/);
+  });
+
+  it('scopes provider message id uniquely by organization when set', () => {
+    const hardeningMigration = readFileSync(
+      path.join(
+        root,
+        'prisma/migrations/20260718223000_a7_handoff_concurrency_hardening/migration.sql',
+      ),
+      'utf8',
+    );
+    expect(hardeningMigration).toContain('handoff_attempts_org_provider_message_id_key');
+    expect(hardeningMigration).toMatch(/WHERE\s+"provider_message_id"\s+IS\s+NOT\s+NULL/);
+  });
+});
+
 describe('A5 Gmail Prisma schema contracts', () => {
   it('defines Gmail persistence models with ciphertext-only credentials', () => {
     for (const model of [

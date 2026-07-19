@@ -205,6 +205,23 @@ async function persistIssuance(
     assignmentSnapshot.id,
   );
 
+  // Policy (A7.3): A4 administrative issue/replace must not supersede the capability of the
+  // latest UNRESOLVED A7 handoff attempt (pending, or failed — retryable or not). replaceExisting
+  // does not bypass this. Resolution happens only through the A7 workflow (retry, explicit
+  // re-forward, reassignment). Friendly preflight; the authoritative gate is enforced in-txn below.
+  const latestHandoff = await dbRuntime.findLatestHandoffAttemptForAssignment(
+    command.db,
+    owner.organizationId,
+    assignmentSnapshot.id,
+  );
+  if (latestHandoff && dbRuntime.isUnresolvedHandoffAttemptForAdminIssuance(latestHandoff)) {
+    throw capabilityTokenError(
+      'ISSUANCE_CONFLICT',
+      `Cannot issue or replace a capability while the latest handoff attempt is ${latestHandoff.status}; resolve it through the A7 workflow.`,
+      { assignmentId: assignmentSnapshot.id, attemptId: latestHandoff.id },
+    );
+  }
+
   if (existingActive.length > 0 && !options.replaceExisting) {
     throw capabilityTokenError(
       'ISSUANCE_CONFLICT',
@@ -248,12 +265,22 @@ async function persistIssuance(
 
   try {
     const persisted = await command.db.$transaction(async (tx) => {
+      // Authoritative in-transaction gate: locks the latest handoff attempt FOR UPDATE and rejects
+      // when it is unresolved (pending or failed). Serializes against retry preparation, re-forward,
+      // reassignment, and failure recording so a race cannot orphan the attempt or supersede its
+      // non-actionable capability. Throws HANDOFF_IN_PROGRESS (mapped to ISSUANCE_CONFLICT below).
+      await dbRuntime.assertAdminIssuanceNotBlockedByHandoff(
+        tx,
+        owner.organizationId,
+        assignmentSnapshot.id,
+      );
+
       const replacedIds = await revokeActiveCapabilitiesInTransaction(
         tx,
         owner.organizationId,
         assignmentSnapshot.id,
         command.now,
-        options.replaceExisting ? 'capability_link_replaced' : 'capability_superseded',
+        options.replaceExisting ? 'manual' : 'superseded',
       );
 
       const taskForPersist: Task = {
@@ -343,6 +370,15 @@ async function persistIssuance(
       throw error;
     }
     const persistenceCode = readPersistenceErrorCode(error);
+    if (persistenceCode === 'HANDOFF_IN_PROGRESS') {
+      // In-transaction A7 gate (assertAdminIssuanceNotBlockedByHandoff). Reuse the existing
+      // public issuance-conflict code — no new public error-code distinction is introduced.
+      throw capabilityTokenError(
+        'ISSUANCE_CONFLICT',
+        'Cannot issue or replace a capability while an unresolved handoff attempt exists for this assignment; resolve it through the A7 workflow.',
+        { taskId: command.taskId },
+      );
+    }
     if (persistenceCode === 'UNIQUE_VIOLATION') {
       throw capabilityTokenError(
         'ISSUANCE_CONFLICT',

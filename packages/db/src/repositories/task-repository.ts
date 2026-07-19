@@ -327,18 +327,23 @@ export async function updateActiveAssignmentCapabilityBinding(
     activeCapabilityId: string | null;
     capabilityStatus: 'active' | 'revoked' | 'expired' | null;
     allowedCapabilityActions?: unknown;
+    deliveryStatus?: 'pending' | 'sent' | 'failed' | null;
   },
 ): Promise<void> {
   const data: {
     activeCapabilityId: string | null;
     capabilityStatus: 'active' | 'revoked' | 'expired' | null;
     allowedCapabilityActions?: Prisma.InputJsonValue;
+    deliveryStatus?: 'pending' | 'sent' | 'failed' | null;
   } = {
     activeCapabilityId: binding.activeCapabilityId,
     capabilityStatus: binding.capabilityStatus,
   };
   if (binding.allowedCapabilityActions !== undefined) {
     data.allowedCapabilityActions = asJson(binding.allowedCapabilityActions);
+  }
+  if (binding.deliveryStatus !== undefined) {
+    data.deliveryStatus = binding.deliveryStatus;
   }
 
   const result = await db.taskAssignment.updateMany({
@@ -348,6 +353,38 @@ export async function updateActiveAssignmentCapabilityBinding(
   if (result.count !== 1) {
     throw notFound(`Active assignment for task ${taskId} not found.`);
   }
+}
+
+/**
+ * Sync denormalized Assignment.deliveryStatus with authoritative HandoffAttempt status.
+ * Conditional on current deliveryStatus so concurrent terminal transitions cannot mix state.
+ */
+export async function updateActiveAssignmentDeliveryStatus(
+  db: Client,
+  organizationId: string,
+  taskId: string,
+  deliveryStatus: 'pending' | 'sent' | 'failed',
+  options?: {
+    /** When set, only transition from this prior status (atomic CAS). */
+    fromStatus?: 'pending' | 'sent' | 'failed';
+  },
+): Promise<{ updated: boolean }> {
+  const result = await db.taskAssignment.updateMany({
+    where: {
+      taskId,
+      organizationId,
+      clearedAt: null,
+      ...(options?.fromStatus ? { deliveryStatus: options.fromStatus } : {}),
+    },
+    data: { deliveryStatus },
+  });
+  if (result.count === 1) {
+    return { updated: true };
+  }
+  if (options?.fromStatus) {
+    return { updated: false };
+  }
+  throw notFound(`Active assignment for task ${taskId} not found.`);
 }
 
 /**

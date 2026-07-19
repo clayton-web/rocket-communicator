@@ -63,11 +63,23 @@ export type TracedRuntimeModule = {
   createTask: typeof TracedRuntimeBindings.createTask;
   getRecipientById: typeof TracedRuntimeBindings.getRecipientById;
   createAuditEvent: typeof TracedRuntimeBindings.createAuditEvent;
+  beginInitialHandoff: typeof TracedRuntimeBindings.beginInitialHandoff;
+  markHandoffSendAccepted: typeof TracedRuntimeBindings.markHandoffSendAccepted;
+  markHandoffDeliveryFailed: typeof TracedRuntimeBindings.markHandoffDeliveryFailed;
+  prepareFailedHandoffRetry: typeof TracedRuntimeBindings.prepareFailedHandoffRetry;
+  getHandoffAttemptById: typeof TracedRuntimeBindings.getHandoffAttemptById;
+  invalidState: typeof TracedRuntimeBindings.invalidState;
+  handoffInProgress: typeof TracedRuntimeBindings.handoffInProgress;
   persistOwnerTaskMutation: typeof TracedRuntimeBindings.persistOwnerTaskMutation;
   persistReturnToOwner: typeof TracedRuntimeBindings.persistReturnToOwner;
   findCapabilityByTokenHash: typeof TracedRuntimeBindings.findCapabilityByTokenHash;
   createCapability: typeof TracedRuntimeBindings.createCapability;
   findActiveCapabilitiesForAssignment: typeof TracedRuntimeBindings.findActiveCapabilitiesForAssignment;
+  findPendingHandoffAttemptForAssignment: typeof TracedRuntimeBindings.findPendingHandoffAttemptForAssignment;
+  findLatestHandoffAttemptForAssignment: typeof TracedRuntimeBindings.findLatestHandoffAttemptForAssignment;
+  isUnresolvedHandoffAttemptForAdminIssuance: typeof TracedRuntimeBindings.isUnresolvedHandoffAttemptForAdminIssuance;
+  assertAdminIssuanceNotBlockedByHandoff: typeof TracedRuntimeBindings.assertAdminIssuanceNotBlockedByHandoff;
+  isPersistedCapabilityActionable: typeof TracedRuntimeBindings.isPersistedCapabilityActionable;
   revokeCapabilityRecord: typeof TracedRuntimeBindings.revokeCapabilityRecord;
   updateActiveAssignmentCapabilityBinding: typeof TracedRuntimeBindings.updateActiveAssignmentCapabilityBinding;
   updateTaskWithExpectedVersion: typeof TracedRuntimeBindings.updateTaskWithExpectedVersion;
@@ -122,11 +134,24 @@ export async function loadTracedRuntimeModule(): Promise<TracedRuntimeModule> {
     createTask: tracedRuntime.createTask,
     getRecipientById: tracedRuntime.getRecipientById,
     createAuditEvent: tracedRuntime.createAuditEvent,
+    beginInitialHandoff: tracedRuntime.beginInitialHandoff,
+    markHandoffSendAccepted: tracedRuntime.markHandoffSendAccepted,
+    markHandoffDeliveryFailed: tracedRuntime.markHandoffDeliveryFailed,
+    prepareFailedHandoffRetry: tracedRuntime.prepareFailedHandoffRetry,
+    getHandoffAttemptById: tracedRuntime.getHandoffAttemptById,
+    invalidState: tracedRuntime.invalidState,
+    handoffInProgress: tracedRuntime.handoffInProgress,
     persistOwnerTaskMutation: tracedRuntime.persistOwnerTaskMutation,
     persistReturnToOwner: tracedRuntime.persistReturnToOwner,
     findCapabilityByTokenHash: tracedRuntime.findCapabilityByTokenHash,
     createCapability: tracedRuntime.createCapability,
     findActiveCapabilitiesForAssignment: tracedRuntime.findActiveCapabilitiesForAssignment,
+    findPendingHandoffAttemptForAssignment: tracedRuntime.findPendingHandoffAttemptForAssignment,
+    findLatestHandoffAttemptForAssignment: tracedRuntime.findLatestHandoffAttemptForAssignment,
+    isUnresolvedHandoffAttemptForAdminIssuance:
+      tracedRuntime.isUnresolvedHandoffAttemptForAdminIssuance,
+    assertAdminIssuanceNotBlockedByHandoff: tracedRuntime.assertAdminIssuanceNotBlockedByHandoff,
+    isPersistedCapabilityActionable: tracedRuntime.isPersistedCapabilityActionable,
     revokeCapabilityRecord: tracedRuntime.revokeCapabilityRecord,
     updateActiveAssignmentCapabilityBinding: tracedRuntime.updateActiveAssignmentCapabilityBinding,
     updateTaskWithExpectedVersion: tracedRuntime.updateTaskWithExpectedVersion,

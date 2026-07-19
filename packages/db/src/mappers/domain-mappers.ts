@@ -37,6 +37,7 @@ import type {
   CommunicationAccount as PrismaCommunicationAccount,
   CommunicationEvent as PrismaCommunicationEvent,
   GmailSyncRun as PrismaGmailSyncRun,
+  HandoffAttempt as PrismaHandoffAttempt,
   Recipient as PrismaRecipient,
   Task as PrismaTask,
   TaskAssignment as PrismaAssignment,
@@ -146,7 +147,11 @@ export function mapSuggestion(row: PrismaSuggestion): TaskSuggestion {
   };
 }
 
-export function mapCapability(row: PrismaCapability): TaskCapability & { tokenHash: string } {
+export function mapCapability(row: PrismaCapability): TaskCapability & {
+  tokenHash: string;
+  organizationId: string;
+  actionableAt: string | null;
+} {
   return {
     id: asCapabilityId(row.id),
     taskId: asTaskId(row.taskId),
@@ -159,7 +164,10 @@ export function mapCapability(row: PrismaCapability): TaskCapability & { tokenHa
     expiresAt: toIso(row.expiresAt),
     revokedAt: row.revokedAt ? toIso(row.revokedAt) : null,
     lastUsedAt: row.lastUsedAt ? toIso(row.lastUsedAt) : null,
+    revocationReason: row.revocationReason ?? null,
     tokenHash: row.tokenHash,
+    organizationId: row.organizationId,
+    actionableAt: row.actionableAt ? toIso(row.actionableAt) : null,
   };
 }
 
@@ -311,5 +319,67 @@ export function mapGmailSyncRun(row: PrismaGmailSyncRun): GmailSyncRun {
     retryable: row.retryable,
     errorCode: row.errorCode,
     requestId: row.requestId,
+  };
+}
+
+export type PersistedHandoffAttempt = {
+  id: string;
+  organizationId: string;
+  taskId: string;
+  recipientId: string;
+  assignmentId: string;
+  capabilityId: string;
+  acknowledgement: string;
+  deliveryPath: 'gmail_forward' | 'assignment_email';
+  status: 'pending' | 'sent' | 'failed';
+  intent: 'initial' | 'retry_failed' | 'explicit_reforward' | 'reassignment';
+  idempotencyKey: string;
+  requestFingerprint: string;
+  providerMessageId: string | null;
+  providerAcceptedAt: string | null;
+  failureCode: string | null;
+  failureCategory:
+    | 'validation'
+    | 'authorization'
+    | 'concurrency'
+    | 'domain_conflict'
+    | 'retryable_dependency'
+    | 'not_found'
+    | 'provider'
+    | null;
+  failureFingerprint: string | null;
+  retryable: boolean | null;
+  attemptCount: number;
+  priorAttemptId: string | null;
+  rootAttemptId: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export function mapHandoffAttempt(row: PrismaHandoffAttempt): PersistedHandoffAttempt {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    taskId: row.taskId,
+    recipientId: row.recipientId,
+    assignmentId: row.assignmentId,
+    capabilityId: row.capabilityId,
+    acknowledgement: row.acknowledgement,
+    deliveryPath: row.deliveryPath,
+    status: row.status,
+    intent: row.intent,
+    idempotencyKey: row.idempotencyKey,
+    requestFingerprint: row.requestFingerprint,
+    providerMessageId: row.providerMessageId,
+    providerAcceptedAt: row.providerAcceptedAt ? toIso(row.providerAcceptedAt) : null,
+    failureCode: row.failureCode,
+    failureCategory: row.failureCategory,
+    failureFingerprint: row.failureFingerprint,
+    retryable: row.retryable,
+    attemptCount: row.attemptCount,
+    priorAttemptId: row.priorAttemptId,
+    rootAttemptId: row.rootAttemptId,
+    createdAt: toIso(row.createdAt),
+    updatedAt: toIso(row.updatedAt),
   };
 }

@@ -54,7 +54,8 @@ export async function validateCapabilityToken(
   }
 
   const tokenHash = hashCapabilityToken(command.rawToken, pepper);
-  const { findCapabilityByTokenHash, getTaskById } = await loadDbRuntime();
+  const { findCapabilityByTokenHash, getTaskById, isPersistedCapabilityActionable } =
+    await loadDbRuntime();
   const found = await findCapabilityByTokenHash(command.db, tokenHash);
   if (!found) {
     throw capabilityTokenError('INVALID_CAPABILITY', 'Capability token is invalid.');
@@ -76,6 +77,12 @@ export async function validateCapabilityToken(
     throw capabilityTokenError('CAPABILITY_EXPIRED', 'Capability token has expired.');
   }
 
+  // A7: status=active is not sufficient — pending/failed handoff caps have actionableAt=null.
+  // Treat non-actionable matched tokens as probing-safe invalid (not a distinct public code).
+  if (!isPersistedCapabilityActionable(found, command.now)) {
+    throw capabilityTokenError('INVALID_CAPABILITY', 'Capability token is invalid.');
+  }
+
   if (command.taskId && command.taskId !== capability.taskId) {
     throw capabilityTokenError('WRONG_RESOURCE', 'Capability token is invalid.', {
       reason: 'task_mismatch',
@@ -83,6 +90,14 @@ export async function validateCapabilityToken(
   }
 
   const task = await getTaskById(command.db, organizationId, command.taskId ?? capability.taskId);
+
+  // Defense in depth for A7 handoff: pending/failed denormalized delivery must not be usable.
+  // A4 assignments typically leave deliveryStatus null — actionableAt remains the primary gate.
+  // Authoritative delivery source is HandoffAttempt.status (mirrored into actionableAt on send).
+  const deliveryStatus = task.assignment?.deliveryStatus;
+  if (deliveryStatus === 'pending' || deliveryStatus === 'failed') {
+    throw capabilityTokenError('INVALID_CAPABILITY', 'Capability token is invalid.');
+  }
 
   try {
     assertCapabilityBelongsToTask(actor, task);

@@ -15,6 +15,10 @@ export {
   uniqueViolation,
   persistenceValidation,
   recipientHandoffNotAvailable,
+  idempotencyKeyConflict,
+  handoffInProgress,
+  domainConflict,
+  invalidState,
 } from './errors/persistence-errors.js';
 
 export {
@@ -25,10 +29,20 @@ export {
   mapAuditEvent,
   mapNote,
   mapAssignment,
+  mapHandoffAttempt,
   type AuditEventRecord,
+  type PersistedHandoffAttempt,
 } from './mappers/domain-mappers.js';
 
-export { upsertRecipient, getRecipientById } from './repositories/recipient-repository.js';
+export {
+  upsertRecipient,
+  getRecipientById,
+  createRecipient,
+  listActiveRecipients,
+  updateRecipient,
+  deactivateRecipient,
+  requireActiveRecipientForHandoff,
+} from './repositories/recipient-repository.js';
 export {
   getTaskById,
   listTasks,
@@ -37,6 +51,7 @@ export {
   appendTaskNote,
   createActiveAssignment,
   updateActiveAssignmentCapabilityBinding,
+  updateActiveAssignmentDeliveryStatus,
   clearAssignment,
   listTaskAssignments,
   type ListTasksQuery,
@@ -56,8 +71,22 @@ export {
   findActiveCapabilitiesForAssignment,
   revokeCapabilityRecord,
   markCapabilityExpiredRecord,
+  activateCapabilityRecord,
+  isPersistedCapabilityActionable,
   type PersistedCapability,
 } from './repositories/capability-repository.js';
+export {
+  createHandoffAttempt,
+  getHandoffAttemptById,
+  findHandoffAttemptByIdempotencyKey,
+  findPendingHandoffAttemptForAssignment,
+  findLatestHandoffAttemptForAssignment,
+  isUnresolvedHandoffAttemptForAdminIssuance,
+  assertAdminIssuanceNotBlockedByHandoff,
+  lookupHandoffIdempotency,
+  listStalePendingHandoffAttempts,
+  type HandoffIdempotencyLookup,
+} from './repositories/handoff-attempt-repository.js';
 export {
   createAuditEvent,
   listAuditEventsForTask,
@@ -135,3 +164,16 @@ export {
   type PersistGmailDisconnectResult,
   type PersistGmailHistoryPageResult,
 } from './transactions/gmail-transactions.js';
+
+export {
+  beginInitialHandoff,
+  markHandoffSendAccepted,
+  markHandoffDeliveryFailed,
+  prepareFailedHandoffRetry,
+  beginExplicitReforward,
+  beginReassignment,
+  resolveHandoffIdempotency,
+  assertCreateTaskRejectsAssignment,
+  type BeginInitialHandoffInput,
+  type BeginInitialHandoffResult,
+} from './transactions/a7-handoff-transactions.js';

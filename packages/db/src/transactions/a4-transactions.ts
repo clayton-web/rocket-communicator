@@ -86,7 +86,7 @@ export async function persistReturnToOwner(input: {
         input.organizationId,
         input.capabilityId,
         input.revokedAt,
-        'assignment_returned_to_owner',
+        'assignment_ended',
       );
     }
 

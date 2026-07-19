@@ -218,6 +218,13 @@ describe('A4 persistence repositories (PGlite)', () => {
   });
 
   it('persists capability expiry and revocation fields', async () => {
+    const { findActiveCapabilitiesForAssignment, revokeCapabilityRecord } =
+      await import('../src/repositories/capability-repository.js');
+    const actives = await findActiveCapabilitiesForAssignment(db.prisma, orgA, 'asg_1');
+    for (const active of actives) {
+      await revokeCapabilityRecord(db.prisma, orgA, active.id, now, 'manual');
+    }
+
     const cap = await createCapability(
       db.prisma,
       orgA,
@@ -229,11 +236,10 @@ describe('A4 persistence repositories (PGlite)', () => {
     );
     expect(cap.expiresAt).toBe('2026-07-21T00:00:00.000Z');
 
-    const revoked = await (
-      await import('../src/repositories/capability-repository.js')
-    ).revokeCapabilityRecord(db.prisma, orgA, 'cap_rev', now, 'manual_revoke');
+    const revoked = await revokeCapabilityRecord(db.prisma, orgA, 'cap_rev', now, 'manual');
     expect(revoked.status).toBe('revoked');
     expect(revoked.revokedAt).toBe(now);
+    expect(revoked.revocationReason).toBe('manual');
 
     const loaded = await getCapabilityById(db.prisma, orgA, 'cap_rev');
     expect(loaded.status).toBe('revoked');
@@ -857,7 +863,15 @@ describe('A4 persistence repositories (PGlite)', () => {
   });
 
   it('does not export a DATABASE_URL-bound factory that invents secrets', () => {
-    expect(() => createPrismaClient(undefined)).toThrow(/DATABASE_URL/);
+    const previous = process.env.DATABASE_URL;
+    delete process.env.DATABASE_URL;
+    try {
+      expect(() => createPrismaClient(undefined)).toThrow(/DATABASE_URL/);
+    } finally {
+      if (previous !== undefined) {
+        process.env.DATABASE_URL = previous;
+      }
+    }
   });
 
   it('lists organization tasks with deterministic cursor pagination', async () => {

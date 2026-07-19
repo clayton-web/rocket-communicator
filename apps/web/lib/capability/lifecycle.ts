@@ -38,7 +38,7 @@ export async function revokeCapabilityForOwner(input: {
     input.owner.organizationId,
     input.capabilityId,
     revokedDomain.revokedAt ?? input.now,
-    input.reason ?? 'owner_revoked',
+    input.reason ?? 'manual',
   );
 
   await dbRuntime
@@ -131,7 +131,7 @@ export async function invalidateCapabilityOnAssignmentChangePersisted(input: {
     input.organizationId,
     input.capabilityId,
     input.now,
-    input.reason ?? 'assignment_changed',
+    input.reason ?? 'assignment_ended',
   );
 }
 
