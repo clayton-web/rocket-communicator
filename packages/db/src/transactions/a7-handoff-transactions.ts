@@ -156,11 +156,19 @@ export async function beginInitialHandoff(
         input.assignment.recipientId,
       );
 
+      // Bump Task version under If-Match CAS so the post-handoff ETag advances (OpenAPI / A7.7).
+      // Replays never reach this write — they return from the idempotency lookup above.
+      const nextVersion = input.expectedTaskVersion + 1;
       const taskAfterVersion = await updateTaskWithExpectedVersion(
         tx,
         input.organizationId,
         input.expectedTaskVersion,
-        { ...input.task, assignment: undefined },
+        {
+          ...input.task,
+          assignment: undefined,
+          version: nextVersion,
+          updatedAt: input.task.updatedAt,
+        },
       );
       void taskAfterVersion;
 

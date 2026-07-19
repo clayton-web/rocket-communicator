@@ -71,6 +71,7 @@ export type TracedRuntimeModule = {
   markHandoffSendAccepted: typeof TracedRuntimeBindings.markHandoffSendAccepted;
   markHandoffDeliveryFailed: typeof TracedRuntimeBindings.markHandoffDeliveryFailed;
   prepareFailedHandoffRetry: typeof TracedRuntimeBindings.prepareFailedHandoffRetry;
+  resolveHandoffIdempotency: typeof TracedRuntimeBindings.resolveHandoffIdempotency;
   getHandoffAttemptById: typeof TracedRuntimeBindings.getHandoffAttemptById;
   invalidState: typeof TracedRuntimeBindings.invalidState;
   handoffInProgress: typeof TracedRuntimeBindings.handoffInProgress;
@@ -146,6 +147,7 @@ export async function loadTracedRuntimeModule(): Promise<TracedRuntimeModule> {
     markHandoffSendAccepted: tracedRuntime.markHandoffSendAccepted,
     markHandoffDeliveryFailed: tracedRuntime.markHandoffDeliveryFailed,
     prepareFailedHandoffRetry: tracedRuntime.prepareFailedHandoffRetry,
+    resolveHandoffIdempotency: tracedRuntime.resolveHandoffIdempotency,
     getHandoffAttemptById: tracedRuntime.getHandoffAttemptById,
     invalidState: tracedRuntime.invalidState,
     handoffInProgress: tracedRuntime.handoffInProgress,

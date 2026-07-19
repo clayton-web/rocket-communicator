@@ -27,6 +27,7 @@ const REQUIRED_EXPORTS = [
   'markHandoffSendAccepted',
   'markHandoffDeliveryFailed',
   'prepareFailedHandoffRetry',
+  'resolveHandoffIdempotency',
   'getHandoffAttemptById',
   'invalidState',
   'handoffInProgress',

@@ -36,6 +36,7 @@ export {
   markHandoffDeliveryFailed,
   markHandoffSendAccepted,
   prepareFailedHandoffRetry,
+  resolveHandoffIdempotency,
   inspectGmailOAuthState,
   listActiveRecipientsPage,
   listEligibleGmailAccountsForPoll,

@@ -56,11 +56,16 @@ function nftChunkJsFiles(nftPath) {
     if (!entry.endsWith('.js') || entry.endsWith('.js.map')) {
       continue;
     }
-    jsFiles.add(path.resolve(serverRoot, entry));
+    const resolved = path.resolve(serverRoot, entry);
+    // NFT traces can list package directories whose names end in `.js` (e.g. `bignumber.js`).
+    // Only gather real files so readFileSync never hits EISDIR.
+    if (fs.existsSync(resolved) && fs.statSync(resolved).isFile()) {
+      jsFiles.add(resolved);
+    }
   }
 
   const routeJs = nftPath.replace(/\.nft\.json$/, '');
-  if (fs.existsSync(routeJs)) {
+  if (fs.existsSync(routeJs) && fs.statSync(routeJs).isFile()) {
     jsFiles.add(routeJs);
   }
 
@@ -87,7 +92,9 @@ function gatherRouteArtifacts(relativeNftPath) {
   for (const chunk of readRouteChunkImports(routeJs)) {
     artifacts.add(chunk);
   }
-  return [...artifacts].filter((filePath) => fs.existsSync(filePath));
+  return [...artifacts].filter(
+    (filePath) => fs.existsSync(filePath) && fs.statSync(filePath).isFile(),
+  );
 }
 
 function assertRuntimeReferencePresent(routeLabel, artifactPaths) {

@@ -55,6 +55,7 @@ export const REQUIRED_RUNTIME_EXPORTS = [
   'markHandoffSendAccepted',
   'markHandoffDeliveryFailed',
   'prepareFailedHandoffRetry',
+  'resolveHandoffIdempotency',
   'getHandoffAttemptById',
   'invalidState',
   'handoffInProgress',
