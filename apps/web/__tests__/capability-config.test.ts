@@ -64,6 +64,30 @@ describe('capability token configuration', () => {
     );
   });
 
+  it('23. capability base URL is server-controlled configuration (env), normalized', () => {
+    setValidEnv({ NEXT_PUBLIC_APP_URL: 'https://app.example.com/' });
+    const config = getCapabilityTokenConfig();
+    // Trailing slash normalized; value is the trusted env base, never a request host.
+    expect(config.appUrl).toBe('https://app.example.com');
+  });
+
+  it('24. rejects unsafe/non-HTTPS capability origin in production and malformed URLs', () => {
+    // Non-absolute / malformed base URL is always rejected.
+    setValidEnv({ NEXT_PUBLIC_APP_URL: 'not-a-url' });
+    expect(() => getCapabilityTokenConfig()).toThrow(/absolute http/);
+
+    // Credentials / query / fragment in the base are rejected (open-redirect / token misplacement).
+    setValidEnv({ NEXT_PUBLIC_APP_URL: 'https://app.example.com/?next=evil' });
+    expect(() => getCapabilityTokenConfig()).toThrow(CapabilityTokenError);
+
+    // In production, plain http is rejected; https is accepted.
+    setValidEnv({ NEXT_PUBLIC_APP_URL: 'http://app.example.com', NODE_ENV: 'production' });
+    expect(() => getCapabilityTokenConfig()).toThrow(/https in production/);
+
+    setValidEnv({ NEXT_PUBLIC_APP_URL: 'https://app.example.com', NODE_ENV: 'production' });
+    expect(getCapabilityTokenConfig().appUrl).toBe('https://app.example.com');
+  });
+
   it('does not expose pepper through public NEXT_PUBLIC configuration names', () => {
     setValidEnv();
     const config = getCapabilityTokenConfig();

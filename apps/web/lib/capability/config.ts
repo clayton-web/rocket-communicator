@@ -33,6 +33,54 @@ function normalizeAppUrl(appUrl: string): string {
   return appUrl.replace(/\/$/, '');
 }
 
+/**
+ * Validate the server-controlled capability base origin (D063 / A7.5).
+ *
+ * The base URL is trusted server configuration only — never derived from a request Host header or a
+ * caller-supplied value. Requirements: absolute http/https URL; HTTPS in production; no embedded
+ * credentials, query, or fragment (which could enable open-redirect or misplace the token). The path
+ * is preserved and normalized (trailing slash stripped) so the token appears only in the `/c/{token}`
+ * segment appended by {@link buildCapabilityUrl}. Errors are privacy-safe (config key only).
+ */
+export function assertValidCapabilityAppUrl(
+  appUrl: string,
+  options: { requireHttps?: boolean } = {},
+  source = 'NEXT_PUBLIC_APP_URL',
+): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(appUrl);
+  } catch {
+    throw capabilityTokenError(
+      'INVALID_APP_URL_CONFIGURATION',
+      `${source} must be an absolute http(s) URL.`,
+      { configKey: source },
+    );
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw capabilityTokenError(
+      'INVALID_APP_URL_CONFIGURATION',
+      `${source} must use the http or https scheme.`,
+      { configKey: source },
+    );
+  }
+  if (options.requireHttps && parsed.protocol !== 'https:') {
+    throw capabilityTokenError(
+      'INVALID_APP_URL_CONFIGURATION',
+      `${source} must use https in production.`,
+      { configKey: source },
+    );
+  }
+  if (parsed.username || parsed.password || parsed.search || parsed.hash) {
+    throw capabilityTokenError(
+      'INVALID_APP_URL_CONFIGURATION',
+      `${source} must not contain credentials, query, or fragment.`,
+      { configKey: source },
+    );
+  }
+  return normalizeAppUrl(appUrl);
+}
+
 export function parseCapabilityTtlMs(raw: string, source = 'CAPABILITY_TTL_MS'): number {
   if (!/^\d+$/.test(raw.trim())) {
     throw capabilityTokenError(
@@ -97,8 +145,9 @@ export function getCapabilityTokenConfig(
     );
     const ttlRaw = requireConfiguredEnv(env.CAPABILITY_TTL_MS, 'CAPABILITY_TTL_MS');
     const ttlMs = parseCapabilityTtlMs(ttlRaw);
-    const appUrl = normalizeAppUrl(
+    const appUrl = assertValidCapabilityAppUrl(
       requireConfiguredEnv(env.NEXT_PUBLIC_APP_URL, 'NEXT_PUBLIC_APP_URL'),
+      { requireHttps: (env.NODE_ENV ?? '').trim() === 'production' },
     );
     return { pepper, ttlMs, appUrl };
   } catch (error) {
