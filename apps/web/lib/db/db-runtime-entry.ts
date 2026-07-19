@@ -62,6 +62,10 @@ export type TracedRuntimeModule = {
   listTasks: typeof TracedRuntimeBindings.listTasks;
   createTask: typeof TracedRuntimeBindings.createTask;
   getRecipientById: typeof TracedRuntimeBindings.getRecipientById;
+  createRecipient: typeof TracedRuntimeBindings.createRecipient;
+  updateRecipient: typeof TracedRuntimeBindings.updateRecipient;
+  deactivateRecipient: typeof TracedRuntimeBindings.deactivateRecipient;
+  listActiveRecipientsPage: typeof TracedRuntimeBindings.listActiveRecipientsPage;
   createAuditEvent: typeof TracedRuntimeBindings.createAuditEvent;
   beginInitialHandoff: typeof TracedRuntimeBindings.beginInitialHandoff;
   markHandoffSendAccepted: typeof TracedRuntimeBindings.markHandoffSendAccepted;
@@ -133,6 +137,10 @@ export async function loadTracedRuntimeModule(): Promise<TracedRuntimeModule> {
     listTasks: tracedRuntime.listTasks,
     createTask: tracedRuntime.createTask,
     getRecipientById: tracedRuntime.getRecipientById,
+    createRecipient: tracedRuntime.createRecipient,
+    updateRecipient: tracedRuntime.updateRecipient,
+    deactivateRecipient: tracedRuntime.deactivateRecipient,
+    listActiveRecipientsPage: tracedRuntime.listActiveRecipientsPage,
     createAuditEvent: tracedRuntime.createAuditEvent,
     beginInitialHandoff: tracedRuntime.beginInitialHandoff,
     markHandoffSendAccepted: tracedRuntime.markHandoffSendAccepted,

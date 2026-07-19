@@ -45,9 +45,12 @@ export {
   getRecipientById,
   createRecipient,
   listActiveRecipients,
+  listActiveRecipientsPage,
   updateRecipient,
   deactivateRecipient,
   requireActiveRecipientForHandoff,
+  type ListActiveRecipientsQuery,
+  type ListActiveRecipientsResult,
 } from './repositories/recipient-repository.js';
 export {
   getTaskById,
