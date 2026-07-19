@@ -16,7 +16,7 @@ The single authenticated application user. Signs in with Google Workspace via Su
 
 ### Recipient
 
-A delegated person identified by email. Receives assignment emails and acts through capability links. **No** application account or Session (D049).
+A delegated person identified by email in an Owner-managed Recipient record (D087). Receives assignment emails and acts through capability links. **No** application account or Session (D049). A7 may expose minimal list/create/update/inactive management—not a CRM.
 
 **May (via capability):** view assigned task; complete; waiting/resume; notes; return to Owner; request clarification; submit work request → Task Suggestion.
 
@@ -52,23 +52,23 @@ Phone number treated as recognized for completed-call prompts (contact match, Ow
 
 ### Task Suggestion
 
-Candidate work that is **not** yet a Task. Requires Owner approve/edit/dismiss/merge. Voice-originated work starts here (D038). Recipient work requests become Suggestions. A6 approve creates an **unassigned Task** only (D080); Recipient handoff is A7 (D037).
+Candidate work that is **not** yet a Task. Requires Owner approve/edit/dismiss/merge. Voice-originated work starts here (D038). Recipient work requests become Suggestions. A6 approve creates an **unassigned Task** only (D080); Recipient handoff is A7 via `POST /api/v1/tasks/{taskId}/handoff` (D037, D090). Optional AI `proposedRecipientHint` may map to `proposedRecipientId` only via deterministic match to an active Recipient—never auto-assign (D094).
 
 ### Task
 
-Approved actionable work with status, summary, assignment attribute, scheduling, and audit. Never created directly by voice (D038). A6 suggestion approval yields an unassigned Task (D080).
+Approved actionable work with status, summary, assignment attribute, scheduling, and audit. Never created directly by voice (D038). A6 suggestion approval yields an unassigned Task (D080). Owner/self work remains unassigned (D094).
 
 ### Assignment
 
-Persisted binding of a Task to a Recipient (and intended email), including allowed Recipient actions for that handoff. Assignment is an **attribute of the Task**, not a Task status ([STATE_MACHINE.md](STATE_MACHINE.md)). A Task may have historical assignment rows over time; at most one assignment is active.
+Persisted binding of a Task to a Recipient (and intended email), including allowed Recipient actions for that handoff. Assignment is an **attribute of the Task**, not a Task status ([STATE_MACHINE.md](STATE_MACHINE.md)). A Task may have historical assignment rows over time; at most one assignment is active. Delivery outcomes: `pending` / `sent` / `failed` (D092). Activate only after Gmail accepts send.
 
-For Gmail-origin handoffs, approval of assignment and Gmail forward is one confirmation (D037). A6 does not create Assignments (D080).
+For Gmail-origin and non-Gmail handoffs, approval of assignment and outbound mail is one confirmation (D037). A6 does not create Assignments (D080). Reminder scheduling is A8 (D089).
 
-Assignment ≠ Capability: assignment records who should receive work and which actions are allowed; a Capability is the issued authorization grant for an active assignment.
+Assignment ≠ Capability: assignment records who should receive work and which actions are allowed; a Capability is the issued authorization grant for an active assignment. At most one **active** capability per Assignment; re-forward/reassignment revokes the prior (D086).
 
 ### Capability
 
-Server-side authorization grant bound to a Task and Assignment: scope (Capability Scope), status, issue/expiry times, and lookup hash of the secret. Multi-use until invalidation (D056). Possession of the matching secret authorizes actions; it does not prove who clicked the link (D051).
+Server-side authorization grant bound to a Task and Assignment: scope (Capability Scope), status, issue/expiry times, and lookup hash of the secret. Multi-use until invalidation (D056). Possession of the matching secret authorizes actions; it does not prove who clicked the link (D051). Revoked capability records and audit history are preserved. A positively matched capability with internal supersession reason (re-forward/reassignment) may fail with `CAPABILITY_NO_LONGER_ACTIVE` (D086); all other unusable or unmatched capability cases remain generic `UNAUTHORIZED`.
 
 ### Capability Scope
 
@@ -76,7 +76,7 @@ The set of Recipient actions a Capability permits. Derived from (and never broad
 
 ### Capability Link
 
-Task-specific URL carrying the capability secret (`/c/{token}`). GET is non-mutating; POST mutations require explicit confirmation (D050, D059).
+Task-specific URL carrying the capability secret (`/c/{token}`). GET is non-mutating; POST mutations require explicit confirmation (D050, D059). A7 base URL: `NEXT_PUBLIC_APP_URL` (D094).
 
 ### Capability Auth
 

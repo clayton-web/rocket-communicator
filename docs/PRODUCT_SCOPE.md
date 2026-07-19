@@ -29,12 +29,11 @@ WhatsApp, Messenger, Signal; call recording / live-call transcription; historica
 ## Product rules (cite decisions)
 
 - Suggestions require Owner approve/edit/dismiss/merge before a Task exists (D008). No auto-create Tasks in v1.
-- Recipient assignment requires Owner approval. Gmail-origin assign + forward + attachments + reminders = one confirmation (D037). Recipient email from Owner-managed records / secure config—not hard-coded.
-- Capability Links required for Recipient actions; GET non-mutating; POST after confirm (D050). Details: [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md).
-- Non-Gmail tasks: assignment email with summary + Capability Link (no Gmail forward).
+- Recipient assignment requires Owner approval via the D037 handoff operation (`POST /api/v1/tasks/{taskId}/handoff`, D090). Gmail-origin assign + forward + attachments = one confirmation; non-Gmail tasks get assignment email with summary + Capability Link. Reminder **engine** is A8 (D089)—confirmation may disclose follow-up belongs to the assignment workflow but must not claim reminders are scheduled. Recipient email from Owner-managed Recipient records only (D087)—not hard-coded and not an env default.
+- Capability Links required for Recipient actions; GET non-mutating; POST after confirm (D050). At most one active capability; re-forward revokes the prior (D086). Details: [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md).
 - Voice never creates Tasks directly (D038); audio retention D041.
-- Summaries are structured typed points (facts vs inference vs missing), not prose.
-- Reminders: first overdue → Recipient; later may CC Owner; waiting pauses; snooze Owner-only; AI recommends timing, rules send.
+- Summaries are structured typed points (facts vs inference vs missing), not prose. Handoff uses existing Task `summaryPoints`—no fresh LLM (D094).
+- Reminders (A8): first overdue → Recipient; later may CC Owner; waiting pauses; snooze Owner-only; AI recommends timing, rules send.
 - Learning Owner-only (D054); propose rules, never silently apply.
 
 ## Future-ready (not v1 features)

@@ -55,11 +55,13 @@ Governing references: [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md) · [AI_
 - [ ] Recipient audit events do not overstate identity (D052)
 - [ ] No unauthenticated one-click mutations
 - [ ] Capability links use expiring tokens; hashes stored server-side, not raw tokens
-- [ ] Capability link rotation/invalidation considered when assignment is re-forwarded (if policy decided)
+- [ ] Capability link rotation/invalidation applied on reassignment/re-forward (D086: revoke prior active capability; “no longer active” for revoked links)
 - [ ] Gmail tokens remain server-side and encrypted at rest
 - [ ] Secrets not committed; `.env` patterns respected
-- [ ] Recipient identity not hard-coded in source
-- [ ] Audit events recorded for approvals, forwards, reminders, capability use, authz failures
+- [ ] Recipient identity not hard-coded in source; no env-default Recipient as production model (D087)
+- [ ] Audit events recorded for approvals, forwards/handoffs, delivery attempts, reminders, capability use, authz failures
+- [ ] A7 handoff does not claim reminders are scheduled; reminder engine remains A8 (D089)
+- [ ] Knowingly incomplete Gmail-origin forwards are not sent (D088)
 
 ## Privacy
 
@@ -68,6 +70,7 @@ Governing references: [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md) · [AI_
 - [ ] Contact and source exclusions enforced
 - [ ] Notification-access consent and revocation handled honestly
 - [ ] Forwarding privacy boundary disclosed (Gmail copies outside app deletion)
+- [ ] A7 confirmation UI discloses retention boundary and does not over-promise reminder scheduling (D089, D094)
 
 ## Retention
 
@@ -90,8 +93,9 @@ Governing references: [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md) · [AI_
 
 - [ ] Unit tests for domain rules touched (state, retention dates, reminder idempotency)
 - [ ] Contract/schema validation for API or AI payloads touched
-- [ ] Regression for approval gates (no email without approval)
-- [ ] Forward idempotency tested if mailer touched
+- [ ] Regression for approval gates (no email without D037 handoff approval)
+- [ ] Forward idempotency tested if mailer touched (idempotency key + provider message id, D094)
+- [ ] Partial/incomplete forward paths never report full success (D088)
 - [ ] Android/notification fixtures updated if parsers changed
 - [ ] Failure paths (reauth, missing SMS body, OpenAI down) considered
 
@@ -106,7 +110,7 @@ Governing references: [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md) · [AI_
 ## Technical debt
 
 - [ ] New debt listed explicitly (comment + OPEN_QUESTIONS or milestone note)
-- [ ] No “temporary” hardcoded Recipient emails or domains
+- [ ] No “temporary” hardcoded Recipient emails or domains; no env-default Recipient as production model (D087)
 - [ ] No skipped authorization “to unblock demo”
 - [ ] Generated clients not hand-edited without regenerating from contract
 

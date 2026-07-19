@@ -105,7 +105,7 @@ When speech implies multiple actions (complete, record amount, create follow-up,
 
 - Completing the **current** Task may proceed on Owner confirmation.
 - Any new follow-up begins as a **Task Suggestion**, not a Task.
-- Recipient assignment email, capability link issuance, and Gmail forwarding wait for the Owner’s **single** bundled confirmation when applicable (D037).
+- Recipient assignment email, capability link issuance, and Gmail forwarding wait for the Owner’s **single** bundled confirmation when applicable (D037, D090). Reminder **sends** remain A8 (D089). Handoff outbound text uses existing Task `summaryPoints`—no fresh LLM (D094).
 
 ## Cost and safety controls
 

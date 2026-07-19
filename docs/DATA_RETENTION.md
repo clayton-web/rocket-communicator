@@ -97,6 +97,10 @@ Implications:
 - Gmail copies are governed by Google Workspace retention and deletion settings.
 - Deleting application task content does **not** automatically delete the forwarded Gmail message.
 - **Do not claim that all communication content disappears after seven days.**
+- **A7 (D088):** Do not send a knowingly incomplete Gmail-origin forward. Failed assembly records a privacy-safe failed delivery attempt in the application; no partial forward is left in the Recipient mailbox as a “success.”
+- **A7 confirmation UI** must disclose that successful forwards leave copies outside application deletion control (D031, D037).
+
+Application delivery-attempt / handoff-attempt records (D092) are operational metadata—not a permanent communication archive (D024). Do not store full MIME or attachment bytes in those records (D071–D072).
 
 ## Durable workflow intelligence
 

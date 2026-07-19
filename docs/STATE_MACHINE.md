@@ -22,12 +22,12 @@ AI and voice create suggestions, never tasks (D038).
 
 ### Transitions
 
-| From                          | To        | Actor | Notes                                                                  |
-| ----------------------------- | --------- | ----- | ---------------------------------------------------------------------- |
-| pending                       | approved  | Owner | Creates **unassigned** Task (D080); excerpt safety ceiling (D082)      |
-| pending                       | dismissed | Owner | Excerpt `purgeAt = dismissedAt + 7 days` (D020, D082)                  |
-| pending                       | merged    | Owner | Requires suggestion If-Match + `targetTaskIfMatch` (D083); excerpt +7d |
-| approved / dismissed / merged | —         | —     | terminal                                                               |
+| From                          | To        | Actor | Notes                                                                                                                 |
+| ----------------------------- | --------- | ----- | --------------------------------------------------------------------------------------------------------------------- |
+| pending                       | approved  | Owner | Creates **unassigned** Task (D080); excerpt safety ceiling (D082); Recipient handoff is a separate A7 mutation (D090) |
+| pending                       | dismissed | Owner | Excerpt `purgeAt = dismissedAt + 7 days` (D020, D082)                                                                 |
+| pending                       | merged    | Owner | Requires suggestion If-Match + `targetTaskIfMatch` (D083); excerpt +7d                                                |
+| approved / dismissed / merged | —         | —     | terminal                                                                                                              |
 
 ## Task
 
@@ -35,7 +35,7 @@ AI and voice create suggestions, never tasks (D038).
 
 `open` · `in_progress` · `waiting` · `completed` · `dismissed`
 
-**Assignment is an attribute**, not a Task status (`TaskAssignment`). At most one Assignment is active; historical rows may exist. Capability grants attach to a specific Assignment—not to “whoever is assigned” generically.
+**Assignment is an attribute**, not a Task status (`TaskAssignment`). At most one Assignment is active; historical rows may exist. Capability grants attach to a specific Assignment—not to “whoever is assigned” generically. At most one **active** Recipient capability per Assignment; reassignment or re-forward revokes the prior active capability (D086). Delivery outcomes `pending` / `sent` / `failed` (D092); actionable capability only after successful send. Handoff is Owner `POST /api/v1/tasks/{taskId}/handoff` (D090)—not part of suggestion approve.
 
 ### Derived (never persisted)
 

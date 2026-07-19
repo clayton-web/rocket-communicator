@@ -8,11 +8,11 @@ Platform assumptions below describe the **current** deployment. Per Architecture
 
 ## Platform assumptions
 
-| Component              | Role                                                                                                                                                                                                             |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Vercel**             | Current host for `apps/web` (Next.js App Router). Monorepo root is the Vercel project root; `outputFileTracingRoot` includes workspace packages. Replaceable per D079.                                           |
-| **Supabase**           | Current PostgreSQL system of record and Owner Auth (Google Workspace).                                                                                                                                           |
-| **Prisma**             | Server-only data access via `@aicaa/db`; invoked through the web runtime bridge.                                                                                                                                 |
+| Component              | Role                                                                                                                                                                                                                                                               |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Vercel**             | Current host for `apps/web` (Next.js App Router). Monorepo root is the Vercel project root; `outputFileTracingRoot` includes workspace packages. Replaceable per D079.                                                                                             |
+| **Supabase**           | Current PostgreSQL system of record and Owner Auth (Google Workspace).                                                                                                                                                                                             |
+| **Prisma**             | Server-only data access via `@aicaa/db`; invoked through the web runtime bridge.                                                                                                                                                                                   |
 | **External Scheduler** | Invokes authenticated app endpoints on a schedule (Gmail poll and suggestion process, each every five minutes on **separate** jobs). Recommended initial adapter while on Vercel Hobby: **cron-job.org**. Interchangeable; not an architectural dependency (D079). |
 
 Production uses a **Supabase transaction pooler** connection for `DATABASE_URL` (serverless-friendly). Use the pooler URL Vercel expects for Prisma—not the direct session URL—for API routes and migrations unless your operator checklist specifies otherwise.
@@ -170,13 +170,13 @@ After enablement, confirm invocations via the scheduler’s execution logs and `
 
 A6 is **closed**. A **separate** External Scheduler job (cron-job.org initial adapter) invokes suggestion processing every five minutes, independent of the Gmail poll job:
 
-| Setting        | Guidance                                                                            |
-| -------------- | ----------------------------------------------------------------------------------- |
-| Method         | **HTTP POST**                                                                       |
-| URL            | `{NEXT_PUBLIC_APP_URL}/api/v1/internal/suggestions/process`                         |
-| Interval       | Same cadence family as Gmail poll (every five minutes); **independent** job         |
-| Authentication | `Authorization: Bearer <CRON_SECRET>`                                               |
-| Request body   | Empty / none required                                                               |
+| Setting        | Guidance                                                                    |
+| -------------- | --------------------------------------------------------------------------- |
+| Method         | **HTTP POST**                                                               |
+| URL            | `{NEXT_PUBLIC_APP_URL}/api/v1/internal/suggestions/process`                 |
+| Interval       | Same cadence family as Gmail poll (every five minutes); **independent** job |
+| Authentication | `Authorization: Bearer <CRON_SECRET>`                                       |
+| Request body   | Empty / none required                                                       |
 
 **Credential distinction (names only):** `CRON_SECRET` authenticates the application process endpoint (same secret family as Gmail poll). `CRON_JOB_ORG_API_KEY` (or equivalent scheduler management credential) is used only outside the app to administer the scheduler account — never committed, never logged, never sent to application routes.
 
@@ -186,11 +186,11 @@ Response is aggregate counts only — never raw bodies (D084, D085). Overlapping
 
 **D082 retention (Production-confirmed):** dismissed suggestion excerpts → `updatedAt + 7 days`; approved suggestion excerpts → `updatedAt + 30 days` (workflow safety ceiling).
 
-**Roadmap after A6:** **A7 → A8 → A9** (no early separate A9.0). Do not begin A7 until explicitly started.
+**A7 status:** A7.0 decisions locked (D086–D094). Do not implement handoff, Gmail `gmail.send`, or Recipient management until A7.1+ is authorized. Roadmap: **A7 → A8 → A9** (no early separate A9.0). Reminder engine remains A8 (D089).
 
 ## Capability links in production
 
-Capability URLs are derived from `NEXT_PUBLIC_APP_URL` and the issued path token. Production capability links must use the configured production app URL. Do not log or commit raw tokens or hashes (D063).
+Capability URLs are derived from `NEXT_PUBLIC_APP_URL` and the issued path token. **A7 (D094):** `NEXT_PUBLIC_APP_URL` is sufficient; a custom domain does not block A7. Production capability links must use the configured production app URL. Do not log or commit raw tokens or hashes (D063). After re-forward/reassignment, prior active capabilities are revoked (D086).
 
 ## Safe database row-count checks
 
@@ -198,14 +198,14 @@ For operator sanity checks (read-only), use Supabase SQL editor or `psql` agains
 
 - `recipients`, `tasks`, `task_assignments`, `task_capabilities`, `audit_events`, `task_suggestions`
 
-Compare counts before/after E2E or deploy; do not paste row contents containing PII into tickets.
+Compare counts before/after E2E or deploy; do not paste row contents containing PII into tickets. A7 may add handoff/delivery-attempt tables (D092)—include them in checks when they exist.
 
 ## Rollback principles
 
 1. **Application:** Redeploy the previous known-good Vercel deployment via the Vercel dashboard.
 2. **Schema:** Prisma migrations are forward-only in production; roll back application code before attempting destructive schema changes. Never drop production tables without an explicit operator decision.
 3. **Secrets:** Rotate `CAPABILITY_TOKEN_PEPPER` only with a documented invalidation plan (all outstanding links become unusable).
-4. **Capabilities:** Re-issued links supersede prior grants per assignment policy (OPEN #21 resolved in A7).
+4. **Capabilities:** Reassignment or re-forward revokes the prior active capability and issues a new one (D086). Revoked records are preserved for audit.
 
 ## Untracked Supabase CLI artifacts
 
