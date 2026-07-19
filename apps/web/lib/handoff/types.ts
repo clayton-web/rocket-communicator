@@ -42,10 +42,24 @@ export interface InitialHandoffCommand {
   requestFingerprint: string;
   /** Handoff acknowledgement string (e.g. HANDOFF_ACKNOWLEDGEMENT_V1). */
   acknowledgement: string;
+  /**
+   * Task version from the Owner's If-Match (new initial handoff only). When supplied, the A7.3 begin
+   * transaction CAS-compares against this value so a concurrent Task mutation cannot slip past the
+   * route-facing eligibility check. Omitted by internal/test callers that already hold a fresh Task.
+   */
+  expectedTaskVersion?: number;
   /** Optional short Owner-authored assignment intro/note. Never logged. */
   ownerNote?: string;
   /** Optional correlation id for privacy-safe logs. */
   correlationId?: string;
+  /** Privacy-safe request id recorded on durable audits (never the idempotency key or body). */
+  requestId?: string;
+  /**
+   * When true, the store writes durable, privacy-safe Owner audit rows atomically with the A7.3
+   * state transitions (prepared / sent / failed). Default (undefined/false) writes no audit rows so
+   * internal/test callers are unaffected. Replays and losers never reach these transitions.
+   */
+  emitAudits?: boolean;
 }
 
 /**
@@ -60,6 +74,23 @@ export interface RetryHandoffCommand {
   /** Must match the failed attempt's request fingerprint (A7.3 verifies). */
   requestFingerprint: string;
   correlationId?: string;
+  /** Privacy-safe request id recorded on durable audits (never the idempotency key or body). */
+  requestId?: string;
+  /** When true, the store writes durable Owner audit rows atomically with the retry send outcome. */
+  emitAudits?: boolean;
+}
+
+/**
+ * Privacy-safe context for a durable Owner handoff audit written atomically with an A7.3 transition.
+ * Carries only stable identifiers — never Recipient email, tokens, MIME, or provider bodies.
+ */
+export interface HandoffTransitionAudit {
+  ownerId: string;
+  requestId?: string;
+  correlationId?: string;
+  taskId: string;
+  assignmentId: string;
+  capabilityId: string;
 }
 
 /* ------------------------------------------------------------------------------------------------ *
@@ -129,6 +160,8 @@ export interface RecordAcceptedInput {
   /** Send generation the winning execution sent at; a stale generation is rejected without mutation. */
   expectedSendGeneration: number;
   correlationId?: string;
+  /** When present, a durable `handoff.sent` audit is written atomically with the accepted outcome. */
+  audit?: HandoffTransitionAudit;
 }
 
 export type RecordAcceptedResult =
@@ -142,6 +175,8 @@ export interface RecordFailedInput {
   /** Send generation the failing execution sent at; a stale generation is rejected without mutation. */
   expectedSendGeneration: number;
   correlationId?: string;
+  /** When present, a durable `handoff.failed` audit is written atomically with the failed outcome. */
+  audit?: HandoffTransitionAudit;
 }
 
 /** Persistence port wrapping the A7.3 transaction primitives (short transactions only). */

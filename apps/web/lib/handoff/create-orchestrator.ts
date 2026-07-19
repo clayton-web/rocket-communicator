@@ -9,23 +9,27 @@ import {
   createHandoffTransportPort,
   createOutboundMessagePreparer,
 } from './runtime-adapters';
+import { createTaskGmailForwardSource } from './forward-source';
 import { createRuntimeHandoffStore } from './runtime-store';
 import type { HandoffLogger, HandoffOrchestrator } from './types';
 
 /**
- * Production composition root for the A7.5 handoff orchestrator.
+ * Production composition root for the A7.5/A7.7 handoff orchestrator.
  *
  * Wires the traced DB runtime bridge (A7.3 primitives), the Gmail access resolver, the outbound
- * message preparer, and the A7.4 Gmail transport. This is the single entry point a future authorized
- * HTTP layer will call after it has authenticated the Owner and validated the request into a trusted
- * command. It never performs authentication, accepts untrusted payloads, or exposes an HTTP surface.
+ * message preparer (with the trusted Task forward-source resolver), and the A7.4 Gmail transport.
+ * The authorized HTTP layer calls this after authentication + validation into a trusted command.
+ * It never performs authentication or accepts untrusted payloads.
  */
 export async function createRuntimeHandoffOrchestrator(deps: {
   db: DbClient;
   capabilityConfig: { pepper: string; ttlMs: number; appUrl: string };
   logger?: HandoffLogger;
   clock?: () => Date;
-  /** Trusted forward-source resolver (persisted CommunicationEvent → exact Gmail message). */
+  /**
+   * Trusted forward-source resolver. Defaults to {@link createTaskGmailForwardSource} which derives
+   * the Gmail message id solely from the persisted Task source reference (never from the request).
+   */
   forwardSource?: (input: {
     organizationId: string;
     accountId: string;
@@ -42,7 +46,9 @@ export async function createRuntimeHandoffOrchestrator(deps: {
     clock: deps.clock,
   });
   const access = createGmailAccessResolver({ db: deps.db, runtime });
-  const messages = createOutboundMessagePreparer({ forwardSource: deps.forwardSource });
+  const messages = createOutboundMessagePreparer({
+    forwardSource: deps.forwardSource ?? createTaskGmailForwardSource(),
+  });
   const transport = createHandoffTransportPort();
 
   return createHandoffOrchestrator({

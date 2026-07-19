@@ -75,6 +75,9 @@ export function createHandoffOrchestrator(deps: HandoffOrchestratorDeps): Handof
     /** Send generation this execution owns; required so stale terminal results are rejected. */
     sendGeneration: number;
     ownerNote?: string;
+    ownerId?: string;
+    requestId?: string;
+    emitAudits?: boolean;
   }): Promise<HandoffOrchestrationResult> {
     const {
       operation,
@@ -89,10 +92,26 @@ export function createHandoffOrchestrator(deps: HandoffOrchestratorDeps): Handof
       capabilityUrl,
       sendGeneration,
       ownerNote,
+      ownerId,
+      requestId,
+      emitAudits,
     } = params;
 
     const base = { operation, organizationId, correlationId, attemptId: attempt.id, deliveryPath };
     const elapsed = () => clock().getTime() - startedAt;
+    // Durable-audit context (privacy-safe stable identifiers only). Undefined for internal/test
+    // callers that do not opt into auditing; written atomically inside the A7.3 terminal transitions.
+    const transitionAudit = () =>
+      emitAudits && ownerId
+        ? {
+            ownerId,
+            requestId,
+            correlationId,
+            taskId: attempt.taskId,
+            assignmentId: attempt.assignmentId,
+            capabilityId: attempt.capabilityId,
+          }
+        : undefined;
 
     // ── message_build ────────────────────────────────────────────────────────────────────────
     log({ ...base, phase: 'message_build' });
@@ -124,6 +143,7 @@ export function createHandoffOrchestrator(deps: HandoffOrchestratorDeps): Handof
         failure: prepared.failure,
         expectedSendGeneration: sendGeneration,
         correlationId,
+        audit: transitionAudit(),
       });
       return outcomeFromTransportFailure(prepared.failure, { attemptId: attempt.id, deliveryPath });
     }
@@ -193,6 +213,7 @@ export function createHandoffOrchestrator(deps: HandoffOrchestratorDeps): Handof
         failure,
         expectedSendGeneration: sendGeneration,
         correlationId,
+        audit: transitionAudit(),
       });
       return outcomeFromTransportFailure(failure, { attemptId: attempt.id, deliveryPath });
     }
@@ -209,6 +230,7 @@ export function createHandoffOrchestrator(deps: HandoffOrchestratorDeps): Handof
         providerAcceptedAt: acceptance.acceptedAt,
         expectedSendGeneration: sendGeneration,
         correlationId,
+        audit: transitionAudit(),
       });
     } catch {
       // Gmail accepted but persisting acceptance failed (e.g. a crash-window C style failure). The
@@ -346,6 +368,9 @@ export function createHandoffOrchestrator(deps: HandoffOrchestratorDeps): Handof
       capabilityUrl: begin.capabilityUrl,
       sendGeneration: begin.sendGeneration,
       ownerNote: command.ownerNote,
+      ownerId: command.ownerId,
+      requestId: command.requestId,
+      emitAudits: command.emitAudits,
     });
   }
 
@@ -416,6 +441,9 @@ export function createHandoffOrchestrator(deps: HandoffOrchestratorDeps): Handof
       deliveryPath: prep.attempt.deliveryPath,
       capabilityUrl: prep.capabilityUrl,
       sendGeneration: prep.sendGeneration,
+      ownerId: command.ownerId,
+      requestId: command.requestId,
+      emitAudits: command.emitAudits,
     });
   }
 

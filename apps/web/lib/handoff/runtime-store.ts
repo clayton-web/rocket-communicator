@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type {
   BeginInitialHandoffInput,
   BeginInitialHandoffResult,
+  CreateAuditEventInput,
   DbClient,
   PersistedCapability,
   PersistedHandoffAttempt,
@@ -47,6 +48,7 @@ export interface HandoffRuntime {
     providerMessageId: string;
     providerAcceptedAt: string;
     expectedSendGeneration: number;
+    audit?: CreateAuditEventInput;
   }): Promise<{ attempt: PersistedHandoffAttempt; capability: PersistedCapability }>;
   markHandoffDeliveryFailed(input: {
     db: DbClient;
@@ -57,6 +59,7 @@ export interface HandoffRuntime {
     failureFingerprint: string;
     retryable: boolean;
     expectedSendGeneration: number;
+    audit?: CreateAuditEventInput;
   }): Promise<{ attempt: PersistedHandoffAttempt }>;
   prepareFailedHandoffRetry(input: {
     db: DbClient;
@@ -162,11 +165,34 @@ export function createRuntimeHandoffStore(deps: RuntimeHandoffStoreDeps): Handof
     const tokenHash = hashCapabilityToken(rawToken, capabilityConfig.pepper);
     const capabilityUrl = buildCapabilityUrl(capabilityConfig.appUrl, rawToken);
 
+    // Durable "prepared" audit is written atomically with the created attempt inside the A7.3
+    // transaction (never on a replay, which returns before the audit seam). Privacy-safe: no
+    // Recipient email, token, MIME, or provider body — only stable identifiers.
+    const audit: CreateAuditEventInput | undefined = command.emitAudits
+      ? {
+          id: newId('aud'),
+          organizationId: command.organizationId,
+          actorKind: 'owner',
+          ownerId: command.ownerId,
+          assignmentId,
+          taskId: task.id,
+          capabilityId,
+          action: 'handoff.prepared',
+          outcome: 'succeeded',
+          resourceVersion: task.version,
+          requestId: command.requestId,
+          correlationId: command.correlationId ?? null,
+          recordedAt: nowIso,
+        }
+      : undefined;
+
     const result = await runtime.beginInitialHandoff({
       db,
       organizationId: command.organizationId,
       ownerId: command.ownerId,
-      expectedTaskVersion: task.version,
+      // Prefer the caller-supplied If-Match version (A7.7) so concurrent Task mutations cannot race
+      // past the route eligibility check. Fall back to the freshly loaded version for internal callers.
+      expectedTaskVersion: command.expectedTaskVersion ?? task.version,
       task,
       assignment,
       capability,
@@ -176,6 +202,7 @@ export function createRuntimeHandoffStore(deps: RuntimeHandoffStoreDeps): Handof
       deliveryPath: command.deliveryPath,
       idempotencyKey: command.idempotencyKey,
       requestFingerprint: command.requestFingerprint,
+      audit,
     });
 
     return {
@@ -236,6 +263,22 @@ export function createRuntimeHandoffStore(deps: RuntimeHandoffStoreDeps): Handof
         providerMessageId: input.providerMessageId,
         providerAcceptedAt: input.providerAcceptedAt,
         expectedSendGeneration: input.expectedSendGeneration,
+        audit: input.audit
+          ? {
+              id: newId('aud'),
+              organizationId: input.organizationId,
+              actorKind: 'owner',
+              ownerId: input.audit.ownerId,
+              assignmentId: input.audit.assignmentId,
+              taskId: input.audit.taskId,
+              capabilityId: input.audit.capabilityId,
+              action: 'handoff.sent',
+              outcome: 'succeeded',
+              requestId: input.audit.requestId,
+              correlationId: input.audit.correlationId ?? null,
+              recordedAt: clock().toISOString(),
+            }
+          : undefined,
       });
       return { ok: true, attempt: result.attempt, capability: result.capability };
     } catch (error) {
@@ -261,6 +304,24 @@ export function createRuntimeHandoffStore(deps: RuntimeHandoffStoreDeps): Handof
       failureFingerprint: input.failure.fingerprint,
       retryable: input.failure.retryable,
       expectedSendGeneration: input.expectedSendGeneration,
+      audit: input.audit
+        ? {
+            id: newId('aud'),
+            organizationId: input.organizationId,
+            actorKind: 'owner',
+            ownerId: input.audit.ownerId,
+            assignmentId: input.audit.assignmentId,
+            taskId: input.audit.taskId,
+            capabilityId: input.audit.capabilityId,
+            action: 'handoff.failed',
+            outcome: 'failed',
+            // Privacy-safe: stable failure code only (never a raw provider/OAuth error or email).
+            note: input.failure.code,
+            requestId: input.audit.requestId,
+            correlationId: input.audit.correlationId ?? null,
+            recordedAt: clock().toISOString(),
+          }
+        : undefined,
     });
   }
 
