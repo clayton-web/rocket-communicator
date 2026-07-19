@@ -21,9 +21,14 @@ components:
         - used
       description: |
         Lifecycle status of a task capability. Raw token values are never exposed.
-        A4 treats active capabilities as multi-use until expiry, revocation, assignment
+        Active capabilities are multi-use until expiry, revocation, assignment
         replacement/removal, or other terminal invalidation (D056). The `used` enum value
-        is reserved and must not be assigned transition semantics in A4 without a Decision.
+        is reserved and must not be assigned transition semantics without a Decision.
+        Under D086, reassignment or re-forward revokes the prior active capability (`revoked`)
+        with an internal supersession reason. Only a positively matched capability with that
+        supersession reason may surface CAPABILITY_NO_LONGER_ACTIVE; manual revocation,
+        assignment-ended revocation, expiration, and unknown/unmatched tokens remain UNAUTHORIZED.
+        Internal revocation reasons are not generally exposed on public error envelopes.
     CapabilityScope:
       type: array
       minItems: 1
@@ -38,7 +43,13 @@ components:
         - pending
         - sent
         - failed
-      description: Placeholder for assignment email delivery tracking (implementation deferred).
+      description: |
+        Outbound assignment/forward delivery outcome for an Assignment (D092).
+        This is a real delivery model (not a deferred placeholder).
+        - `pending` — delivery not yet accepted by Gmail; must **not** expose an actionable Recipient capability.
+        - `sent` — Gmail **accepted** the outbound send (forward or assignment email). Does **not** mean the human Recipient opened or read the message.
+        - `failed` — delivery attempt failed; must **not** expose an actionable Recipient capability; Owner may retry per D086/D092.
+        Detailed delivery-attempt history may be represented by a dedicated resource in later A7 phases without overloading Assignment semantics.
     TaskCapability:
       type: object
       required:

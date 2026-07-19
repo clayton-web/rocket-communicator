@@ -9,6 +9,22 @@ components:
         type: string
         pattern: '^"(task|task-suggestion)-[^"]+-v[0-9]+"$'
       example: '"task-01JXYZ-v3"'
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: |
+        Client-generated idempotency key for safe retries of side-effecting Owner mutations (D094).
+        Introduced for A7 handoff; reuse the same key only with an identical request payload for the
+        same operation and resource. Replay of a completed success returns the original success body
+        with `idempotentReplay: true`. Reuse with a conflicting payload returns 409 IDEMPOTENCY_KEY_CONFLICT.
+        Missing header → 428 PRECONDITION_REQUIRED.
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 128
+        pattern: '^[A-Za-z0-9._~-]+$'
+      example: 'handoff-01JXYZ-attempt-1'
     CapabilityToken:
       name: token
       in: path
@@ -32,6 +48,14 @@ components:
         maxLength: 64
     TaskId:
       name: taskId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 64
+    RecipientId:
+      name: recipientId
       in: path
       required: true
       schema:

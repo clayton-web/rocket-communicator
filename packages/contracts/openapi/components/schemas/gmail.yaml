@@ -88,10 +88,29 @@ components:
           description: Always true in A5 (D068).
         readonlyScope:
           type: boolean
-          description: Always true in A5 — gmail.readonly only (D070).
+          description: |
+            True when `gmail.readonly` is granted for ingest/polling (D070).
+            Does **not** by itself imply send permission. Prefer `canRead` / `canSend` when present (D093).
+        canRead:
+          type: boolean
+          description: |
+            Optional A7+ flag: true when the connection can poll/read Inbox History (`gmail.readonly`).
+            When omitted, clients may treat connected + `readonlyScope` as readable for A5 compatibility.
+        canSend:
+          type: boolean
+          description: |
+            Optional A7+ flag: true when `gmail.send` is granted for assignment email and forward (D093).
+            When omitted or false while connected, A7 handoff requires Owner re-consent (`requiresSendReconsent`).
+            Runtime OAuth still requests readonly-only until A7 OAuth work ships — this field is contract-ready.
+        requiresSendReconsent:
+          type: boolean
+          description: |
+            Optional A7+ flag: true when handoff/send needs Owner OAuth re-consent to grant `gmail.send`.
+            Safe boolean — does not expose raw Google scope strings.
       description: |
         Safe Owner-facing Gmail connection status. Must never include refresh tokens,
         access tokens, ciphertext, encryption key versions, OAuth codes, or PKCE secrets.
+        Prefer booleans (`canRead`, `canSend`, `requiresSendReconsent`) over raw provider scope strings (D093, D094).
     GmailDisconnectRequest:
       type: object
       required:

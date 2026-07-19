@@ -15,22 +15,27 @@
 
 package com.aicommunication.assistant.contracts.models
 
+import com.aicommunication.assistant.contracts.models.Recipient
 
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 import java.io.Serializable
 
 /**
- * Optional reminder preference stub for A8; not a CRM field.
+ * Active Recipients only by default (smallest A7 list surface). Inactive Recipients are omitted; there is no status filter on this endpoint in A7.1. 
  *
- * @param emailEnabled 
+ * @param items 
+ * @param nextCursor 
  */
 
 
-data class RecipientReminderPreferences (
+data class ListRecipientsResponse (
 
-    @Json(name = "emailEnabled")
-    val emailEnabled: kotlin.Boolean? = true
+    @Json(name = "items")
+    val items: kotlin.collections.List<Recipient>,
+
+    @Json(name = "nextCursor")
+    val nextCursor: kotlin.String? = null
 
 ) : Serializable {
     companion object {

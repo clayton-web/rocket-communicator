@@ -20,7 +20,7 @@ import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 
 /**
- * Lifecycle status of a task capability. Raw token values are never exposed. A4 treats active capabilities as multi-use until expiry, revocation, assignment replacement/removal, or other terminal invalidation (D056). The `used` enum value is reserved and must not be assigned transition semantics in A4 without a Decision. 
+ * Lifecycle status of a task capability. Raw token values are never exposed. Active capabilities are multi-use until expiry, revocation, assignment replacement/removal, or other terminal invalidation (D056). The `used` enum value is reserved and must not be assigned transition semantics without a Decision. Under D086, reassignment or re-forward revokes the prior active capability (`revoked`) with an internal supersession reason. Only a positively matched capability with that supersession reason may surface CAPABILITY_NO_LONGER_ACTIVE; manual revocation, assignment-ended revocation, expiration, and unknown/unmatched tokens remain UNAUTHORIZED. Internal revocation reasons are not generally exposed on public error envelopes. 
  *
  * Values: active,revoked,expired,used
  */

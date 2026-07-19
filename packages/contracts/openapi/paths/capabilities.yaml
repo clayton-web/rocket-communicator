@@ -6,7 +6,20 @@ paths:
       summary: Non-mutating Recipient task view
       description: |
         GET must not mutate task, assignment, or capability state (D050, D059).
-        Knowledge of `{token}` authorizes view when the capability is active and in scope.
+        Knowledge of `{token}` authorizes view when the capability is **active** and in scope.
+
+        **Authorization outcomes (probing-safe, D086):**
+        - Unknown, malformed, expired, missing, or otherwise **unmatched** tokens, and matched
+          capabilities that are unusable for any reason **other than supersession** (including
+          manual or assignment-ended revocation) → `401` `UNAUTHORIZED`
+          (generic; do not distinguish these cases).
+        - Token that **matches** a stored capability whose internal revocation reason is
+          **superseded** (re-forward/reassignment, D086) →
+          `401` `CAPABILITY_NO_LONGER_ACTIVE` with a non-sensitive message such as
+          "This link is no longer active." Must not disclose whether another active capability
+          exists, the replacement capability, Task/Assignment/Recipient details, or other state.
+        - The public capability page may render a friendly “This link is no longer active” message
+          for the matched superseded case only.
       security: []
       parameters:
         - $ref: '../components/parameters.yaml#/components/parameters/CapabilityToken'
@@ -23,7 +36,28 @@ paths:
               schema:
                 $ref: '../openapi.yaml#/components/schemas/Task'
         '401':
-          $ref: '../components/responses.yaml#/components/responses/Unauthorized'
+          description: |
+            Unauthorized — either generic unmatched/expired/malformed token (`UNAUTHORIZED`)
+            or matched superseded capability (`CAPABILITY_NO_LONGER_ACTIVE`).
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+              examples:
+                unauthorized:
+                  value:
+                    error:
+                      code: UNAUTHORIZED
+                      message: Authentication required.
+                      requestId: 550e8400-e29b-41d4-a716-446655440020
+                      correlationId: null
+                noLongerActive:
+                  value:
+                    error:
+                      code: CAPABILITY_NO_LONGER_ACTIVE
+                      message: This link is no longer active.
+                      requestId: 550e8400-e29b-41d4-a716-446655440021
+                      correlationId: null
         '403':
           $ref: '../components/responses.yaml#/components/responses/Forbidden'
         '404':

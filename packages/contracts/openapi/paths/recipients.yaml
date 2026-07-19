@@ -1,0 +1,103 @@
+paths:
+  /api/v1/recipients:
+    get:
+      operationId: listRecipients
+      tags: [Recipients]
+      summary: List active Recipients
+      description: |
+        Returns Owner-managed **active** Recipients for the organization (D087).
+        Inactive Recipients are omitted. This is not a CRM — no notes, tags, companies,
+        or pipelines. Email addresses come from Owner-managed records only.
+      parameters:
+        - $ref: '../components/parameters.yaml#/components/parameters/Cursor'
+        - $ref: '../components/parameters.yaml#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Active Recipients page
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/ListRecipientsResponse'
+        '401':
+          $ref: '../components/responses.yaml#/components/responses/Unauthorized'
+    post:
+      operationId: createRecipient
+      tags: [Recipients]
+      summary: Create a Recipient
+      description: |
+        Creates an Owner-managed Recipient contact (D087). Separate from update (not an upsert).
+        Created Recipients are active and eligible for new handoffs.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/CreateRecipientRequest'
+      responses:
+        '201':
+          description: Created Recipient
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/Recipient'
+        '400':
+          $ref: '../components/responses.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: '../components/responses.yaml#/components/responses/Unauthorized'
+        '409':
+          $ref: '../components/responses.yaml#/components/responses/Conflict'
+  /api/v1/recipients/{recipientId}:
+    patch:
+      operationId: updateRecipient
+      tags: [Recipients]
+      summary: Update a Recipient
+      description: |
+        Partial update of display name, email, and/or relationship label (D087).
+        Does not mark inactive — use deactivate. Does not rewrite historical Assignment
+        or audit attribution when email changes.
+      parameters:
+        - $ref: '../components/parameters.yaml#/components/parameters/RecipientId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/UpdateRecipientRequest'
+      responses:
+        '200':
+          description: Updated Recipient
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/Recipient'
+        '400':
+          $ref: '../components/responses.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: '../components/responses.yaml#/components/responses/Unauthorized'
+        '404':
+          $ref: '../components/responses.yaml#/components/responses/NotFound'
+        '409':
+          $ref: '../components/responses.yaml#/components/responses/Conflict'
+  /api/v1/recipients/{recipientId}/deactivate:
+    post:
+      operationId: deactivateRecipient
+      tags: [Recipients]
+      summary: Mark a Recipient inactive
+      description: |
+        Marks the Recipient inactive so they cannot be selected for **new** handoffs (D087).
+        Does not rewrite historical Assignment or audit attribution. Not a physical delete.
+      parameters:
+        - $ref: '../components/parameters.yaml#/components/parameters/RecipientId'
+      responses:
+        '200':
+          description: Recipient marked inactive
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/Recipient'
+        '401':
+          $ref: '../components/responses.yaml#/components/responses/Unauthorized'
+        '404':
+          $ref: '../components/responses.yaml#/components/responses/NotFound'
+        '409':
+          $ref: '../components/responses.yaml#/components/responses/Conflict'

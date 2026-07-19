@@ -24,19 +24,22 @@ import com.squareup.moshi.JsonClass
 import java.io.Serializable
 
 /**
- * Safe Owner-facing Gmail connection status. Must never include refresh tokens, access tokens, ciphertext, encryption key versions, OAuth codes, or PKCE secrets. 
+ * Safe Owner-facing Gmail connection status. Must never include refresh tokens, access tokens, ciphertext, encryption key versions, OAuth codes, or PKCE secrets. Prefer booleans (`canRead`, `canSend`, `requiresSendReconsent`) over raw provider scope strings (D093, D094). 
  *
  * @param status 
  * @param provider 
  * @param historyState 
  * @param pollingIntervalMinutes Configured poll interval (D065 default 5).
  * @param inboxOnly Always true in A5 (D068).
- * @param readonlyScope Always true in A5 — gmail.readonly only (D070).
+ * @param readonlyScope True when `gmail.readonly` is granted for ingest/polling (D070). Does **not** by itself imply send permission. Prefer `canRead` / `canSend` when present (D093). 
  * @param emailAddress Connected mailbox address when known. Never a token.
  * @param connectedAt 
  * @param lastSyncAt 
  * @param lastSuccessAt 
  * @param lastErrorCode Stable machine code only; never raw provider payloads.
+ * @param canRead Optional A7+ flag: true when the connection can poll/read Inbox History (`gmail.readonly`). When omitted, clients may treat connected + `readonlyScope` as readable for A5 compatibility. 
+ * @param canSend Optional A7+ flag: true when `gmail.send` is granted for assignment email and forward (D093). When omitted or false while connected, A7 handoff requires Owner re-consent (`requiresSendReconsent`). Runtime OAuth still requests readonly-only until A7 OAuth work ships — this field is contract-ready. 
+ * @param requiresSendReconsent Optional A7+ flag: true when handoff/send needs Owner OAuth re-consent to grant `gmail.send`. Safe boolean — does not expose raw Google scope strings. 
  */
 
 
@@ -59,7 +62,7 @@ data class GmailConnection (
     @Json(name = "inboxOnly")
     val inboxOnly: kotlin.Boolean,
 
-    /* Always true in A5 — gmail.readonly only (D070). */
+    /* True when `gmail.readonly` is granted for ingest/polling (D070). Does **not** by itself imply send permission. Prefer `canRead` / `canSend` when present (D093).  */
     @Json(name = "readonlyScope")
     val readonlyScope: kotlin.Boolean,
 
@@ -78,7 +81,19 @@ data class GmailConnection (
 
     /* Stable machine code only; never raw provider payloads. */
     @Json(name = "lastErrorCode")
-    val lastErrorCode: kotlin.String? = null
+    val lastErrorCode: kotlin.String? = null,
+
+    /* Optional A7+ flag: true when the connection can poll/read Inbox History (`gmail.readonly`). When omitted, clients may treat connected + `readonlyScope` as readable for A5 compatibility.  */
+    @Json(name = "canRead")
+    val canRead: kotlin.Boolean? = null,
+
+    /* Optional A7+ flag: true when `gmail.send` is granted for assignment email and forward (D093). When omitted or false while connected, A7 handoff requires Owner re-consent (`requiresSendReconsent`). Runtime OAuth still requests readonly-only until A7 OAuth work ships — this field is contract-ready.  */
+    @Json(name = "canSend")
+    val canSend: kotlin.Boolean? = null,
+
+    /* Optional A7+ flag: true when handoff/send needs Owner OAuth re-consent to grant `gmail.send`. Safe boolean — does not expose raw Google scope strings.  */
+    @Json(name = "requiresSendReconsent")
+    val requiresSendReconsent: kotlin.Boolean? = null
 
 ) : Serializable {
     companion object {

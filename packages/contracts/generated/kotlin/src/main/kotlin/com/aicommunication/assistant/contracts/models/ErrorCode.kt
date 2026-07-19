@@ -20,9 +20,9 @@ import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 
 /**
- * 
+ * Public API error codes. Prefer reusing existing codes when semantics match. A7 handoff-specific codes: - CAPABILITY_NO_LONGER_ACTIVE — token positively matched a stored capability whose   internal revocation reason is superseded (re-forward/reassignment, D086). Must not   disclose replacement capability, Task, Assignment, Recipient, or other identifying state.   Manual revocation, assignment-ended revocation, expiration, and unknown/malformed/   missing/unmatched tokens remain UNAUTHORIZED (probing-safe). Internal revocation   reasons are persistence/audit data and are not generally exposed. - IDEMPOTENCY_KEY_CONFLICT — same Idempotency-Key reused with a different request payload. - HANDOFF_NOT_ELIGIBLE — Task/self-work not eligible for Recipient handoff. - RECIPIENT_INACTIVE — Recipient exists but is inactive (D087). - GMAIL_NOT_CONNECTED / GMAIL_SEND_SCOPE_REQUIRED / GMAIL_SOURCE_UNAVAILABLE — Gmail prerequisites. - HANDOFF_INCOMPLETE_FORWARD_PROHIBITED — D088 incomplete forward blocked before send. - HANDOFF_DELIVERY_FAILED — outbound send attempted and failed (retryable provider failure). - HANDOFF_IN_PROGRESS — durable attempt already running for this handoff/idempotency key. RECIPIENT_HANDOFF_NOT_AVAILABLE remains the A6 suggestion-approve rejection when recipientId is present (D080). 
  *
- * Values: VALIDATION_ERROR,UNAUTHORIZED,FORBIDDEN,NOT_FOUND,INVALID_STATE_TRANSITION,PRECONDITION_REQUIRED,PRECONDITION_FAILED,DOMAIN_CONFLICT,RATE_LIMITED,DEPENDENCY_UNAVAILABLE,RECIPIENT_HANDOFF_NOT_AVAILABLE,INTERNAL_ERROR
+ * Values: VALIDATION_ERROR,UNAUTHORIZED,FORBIDDEN,NOT_FOUND,INVALID_STATE_TRANSITION,PRECONDITION_REQUIRED,PRECONDITION_FAILED,DOMAIN_CONFLICT,RATE_LIMITED,DEPENDENCY_UNAVAILABLE,RECIPIENT_HANDOFF_NOT_AVAILABLE,CAPABILITY_NO_LONGER_ACTIVE,IDEMPOTENCY_KEY_CONFLICT,HANDOFF_NOT_ELIGIBLE,RECIPIENT_INACTIVE,GMAIL_NOT_CONNECTED,GMAIL_SEND_SCOPE_REQUIRED,GMAIL_SOURCE_UNAVAILABLE,HANDOFF_INCOMPLETE_FORWARD_PROHIBITED,HANDOFF_DELIVERY_FAILED,HANDOFF_IN_PROGRESS,INTERNAL_ERROR
  */
 
 @JsonClass(generateAdapter = false)
@@ -60,6 +60,36 @@ enum class ErrorCode(val value: kotlin.String) {
 
     @Json(name = "RECIPIENT_HANDOFF_NOT_AVAILABLE")
     RECIPIENT_HANDOFF_NOT_AVAILABLE("RECIPIENT_HANDOFF_NOT_AVAILABLE"),
+
+    @Json(name = "CAPABILITY_NO_LONGER_ACTIVE")
+    CAPABILITY_NO_LONGER_ACTIVE("CAPABILITY_NO_LONGER_ACTIVE"),
+
+    @Json(name = "IDEMPOTENCY_KEY_CONFLICT")
+    IDEMPOTENCY_KEY_CONFLICT("IDEMPOTENCY_KEY_CONFLICT"),
+
+    @Json(name = "HANDOFF_NOT_ELIGIBLE")
+    HANDOFF_NOT_ELIGIBLE("HANDOFF_NOT_ELIGIBLE"),
+
+    @Json(name = "RECIPIENT_INACTIVE")
+    RECIPIENT_INACTIVE("RECIPIENT_INACTIVE"),
+
+    @Json(name = "GMAIL_NOT_CONNECTED")
+    GMAIL_NOT_CONNECTED("GMAIL_NOT_CONNECTED"),
+
+    @Json(name = "GMAIL_SEND_SCOPE_REQUIRED")
+    GMAIL_SEND_SCOPE_REQUIRED("GMAIL_SEND_SCOPE_REQUIRED"),
+
+    @Json(name = "GMAIL_SOURCE_UNAVAILABLE")
+    GMAIL_SOURCE_UNAVAILABLE("GMAIL_SOURCE_UNAVAILABLE"),
+
+    @Json(name = "HANDOFF_INCOMPLETE_FORWARD_PROHIBITED")
+    HANDOFF_INCOMPLETE_FORWARD_PROHIBITED("HANDOFF_INCOMPLETE_FORWARD_PROHIBITED"),
+
+    @Json(name = "HANDOFF_DELIVERY_FAILED")
+    HANDOFF_DELIVERY_FAILED("HANDOFF_DELIVERY_FAILED"),
+
+    @Json(name = "HANDOFF_IN_PROGRESS")
+    HANDOFF_IN_PROGRESS("HANDOFF_IN_PROGRESS"),
 
     @Json(name = "INTERNAL_ERROR")
     INTERNAL_ERROR("INTERNAL_ERROR");

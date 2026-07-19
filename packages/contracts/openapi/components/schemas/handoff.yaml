@@ -1,0 +1,88 @@
+components:
+  schemas:
+    HandoffDeliveryPath:
+      type: string
+      enum:
+        - gmail_forward
+        - assignment_email
+      description: |
+        Server-determined outbound delivery mode for a Task handoff (D090, D094).
+        Derived from the Task source — clients must not choose or spoof this value.
+        `gmail_forward` applies to Gmail-origin Tasks; `assignment_email` applies otherwise.
+    HandoffAcknowledgement:
+      type: string
+      enum:
+        - handoff_confirmed_v1
+      description: |
+        Stable machine-readable Owner acknowledgement that the D037 bundled disclosure was confirmed (D090).
+        Covers: assignment to the selected Recipient; creation or replacement of a capability link;
+        outbound assignment email or Gmail forward; forwarding of Gmail attachments when applicable;
+        disclosure that forwarded mailbox copies sit outside application retention control (D031);
+        and that A7 does **not** claim reminders are currently scheduled (D089).
+        UI prose is not part of this contract — clients bind to this acknowledgement version.
+    HandoffTaskRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - recipientId
+        - acknowledgement
+      properties:
+        recipientId:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: |
+            Owner-managed Recipient record id (D087). Raw Recipient email addresses are not accepted.
+            Inactive Recipients must be rejected.
+        acknowledgement:
+          $ref: '#/components/schemas/HandoffAcknowledgement'
+      description: |
+        Owner confirmation to hand off an existing unassigned Task (D037, D090).
+        Does not approve suggestions, recreate the Task, accept a capability token, or accept raw email.
+    HandoffTaskResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - task
+        - deliveryPath
+        - deliveryStatus
+        - recipient
+        - capabilityId
+        - requiresSendReconsent
+        - idempotentReplay
+      properties:
+        task:
+          $ref: './task.yaml#/components/schemas/Task'
+          description: |
+            Updated Task including assignment attribute after a **successful** handoff (`deliveryStatus=sent`).
+            Version/etag reflect the post-handoff Task concurrency token.
+        deliveryPath:
+          $ref: '#/components/schemas/HandoffDeliveryPath'
+        deliveryStatus:
+          $ref: './capability.yaml#/components/schemas/AssignmentDeliveryStatus'
+          description: |
+            On HTTP 200 success this value is `sent` (Gmail accepted the outbound send).
+            `pending` and `failed` are not returned as successful handoff responses (D092, D042).
+        recipient:
+          $ref: './recipient.yaml#/components/schemas/Recipient'
+          description: Owner-visible Recipient summary for the handoff target.
+        capabilityId:
+          type: string
+          maxLength: 64
+          description: |
+            Identifier of the capability issued for this handoff. Raw capability secret is **not**
+            returned on routine handoff — delivery is by email/forward (D063, D094).
+            Administrative raw-token reveal remains `POST /api/v1/tasks/{taskId}/capabilities` only.
+        requiresSendReconsent:
+          type: boolean
+          description: |
+            Always `false` on HTTP 200 success. When handoff fails for missing `gmail.send`,
+            clients should read connection status (`requiresSendReconsent`) and complete OAuth re-consent.
+        idempotentReplay:
+          type: boolean
+          description: |
+            `true` when this response replays a prior successful handoff for the same Idempotency-Key
+            and matching request payload. `false` for a newly completed handoff.
+      description: |
+        Successful Owner handoff result. Does not expose raw capability tokens.
+        Does not imply the human Recipient opened or read the message — only that Gmail accepted send.

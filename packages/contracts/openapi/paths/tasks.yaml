@@ -40,6 +40,11 @@ paths:
       operationId: createTask
       tags: [Tasks]
       summary: Create a task directly (Owner typed creation only)
+      description: |
+        Creates an Owner-owned Task. Prefer creating **unassigned** Tasks; Recipient handoff is a
+        separate operation `POST /api/v1/tasks/{taskId}/handoff` (D090, D091).
+        Optional `recipientId` on CreateTaskRequest is **deprecated** and will be rejected when
+        A7 handoff implementation ships — do not use it for new clients.
       requestBody:
         required: true
         content:
@@ -372,10 +377,21 @@ paths:
     post:
       operationId: issueTaskCapability
       tags: [Tasks]
-      summary: Issue a capability link for the current assignment
+      summary: Issue a capability link for the current assignment (administrative)
       description: |
-        Returns the raw capability secret once to the authenticated Owner for manual verification (D063).
-        Persist only a secure hash. Default expiry is seven days unless configuration overrides (D055).
+        Returns the raw capability secret once to the authenticated Owner for manual verification
+        or administrative recovery (D063). Persist only a secure hash.
+
+        **Not the normal A7 Recipient handoff workflow (D090).** This operation does **not** send
+        an assignment email or Gmail forward, does **not** set delivery status to a successful
+        handoff, and is **not** the D037 bundled business action.
+
+        Must obey D086: at most one active Recipient capability per Assignment. Issuing a
+        replacement **revokes** the previous active capability. Must not leave multiple
+        concurrently actionable capabilities for one Assignment.
+
+        The only bundled D037 action covering assignment activation, capability delivery,
+        email/forward, and delivery status is `POST /api/v1/tasks/{taskId}/handoff`.
       parameters:
         - $ref: '../components/parameters.yaml#/components/parameters/TaskId'
         - $ref: '../components/parameters.yaml#/components/parameters/IfMatch'
@@ -406,3 +422,92 @@ paths:
           $ref: '../components/responses.yaml#/components/responses/PreconditionFailed'
         '428':
           $ref: '../components/responses.yaml#/components/responses/PreconditionRequired'
+  /api/v1/tasks/{taskId}/handoff:
+    post:
+      operationId: handoffTask
+      tags: [Tasks]
+      summary: Hand off a Task to a Recipient (D037)
+      description: |
+        Owner-authenticated Recipient handoff on an **existing** Owner-owned **unassigned** Task (D090).
+        Does **not** recreate the Task or invoke suggestion approval.
+
+        Requires `If-Match` (Task concurrency, D045) and `Idempotency-Key` (D094).
+        Body requires `recipientId` (Owner-managed Recipient id only — no raw email) and
+        `acknowledgement: handoff_confirmed_v1` (D037 disclosure confirmation).
+
+        The server determines Gmail-origin **forward** versus ordinary **assignment email** from the
+        Task source. Clients must not choose or spoof delivery mode. No capability token is accepted
+        from the client. Routine success responses do **not** return a raw capability secret —
+        delivery is by email/forward; raw reveal remains administrative `…/capabilities` only.
+
+        HTTP **200** means Gmail accepted the outbound send (`deliveryStatus=sent`) or an idempotent
+        replay of that success. Delivery failure, incomplete-forward prohibition, missing send scope,
+        and similar cases are **non-2xx** — do not treat pending Assignment/capability rows as success.
+        A7 does not schedule reminders (D089).
+      parameters:
+        - $ref: '../components/parameters.yaml#/components/parameters/TaskId'
+        - $ref: '../components/parameters.yaml#/components/parameters/IfMatch'
+        - $ref: '../components/parameters.yaml#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/HandoffTaskRequest'
+      responses:
+        '200':
+          description: |
+            Handoff completed with Gmail-accepted send (`deliveryStatus=sent`), or idempotent replay
+            of a prior successful handoff for the same Idempotency-Key and matching payload.
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/HandoffTaskResponse'
+        '400':
+          description: |
+            Validation failure, ineligible Task/self-work, inactive Recipient, incomplete forward
+            prohibited (D088), or missing Gmail source — see ErrorCode
+            (VALIDATION_ERROR, HANDOFF_NOT_ELIGIBLE, RECIPIENT_INACTIVE,
+            HANDOFF_INCOMPLETE_FORWARD_PROHIBITED, GMAIL_SOURCE_UNAVAILABLE, …).
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '../components/responses.yaml#/components/responses/Unauthorized'
+        '403':
+          description: |
+            Forbidden, including Gmail send scope missing / re-consent required
+            (`GMAIL_SEND_SCOPE_REQUIRED`) when the Owner session is valid but send is not authorized.
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        '404':
+          description: Task or Recipient not found / not Owner-accessible
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        '409':
+          description: |
+            Conflict — already assigned/handed off, idempotency key conflict, or handoff in progress
+            (DOMAIN_CONFLICT, IDEMPOTENCY_KEY_CONFLICT, HANDOFF_IN_PROGRESS).
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        '412':
+          $ref: '../components/responses.yaml#/components/responses/PreconditionFailed'
+        '428':
+          $ref: '../components/responses.yaml#/components/responses/PreconditionRequired'
+        '503':
+          description: |
+            Retryable dependency/delivery failure (`HANDOFF_DELIVERY_FAILED`, `GMAIL_NOT_CONNECTED`,
+            or `DEPENDENCY_UNAVAILABLE`). Does not claim successful handoff.
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '../components/responses.yaml#/components/responses/InternalError'

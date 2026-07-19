@@ -22,30 +22,34 @@ import com.squareup.moshi.JsonClass
 import java.io.Serializable
 
 /**
- * 
+ * Owner-managed Recipient contact record (D049, D087). Recipients have no application accounts. Minimal A7 surface only — not a CRM (no notes, tags, companies, pipelines, or unrelated contact fields). 
  *
- * @param id 
+ * @param id Canonical Owner-managed Recipient record id (D087).
  * @param displayName 
- * @param email 
- * @param active Whether the Owner may assign new work to this Recipient.
+ * @param email Email from the Owner-managed Recipient record. Not hard-coded and not an environment-variable default Recipient (D087). 
+ * @param active Whether the Owner may select this Recipient for **new** handoffs (D087). Inactive Recipients cannot be selected for new handoffs. Deactivation must not rewrite historical Assignment or audit attribution. 
  * @param relationshipLabel Optional relationship label (for example administrator, agent, contractor, lawyer, accountant, tenant, client). Not an application role. 
  * @param reminderPreferences 
- * @param assignmentCategories Optional Owner-defined categories for delegation routing.
+ * @param assignmentCategories Optional Owner-defined categories for delegation routing — not CRM tags/pipelines.
+ * @param createdAt 
+ * @param updatedAt 
  */
 
 
 data class Recipient (
 
+    /* Canonical Owner-managed Recipient record id (D087). */
     @Json(name = "id")
     val id: kotlin.String,
 
     @Json(name = "displayName")
     val displayName: kotlin.String,
 
+    /* Email from the Owner-managed Recipient record. Not hard-coded and not an environment-variable default Recipient (D087).  */
     @Json(name = "email")
     val email: kotlin.String,
 
-    /* Whether the Owner may assign new work to this Recipient. */
+    /* Whether the Owner may select this Recipient for **new** handoffs (D087). Inactive Recipients cannot be selected for new handoffs. Deactivation must not rewrite historical Assignment or audit attribution.  */
     @Json(name = "active")
     val active: kotlin.Boolean,
 
@@ -56,9 +60,15 @@ data class Recipient (
     @Json(name = "reminderPreferences")
     val reminderPreferences: RecipientReminderPreferences? = null,
 
-    /* Optional Owner-defined categories for delegation routing. */
+    /* Optional Owner-defined categories for delegation routing — not CRM tags/pipelines. */
     @Json(name = "assignmentCategories")
-    val assignmentCategories: kotlin.collections.List<kotlin.String>? = null
+    val assignmentCategories: kotlin.collections.List<kotlin.String>? = null,
+
+    @Json(name = "createdAt")
+    val createdAt: kotlin.String? = null,
+
+    @Json(name = "updatedAt")
+    val updatedAt: kotlin.String? = null
 
 ) : Serializable {
     companion object {

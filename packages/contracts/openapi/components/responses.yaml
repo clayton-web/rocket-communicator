@@ -36,7 +36,8 @@ components:
           schema:
             $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
     PreconditionRequired:
-      description: Missing If-Match header
+      description: |
+        Missing required precondition header (`If-Match` and/or `Idempotency-Key` where required).
       content:
         application/json:
           schema:
@@ -48,6 +49,13 @@ components:
                   code: PRECONDITION_REQUIRED
                   message: If-Match header is required for this mutation.
                   requestId: 550e8400-e29b-41d4-a716-446655440001
+                  correlationId: null
+            idempotencyKeyRequired:
+              value:
+                error:
+                  code: PRECONDITION_REQUIRED
+                  message: Idempotency-Key header is required for this mutation.
+                  requestId: 550e8400-e29b-41d4-a716-446655440011
                   correlationId: null
     PreconditionFailed:
       description: Stale If-Match ETag
@@ -69,6 +77,26 @@ components:
         application/json:
           schema:
             $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+    CapabilityNoLongerActive:
+      description: |
+        Capability token positively matched a stored capability superseded by re-forward or
+        reassignment (internal revocation reason superseded, D086).
+        Does not disclose whether another active capability exists, replacement tokens,
+        Task/Assignment/Recipient details, or other identifying state.
+        Manual revocation, assignment-ended revocation, expiration, and unknown, malformed,
+        missing, or unmatched tokens must use Unauthorized (UNAUTHORIZED) instead.
+      content:
+        application/json:
+          schema:
+            $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+          examples:
+            noLongerActive:
+              value:
+                error:
+                  code: CAPABILITY_NO_LONGER_ACTIVE
+                  message: This link is no longer active.
+                  requestId: 550e8400-e29b-41d4-a716-446655440012
+                  correlationId: null
     TooManyRequests:
       description: Rate limited
       content:

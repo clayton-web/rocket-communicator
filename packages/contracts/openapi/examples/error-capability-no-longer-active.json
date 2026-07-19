@@ -1,0 +1,8 @@
+{
+  "error": {
+    "code": "CAPABILITY_NO_LONGER_ACTIVE",
+    "message": "This link is no longer active.",
+    "requestId": "550e8400-e29b-41d4-a716-446655440012",
+    "correlationId": null
+  }
+}

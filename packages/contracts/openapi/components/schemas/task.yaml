@@ -101,6 +101,12 @@ components:
         recipientId:
           type: string
           maxLength: 64
+          deprecated: true
+          description: |
+            **Deprecated (D091).** Silent create-with-assignment path retained for A4 compatibility
+            until A7 handoff implementation rejects it. New clients must create an **unassigned** Task
+            and call `POST /api/v1/tasks/{taskId}/handoff`. Suggestion approval already produces
+            unassigned Tasks only (D080). Do not treat this field as the recommended assignment path.
         dueAt:
           type: string
           format: date-time
@@ -108,6 +114,9 @@ components:
           $ref: './assignment.yaml#/components/schemas/TaskPriority'
         sourceReference:
           $ref: './source-reference.yaml#/components/schemas/SourceReference'
+      description: |
+        Owner typed Task creation. Creates an unassigned Task unless deprecated `recipientId` is
+        supplied (legacy A4 behaviour). Task creation and Recipient handoff are distinct operations (D091).
     MarkTaskWaitingRequest:
       type: object
       required:

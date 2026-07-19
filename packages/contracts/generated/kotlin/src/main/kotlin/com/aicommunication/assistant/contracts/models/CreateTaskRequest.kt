@@ -24,10 +24,10 @@ import com.squareup.moshi.JsonClass
 import java.io.Serializable
 
 /**
- * 
+ * Owner typed Task creation. Creates an unassigned Task unless deprecated `recipientId` is supplied (legacy A4 behaviour). Task creation and Recipient handoff are distinct operations (D091). 
  *
  * @param summaryPoints 
- * @param recipientId 
+ * @param recipientId **Deprecated (D091).** Silent create-with-assignment path retained for A4 compatibility until A7 handoff implementation rejects it. New clients must create an **unassigned** Task and call `POST /api/v1/tasks/{taskId}/handoff`. Suggestion approval already produces unassigned Tasks only (D080). Do not treat this field as the recommended assignment path. 
  * @param dueAt 
  * @param priority 
  * @param sourceReference 
@@ -39,7 +39,9 @@ data class CreateTaskRequest (
     @Json(name = "summaryPoints")
     val summaryPoints: kotlin.collections.List<TaskSummaryPoint>,
 
+    /* **Deprecated (D091).** Silent create-with-assignment path retained for A4 compatibility until A7 handoff implementation rejects it. New clients must create an **unassigned** Task and call `POST /api/v1/tasks/{taskId}/handoff`. Suggestion approval already produces unassigned Tasks only (D080). Do not treat this field as the recommended assignment path.  */
     @Json(name = "recipientId")
+    @Deprecated(message = "This property is deprecated.")
     val recipientId: kotlin.String? = null,
 
     @Json(name = "dueAt")

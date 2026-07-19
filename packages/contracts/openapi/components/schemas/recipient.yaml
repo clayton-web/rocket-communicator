@@ -11,6 +11,7 @@ components:
         - contractor
     Recipient:
       type: object
+      additionalProperties: false
       required:
         - id
         - displayName
@@ -20,18 +21,26 @@ components:
         id:
           type: string
           maxLength: 64
+          description: Canonical Owner-managed Recipient record id (D087).
         displayName:
           type: string
+          minLength: 1
           maxLength: 128
         email:
           type: string
           format: email
           maxLength: 254
+          description: |
+            Email from the Owner-managed Recipient record. Not hard-coded and not an
+            environment-variable default Recipient (D087).
         relationshipLabel:
           $ref: '#/components/schemas/RecipientRelationshipLabel'
         active:
           type: boolean
-          description: Whether the Owner may assign new work to this Recipient.
+          description: |
+            Whether the Owner may select this Recipient for **new** handoffs (D087).
+            Inactive Recipients cannot be selected for new handoffs. Deactivation must not
+            rewrite historical Assignment or audit attribution.
         reminderPreferences:
           type: object
           additionalProperties: false
@@ -39,10 +48,80 @@ components:
             emailEnabled:
               type: boolean
               default: true
+          description: Optional reminder preference stub for A8; not a CRM field.
         assignmentCategories:
           type: array
           maxItems: 20
           items:
             type: string
             maxLength: 64
-          description: Optional Owner-defined categories for delegation routing.
+          description: Optional Owner-defined categories for delegation routing — not CRM tags/pipelines.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      description: |
+        Owner-managed Recipient contact record (D049, D087). Recipients have no application accounts.
+        Minimal A7 surface only — not a CRM (no notes, tags, companies, pipelines, or unrelated contact fields).
+    CreateRecipientRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - displayName
+        - email
+      properties:
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 128
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        relationshipLabel:
+          $ref: '#/components/schemas/RecipientRelationshipLabel'
+      description: |
+        Create an Owner-managed Recipient (D087). Email must be unique within the organization.
+        Created Recipients are active by default.
+    UpdateRecipientRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 128
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        relationshipLabel:
+          oneOf:
+            - $ref: '#/components/schemas/RecipientRelationshipLabel'
+            - type: 'null'
+      description: |
+        Partial update of an existing Recipient. Does not activate/deactivate —
+        use `POST /api/v1/recipients/{recipientId}/deactivate` to mark inactive (D087).
+        Changing email must not rewrite historical Assignment intended-email snapshots.
+    ListRecipientsResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/Recipient'
+        nextCursor:
+          type:
+            - string
+            - 'null'
+          maxLength: 256
+      description: |
+        Active Recipients only by default (smallest A7 list surface). Inactive Recipients are
+        omitted; there is no status filter on this endpoint in A7.1.

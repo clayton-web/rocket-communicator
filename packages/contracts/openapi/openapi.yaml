@@ -10,9 +10,10 @@ info:
     OpenAPI is the source of truth (D007). A3 Owner session authentication and A4
     Owner task + Recipient capability routes are implemented and production-verified.
     A5 Gmail OAuth, History sync, and internal poll are implemented and production-operational.
-    A6 Owner task-suggestion HTTP and internal suggestion processing are contracted
-    (handlers in A6 implementation phases; D080–D085). Owner and capability authorization
-    surfaces are separate (D059).
+    A6 Owner task-suggestion HTTP and internal suggestion processing are production-operational (D080–D085).
+    A7.1 contracts Recipient handoff (`POST /api/v1/tasks/{taskId}/handoff`), minimal Recipient
+    management, delivery status, and Gmail send-capability flags (D086–D094). Handlers ship in later A7 phases.
+    Owner and capability authorization surfaces are separate (D059).
 servers:
   - url: https://api.example.invalid
     description: Placeholder server URL for contract generation only
@@ -24,14 +25,26 @@ tags:
       Pre-task proposals requiring Owner approval (A6). Includes Owner suggestion HTTP
       and internal suggestion processing (D080–D085). Does not create Recipient handoffs.
   - name: Tasks
-    description: Owner-authorized actionable work items.
+    description: |
+      Owner-authorized actionable work items. Includes A7 handoff
+      `POST /api/v1/tasks/{taskId}/handoff` (D090) — distinct from suggestion approval and from
+      administrative capability issuance.
+  - name: Recipients
+    description: |
+      Minimal Owner-managed Recipient contacts (D087). List active, create, update, deactivate.
+      Not a CRM. Email addresses come from Owner-managed records only.
   - name: Capabilities
-    description: Recipient capability-token routes (separate from Owner session APIs).
+    description: |
+      Recipient capability-token routes (separate from Owner session APIs).
+      A positively matched capability with internal supersession reason may return
+      CAPABILITY_NO_LONGER_ACTIVE (D086); all other unusable or unmatched cases remain UNAUTHORIZED.
   - name: Gmail
     description: |
       Owner Gmail connection and sync (A5). OAuth, manual sync, History ingestion, and
       internal poll are implemented and production-operational. Does not create Task
       Suggestions (D077). Internal poll uses InternalCronBearer (CRON_SECRET), not Owner session.
+      A7.1 adds optional send-capability flags on GmailConnection (D093); runtime OAuth scope
+      expansion is a later A7 phase.
 security:
   - bearerAuth: []
 paths:
@@ -51,6 +64,12 @@ paths:
     $ref: './paths/task-suggestions.yaml#/paths/~1api~1v1~1task-suggestions~1{suggestionId}~1merge'
   /api/v1/internal/suggestions/process:
     $ref: './paths/task-suggestions.yaml#/paths/~1api~1v1~1internal~1suggestions~1process'
+  /api/v1/recipients:
+    $ref: './paths/recipients.yaml#/paths/~1api~1v1~1recipients'
+  /api/v1/recipients/{recipientId}:
+    $ref: './paths/recipients.yaml#/paths/~1api~1v1~1recipients~1{recipientId}'
+  /api/v1/recipients/{recipientId}/deactivate:
+    $ref: './paths/recipients.yaml#/paths/~1api~1v1~1recipients~1{recipientId}~1deactivate'
   /api/v1/tasks:
     $ref: './paths/tasks.yaml#/paths/~1api~1v1~1tasks'
   /api/v1/tasks/{taskId}:
@@ -75,6 +94,8 @@ paths:
     $ref: './paths/tasks.yaml#/paths/~1api~1v1~1tasks~1{taskId}~1clarification-requests'
   /api/v1/tasks/{taskId}/capabilities:
     $ref: './paths/tasks.yaml#/paths/~1api~1v1~1tasks~1{taskId}~1capabilities'
+  /api/v1/tasks/{taskId}/handoff:
+    $ref: './paths/tasks.yaml#/paths/~1api~1v1~1tasks~1{taskId}~1handoff'
   /api/v1/capabilities/{token}/tasks/{taskId}:
     $ref: './paths/capabilities.yaml#/paths/~1api~1v1~1capabilities~1{token}~1tasks~1{taskId}'
   /api/v1/capabilities/{token}/tasks/{taskId}/waiting:
@@ -127,6 +148,12 @@ components:
       $ref: './components/schemas/recipient.yaml#/components/schemas/Recipient'
     RecipientRelationshipLabel:
       $ref: './components/schemas/recipient.yaml#/components/schemas/RecipientRelationshipLabel'
+    CreateRecipientRequest:
+      $ref: './components/schemas/recipient.yaml#/components/schemas/CreateRecipientRequest'
+    UpdateRecipientRequest:
+      $ref: './components/schemas/recipient.yaml#/components/schemas/UpdateRecipientRequest'
+    ListRecipientsResponse:
+      $ref: './components/schemas/recipient.yaml#/components/schemas/ListRecipientsResponse'
     CapabilityAction:
       $ref: './components/schemas/capability.yaml#/components/schemas/CapabilityAction'
     CapabilityStatus:
@@ -183,6 +210,14 @@ components:
       $ref: './components/schemas/task.yaml#/components/schemas/IssueTaskCapabilityRequest'
     IssuedCapabilityLink:
       $ref: './components/schemas/capability.yaml#/components/schemas/IssuedCapabilityLink'
+    HandoffAcknowledgement:
+      $ref: './components/schemas/handoff.yaml#/components/schemas/HandoffAcknowledgement'
+    HandoffDeliveryPath:
+      $ref: './components/schemas/handoff.yaml#/components/schemas/HandoffDeliveryPath'
+    HandoffTaskRequest:
+      $ref: './components/schemas/handoff.yaml#/components/schemas/HandoffTaskRequest'
+    HandoffTaskResponse:
+      $ref: './components/schemas/handoff.yaml#/components/schemas/HandoffTaskResponse'
     SubmitWorkRequestRequest:
       $ref: './components/schemas/capability.yaml#/components/schemas/SubmitWorkRequestRequest'
     SubmitWorkRequestResponse:
@@ -241,10 +276,14 @@ components:
       $ref: './components/parameters.yaml#/components/parameters/CapabilityToken'
     IfMatch:
       $ref: './components/parameters.yaml#/components/parameters/IfMatch'
+    IdempotencyKey:
+      $ref: './components/parameters.yaml#/components/parameters/IdempotencyKey'
     SuggestionId:
       $ref: './components/parameters.yaml#/components/parameters/SuggestionId'
     TaskId:
       $ref: './components/parameters.yaml#/components/parameters/TaskId'
+    RecipientId:
+      $ref: './components/parameters.yaml#/components/parameters/RecipientId'
     Cursor:
       $ref: './components/parameters.yaml#/components/parameters/Cursor'
     Limit:
@@ -264,6 +303,8 @@ components:
       $ref: './components/responses.yaml#/components/responses/PreconditionFailed'
     Conflict:
       $ref: './components/responses.yaml#/components/responses/Conflict'
+    CapabilityNoLongerActive:
+      $ref: './components/responses.yaml#/components/responses/CapabilityNoLongerActive'
     TooManyRequests:
       $ref: './components/responses.yaml#/components/responses/TooManyRequests'
     ServiceUnavailable:

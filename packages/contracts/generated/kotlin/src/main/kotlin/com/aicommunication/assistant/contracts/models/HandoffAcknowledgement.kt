@@ -20,22 +20,16 @@ import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 
 /**
- * Outbound assignment/forward delivery outcome for an Assignment (D092). This is a real delivery model (not a deferred placeholder). - `pending` — delivery not yet accepted by Gmail; must **not** expose an actionable Recipient capability. - `sent` — Gmail **accepted** the outbound send (forward or assignment email). Does **not** mean the human Recipient opened or read the message. - `failed` — delivery attempt failed; must **not** expose an actionable Recipient capability; Owner may retry per D086/D092. Detailed delivery-attempt history may be represented by a dedicated resource in later A7 phases without overloading Assignment semantics. 
+ * Stable machine-readable Owner acknowledgement that the D037 bundled disclosure was confirmed (D090). Covers: assignment to the selected Recipient; creation or replacement of a capability link; outbound assignment email or Gmail forward; forwarding of Gmail attachments when applicable; disclosure that forwarded mailbox copies sit outside application retention control (D031); and that A7 does **not** claim reminders are currently scheduled (D089). UI prose is not part of this contract — clients bind to this acknowledgement version. 
  *
- * Values: pending,sent,failed
+ * Values: handoff_confirmed_v1
  */
 
 @JsonClass(generateAdapter = false)
-enum class AssignmentDeliveryStatus(val value: kotlin.String) {
+enum class HandoffAcknowledgement(val value: kotlin.String) {
 
-    @Json(name = "pending")
-    pending("pending"),
-
-    @Json(name = "sent")
-    sent("sent"),
-
-    @Json(name = "failed")
-    failed("failed");
+    @Json(name = "handoff_confirmed_v1")
+    handoff_confirmed_v1("handoff_confirmed_v1");
 
     /**
      * Override [toString()] to avoid using the enum variable name as the value, and instead use
@@ -50,12 +44,12 @@ enum class AssignmentDeliveryStatus(val value: kotlin.String) {
         /**
          * Converts the provided [data] to a [String] on success, null otherwise.
          */
-        fun encode(data: kotlin.Any?): kotlin.String? = if (data is AssignmentDeliveryStatus) "$data" else null
+        fun encode(data: kotlin.Any?): kotlin.String? = if (data is HandoffAcknowledgement) "$data" else null
 
         /**
-         * Returns a valid [AssignmentDeliveryStatus] for [data], null otherwise.
+         * Returns a valid [HandoffAcknowledgement] for [data], null otherwise.
          */
-        fun decode(data: kotlin.Any?): AssignmentDeliveryStatus? = data?.let {
+        fun decode(data: kotlin.Any?): HandoffAcknowledgement? = data?.let {
           val normalizedData = "$it".lowercase()
           values().firstOrNull { value ->
             it == value || normalizedData == "$value".lowercase()

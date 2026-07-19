@@ -63,6 +63,11 @@ describe('contracts package', () => {
     expect(generated).toContain('GmailConnection');
     expect(generated).toContain('GmailSyncRun');
     expect(generated).toContain('GmailConnectionStatus');
+    expect(generated).toContain('HandoffTaskRequest');
+    expect(generated).toContain('HandoffTaskResponse');
+    expect(generated).toContain('CreateRecipientRequest');
+    expect(generated).toContain('CAPABILITY_NO_LONGER_ACTIVE');
+    expect(generated).toContain('handoff_confirmed_v1');
   }, 120_000);
 
   it('keeps Gmail public schemas free of token and ciphertext fields', () => {
@@ -86,7 +91,45 @@ describe('contracts package', () => {
     }
     expect(bundled.paths?.['/api/v1/gmail/connection']).toBeDefined();
     expect(bundled.paths?.['/api/v1/internal/gmail/poll']).toBeDefined();
+    expect(bundled.paths?.['/api/v1/tasks/{taskId}/handoff']).toBeDefined();
+    expect(bundled.paths?.['/api/v1/recipients']).toBeDefined();
+    expect(bundled.paths?.['/api/v1/recipients/{recipientId}/deactivate']).toBeDefined();
     expect(bundled.paths?.['/api/v1/communication-events']).toBeUndefined();
+    expect(schemas.AssignmentDeliveryStatus).toBeDefined();
+    const deliveryDesc = JSON.stringify(schemas.AssignmentDeliveryStatus);
+    expect(deliveryDesc).toMatch(/real delivery model/i);
+    expect(deliveryDesc).not.toMatch(/Placeholder for assignment email delivery tracking/i);
+    expect(deliveryDesc).not.toMatch(/implementation deferred/i);
+    expect(deliveryDesc).toMatch(/pending|sent|failed/);
+    expect(schemas.HandoffTaskResponse).toBeDefined();
+    const handoffProps = (schemas.HandoffTaskResponse as { properties?: Record<string, unknown> })
+      .properties;
+    expect(handoffProps?.token).toBeUndefined();
+    expect(handoffProps?.capabilityId).toBeDefined();
+    expect(schemas.ErrorCode).toBeDefined();
+    const errorEnum = (schemas.ErrorCode as { enum?: string[] }).enum ?? [];
+    expect(errorEnum).toContain('CAPABILITY_NO_LONGER_ACTIVE');
+    expect(errorEnum).toContain('GMAIL_SEND_SCOPE_REQUIRED');
+    expect(errorEnum).toContain('HANDOFF_DELIVERY_FAILED');
+    const errorDesc = (schemas.ErrorCode as { description?: string }).description ?? '';
+    expect(errorDesc).toMatch(/superseded/i);
+    expect(errorDesc).toMatch(/UNAUTHORIZED/);
+    expect(errorDesc).toMatch(/[Mm]anual/);
+    expect(errorDesc).not.toMatch(/superseded\/revoked/i);
+    expect(errorDesc).not.toMatch(/revoked\/superseded/i);
+    const capabilityNoLongerActive = bundled.components?.responses?.CapabilityNoLongerActive as
+      { description?: string } | undefined;
+    const responseDesc = capabilityNoLongerActive?.description ?? '';
+    expect(responseDesc).toMatch(/superseded/i);
+    expect(responseDesc).toMatch(/UNAUTHORIZED/);
+    expect(responseDesc).toMatch(/[Mm]anual/);
+    expect(responseDesc).not.toMatch(/revoked\/superseded/i);
+    expect(responseDesc).not.toMatch(/superseded\/revoked/i);
+    const capabilityStatusDesc =
+      (schemas.CapabilityStatus as { description?: string } | undefined)?.description ?? '';
+    expect(capabilityStatusDesc).toMatch(/supersession/i);
+    expect(capabilityStatusDesc).not.toMatch(/revoked\/superseded/i);
+    expect(bundled.components?.parameters?.IdempotencyKey).toBeDefined();
     expect(schemas.GmailPollRequest).toBeUndefined();
     const pollPath = bundled.paths?.['/api/v1/internal/gmail/poll'];
     expect(pollPath?.get?.security).toEqual([{ InternalCronBearer: [] }]);

@@ -192,6 +192,80 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/recipients": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List active Recipients
+         * @description Returns Owner-managed **active** Recipients for the organization (D087).
+         *     Inactive Recipients are omitted. This is not a CRM — no notes, tags, companies,
+         *     or pipelines. Email addresses come from Owner-managed records only.
+         *
+         */
+        get: operations["listRecipients"];
+        put?: never;
+        /**
+         * Create a Recipient
+         * @description Creates an Owner-managed Recipient contact (D087). Separate from update (not an upsert).
+         *     Created Recipients are active and eligible for new handoffs.
+         *
+         */
+        post: operations["createRecipient"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/recipients/{recipientId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update a Recipient
+         * @description Partial update of display name, email, and/or relationship label (D087).
+         *     Does not mark inactive — use deactivate. Does not rewrite historical Assignment
+         *     or audit attribution when email changes.
+         *
+         */
+        patch: operations["updateRecipient"];
+        trace?: never;
+    };
+    "/api/v1/recipients/{recipientId}/deactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark a Recipient inactive
+         * @description Marks the Recipient inactive so they cannot be selected for **new** handoffs (D087).
+         *     Does not rewrite historical Assignment or audit attribution. Not a physical delete.
+         *
+         */
+        post: operations["deactivateRecipient"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tasks": {
         parameters: {
             query?: never;
@@ -215,7 +289,14 @@ export interface paths {
          */
         get: operations["listTasks"];
         put?: never;
-        /** Create a task directly (Owner typed creation only) */
+        /**
+         * Create a task directly (Owner typed creation only)
+         * @description Creates an Owner-owned Task. Prefer creating **unassigned** Tasks; Recipient handoff is a
+         *     separate operation `POST /api/v1/tasks/{taskId}/handoff` (D090, D091).
+         *     Optional `recipientId` on CreateTaskRequest is **deprecated** and will be rejected when
+         *     A7 handoff implementation ships — do not use it for new clients.
+         *
+         */
         post: operations["createTask"];
         delete?: never;
         options?: never;
@@ -409,12 +490,59 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Issue a capability link for the current assignment
-         * @description Returns the raw capability secret once to the authenticated Owner for manual verification (D063).
-         *     Persist only a secure hash. Default expiry is seven days unless configuration overrides (D055).
+         * Issue a capability link for the current assignment (administrative)
+         * @description Returns the raw capability secret once to the authenticated Owner for manual verification
+         *     or administrative recovery (D063). Persist only a secure hash.
+         *
+         *     **Not the normal A7 Recipient handoff workflow (D090).** This operation does **not** send
+         *     an assignment email or Gmail forward, does **not** set delivery status to a successful
+         *     handoff, and is **not** the D037 bundled business action.
+         *
+         *     Must obey D086: at most one active Recipient capability per Assignment. Issuing a
+         *     replacement **revokes** the previous active capability. Must not leave multiple
+         *     concurrently actionable capabilities for one Assignment.
+         *
+         *     The only bundled D037 action covering assignment activation, capability delivery,
+         *     email/forward, and delivery status is `POST /api/v1/tasks/{taskId}/handoff`.
          *
          */
         post: operations["issueTaskCapability"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{taskId}/handoff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Hand off a Task to a Recipient (D037)
+         * @description Owner-authenticated Recipient handoff on an **existing** Owner-owned **unassigned** Task (D090).
+         *     Does **not** recreate the Task or invoke suggestion approval.
+         *
+         *     Requires `If-Match` (Task concurrency, D045) and `Idempotency-Key` (D094).
+         *     Body requires `recipientId` (Owner-managed Recipient id only — no raw email) and
+         *     `acknowledgement: handoff_confirmed_v1` (D037 disclosure confirmation).
+         *
+         *     The server determines Gmail-origin **forward** versus ordinary **assignment email** from the
+         *     Task source. Clients must not choose or spoof delivery mode. No capability token is accepted
+         *     from the client. Routine success responses do **not** return a raw capability secret —
+         *     delivery is by email/forward; raw reveal remains administrative `…/capabilities` only.
+         *
+         *     HTTP **200** means Gmail accepted the outbound send (`deliveryStatus=sent`) or an idempotent
+         *     replay of that success. Delivery failure, incomplete-forward prohibition, missing send scope,
+         *     and similar cases are **non-2xx** — do not treat pending Assignment/capability rows as success.
+         *     A7 does not schedule reminders (D089).
+         *
+         */
+        post: operations["handoffTask"];
         delete?: never;
         options?: never;
         head?: never;
@@ -431,7 +559,20 @@ export interface paths {
         /**
          * Non-mutating Recipient task view
          * @description GET must not mutate task, assignment, or capability state (D050, D059).
-         *     Knowledge of `{token}` authorizes view when the capability is active and in scope.
+         *     Knowledge of `{token}` authorizes view when the capability is **active** and in scope.
+         *
+         *     **Authorization outcomes (probing-safe, D086):**
+         *     - Unknown, malformed, expired, missing, or otherwise **unmatched** tokens, and matched
+         *       capabilities that are unusable for any reason **other than supersession** (including
+         *       manual or assignment-ended revocation) → `401` `UNAUTHORIZED`
+         *       (generic; do not distinguish these cases).
+         *     - Token that **matches** a stored capability whose internal revocation reason is
+         *       **superseded** (re-forward/reassignment, D086) →
+         *       `401` `CAPABILITY_NO_LONGER_ACTIVE` with a non-sensitive message such as
+         *       "This link is no longer active." Must not disclose whether another active capability
+         *       exists, the replacement capability, Task/Assignment/Recipient details, or other state.
+         *     - The public capability page may render a friendly “This link is no longer active” message
+         *       for the matched superseded case only.
          *
          */
         get: operations["getCapabilityTask"];
@@ -762,8 +903,27 @@ export interface components {
                 correlationId?: string | null;
             };
         };
-        /** @enum {string} */
-        ErrorCode: "VALIDATION_ERROR" | "UNAUTHORIZED" | "FORBIDDEN" | "NOT_FOUND" | "INVALID_STATE_TRANSITION" | "PRECONDITION_REQUIRED" | "PRECONDITION_FAILED" | "DOMAIN_CONFLICT" | "RATE_LIMITED" | "DEPENDENCY_UNAVAILABLE" | "RECIPIENT_HANDOFF_NOT_AVAILABLE" | "INTERNAL_ERROR";
+        /**
+         * @description Public API error codes. Prefer reusing existing codes when semantics match.
+         *     A7 handoff-specific codes:
+         *     - CAPABILITY_NO_LONGER_ACTIVE — token positively matched a stored capability whose
+         *       internal revocation reason is superseded (re-forward/reassignment, D086). Must not
+         *       disclose replacement capability, Task, Assignment, Recipient, or other identifying state.
+         *       Manual revocation, assignment-ended revocation, expiration, and unknown/malformed/
+         *       missing/unmatched tokens remain UNAUTHORIZED (probing-safe). Internal revocation
+         *       reasons are persistence/audit data and are not generally exposed.
+         *     - IDEMPOTENCY_KEY_CONFLICT — same Idempotency-Key reused with a different request payload.
+         *     - HANDOFF_NOT_ELIGIBLE — Task/self-work not eligible for Recipient handoff.
+         *     - RECIPIENT_INACTIVE — Recipient exists but is inactive (D087).
+         *     - GMAIL_NOT_CONNECTED / GMAIL_SEND_SCOPE_REQUIRED / GMAIL_SOURCE_UNAVAILABLE — Gmail prerequisites.
+         *     - HANDOFF_INCOMPLETE_FORWARD_PROHIBITED — D088 incomplete forward blocked before send.
+         *     - HANDOFF_DELIVERY_FAILED — outbound send attempted and failed (retryable provider failure).
+         *     - HANDOFF_IN_PROGRESS — durable attempt already running for this handoff/idempotency key.
+         *     RECIPIENT_HANDOFF_NOT_AVAILABLE remains the A6 suggestion-approve rejection when recipientId is present (D080).
+         *
+         * @enum {string}
+         */
+        ErrorCode: "VALIDATION_ERROR" | "UNAUTHORIZED" | "FORBIDDEN" | "NOT_FOUND" | "INVALID_STATE_TRANSITION" | "PRECONDITION_REQUIRED" | "PRECONDITION_FAILED" | "DOMAIN_CONFLICT" | "RATE_LIMITED" | "DEPENDENCY_UNAVAILABLE" | "RECIPIENT_HANDOFF_NOT_AVAILABLE" | "CAPABILITY_NO_LONGER_ACTIVE" | "IDEMPOTENCY_KEY_CONFLICT" | "HANDOFF_NOT_ELIGIBLE" | "RECIPIENT_INACTIVE" | "GMAIL_NOT_CONNECTED" | "GMAIL_SEND_SCOPE_REQUIRED" | "GMAIL_SOURCE_UNAVAILABLE" | "HANDOFF_INCOMPLETE_FORWARD_PROHIBITED" | "HANDOFF_DELIVERY_FAILED" | "HANDOFF_IN_PROGRESS" | "INTERNAL_ERROR";
         ErrorDetail: {
             field: string;
             message: string;
@@ -798,25 +958,68 @@ export interface components {
          * @enum {string}
          */
         AuthenticatedRole: "owner";
+        /** @description Owner-managed Recipient contact record (D049, D087). Recipients have no application accounts.
+         *     Minimal A7 surface only — not a CRM (no notes, tags, companies, pipelines, or unrelated contact fields).
+         *      */
         Recipient: {
+            /** @description Canonical Owner-managed Recipient record id (D087). */
             id: string;
             displayName: string;
-            /** Format: email */
+            /**
+             * Format: email
+             * @description Email from the Owner-managed Recipient record. Not hard-coded and not an
+             *     environment-variable default Recipient (D087).
+             *
+             */
             email: string;
             relationshipLabel?: components["schemas"]["RecipientRelationshipLabel"];
-            /** @description Whether the Owner may assign new work to this Recipient. */
+            /** @description Whether the Owner may select this Recipient for **new** handoffs (D087).
+             *     Inactive Recipients cannot be selected for new handoffs. Deactivation must not
+             *     rewrite historical Assignment or audit attribution.
+             *      */
             active: boolean;
+            /** @description Optional reminder preference stub for A8; not a CRM field. */
             reminderPreferences?: {
                 /** @default true */
                 emailEnabled: boolean;
             };
-            /** @description Optional Owner-defined categories for delegation routing. */
+            /** @description Optional Owner-defined categories for delegation routing — not CRM tags/pipelines. */
             assignmentCategories?: string[];
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            updatedAt?: string;
         };
         /** @description Optional relationship label (for example administrator, agent, contractor, lawyer,
          *     accountant, tenant, client). Not an application role.
          *      */
         RecipientRelationshipLabel: string;
+        /** @description Create an Owner-managed Recipient (D087). Email must be unique within the organization.
+         *     Created Recipients are active by default.
+         *      */
+        CreateRecipientRequest: {
+            displayName: string;
+            /** Format: email */
+            email: string;
+            relationshipLabel?: components["schemas"]["RecipientRelationshipLabel"];
+        };
+        /** @description Partial update of an existing Recipient. Does not activate/deactivate —
+         *     use `POST /api/v1/recipients/{recipientId}/deactivate` to mark inactive (D087).
+         *     Changing email must not rewrite historical Assignment intended-email snapshots.
+         *      */
+        UpdateRecipientRequest: {
+            displayName?: string;
+            /** Format: email */
+            email?: string;
+            relationshipLabel?: components["schemas"]["RecipientRelationshipLabel"] | null;
+        };
+        /** @description Active Recipients only by default (smallest A7 list surface). Inactive Recipients are
+         *     omitted; there is no status filter on this endpoint in A7.1.
+         *      */
+        ListRecipientsResponse: {
+            items: components["schemas"]["Recipient"][];
+            nextCursor?: string | null;
+        };
         /**
          * @description Actions a task capability link may authorize. Owner-only actions are excluded.
          * @enum {string}
@@ -824,9 +1027,14 @@ export interface components {
         CapabilityAction: "view_assigned_task" | "complete_task" | "mark_task_waiting" | "add_task_note" | "record_completion_outcome" | "return_task_to_owner" | "request_clarification" | "submit_work_request";
         /**
          * @description Lifecycle status of a task capability. Raw token values are never exposed.
-         *     A4 treats active capabilities as multi-use until expiry, revocation, assignment
+         *     Active capabilities are multi-use until expiry, revocation, assignment
          *     replacement/removal, or other terminal invalidation (D056). The `used` enum value
-         *     is reserved and must not be assigned transition semantics in A4 without a Decision.
+         *     is reserved and must not be assigned transition semantics without a Decision.
+         *     Under D086, reassignment or re-forward revokes the prior active capability (`revoked`)
+         *     with an internal supersession reason. Only a positively matched capability with that
+         *     supersession reason may surface CAPABILITY_NO_LONGER_ACTIVE; manual revocation,
+         *     assignment-ended revocation, expiration, and unknown/unmatched tokens remain UNAUTHORIZED.
+         *     Internal revocation reasons are not generally exposed on public error envelopes.
          *
          * @enum {string}
          */
@@ -834,7 +1042,13 @@ export interface components {
         /** @description Allowed actions for a specific task capability link. */
         CapabilityScope: components["schemas"]["CapabilityAction"][];
         /**
-         * @description Placeholder for assignment email delivery tracking (implementation deferred).
+         * @description Outbound assignment/forward delivery outcome for an Assignment (D092).
+         *     This is a real delivery model (not a deferred placeholder).
+         *     - `pending` — delivery not yet accepted by Gmail; must **not** expose an actionable Recipient capability.
+         *     - `sent` — Gmail **accepted** the outbound send (forward or assignment email). Does **not** mean the human Recipient opened or read the message.
+         *     - `failed` — delivery attempt failed; must **not** expose an actionable Recipient capability; Owner may retry per D086/D092.
+         *     Detailed delivery-attempt history may be represented by a dedicated resource in later A7 phases without overloading Assignment semantics.
+         *
          * @enum {string}
          */
         AssignmentDeliveryStatus: "pending" | "sent" | "failed";
@@ -1013,8 +1227,19 @@ export interface components {
         TaskStatus: "open" | "in_progress" | "waiting" | "completed" | "dismissed";
         /** @enum {string} */
         DerivedTaskUrgency: "due_soon" | "overdue";
+        /** @description Owner typed Task creation. Creates an unassigned Task unless deprecated `recipientId` is
+         *     supplied (legacy A4 behaviour). Task creation and Recipient handoff are distinct operations (D091).
+         *      */
         CreateTaskRequest: {
             summaryPoints: components["schemas"]["TaskSummaryPoint"][];
+            /**
+             * @deprecated
+             * @description **Deprecated (D091).** Silent create-with-assignment path retained for A4 compatibility
+             *     until A7 handoff implementation rejects it. New clients must create an **unassigned** Task
+             *     and call `POST /api/v1/tasks/{taskId}/handoff`. Suggestion approval already produces
+             *     unassigned Tasks only (D080). Do not treat this field as the recommended assignment path.
+             *
+             */
             recipientId?: string;
             /** Format: date-time */
             dueAt?: string;
@@ -1068,6 +1293,64 @@ export interface components {
             token: string;
             /** @description Relative browser path such as /c/{token} for Owner-assisted A4 testing. */
             capabilityPath: string;
+        };
+        /**
+         * @description Stable machine-readable Owner acknowledgement that the D037 bundled disclosure was confirmed (D090).
+         *     Covers: assignment to the selected Recipient; creation or replacement of a capability link;
+         *     outbound assignment email or Gmail forward; forwarding of Gmail attachments when applicable;
+         *     disclosure that forwarded mailbox copies sit outside application retention control (D031);
+         *     and that A7 does **not** claim reminders are currently scheduled (D089).
+         *     UI prose is not part of this contract — clients bind to this acknowledgement version.
+         *
+         * @enum {string}
+         */
+        HandoffAcknowledgement: "handoff_confirmed_v1";
+        /**
+         * @description Server-determined outbound delivery mode for a Task handoff (D090, D094).
+         *     Derived from the Task source — clients must not choose or spoof this value.
+         *     `gmail_forward` applies to Gmail-origin Tasks; `assignment_email` applies otherwise.
+         *
+         * @enum {string}
+         */
+        HandoffDeliveryPath: "gmail_forward" | "assignment_email";
+        /** @description Owner confirmation to hand off an existing unassigned Task (D037, D090).
+         *     Does not approve suggestions, recreate the Task, accept a capability token, or accept raw email.
+         *      */
+        HandoffTaskRequest: {
+            /** @description Owner-managed Recipient record id (D087). Raw Recipient email addresses are not accepted.
+             *     Inactive Recipients must be rejected.
+             *      */
+            recipientId: string;
+            acknowledgement: components["schemas"]["HandoffAcknowledgement"];
+        };
+        /** @description Successful Owner handoff result. Does not expose raw capability tokens.
+         *     Does not imply the human Recipient opened or read the message — only that Gmail accepted send.
+         *      */
+        HandoffTaskResponse: {
+            /** @description Updated Task including assignment attribute after a **successful** handoff (`deliveryStatus=sent`).
+             *     Version/etag reflect the post-handoff Task concurrency token.
+             *      */
+            task: components["schemas"]["Task"];
+            deliveryPath: components["schemas"]["HandoffDeliveryPath"];
+            /** @description On HTTP 200 success this value is `sent` (Gmail accepted the outbound send).
+             *     `pending` and `failed` are not returned as successful handoff responses (D092, D042).
+             *      */
+            deliveryStatus: components["schemas"]["AssignmentDeliveryStatus"];
+            /** @description Owner-visible Recipient summary for the handoff target. */
+            recipient: components["schemas"]["Recipient"];
+            /** @description Identifier of the capability issued for this handoff. Raw capability secret is **not**
+             *     returned on routine handoff — delivery is by email/forward (D063, D094).
+             *     Administrative raw-token reveal remains `POST /api/v1/tasks/{taskId}/capabilities` only.
+             *      */
+            capabilityId: string;
+            /** @description Always `false` on HTTP 200 success. When handoff fails for missing `gmail.send`,
+             *     clients should read connection status (`requiresSendReconsent`) and complete OAuth re-consent.
+             *      */
+            requiresSendReconsent: boolean;
+            /** @description `true` when this response replays a prior successful handoff for the same Idempotency-Key
+             *     and matching request payload. `false` for a newly completed handoff.
+             *      */
+            idempotentReplay: boolean;
         };
         SubmitWorkRequestRequest: {
             /** @description Typed Recipient work request body (D058). */
@@ -1203,6 +1486,7 @@ export interface components {
         GmailSyncOutcome: "running" | "succeeded" | "partial" | "retryable_failure" | "permanent_failure" | "skipped_locked" | "needs_reauth" | "resync_required";
         /** @description Safe Owner-facing Gmail connection status. Must never include refresh tokens,
          *     access tokens, ciphertext, encryption key versions, OAuth codes, or PKCE secrets.
+         *     Prefer booleans (`canRead`, `canSend`, `requiresSendReconsent`) over raw provider scope strings (D093, D094).
          *      */
         GmailConnection: {
             status: components["schemas"]["GmailConnectionStatus"];
@@ -1225,8 +1509,23 @@ export interface components {
             pollingIntervalMinutes: number;
             /** @description Always true in A5 (D068). */
             inboxOnly: boolean;
-            /** @description Always true in A5 — gmail.readonly only (D070). */
+            /** @description True when `gmail.readonly` is granted for ingest/polling (D070).
+             *     Does **not** by itself imply send permission. Prefer `canRead` / `canSend` when present (D093).
+             *      */
             readonlyScope: boolean;
+            /** @description Optional A7+ flag: true when the connection can poll/read Inbox History (`gmail.readonly`).
+             *     When omitted, clients may treat connected + `readonlyScope` as readable for A5 compatibility.
+             *      */
+            canRead?: boolean;
+            /** @description Optional A7+ flag: true when `gmail.send` is granted for assignment email and forward (D093).
+             *     When omitted or false while connected, A7 handoff requires Owner re-consent (`requiresSendReconsent`).
+             *     Runtime OAuth still requests readonly-only until A7 OAuth work ships — this field is contract-ready.
+             *      */
+            canSend?: boolean;
+            /** @description Optional A7+ flag: true when handoff/send needs Owner OAuth re-consent to grant `gmail.send`.
+             *     Safe boolean — does not expose raw Google scope strings.
+             *      */
+            requiresSendReconsent?: boolean;
         };
         GmailDisconnectRequest: {
             /**
@@ -1447,7 +1746,8 @@ export interface components {
                 "application/json": components["schemas"]["ErrorResponse"];
             };
         };
-        /** @description Missing If-Match header */
+        /** @description Missing required precondition header (`If-Match` and/or `Idempotency-Key` where required).
+         *      */
         PreconditionRequired: {
             headers: {
                 [name: string]: unknown;
@@ -1467,6 +1767,21 @@ export interface components {
         };
         /** @description Domain conflict unrelated to HTTP precondition */
         Conflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
+        /** @description Capability token positively matched a stored capability superseded by re-forward or
+         *     reassignment (internal revocation reason superseded, D086).
+         *     Does not disclose whether another active capability exists, replacement tokens,
+         *     Task/Assignment/Recipient details, or other identifying state.
+         *     Manual revocation, assignment-ended revocation, expiration, and unknown, malformed,
+         *     missing, or unmatched tokens must use Unauthorized (UNAUTHORIZED) instead.
+         *      */
+        CapabilityNoLongerActive: {
             headers: {
                 [name: string]: unknown;
             };
@@ -1514,8 +1829,19 @@ export interface components {
          * @example "task-01JXYZ-v3"
          */
         IfMatch: string;
+        /**
+         * @description Client-generated idempotency key for safe retries of side-effecting Owner mutations (D094).
+         *     Introduced for A7 handoff; reuse the same key only with an identical request payload for the
+         *     same operation and resource. Replay of a completed success returns the original success body
+         *     with `idempotentReplay: true`. Reuse with a conflicting payload returns 409 IDEMPOTENCY_KEY_CONFLICT.
+         *     Missing header → 428 PRECONDITION_REQUIRED.
+         *
+         * @example handoff-01JXYZ-attempt-1
+         */
+        IdempotencyKey: string;
         SuggestionId: string;
         TaskId: string;
+        RecipientId: string;
         /** @description Opaque pagination cursor from a prior response `nextCursor`.
          *     For `GET /api/v1/tasks`, the cursor represents composite order
          *     `updatedAt` DESC, then `id` DESC.
@@ -1792,6 +2118,116 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             500: components["responses"]["InternalError"];
+        };
+    };
+    listRecipients: {
+        parameters: {
+            query?: {
+                /** @description Opaque pagination cursor from a prior response `nextCursor`.
+                 *     For `GET /api/v1/tasks`, the cursor represents composite order
+                 *     `updatedAt` DESC, then `id` DESC.
+                 *      */
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Active Recipients page */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListRecipientsResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createRecipient: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateRecipientRequest"];
+            };
+        };
+        responses: {
+            /** @description Created Recipient */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Recipient"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    updateRecipient: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recipientId: components["parameters"]["RecipientId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateRecipientRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated Recipient */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Recipient"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    deactivateRecipient: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recipientId: components["parameters"]["RecipientId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Recipient marked inactive */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Recipient"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     listTasks: {
@@ -2251,6 +2687,109 @@ export interface operations {
             428: components["responses"]["PreconditionRequired"];
         };
     };
+    handoffTask: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Strong ETag from the current resource version.
+                 * @example "task-01JXYZ-v3"
+                 */
+                "If-Match": components["parameters"]["IfMatch"];
+                /**
+                 * @description Client-generated idempotency key for safe retries of side-effecting Owner mutations (D094).
+                 *     Introduced for A7 handoff; reuse the same key only with an identical request payload for the
+                 *     same operation and resource. Replay of a completed success returns the original success body
+                 *     with `idempotentReplay: true`. Reuse with a conflicting payload returns 409 IDEMPOTENCY_KEY_CONFLICT.
+                 *     Missing header → 428 PRECONDITION_REQUIRED.
+                 *
+                 * @example handoff-01JXYZ-attempt-1
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                taskId: components["parameters"]["TaskId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HandoffTaskRequest"];
+            };
+        };
+        responses: {
+            /** @description Handoff completed with Gmail-accepted send (`deliveryStatus=sent`), or idempotent replay
+             *     of a prior successful handoff for the same Idempotency-Key and matching payload.
+             *      */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HandoffTaskResponse"];
+                };
+            };
+            /** @description Validation failure, ineligible Task/self-work, inactive Recipient, incomplete forward
+             *     prohibited (D088), or missing Gmail source — see ErrorCode
+             *     (VALIDATION_ERROR, HANDOFF_NOT_ELIGIBLE, RECIPIENT_INACTIVE,
+             *     HANDOFF_INCOMPLETE_FORWARD_PROHIBITED, GMAIL_SOURCE_UNAVAILABLE, …).
+             *      */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Forbidden, including Gmail send scope missing / re-consent required
+             *     (`GMAIL_SEND_SCOPE_REQUIRED`) when the Owner session is valid but send is not authorized.
+             *      */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Task or Recipient not found / not Owner-accessible */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict — already assigned/handed off, idempotency key conflict, or handoff in progress
+             *     (DOMAIN_CONFLICT, IDEMPOTENCY_KEY_CONFLICT, HANDOFF_IN_PROGRESS).
+             *      */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            412: components["responses"]["PreconditionFailed"];
+            428: components["responses"]["PreconditionRequired"];
+            500: components["responses"]["InternalError"];
+            /** @description Retryable dependency/delivery failure (`HANDOFF_DELIVERY_FAILED`, `GMAIL_NOT_CONNECTED`,
+             *     or `DEPENDENCY_UNAVAILABLE`). Does not claim successful handoff.
+             *      */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     getCapabilityTask: {
         parameters: {
             query?: never;
@@ -2278,7 +2817,17 @@ export interface operations {
                     "application/json": components["schemas"]["Task"];
                 };
             };
-            401: components["responses"]["Unauthorized"];
+            /** @description Unauthorized — either generic unmatched/expired/malformed token (`UNAUTHORIZED`)
+             *     or matched superseded capability (`CAPABILITY_NO_LONGER_ACTIVE`).
+             *      */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
         };
