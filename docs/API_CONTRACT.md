@@ -87,22 +87,22 @@ Full rules: [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md).
 
 **Status: implemented and production-verified (A4 — `A4_FULL_E2E_PASS`).**
 
-| Method | Path                                            | Purpose                                                                   |
-| ------ | ----------------------------------------------- | ------------------------------------------------------------------------- |
-| GET    | `/api/v1/tasks`                                 | List tasks (`updatedAt` DESC, `id` DESC; includes dismissed)              |
-| POST   | `/api/v1/tasks`                                 | Create typed task (prefer unassigned; `recipientId` **deprecated**, D091) |
-| GET    | `/api/v1/tasks/{taskId}`                        | Get task                                                                  |
-| POST   | `/api/v1/tasks/{taskId}/start`                  | Start                                                                     |
-| POST   | `/api/v1/tasks/{taskId}/waiting`                | Waiting                                                                   |
-| POST   | `/api/v1/tasks/{taskId}/resume`                 | Resume                                                                    |
-| POST   | `/api/v1/tasks/{taskId}/complete`               | Complete                                                                  |
-| POST   | `/api/v1/tasks/{taskId}/notes`                  | Note                                                                      |
-| POST   | `/api/v1/tasks/{taskId}/snooze`                 | Snooze (D060)                                                             |
-| POST   | `/api/v1/tasks/{taskId}/dismiss`                | Dismiss (D064)                                                            |
-| POST   | `/api/v1/tasks/{taskId}/return-to-owner`        | Clear assignment to Owner                                                 |
-| POST   | `/api/v1/tasks/{taskId}/clarification-requests` | Clarification                                                             |
-| POST   | `/api/v1/tasks/{taskId}/capabilities`           | Administrative capability issue (raw once); **not** D037 handoff (D086)   |
-| POST   | `/api/v1/tasks/{taskId}/handoff`                | D037 Recipient handoff (contracted A7.1; handlers later)                  |
+| Method | Path                                            | Purpose                                                                                                              |
+| ------ | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/v1/tasks`                                 | List tasks (`updatedAt` DESC, `id` DESC; includes dismissed)                                                         |
+| POST   | `/api/v1/tasks`                                 | Create **unassigned** task (any supplied top-level `recipientId` → `400 RECIPIENT_HANDOFF_NOT_AVAILABLE`, A7.6/D091) |
+| GET    | `/api/v1/tasks/{taskId}`                        | Get task                                                                                                             |
+| POST   | `/api/v1/tasks/{taskId}/start`                  | Start                                                                                                                |
+| POST   | `/api/v1/tasks/{taskId}/waiting`                | Waiting                                                                                                              |
+| POST   | `/api/v1/tasks/{taskId}/resume`                 | Resume                                                                                                               |
+| POST   | `/api/v1/tasks/{taskId}/complete`               | Complete                                                                                                             |
+| POST   | `/api/v1/tasks/{taskId}/notes`                  | Note                                                                                                                 |
+| POST   | `/api/v1/tasks/{taskId}/snooze`                 | Snooze (D060)                                                                                                        |
+| POST   | `/api/v1/tasks/{taskId}/dismiss`                | Dismiss (D064)                                                                                                       |
+| POST   | `/api/v1/tasks/{taskId}/return-to-owner`        | Clear assignment to Owner                                                                                            |
+| POST   | `/api/v1/tasks/{taskId}/clarification-requests` | Clarification                                                                                                        |
+| POST   | `/api/v1/tasks/{taskId}/capabilities`           | Administrative capability issue (raw once); **not** D037 handoff (D086)                                              |
+| POST   | `/api/v1/tasks/{taskId}/handoff`                | D037 Recipient handoff (contracted A7.1; handlers later)                                                             |
 
 ### Owner Recipient handoff (A7.1 contracted)
 
@@ -123,18 +123,20 @@ Full rules: [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md).
 
 **Administrative capability issue** (`POST …/capabilities`) remains for A4 recovery: returns raw token once; obeys D086 one-active rule; does **not** send mail/forward.
 
-### Owner Recipient management (A7.1 contracted)
+### Owner Recipient management (A7.1 contracted; A7.6 implemented)
 
-**Status: OpenAPI contracted (A7.1). Handlers not implemented.** Minimal D087 surface — not a CRM.
+**Status: OpenAPI contracted (A7.1); handlers implemented and validated (A7.6).** Minimal D087 surface — not a CRM. Contract, generated clients, and Prisma schema unchanged.
 
-| Method | Path                                          | Purpose                         | Status               |
-| ------ | --------------------------------------------- | ------------------------------- | -------------------- |
-| GET    | `/api/v1/recipients`                          | List **active** Recipients only | Contract-only — A7.1 |
-| POST   | `/api/v1/recipients`                          | Create Recipient                | Contract-only — A7.1 |
-| PATCH  | `/api/v1/recipients/{recipientId}`            | Update display/email/label      | Contract-only — A7.1 |
-| POST   | `/api/v1/recipients/{recipientId}/deactivate` | Mark inactive (not delete)      | Contract-only — A7.1 |
+| Method | Path                                          | Purpose                         | Status             |
+| ------ | --------------------------------------------- | ------------------------------- | ------------------ |
+| GET    | `/api/v1/recipients`                          | List **active** Recipients only | Implemented — A7.6 |
+| POST   | `/api/v1/recipients`                          | Create Recipient                | Implemented — A7.6 |
+| PATCH  | `/api/v1/recipients/{recipientId}`            | Update display/email/label      | Implemented — A7.6 |
+| POST   | `/api/v1/recipients/{recipientId}/deactivate` | Mark inactive (not delete)      | Implemented — A7.6 |
 
-Create and update are **separate** (not upsert). Deactivation is a dedicated action. List defaults to active-only (no status filter in A7.1).
+Create and update are **separate** (not upsert). Deactivation is a dedicated action. List defaults to active-only (no status filter).
+
+**A7.6 runtime behavior:** authenticated Owner only (session-derived org/identity; capability links never authorize); all responses `Cache-Control: no-store` and exclude `organizationId`/`emailNormalized`/DB metadata. List is ordered by normalized display name (NFC → trim → lowercase → collapse whitespace) then Recipient id, with an opaque base64url compound cursor (default limit 25, min 1, max 100; malformed cursor → `400 VALIDATION_ERROR`; `nextCursor: null` when exhausted). Create/update/deactivate are org-scoped conditional writes requiring `active = true`; `404 NOT_FOUND` (missing/cross-org, no existence leak) vs `409 DOMAIN_CONFLICT` (same-org inactive); duplicate active normalized email → `409` via the partial unique index. No reactivation, no deletion. Email is mutable, but historical Assignment/Capability `intended_recipient_email` snapshots are never rewritten (retries use the snapshot; new handoffs use the current email). Deactivation blocks new handoffs but does not revoke live capabilities. Create/update/deactivate write a durable Owner-attributed `AuditEvent` atomically (updates record changed field **names** only — never raw email values). Bodies require `Content-Type: application/json` (else `415`).
 
 ### Owner task suggestion routes
 
@@ -241,7 +243,7 @@ Pure domain module `@aicaa/domain` handoff policies (no persistence/HTTP/Gmail I
 - **Idempotency fingerprint** (canonical, then injectable hash): `organizationId`, `taskId`, `recipientId`, `acknowledgement`. **Not** included: `If-Match` / Task version (concurrency separate), timestamps, capability token, provider message id, delivery status.
 - **Retry** = same failed attempt + same capability when security-sensitive fingerprint inputs unchanged and no provider message id. **Explicit re-forward** = intentional new attempt/capability after prior `sent`; prior capability `revocationReason=superseded`. **Reassignment** = Recipient change; prior capability superseded; new attempt/capability.
 - **Capability revocation reason** (internal; persistence/audit): `superseded` | `manual` | `assignment_ended` | `expired`. **Public mapping:** only a **matched** capability with internal reason `superseded` may return `CAPABILITY_NO_LONGER_ACTIVE`. All other unusable cases (manual, assignment-ended, expired, unknown/unmatched/malformed/missing token, inactive without positively identified supersession) remain generic `UNAUTHORIZED` — do not use `FORBIDDEN` or expose the internal reason.
-- Create-with-`recipientId` rejection policy exists in domain (`assertCreateTaskRejectsRecipientId`); handlers still pending (D091).
+- Create-with-`recipientId` rejection is implemented (A7.6): the `POST /api/v1/tasks` parser rejects any body that owns a top-level `recipientId` (any value) with `400 RECIPIENT_HANDOFF_NOT_AVAILABLE` before side effects, and `createOwnerTask` has removed its create-with-assignment branch (defensive invariant only). Domain `assertCreateTaskRejectsRecipientId` remains (D091).
 
 ### A7.3 persistence notes (handoff)
 
@@ -261,11 +263,11 @@ Durable foundation in `@aicaa/db` (no Gmail send / no HTTP handlers):
   - **A7.4:** Gmail OAuth send-scope preparation and transport/MIME utilities only.
   - **Later application orchestration:** pending → Gmail call → accepted/failed persistence (wires the primitives above; not implemented).
   - **Later reconciliation/worker:** stale or uncertain pending attempts, only when explicitly authorized.
-- **Remaining (not yet built):** handoff HTTP orchestration, Recipient HTTP, Owner confirmation UI, create-with-`recipientId` handler rejection wiring.
+- **Remaining (not yet built):** handoff HTTP orchestration, Owner confirmation UI. (Recipient management HTTP and the create-with-`recipientId` handler rejection shipped in A7.6.)
 
 ### CreateTaskRequest.recipientId deprecation (D091)
 
-Field retained with OpenAPI `deprecated: true` for A4 compatibility. Server rejection ships with A7 handoff implementation — **not** in A7.1. New clients create unassigned Tasks then call handoff.
+Field retained with OpenAPI `deprecated: true` for A4 compatibility. Server rejection **shipped in A7.6**: any body that owns a top-level `recipientId` (any value — UUID, unknown id, malformed string, empty string, `null`, number, boolean, object, array) is rejected `400 RECIPIENT_HANDOFF_NOT_AVAILABLE`; only complete omission permits creation. A differently cased or nested `recipientId` is not the legacy field and never creates an Assignment. New clients create unassigned Tasks then call handoff.
 
 ## Concurrency (D045, D083)
 
