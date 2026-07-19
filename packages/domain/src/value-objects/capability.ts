@@ -16,10 +16,17 @@ export type CapabilityAction =
 /** Lifecycle status. A4 must not invent transitions into `used` (D056). */
 export type CapabilityStatus = 'active' | 'revoked' | 'expired' | 'used';
 
+/**
+ * Why a capability became unusable (D086). Persistence (A7.3+) must retain enough
+ * information to distinguish `superseded` from other revocation reasons.
+ * Public mapping: only matched `superseded` → `CAPABILITY_NO_LONGER_ACTIVE`;
+ * all other unusable cases → generic `UNAUTHORIZED` (reasons are not generally exposed).
+ */
+export type CapabilityRevocationReason = 'superseded' | 'manual' | 'assignment_ended' | 'expired';
+
 export type CapabilityScope = CapabilityAction[];
 
 export type AssignmentDeliveryStatus = 'pending' | 'sent' | 'failed';
-
 /** Default Recipient scope for issued capabilities (STATE_MACHINE / D050 / D061). */
 export const DEFAULT_RECIPIENT_CAPABILITY_SCOPE: CapabilityScope = [
   'view_assigned_task',
@@ -49,6 +56,11 @@ export interface TaskCapability {
   expiresAt: UtcInstant;
   revokedAt?: UtcInstant | null;
   lastUsedAt?: UtcInstant | null;
+  /**
+   * Domain revocation reason (D086). Optional until A7.3 persistence stores it.
+   * Do not expose raw internal reason strings on public API error envelopes.
+   */
+  revocationReason?: CapabilityRevocationReason | null;
 }
 
 export interface CapabilityAuditContext {

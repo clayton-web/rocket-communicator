@@ -85,8 +85,11 @@ export const GMAIL_INBOX_LABEL_ID = 'INBOX';
 /** Labels that permanently exclude a message from A5 Inbox ingestion (D068). */
 export const GMAIL_EXCLUDED_LABEL_IDS = ['DRAFT', 'SPAM', 'TRASH'] as const;
 
-/** Required OAuth scope for A5 (D070). */
+/** Required OAuth read scope for A5 (D070); retained for A7 forward source access (D093). */
 export const GMAIL_READONLY_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
+
+/** A7 send scope required for Owner outbound handoff mail (D093, D094). */
+export const GMAIL_SEND_SCOPE = 'https://www.googleapis.com/auth/gmail.send';
 
 export type {
   CommunicationAccountId,

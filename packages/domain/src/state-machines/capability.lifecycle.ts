@@ -2,7 +2,11 @@ import type { Actor } from '../types/actor.js';
 import { assertCan, assertOwner } from '../policies/capabilities.js';
 import { invalidTransition, validationError } from '../errors/domain-errors.js';
 import type { Task } from '../entities/task.js';
-import type { TaskCapability, CapabilityScope } from '../value-objects/capability.js';
+import type {
+  TaskCapability,
+  CapabilityScope,
+  CapabilityRevocationReason,
+} from '../value-objects/capability.js';
 import {
   DEFAULT_RECIPIENT_CAPABILITY_SCOPE,
   computeCapabilityExpiresAt,
@@ -84,15 +88,26 @@ export function issueTaskCapability(
   return { task: updatedTask, capability };
 }
 
-/** Revoke an active (or expire-pending) capability. Does not invent `used` semantics (D056). */
-export function revokeCapability(capability: TaskCapability, now: UtcInstant): TaskCapability {
+/**
+ * Revoke an active (or expire-pending) capability. Does not invent `used` semantics (D056).
+ * Pass `superseded` for reassignment / explicit re-forward (D086); `manual` for admin revoke;
+ * `assignment_ended` when the assignment relationship ends (e.g. return to Owner).
+ */
+export function revokeCapability(
+  capability: TaskCapability,
+  now: UtcInstant,
+  reason: CapabilityRevocationReason = 'manual',
+): TaskCapability {
   if (capability.status === 'revoked') {
-    return capability;
+    return capability.revocationReason != null
+      ? capability
+      : { ...capability, revocationReason: reason };
   }
   return {
     ...capability,
     status: 'revoked',
     revokedAt: now,
+    revocationReason: reason,
   };
 }
 
@@ -110,6 +125,7 @@ export function markCapabilityExpired(capability: TaskCapability, now: UtcInstan
   return {
     ...capability,
     status: 'expired',
+    revocationReason: 'expired',
   };
 }
 
@@ -117,10 +133,11 @@ export function markCapabilityExpired(capability: TaskCapability, now: UtcInstan
  * Invalidate capability when assignment is removed or replaced (D056).
  * Application/persistence (Phase 2) must call this in the same unit of work as
  * `returnTaskToOwner` using `capabilityInvalidation` from that result.
+ * Uses `assignment_ended` — distinct from D086 supersession on re-forward/reassign.
  */
 export function invalidateCapabilityOnAssignmentChange(
   capability: TaskCapability,
   now: UtcInstant,
 ): TaskCapability {
-  return revokeCapability(capability, now);
+  return revokeCapability(capability, now, 'assignment_ended');
 }
