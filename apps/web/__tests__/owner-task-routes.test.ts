@@ -21,6 +21,8 @@
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  DEFAULT_RECIPIENT_CAPABILITY_SCOPE,
+  asAssignmentId,
   asCapabilityId,
   asOrganizationId,
   asOwnerId,
@@ -30,6 +32,7 @@ import {
   type Recipient,
 } from '@aicaa/domain';
 import {
+  createActiveAssignment,
   createCapability,
   getCapabilityById,
   getTaskById,
@@ -99,6 +102,32 @@ function recipient(): Recipient {
 
 function params(taskId: string) {
   return { params: Promise.resolve({ taskId }) };
+}
+
+/**
+ * Create an unassigned Task via the route, then seed an active assignment directly.
+ * A7.6 removes the create-with-assignment task-service path, so assigned-task fixtures are
+ * seeded through the persistence layer instead of `POST /tasks` with a `recipientId`.
+ */
+async function seedAssignedTask(db: TestDatabase) {
+  await upsertRecipient(db.prisma, { organizationId: org, recipient: recipient() });
+  const created = await listOrCreatePost(
+    jsonRequest('http://localhost/api/v1/tasks', 'POST', {
+      summaryPoints: summaryPoints(),
+    }),
+  );
+  const task = await created.json();
+  const assignmentId = `asg_${task.id}`;
+  const assignment = await createActiveAssignment(db.prisma, org, task.id, {
+    id: asAssignmentId(assignmentId),
+    recipientId: asRecipientId('rcp_http'),
+    intendedRecipientEmail: 'http-recipient@example.com',
+    assignedAt: '2026-07-13T18:00:00.000Z',
+    assignedByOwnerId: asOwnerId('owner_http'),
+    assignmentApprovedAt: '2026-07-13T18:00:00.000Z',
+    allowedCapabilityActions: [...DEFAULT_RECIPIENT_CAPABILITY_SCOPE],
+  });
+  return { task: { ...task, assignment }, assignmentId };
 }
 
 function jsonRequest(url: string, method: string, body?: unknown, headers?: HeadersInit) {
@@ -393,11 +422,9 @@ describe('Owner task HTTP routes (Phase 4B)', () => {
 
     it('responses omit Prisma-only and capability-secret fields', async () => {
       authOwner();
-      await upsertRecipient(db.prisma, { organizationId: org, recipient: recipient() });
       const created = await listOrCreatePost(
         jsonRequest('http://localhost/api/v1/tasks', 'POST', {
           summaryPoints: summaryPoints(),
-          recipientId: 'rcp_http',
         }),
       );
       const body = await created.json();
@@ -572,14 +599,7 @@ describe('Owner task HTTP routes (Phase 4B)', () => {
 
     it('exercises return-to-owner atomically (route: return-to-owner)', async () => {
       authOwner();
-      await upsertRecipient(db.prisma, { organizationId: org, recipient: recipient() });
-      const created = await listOrCreatePost(
-        jsonRequest('http://localhost/api/v1/tasks', 'POST', {
-          summaryPoints: summaryPoints(),
-          recipientId: 'rcp_http',
-        }),
-      );
-      const task = await created.json();
+      const { task } = await seedAssignedTask(db);
 
       await createCapability(
         db.prisma,
@@ -690,14 +710,7 @@ describe('Owner task HTTP routes (Phase 4B)', () => {
 
     it('return-to-owner: accepts no body and no Content-Type', async () => {
       authOwner();
-      await upsertRecipient(db.prisma, { organizationId: org, recipient: recipient() });
-      const created = await listOrCreatePost(
-        jsonRequest('http://localhost/api/v1/tasks', 'POST', {
-          summaryPoints: summaryPoints(),
-          recipientId: 'rcp_http',
-        }),
-      );
-      const task = await created.json();
+      const { task } = await seedAssignedTask(db);
       const response = await returnTask(
         rawRequest(`http://localhost/api/v1/tasks/${task.id}/return-to-owner`, 'POST', {
           headers: { 'if-match': task.etag },
@@ -712,14 +725,7 @@ describe('Owner task HTTP routes (Phase 4B)', () => {
 
     it('return-to-owner: accepts valid JSON body when supplied', async () => {
       authOwner();
-      await upsertRecipient(db.prisma, { organizationId: org, recipient: recipient() });
-      const created = await listOrCreatePost(
-        jsonRequest('http://localhost/api/v1/tasks', 'POST', {
-          summaryPoints: summaryPoints(),
-          recipientId: 'rcp_http',
-        }),
-      );
-      const task = await created.json();
+      const { task } = await seedAssignedTask(db);
       const response = await returnTask(
         jsonRequest(
           `http://localhost/api/v1/tasks/${task.id}/return-to-owner`,
@@ -734,14 +740,7 @@ describe('Owner task HTTP routes (Phase 4B)', () => {
 
     it('return-to-owner: malformed JSON with Content-Type application/json → 400', async () => {
       authOwner();
-      await upsertRecipient(db.prisma, { organizationId: org, recipient: recipient() });
-      const created = await listOrCreatePost(
-        jsonRequest('http://localhost/api/v1/tasks', 'POST', {
-          summaryPoints: summaryPoints(),
-          recipientId: 'rcp_http',
-        }),
-      );
-      const task = await created.json();
+      const { task } = await seedAssignedTask(db);
       const response = await returnTask(
         rawRequest(`http://localhost/api/v1/tasks/${task.id}/return-to-owner`, 'POST', {
           headers: {
@@ -757,15 +756,18 @@ describe('Owner task HTTP routes (Phase 4B)', () => {
   });
 
   describe('extra safety — foreign recipient and stale leaves state', () => {
-    it('rejects foreign recipient on create', async () => {
+    it('rejects create with any supplied recipientId (D091)', async () => {
       authOwner();
-      const missingRecipient = await listOrCreatePost(
+      const rejected = await listOrCreatePost(
         jsonRequest('http://localhost/api/v1/tasks', 'POST', {
           summaryPoints: summaryPoints(),
           recipientId: 'missing',
         }),
       );
-      expect(missingRecipient.status).toBe(404);
+      expect(rejected.status).toBe(400);
+      await expect(rejected.json()).resolves.toMatchObject({
+        error: { code: 'RECIPIENT_HANDOFF_NOT_AVAILABLE' },
+      });
     });
 
     it('stale If-Match leaves prior task state unchanged', async () => {

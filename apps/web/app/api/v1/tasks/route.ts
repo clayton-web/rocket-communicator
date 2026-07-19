@@ -44,7 +44,6 @@ export async function POST(request: Request) {
       now: ctx.now,
       requestId: ctx.requestId,
       summaryPoints: parsed.value.summaryPoints as never,
-      recipientId: parsed.value.recipientId,
       dueAt: parsed.value.dueAt,
       priority: parsed.value.priority,
       sourceReference: parsed.value.sourceReference as never,

@@ -42,10 +42,28 @@ const CAPABILITY_ACTIONS = new Set<CapabilityAction>([
   'submit_work_request',
 ]);
 
+/**
+ * D091 / A7.6: create-task must reject any supplied top-level `recipientId`. Assignment happens
+ * only through the dedicated handoff workflow (create unassigned, then hand off).
+ */
+export const RECIPIENT_HANDOFF_REJECTION_MESSAGE =
+  'Create the Task without a recipientId, then assign it through the handoff workflow.';
+
 function fail(message: string): { ok: false; response: NextResponse<ErrorResponse> } {
   return {
     ok: false,
     response: jsonErrorResponse('VALIDATION_ERROR', message, 400),
+  };
+}
+
+function rejectRecipientId(): { ok: false; response: NextResponse<ErrorResponse> } {
+  return {
+    ok: false,
+    response: jsonErrorResponse(
+      'RECIPIENT_HANDOFF_NOT_AVAILABLE',
+      RECIPIENT_HANDOFF_REJECTION_MESSAGE,
+      400,
+    ),
   };
 }
 
@@ -74,14 +92,18 @@ function isSummaryPoint(value: unknown): value is TaskSummaryPoint {
 export function parseCreateTaskBody(
   body: Record<string, unknown>,
 ): { ok: true; value: CreateTaskRequest } | { ok: false; response: NextResponse<ErrorResponse> } {
+  // D091 / A7.6: reject immediately if the body owns a top-level `recipientId` key, regardless of
+  // its value (UUID, null, empty string, number, boolean, object, array). Own-property presence —
+  // never truthiness, `!== null`, or raw-body scanning. Only complete omission is permitted. This
+  // runs before any other validation so no side effect can occur before rejection.
+  if (Object.prototype.hasOwnProperty.call(body, 'recipientId')) {
+    return rejectRecipientId();
+  }
   if (!Array.isArray(body.summaryPoints) || body.summaryPoints.length < 1) {
     return fail('summaryPoints must contain between 1 and 20 points.');
   }
   if (body.summaryPoints.length > 20 || !body.summaryPoints.every(isSummaryPoint)) {
     return fail('summaryPoints is invalid.');
-  }
-  if (body.recipientId !== undefined && typeof body.recipientId !== 'string') {
-    return fail('recipientId must be a string.');
   }
   if (body.dueAt !== undefined && !isIsoDateTime(body.dueAt)) {
     return fail('dueAt must be an ISO date-time.');
@@ -93,7 +115,6 @@ export function parseCreateTaskBody(
     ok: true,
     value: {
       summaryPoints: body.summaryPoints as TaskSummaryPoint[],
-      recipientId: body.recipientId as string | undefined,
       dueAt: body.dueAt as string | undefined,
       priority: body.priority as TaskPriority | undefined,
       sourceReference: body.sourceReference as CreateTaskRequest['sourceReference'],

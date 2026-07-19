@@ -13,7 +13,7 @@ import { createTestDatabase, type TestDatabase } from '@aicaa/db/testing';
 import { clearDbTestRuntime, installDbTestRuntime } from './helpers/db-test-runtime';
 import { deriveAvailableRecipientActions, issueCapabilityForTask } from '@/lib/capability';
 import { loadCapabilityPageView } from '@/lib/capability/page-load';
-import { createOwnerTask } from '@/lib/tasks';
+import { seedAssignedTaskViaService } from './helpers/seed-assigned-task';
 
 const org = 'org_rcp_page';
 const pepper = 'capability-pepper-value-32chars!!';
@@ -64,8 +64,9 @@ describe('Recipient capability page loader + available actions', () => {
 
   async function seed(taskId = 'task_page_1') {
     await upsertRecipient(db.prisma, { organizationId: org, recipient: recipient() });
-    const created = await createOwnerTask({
+    const created = await seedAssignedTaskViaService({
       db: db.prisma,
+      org,
       owner,
       now,
       summaryPoints: [
@@ -77,9 +78,10 @@ describe('Recipient capability page loader + available actions', () => {
           value: 'Call the customer',
         },
       ],
-      recipientId: 'rcp_page',
       taskId,
       assignmentId: `asg_${taskId}`,
+      recipientId: 'rcp_page',
+      recipientEmail: 'page-recipient@example.com',
     });
     const issued = await issueCapabilityForTask({
       db: db.prisma,

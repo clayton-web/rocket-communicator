@@ -30,7 +30,8 @@ import {
   returnCapabilityTaskToOwner,
   submitCapabilityWorkRequest,
 } from '@/lib/capability';
-import { createOwnerTask, startOwnerTask } from '@/lib/tasks';
+import { startOwnerTask } from '@/lib/tasks';
+import { seedAssignedTaskViaService } from './helpers/seed-assigned-task';
 
 const org = 'org_rcp_svc';
 const now = '2026-07-13T17:00:00.000Z';
@@ -82,14 +83,16 @@ describe('Recipient capability application services (Phase 4D)', () => {
 
   async function seedAssignedIssued(taskId = 'task_rcp_1') {
     await upsertRecipient(db.prisma, { organizationId: org, recipient: recipient() });
-    const created = await createOwnerTask({
+    const created = await seedAssignedTaskViaService({
       db: db.prisma,
+      org,
       owner,
       now,
       summaryPoints,
-      recipientId: 'rcp_svc',
       taskId,
       assignmentId: `asg_${taskId}`,
+      recipientId: 'rcp_svc',
+      recipientEmail: 'svc-recipient@example.com',
     });
     const issued = await issueCapabilityForTask({
       db: db.prisma,
@@ -143,14 +146,16 @@ describe('Recipient capability application services (Phase 4D)', () => {
 
   it('rejects wrong scope, wrong task, expired, and revoked with public-aligned codes', async () => {
     await upsertRecipient(db.prisma, { organizationId: org, recipient: recipient() });
-    const created = await createOwnerTask({
+    const created = await seedAssignedTaskViaService({
       db: db.prisma,
+      org,
       owner,
       now,
       summaryPoints,
-      recipientId: 'rcp_svc',
       taskId: 'task_authz',
       assignmentId: 'asg_authz',
+      recipientId: 'rcp_svc',
+      recipientEmail: 'svc-recipient@example.com',
     });
     const issued = await issueCapabilityForTask({
       db: db.prisma,

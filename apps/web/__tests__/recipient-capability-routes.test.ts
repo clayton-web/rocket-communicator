@@ -22,7 +22,8 @@ import {
 import { createTestDatabase, type TestDatabase } from '@aicaa/db/testing';
 import { clearDbTestRuntime, installDbTestRuntime } from './helpers/db-test-runtime';
 import { issueCapabilityForTask, revokeCapabilityForOwner } from '@/lib/capability';
-import { createOwnerTask, startOwnerTask } from '@/lib/tasks';
+import { startOwnerTask } from '@/lib/tasks';
+import { seedAssignedTaskViaService } from './helpers/seed-assigned-task';
 
 vi.mock('@/lib/auth/require-owner', () => ({
   getAuthenticatedOwner: vi.fn(),
@@ -146,14 +147,16 @@ describe('Recipient capability HTTP routes (Phase 4E)', () => {
     scope?: import('@aicaa/domain').CapabilityScope,
   ) {
     await upsertRecipient(db.prisma, { organizationId: org, recipient: recipient() });
-    const created = await createOwnerTask({
+    const created = await seedAssignedTaskViaService({
       db: db.prisma,
+      org,
       owner,
       now,
       summaryPoints,
-      recipientId: 'rcp_http',
       taskId,
       assignmentId: `asg_${taskId}`,
+      recipientId: 'rcp_http',
+      recipientEmail: 'http-recipient@example.com',
     });
     const issued = await issueCapabilityForTask({
       db: db.prisma,

@@ -141,20 +141,30 @@ describe('POST /api/v1/tasks/{taskId}/capabilities (Phase 4C)', () => {
 
   async function seedAssignedTask() {
     authOwner();
-    const { upsertRecipient } = await import('@aicaa/db');
+    // A7.6 (D091) removed the create-with-assignment task-service path. Seed an unassigned Task via
+    // the route, then attach an active assignment through the persistence layer.
+    const { upsertRecipient, createActiveAssignment } = await import('@aicaa/db');
+    const { DEFAULT_RECIPIENT_CAPABILITY_SCOPE, asAssignmentId, asRecipientId, asOwnerId } =
+      await import('@aicaa/domain');
     await upsertRecipient(db.prisma, { organizationId: org, recipient: recipient() });
     const created = await createTask(
       jsonRequest('http://localhost/api/v1/tasks', 'POST', {
         summaryPoints: summaryPoints(),
-        recipientId: 'rcp_http_cap',
       }),
     );
     expect(created.status).toBe(201);
-    return (await created.json()) as {
-      id: string;
-      etag: string;
-      assignment: { id: string; allowedCapabilityActions: string[] };
-    };
+    const task = (await created.json()) as { id: string; etag: string };
+    const now = new Date().toISOString();
+    const assignment = await createActiveAssignment(db.prisma, org, task.id, {
+      id: asAssignmentId(`asg_${task.id}`),
+      recipientId: asRecipientId('rcp_http_cap'),
+      intendedRecipientEmail: recipient().email,
+      assignedAt: now,
+      assignedByOwnerId: asOwnerId(owner.ownerId),
+      assignmentApprovedAt: now,
+      allowedCapabilityActions: [...DEFAULT_RECIPIENT_CAPABILITY_SCOPE],
+    });
+    return { id: task.id, etag: task.etag, assignment };
   }
 
   describe('authentication', () => {

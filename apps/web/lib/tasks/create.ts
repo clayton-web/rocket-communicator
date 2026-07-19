@@ -1,14 +1,9 @@
 import {
-  DEFAULT_RECIPIENT_CAPABILITY_SCOPE,
-  asAssignmentId,
   asOrganizationId,
-  asOwnerId,
-  asRecipientId,
   asTaskId,
   createStandaloneTask,
   type OwnerActor,
   type SourceReference,
-  type TaskAssignment,
   type TaskSummaryPoint,
   type UtcInstant,
 } from '@aicaa/domain';
@@ -22,13 +17,17 @@ import {
 } from './internal';
 import { mapTaskToDto, type TaskDto } from './map-to-dto';
 import { taskServiceError } from './errors';
+import { RECIPIENT_HANDOFF_REJECTION_MESSAGE } from './validate-body';
 
 export interface CreateOwnerTaskCommand {
   db: DbClient;
   owner: OwnerActor;
   now: UtcInstant;
   summaryPoints: TaskSummaryPoint[];
-  /** When set, create an active assignment for an existing Recipient in the Owner org. */
+  /**
+   * D091 / A7.6: legacy field retained only as a defensive guard. Any supplied value is rejected;
+   * assignment occurs solely through the dedicated handoff workflow. Never creates an Assignment.
+   */
   recipientId?: string;
   dueAt?: UtcInstant;
   priority?: 'low' | 'normal' | 'high' | 'urgent';
@@ -47,12 +46,20 @@ export interface CreateOwnerTaskResult {
 
 /**
  * Owner typed standalone task creation (CreateTaskRequest).
- * Optional `recipientId` creates an assignment from an existing Recipient record.
+ * D091 / A7.6: always creates an unassigned Task. A supplied `recipientId` is rejected as a
+ * defensive invariant; there is no create-with-assignment path. Assignment happens only through
+ * the dedicated handoff workflow.
  */
 export async function createOwnerTask(
   command: CreateOwnerTaskCommand,
 ): Promise<CreateOwnerTaskResult> {
   const owner = requireOwnerActor(command.owner);
+
+  // Defensive invariant: an internal caller must not create an Assignment via legacy recipient
+  // assignment data. This is never reached from the HTTP route (the parser rejects it first).
+  if (command.recipientId !== undefined) {
+    throw taskServiceError('RECIPIENT_HANDOFF_NOT_AVAILABLE', RECIPIENT_HANDOFF_REJECTION_MESSAGE);
+  }
 
   try {
     const dbRuntime = await loadDbRuntime();
@@ -68,31 +75,8 @@ export async function createOwnerTask(
       sourceReference: command.sourceReference,
     });
 
-    let assignment: TaskAssignment | undefined;
-    if (command.recipientId) {
-      const recipient = await dbRuntime.getRecipientById(
-        command.db,
-        owner.organizationId,
-        command.recipientId,
-      );
-      if (!recipient.active) {
-        throw taskServiceError('ASSIGNMENT_PRECONDITION', 'Recipient is not active.', [
-          { field: 'recipientId', message: 'Inactive recipients cannot be assigned.' },
-        ]);
-      }
-      assignment = {
-        id: asAssignmentId(command.assignmentId ?? newEntityId('asg')),
-        recipientId: asRecipientId(recipient.id),
-        intendedRecipientEmail: recipient.email,
-        assignedAt: command.now,
-        assignedByOwnerId: asOwnerId(owner.ownerId),
-        assignmentApprovedAt: command.now,
-        allowedCapabilityActions: [...DEFAULT_RECIPIENT_CAPABILITY_SCOPE],
-      };
-    }
-
     const persisted = await command.db.$transaction(async (tx) => {
-      const task = await dbRuntime.createTask(tx, owner.organizationId, domainTask, assignment);
+      const task = await dbRuntime.createTask(tx, owner.organizationId, domainTask);
       const audit = await dbRuntime.createAuditEvent(
         tx,
         buildOwnerAudit({
@@ -103,7 +87,6 @@ export async function createOwnerTask(
           now: command.now,
           resourceVersion: task.version,
           taskStatus: task.status,
-          assignmentId: assignment?.id,
           requestId: command.requestId,
           correlationId: command.correlationId,
         }),

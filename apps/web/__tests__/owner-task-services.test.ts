@@ -1,6 +1,8 @@
 // @vitest-environment node
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
+  DEFAULT_RECIPIENT_CAPABILITY_SCOPE,
+  asAssignmentId,
   asCapabilityId,
   asOrganizationId,
   asOwnerId,
@@ -10,6 +12,7 @@ import {
 } from '@aicaa/domain';
 import * as aicaaDb from '@aicaa/db/runtime';
 import {
+  createActiveAssignment,
   createCapability,
   getCapabilityById,
   getTaskById,
@@ -103,24 +106,25 @@ describe('Owner task application services (Phase 4A)', () => {
     expect(result.audit.action).toBe('create_task');
   });
 
-  it('creates with recipient assignment when recipient exists in org', async () => {
+  it('rejects create with a supplied recipientId (D091) and creates no task', async () => {
     await upsertRecipient(db.prisma, { organizationId: org, recipient: recipient() });
-    const result = await createOwnerTask({
-      db: db.prisma,
-      owner,
-      now,
-      summaryPoints,
-      recipientId: 'rcp_tasks',
-      taskId: 'task_asg_1',
-      assignmentId: 'asg_tasks_1',
-    });
+    await expect(
+      createOwnerTask({
+        db: db.prisma,
+        owner,
+        now,
+        summaryPoints,
+        recipientId: 'rcp_tasks',
+        taskId: 'task_asg_1',
+      }),
+    ).rejects.toMatchObject({ code: 'RECIPIENT_HANDOFF_NOT_AVAILABLE' });
 
-    expect(result.task.assignment?.recipientId).toBe('rcp_tasks');
-    expect(result.task.assignment?.intendedRecipientEmail).toBe('tasks-recipient@example.com');
-    expect(result.task.assignment?.allowedCapabilityActions).toContain('view_assigned_task');
+    await expect(getTaskById(db.prisma, org, 'task_asg_1')).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+    });
   });
 
-  it('rejects create with foreign or missing recipient', async () => {
+  it('rejects create with any recipientId value regardless of existence', async () => {
     await expect(
       createOwnerTask({
         db: db.prisma,
@@ -130,7 +134,7 @@ describe('Owner task application services (Phase 4A)', () => {
         recipientId: 'missing',
         taskId: 'task_bad_rcp',
       }),
-    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    ).rejects.toMatchObject({ code: 'RECIPIENT_HANDOFF_NOT_AVAILABLE' });
   });
 
   it('lists and gets tasks with org isolation; GET causes no writes', async () => {
@@ -320,9 +324,17 @@ describe('Owner task application services (Phase 4A)', () => {
       owner,
       now,
       summaryPoints,
-      recipientId: 'rcp_tasks',
       taskId: 'task_return',
-      assignmentId: 'asg_return',
+    });
+    // Assignment is seeded directly (create-with-assignment via the task service is removed in A7.6).
+    await createActiveAssignment(db.prisma, org, 'task_return', {
+      id: asAssignmentId('asg_return'),
+      recipientId: asRecipientId('rcp_tasks'),
+      intendedRecipientEmail: 'tasks-recipient@example.com',
+      assignedAt: now,
+      assignedByOwnerId: asOwnerId('owner_tasks'),
+      assignmentApprovedAt: now,
+      allowedCapabilityActions: [...DEFAULT_RECIPIENT_CAPABILITY_SCOPE],
     });
 
     await createCapability(

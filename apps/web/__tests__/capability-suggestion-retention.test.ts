@@ -45,7 +45,7 @@ import {
 import { createTestDatabase, type TestDatabase } from '@aicaa/db/testing';
 import { clearDbTestRuntime, installDbTestRuntime } from './helpers/db-test-runtime';
 import { issueCapabilityForTask } from '@/lib/capability';
-import { createOwnerTask } from '@/lib/tasks';
+import { seedAssignedTaskViaService } from './helpers/seed-assigned-task';
 
 vi.mock('@/lib/auth/require-owner', () => ({
   getAuthenticatedOwner: vi.fn(),
@@ -341,14 +341,16 @@ describe('A6.2 capability HTTP D082 terminal retention', () => {
         active: true,
       },
     });
-    const created = await createOwnerTask({
+    const created = await seedAssignedTaskViaService({
       db: db.prisma,
+      org,
       owner,
       now,
       summaryPoints: [{ id: 'p1', kind: 'next_action', label: 'Act', order: 0, value: 'Ordinary' }],
-      recipientId: 'rcp_ordinary_cap',
       taskId: 'task_ordinary_cap',
       assignmentId: 'asg_ordinary_cap',
+      recipientId: 'rcp_ordinary_cap',
+      recipientEmail: 'ordinary-cap@example.com',
     });
     const issued = await issueCapabilityForTask({
       db: db.prisma,
