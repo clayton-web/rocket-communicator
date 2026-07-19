@@ -18,7 +18,7 @@ Owner approval is required to create Tasks, Assignments, forwards, and Follow-up
 
 ## Implemented and planned workflow map
 
-Workflow §1 (A5 events + A6 suggestions) and §7 / §12 (approve / merge) are **production-operational**. Workflow §2 (Recipient handoff) is **planned — A7** (decisions D086–D094 locked; implementation not started). §10 reminders are **A8**. §14–§15 and Android capture remain later milestones. Sections below retain target behaviour; milestone labels note when each ships.
+Workflow §1 (A5 events + A6 suggestions) and §7 / §12 (approve / merge) are **production-operational**. Workflow §2 (Recipient handoff) has its **API route implemented and validated (A7.7)**; Owner confirmation UI, re-consent UI, and production E2E remain open (parent A7 open). §10 reminders are **A8**. §14–§15 and Android capture remain later milestones. Sections below retain target behaviour; milestone labels note when each ships.
 
 ---
 
@@ -30,18 +30,18 @@ Workflow §1 (A5 events + A6 suggestions) and §7 / §12 (approve / merge) are *
 
 No Task created; no email sent in this workflow.
 
-## 2. Recipient handoff — Gmail-origin forward or assignment email (D037) _(planned — A7; decisions locked)_
+## 2. Recipient handoff — Gmail-origin forward or assignment email (D037) _(A7.7 API implemented; Owner UI later)_
 
 Applies to an **existing** Owner-owned Task (typically an **unassigned** Task from A6 suggestion approval, D080). Handoff does **not** recreate the Task.
 
-1. Owner confirms one dialog (thin UI, D094) disclosing: activate Assignment on the existing Task, issue Capability Link, forward original + all attachments **or** send assignment email (server chooses from Task source), and that follow-up/reminder behaviour belongs to the assignment workflow (**A8** implements reminders — D089). Do **not** claim reminders are currently scheduled.
-2. Owner invokes `POST /api/v1/tasks/{taskId}/handoff` with concurrency protection and a required idempotency key (D090).
-3. On confirm (D092): validate Task, Recipient (D087), Gmail authorization (D093), and (for Gmail-origin) source message + attachment availability. Persist a durable handoff/delivery attempt and one capability. Attempt delivery via Owner’s connected Gmail. **Activate** the Assignment only after Gmail accepts the send. Record provider message id for idempotency. Outbound summary uses existing Task `summaryPoints` (no fresh LLM — D094).
-4. Gmail-origin: forward full original + all attachments with summary **above** original (D010, D042). If anything required cannot be fetched or assembled, **do not send**; record privacy-safe failed attempt; Owner gets a clear retryable error (D088). Never report partial delivery as success.
-5. Non-Gmail: assignment email with summary + Capability Link (no Gmail forward), still via Owner Gmail (D094).
-6. One active capability only; reassignment or explicit re-forward revokes the prior active capability and issues a new one (D086). Ordinary retry of the same failed delivery reuses the same attempt/capability unless Recipient or security-sensitive details changed.
+1. Owner confirms one dialog (thin UI — **A7.8**, not yet built) disclosing: activate Assignment on the existing Task, issue Capability Link, forward original + all attachments **or** send assignment email (server chooses from Task source), and that follow-up/reminder behaviour belongs to the assignment workflow (**A8** implements reminders — D089). Do **not** claim reminders are currently scheduled.
+2. Owner (or future UI) invokes `POST /api/v1/tasks/{taskId}/handoff` with concurrency protection and a required idempotency key (D090). **A7.7 implements this route** with idempotency-first classification: successful/pending/failed same-key replay, and new initial handoff.
+3. On confirm (D092): validate Task, Recipient (D087), Gmail authorization (D093), and (for Gmail-origin) source message + attachment availability. Persist a durable handoff/delivery attempt and one capability. Attempt delivery via Owner’s connected Gmail. **Activate** the Assignment only after Gmail accepts the send. Record provider message id for idempotency. Outbound summary uses existing Task `summaryPoints` (no fresh LLM — D094). Ambiguous provider outcomes leave the attempt `pending` for a later reconciliation slice (not auto-resent).
+4. Gmail-origin: forward full original + all attachments with summary **above** original (D010, D042). If anything required cannot be fetched or assembled, **do not send**; record privacy-safe failed attempt; Owner gets a clear error (D088). Never report partial delivery as success. Never silently downgrade to assignment email.
+5. Non-Gmail: assignment email with summary + Capability Link (no attachments / no Gmail forward), still via Owner Gmail (D094).
+6. One active capability only. Ordinary same-key retry of a failed delivery reuses the same attempt/capability and historical address snapshot (A7.7). Reassignment or explicit re-forward (revoke prior active capability) remains **deferred**.
 
-Recipient email from Owner-managed Recipient records only (D087)—not hard-coded and not an env default. Reminder schedules/sends are **out of scope for A7** (D089).
+Recipient email from Owner-managed Recipient records only (D087)—not hard-coded and not an env default. Reminder schedules/sends are **out of scope for A7** (D089). Proposed-Recipient hint resolution is **not** in the current handoff request schema and remains deferred.
 
 ## 3. Google Messages → Task Suggestion _(planned — A10)_
 

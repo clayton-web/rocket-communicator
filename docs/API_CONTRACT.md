@@ -102,24 +102,25 @@ Full rules: [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md).
 | POST   | `/api/v1/tasks/{taskId}/return-to-owner`        | Clear assignment to Owner                                                                                            |
 | POST   | `/api/v1/tasks/{taskId}/clarification-requests` | Clarification                                                                                                        |
 | POST   | `/api/v1/tasks/{taskId}/capabilities`           | Administrative capability issue (raw once); **not** D037 handoff (D086)                                              |
-| POST   | `/api/v1/tasks/{taskId}/handoff`                | D037 Recipient handoff (contracted A7.1; handlers later)                                                             |
+| POST   | `/api/v1/tasks/{taskId}/handoff`                | D037 Recipient handoff (implemented A7.7)                                                                            |
 
-### Owner Recipient handoff (A7.1 contracted)
+### Owner Recipient handoff (A7.1 contracted; A7.7 implemented)
 
-**Status: OpenAPI contracted (A7.1). Handlers not implemented.** Binding: D037, D086–D094. `operationId`: `handoffTask`.
+**Status: OpenAPI contracted (A7.1); handlers implemented and validated (A7.7).** Binding: D037, D086–D094. `operationId`: `handoffTask`.
 
-| Method | Path                             | Purpose                                                                                          | Status               |
-| ------ | -------------------------------- | ------------------------------------------------------------------------------------------------ | -------------------- |
-| POST   | `/api/v1/tasks/{taskId}/handoff` | D037 handoff on an existing unassigned Task (assignment + capability + email/forward + delivery) | Contract-only — A7.1 |
+| Method | Path                             | Purpose                                                                                          | Status             |
+| ------ | -------------------------------- | ------------------------------------------------------------------------------------------------ | ------------------ |
+| POST   | `/api/v1/tasks/{taskId}/handoff` | D037 handoff on an existing unassigned Task (assignment + capability + email/forward + delivery) | Implemented — A7.7 |
 
-**Contracted semantics:**
+**Contracted / runtime semantics:**
 
-- Owner session; Task `If-Match` (D045); required header `Idempotency-Key` (new A7 convention).
-- Body: `recipientId` + `acknowledgement: handoff_confirmed_v1` (no raw email, no client capability token, no delivery-mode spoof).
-- Server selects `gmail_forward` vs `assignment_email` from Task source.
-- Success **200** with `HandoffTaskResponse`: Task (+ version), delivery path/status (`sent`), Recipient summary, `capabilityId` (**no** raw token), `requiresSendReconsent`, `idempotentReplay`.
-- Delivery failure / incomplete forward / missing send scope → **non-2xx** (see ErrorCode table). Do not treat pending rows as success.
-- Reminder schedules/sends are **not** part of this operation (D089).
+- Owner session; Task `If-Match` (D045); required header `Idempotency-Key` (8–128, `[A-Za-z0-9._~-]+`). Missing either → `428 PRECONDITION_REQUIRED`. Malformed Idempotency-Key → `400 VALIDATION_ERROR`. Malformed / wrong-Task ETag → `412 PRECONDITION_FAILED`.
+- Body: `recipientId` + `acknowledgement: handoff_confirmed_v1` only (`additionalProperties: false`). No raw email, no client capability token, no delivery-mode spoof, no `proposedRecipientId` / `proposedRecipientHint` (unknown fields → `400 VALIDATION_ERROR`; hint resolution is **deferred**, not part of this contract).
+- Server selects `gmail_forward` vs `assignment_email` from Task source. Gmail forwards include persisted Task `summaryPoints` + all required attachments; assignment emails carry no attachments.
+- Success **200** with `HandoffTaskResponse`: Task (+ version/ETag), delivery path/status (`sent`), Recipient summary, `capabilityId` (**no** raw token), `requiresSendReconsent: false`, `idempotentReplay`. All responses `Cache-Control: no-store`.
+- **Idempotency-first:** organization-scoped lookup on `(organizationId, Idempotency-Key)` before current-state / Gmail checks. Matching **sent** → 200 replay (`idempotentReplay: true`) even with the original (pre-bump) If-Match and even after Recipient deactivation or Gmail disconnect. Matching **pending** → `409 HANDOFF_IN_PROGRESS`. Matching **failed** → same-key retry via A7.5 (historical address snapshot). Fingerprint mismatch → `409 IDEMPOTENCY_KEY_CONFLICT`. Only a **new** handoff compares If-Match to the current Task version and requires an unassigned Task.
+- Delivery failure / incomplete forward / missing send scope → **non-2xx** (retryable provider → `503 HANDOFF_DELIVERY_FAILED`; permanent provider → `400 HANDOFF_DELIVERY_FAILED`; ambiguous → `503 DEPENDENCY_UNAVAILABLE` with attempt left pending; send scope → `403 GMAIL_SEND_SCOPE_REQUIRED`). Do not treat pending rows as success.
+- Reminder schedules/sends are **not** part of this operation (D089). Reassignment and explicit re-forward remain deferred.
 
 **Administrative capability issue** (`POST …/capabilities`) remains for A4 recovery: returns raw token once; obeys D086 one-active rule; does **not** send mail/forward.
 
@@ -263,7 +264,7 @@ Durable foundation in `@aicaa/db` (no Gmail send / no HTTP handlers):
   - **A7.4:** Gmail OAuth send-scope preparation and transport/MIME utilities only.
   - **Later application orchestration:** pending → Gmail call → accepted/failed persistence (wires the primitives above; not implemented).
   - **Later reconciliation/worker:** stale or uncertain pending attempts, only when explicitly authorized.
-- **Remaining (not yet built):** handoff HTTP orchestration, Owner confirmation UI. (Recipient management HTTP and the create-with-`recipientId` handler rejection shipped in A7.6.)
+- **Remaining (not yet built):** Owner confirmation UI, Gmail re-consent UI, reassignment/explicit re-forward orchestration, proposed-Recipient hint resolution, reconciliation worker, production E2E. (Recipient management HTTP and create-with-`recipientId` rejection shipped in A7.6; handoff HTTP orchestration shipped in A7.7.)
 
 ### CreateTaskRequest.recipientId deprecation (D091)
 
