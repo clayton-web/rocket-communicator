@@ -112,6 +112,7 @@ export const PGLITE_MARKERS = [
 export const DB_BACKED_API_ROUTE_NFTS = [
   'app/api/v1/tasks/route.js.nft.json',
   'app/api/v1/tasks/[taskId]/route.js.nft.json',
+  'app/api/v1/tasks/[taskId]/handoff/route.js.nft.json',
   'app/api/v1/task-suggestions/route.js.nft.json',
   'app/api/v1/capabilities/[token]/tasks/[taskId]/route.js.nft.json',
 ];
