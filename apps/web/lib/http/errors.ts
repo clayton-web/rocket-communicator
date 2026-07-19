@@ -9,17 +9,22 @@ import {
   isCapabilityTokenError,
   isPersistenceErrorShape,
   isRecipientCapabilityServiceError,
+  isRecipientManagementError,
   isTaskServiceError,
   readCapabilityTokenErrorCode,
   readPersistenceErrorCode,
   readRecipientCapabilityServiceErrorCode,
   readRecipientCapabilityServiceErrorDetails,
   readRecipientCapabilityServiceErrorMessage,
+  readRecipientManagementErrorCode,
+  readRecipientManagementErrorDetails,
+  readRecipientManagementErrorMessage,
   readTaskServiceErrorCode,
   readTaskServiceErrorDetails,
   readTaskServiceErrorMessage,
   safeReadString,
 } from '@/lib/errors/safe-error-shapes';
+import type { RecipientManagementErrorCode } from '@/lib/recipients/errors';
 import type { TaskServiceErrorCode } from '@/lib/tasks/errors';
 
 type ErrorResponse = components['schemas']['ErrorResponse'];
@@ -284,6 +289,74 @@ export function mapRecipientCapabilityRouteError(error: unknown): NextResponse<E
     }
     if (isPersistenceErrorShape(error)) {
       return mapPersistenceErrorToHttpResponse();
+    }
+    return genericInternalErrorResponse();
+  } catch {
+    return genericInternalErrorResponse();
+  }
+}
+
+function httpStatusForRecipientManagementCode(code: RecipientManagementErrorCode): number {
+  switch (code) {
+    case 'NOT_FOUND':
+      return 404;
+    case 'FORBIDDEN':
+      return 403;
+    case 'VALIDATION_ERROR':
+      return 400;
+    case 'DOMAIN_CONFLICT':
+      return 409;
+    default:
+      return 500;
+  }
+}
+
+function contractCodeForRecipientManagementCode(code: RecipientManagementErrorCode): ErrorCode {
+  switch (code) {
+    case 'NOT_FOUND':
+      return 'NOT_FOUND';
+    case 'FORBIDDEN':
+      return 'FORBIDDEN';
+    case 'VALIDATION_ERROR':
+      return 'VALIDATION_ERROR';
+    case 'DOMAIN_CONFLICT':
+      return 'DOMAIN_CONFLICT';
+    default:
+      return 'INTERNAL_ERROR';
+  }
+}
+
+/** Map Owner Recipient-management application failures to the contracted HTTP error envelope. */
+export function mapOwnerRecipientRouteError(error: unknown): NextResponse<ErrorResponse> {
+  try {
+    if (isRecipientManagementError(error)) {
+      const code = readRecipientManagementErrorCode(error);
+      if (!code) {
+        return genericInternalErrorResponse();
+      }
+      return jsonErrorResponseWithDetails(
+        contractCodeForRecipientManagementCode(code),
+        readRecipientManagementErrorMessage(error),
+        httpStatusForRecipientManagementCode(code),
+        code === 'VALIDATION_ERROR' ? readRecipientManagementErrorDetails(error) : undefined,
+      );
+    }
+    const persistenceCode = readPersistenceErrorCode(error);
+    if (persistenceCode) {
+      if (persistenceCode === 'NOT_FOUND' || persistenceCode === 'ORGANIZATION_MISMATCH') {
+        return jsonErrorResponse('NOT_FOUND', 'Recipient not found.', 404);
+      }
+      if (persistenceCode === 'UNIQUE_VIOLATION') {
+        return jsonErrorResponse(
+          'DOMAIN_CONFLICT',
+          'An active Recipient with this email already exists.',
+          409,
+        );
+      }
+      return genericInternalErrorResponse();
+    }
+    if (isAuthConfigError(error)) {
+      return jsonErrorResponse('INTERNAL_ERROR', 'Authentication is not configured.', 500);
     }
     return genericInternalErrorResponse();
   } catch {

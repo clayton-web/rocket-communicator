@@ -4,6 +4,29 @@ import type { components } from '@aicaa/contracts/schema';
 
 type ErrorResponse = components['schemas']['ErrorResponse'];
 
+/**
+ * Require `Content-Type: application/json` for requests carrying a JSON body (A7.6).
+ * Accepts media-type parameters such as `application/json; charset=utf-8`. Returns HTTP 415
+ * (with the shared privacy-safe envelope) when the media type is absent or unsupported.
+ */
+export function requireJsonContentType(
+  request: Request,
+): { ok: true } | { ok: false; response: NextResponse<ErrorResponse> } {
+  const header = request.headers.get('content-type');
+  const mediaType = header?.split(';')[0]?.trim().toLowerCase();
+  if (mediaType !== 'application/json') {
+    return {
+      ok: false,
+      response: jsonErrorResponse(
+        'VALIDATION_ERROR',
+        'Content-Type must be application/json.',
+        415,
+      ),
+    };
+  }
+  return { ok: true };
+}
+
 export async function readJsonBody(
   request: Request,
 ): Promise<{ ok: true; body: unknown } | { ok: false; response: NextResponse<ErrorResponse> }> {

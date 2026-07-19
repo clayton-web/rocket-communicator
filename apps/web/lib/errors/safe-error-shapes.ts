@@ -2,10 +2,12 @@ import type { PersistenceErrorCode } from '@aicaa/db';
 import type { DomainErrorCode } from '@aicaa/domain';
 import type { CapabilityTokenErrorCode } from '@/lib/capability/errors';
 import type { RecipientCapabilityServiceErrorCode } from '@/lib/capability/recipient-errors';
+import type { RecipientManagementErrorCode } from '@/lib/recipients/errors';
 import type { TaskServiceErrorCode } from '@/lib/tasks/errors';
 import { AuthConfigError } from '@/lib/auth/errors';
 import { CapabilityTokenError } from '@/lib/capability/errors';
 import { RecipientCapabilityServiceError } from '@/lib/capability/recipient-errors';
+import { RecipientManagementError } from '@/lib/recipients/errors';
 import { TaskServiceError } from '@/lib/tasks/errors';
 import { DomainError } from '@aicaa/domain';
 
@@ -18,6 +20,7 @@ export const PERSISTENCE_ERROR_CODES = new Set<PersistenceErrorCode>([
   'UNIQUE_VIOLATION',
   'VALIDATION',
   'TRANSACTION_FAILED',
+  'DOMAIN_CONFLICT',
   'RECIPIENT_HANDOFF_NOT_AVAILABLE',
   // A7.3: the in-transaction admin-issuance gate surfaces HANDOFF_IN_PROGRESS, which
   // issue.ts normalizes to the existing public ISSUANCE_CONFLICT code.
@@ -28,7 +31,15 @@ const DOMAIN_ERROR_NAME = 'DomainError';
 const TASK_SERVICE_ERROR_NAME = 'TaskServiceError';
 const CAPABILITY_TOKEN_ERROR_NAME = 'CapabilityTokenError';
 const RECIPIENT_CAPABILITY_SERVICE_ERROR_NAME = 'RecipientCapabilityServiceError';
+const RECIPIENT_MANAGEMENT_ERROR_NAME = 'RecipientManagementError';
 const AUTH_CONFIG_ERROR_NAME = 'AuthConfigError';
+
+const RECIPIENT_MANAGEMENT_ERROR_CODES = new Set<RecipientManagementErrorCode>([
+  'NOT_FOUND',
+  'VALIDATION_ERROR',
+  'DOMAIN_CONFLICT',
+  'FORBIDDEN',
+]);
 
 const TASK_SERVICE_ERROR_CODES = new Set<TaskServiceErrorCode>([
   'NOT_FOUND',
@@ -168,6 +179,37 @@ export function readRecipientCapabilityServiceErrorMessage(error: unknown): stri
 }
 
 export function readRecipientCapabilityServiceErrorDetails(
+  error: unknown,
+): ReadonlyArray<{ field: string; message: string }> | undefined {
+  const details = safeReadProperty(error, 'details');
+  if (!Array.isArray(details)) {
+    return undefined;
+  }
+  return details as ReadonlyArray<{ field: string; message: string }>;
+}
+
+export function isRecipientManagementError(error: unknown): boolean {
+  return (
+    safeInstanceof(error, RecipientManagementError) ||
+    (hasErrorName(error, RECIPIENT_MANAGEMENT_ERROR_NAME) &&
+      hasKnownCode(error, RECIPIENT_MANAGEMENT_ERROR_CODES))
+  );
+}
+
+export function readRecipientManagementErrorCode(
+  error: unknown,
+): RecipientManagementErrorCode | undefined {
+  if (!isRecipientManagementError(error)) {
+    return undefined;
+  }
+  return safeReadString(error, 'code') as RecipientManagementErrorCode | undefined;
+}
+
+export function readRecipientManagementErrorMessage(error: unknown): string {
+  return safeReadString(error, 'message') ?? 'An unexpected error occurred.';
+}
+
+export function readRecipientManagementErrorDetails(
   error: unknown,
 ): ReadonlyArray<{ field: string; message: string }> | undefined {
   const details = safeReadProperty(error, 'details');
