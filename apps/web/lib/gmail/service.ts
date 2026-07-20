@@ -347,7 +347,24 @@ export async function getGmailConnection(ctx: {
     ctx.db,
     ctx.owner.organizationId,
   );
-  return mapConnectionToDto(account);
+  if (!account) {
+    return mapConnectionToDto(null);
+  }
+  // Emit contracted canSend / requiresSendReconsent from the persisted grant string (D093).
+  // Never expose the raw scope string or credential material in the DTO.
+  let grantedScopes: string | null = null;
+  try {
+    const credential = await runtime.getGmailOAuthCredentialByAccountId(
+      ctx.db,
+      ctx.owner.organizationId,
+      account.id,
+    );
+    grantedScopes = credential?.grantedScopes ?? null;
+  } catch {
+    // Missing/invalid credential: treat as no send grant while still returning account status.
+    grantedScopes = null;
+  }
+  return mapConnectionToDto(account, { grantedScopes });
 }
 
 /**

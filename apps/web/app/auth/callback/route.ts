@@ -3,12 +3,13 @@ import { AuthConfigError } from '@/lib/auth/errors';
 import { getAuthConfig } from '@/lib/auth/config';
 import { isWorkspaceDomainPermitted, workspaceIdentityFromUser } from '@/lib/auth/domain-allowlist';
 import { internalErrorResponse } from '@/lib/auth/http';
+import { resolveSafeNextPath } from '@/lib/auth/safe-next-path';
 import { createClient } from '@/lib/supabase/server';
 
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get('code');
-  const nextPath = requestUrl.searchParams.get('next') ?? '/';
+  const nextPath = resolveSafeNextPath(requestUrl.searchParams.get('next'), '/');
 
   if (!code) {
     return NextResponse.redirect(new URL('/login?error=missing_code', requestUrl.origin));

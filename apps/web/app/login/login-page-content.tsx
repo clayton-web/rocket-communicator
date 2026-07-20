@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { getPublicAuthConfig } from '@/lib/auth/config';
+import { resolveSafeNextPath } from '@/lib/auth/safe-next-path';
 
 const ERROR_MESSAGES: Record<string, string> = {
   unauthorized_domain:
@@ -20,11 +21,16 @@ export function LoginPageContent({ workspaceDomainHint }: LoginPageContentProps)
   const searchParams = useSearchParams();
   const errorCode = searchParams.get('error');
   const errorMessage = errorCode ? ERROR_MESSAGES[errorCode] : null;
+  const nextPath = resolveSafeNextPath(searchParams.get('next'), '/');
 
   const redirectTo = useMemo(() => {
     const { appUrl } = getPublicAuthConfig();
-    return `${appUrl}/auth/callback`;
-  }, []);
+    const callback = new URL('/auth/callback', `${appUrl}/`);
+    if (nextPath !== '/') {
+      callback.searchParams.set('next', nextPath);
+    }
+    return callback.toString();
+  }, [nextPath]);
 
   async function signInWithGoogle() {
     const supabase = createClient();

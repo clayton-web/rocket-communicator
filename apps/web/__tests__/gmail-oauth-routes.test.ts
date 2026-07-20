@@ -1,7 +1,13 @@
 // @vitest-environment node
 import { createHash } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { asOrganizationId, asOwnerId, GMAIL_READONLY_SCOPE, ownerActor } from '@aicaa/domain';
+import {
+  asOrganizationId,
+  asOwnerId,
+  GMAIL_READONLY_SCOPE,
+  GMAIL_SEND_SCOPE,
+  ownerActor,
+} from '@aicaa/domain';
 import {
   createGmailOAuthState,
   getCommunicationAccountByOrganization,
@@ -129,6 +135,8 @@ describe('A5.3 Gmail OAuth HTTP routes', () => {
       expect(body.inboxOnly).toBe(true);
       expect(body.readonlyScope).toBe(true);
       expect(body.pollingIntervalMinutes).toBe(5);
+      expect(body.canSend).toBe(false);
+      expect(body.requiresSendReconsent).toBe(false);
       assertNoSecrets(body);
     });
 
@@ -165,9 +173,51 @@ describe('A5.3 Gmail OAuth HTTP routes', () => {
       const body = await res.json();
       expect(body.status).toBe('connected');
       expect(body.emailAddress).toBe('owner@example.com');
+      expect(body.canSend).toBe(false);
+      expect(body.requiresSendReconsent).toBe(true);
       assertNoSecrets(body);
+      expect(JSON.stringify(body)).not.toContain(GMAIL_READONLY_SCOPE);
       expect(vi.mocked(exchangeGmailCode)).not.toHaveBeenCalled();
       expect(vi.mocked(verifyGmailIdentity)).not.toHaveBeenCalled();
+    });
+
+    it('emits canSend when gmail.send is present on the stored grant', async () => {
+      // Upsert the same org account with an expanded grant (one account per organization).
+      await persistGmailConnectionTransaction({
+        db: db.prisma,
+        organizationId: org,
+        accountId: 'cacct_org',
+        emailAddress: 'owner@example.com',
+        externalAccountId: 'sub_status',
+        connectedAt: now,
+        credential: {
+          id: 'gcred_org',
+          encryptedRefreshToken: encryptToken(
+            'rt_send',
+            CIPHERTEXT_PURPOSE.GMAIL_REFRESH_TOKEN,
+            material,
+          ),
+          grantedScopes: `${GMAIL_READONLY_SCOPE} ${GMAIL_SEND_SCOPE}`,
+          encryptionKeyVersion: '1',
+        },
+        audit: {
+          id: 'audit_send',
+          organizationId: org,
+          actorKind: 'owner',
+          ownerId: owner.ownerId,
+          action: 'gmail_connected',
+          outcome: 'succeeded',
+          recordedAt: now,
+        },
+      });
+
+      const res = await getConnection(new Request('http://localhost/api/v1/gmail/connection'));
+      const body = await res.json();
+      expect(body.status).toBe('connected');
+      expect(body.canSend).toBe(true);
+      expect(body.requiresSendReconsent).toBe(false);
+      assertNoSecrets(body);
+      expect(JSON.stringify(body)).not.toContain(GMAIL_SEND_SCOPE);
     });
 
     it('isolates organizations', async () => {
