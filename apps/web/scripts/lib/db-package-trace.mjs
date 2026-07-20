@@ -146,7 +146,11 @@ export const A6_3_PROCESS_ROUTE_NFT = 'app/api/v1/internal/suggestions/process/r
 /** Process route must include compiled @aicaa/ai output (repo or workspace link). */
 export const A6_3_AI_PACKAGE_MARKERS = ['packages/ai/dist/index.js', 'packages/ai/package.json'];
 
-export const DB_BACKED_PAGE_ROUTE_NFTS = ['app/c/[token]/page.js.nft.json'];
+export const DB_BACKED_PAGE_ROUTE_NFTS = [
+  'app/c/[token]/page.js.nft.json',
+  'app/tasks/page.js.nft.json',
+  'app/tasks/[taskId]/page.js.nft.json',
+];
 
 export const DB_BACKED_ROUTE_NFTS = [...DB_BACKED_API_ROUTE_NFTS, ...DB_BACKED_PAGE_ROUTE_NFTS];
 

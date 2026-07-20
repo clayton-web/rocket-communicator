@@ -64,6 +64,8 @@ const nextConfig = {
     '/api/v1/internal/**/*': dbBackedRouteTraceFiles,
     '/c/[token]': dbBackedRouteTraceFiles,
     '/c/**/*': dbBackedRouteTraceFiles,
+    '/tasks': dbBackedRouteTraceFiles,
+    '/tasks/**/*': dbBackedRouteTraceFiles,
   },
   turbopack: {
     root: monorepoRoot,
