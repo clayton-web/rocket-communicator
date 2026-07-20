@@ -18,7 +18,7 @@ Owner approval is required to create Tasks, Assignments, forwards, and Follow-up
 
 ## Implemented and planned workflow map
 
-Workflow §1 (A5 events + A6 suggestions) and §7 / §12 (approve / merge) are **production-operational**. Workflow §2 (Recipient handoff) has its **API route implemented and validated (A7.7)**; Owner confirmation UI, re-consent UI, and production E2E remain open (parent A7 open). §10 reminders are **A8**. §14–§15 and Android capture remain later milestones. Sections below retain target behaviour; milestone labels note when each ships.
+Workflow §1 (A5 events + A6 suggestions) and §7 / §12 (approve / merge) are **production-operational**. Workflow §2 (Recipient handoff) has its **API route (A7.7) and Owner confirmation / re-consent UI (A7.8) implemented and validated**; production E2E remains open (parent A7 open). §10 reminders are **A8**. §14–§15 and Android capture remain later milestones. Sections below retain target behaviour; milestone labels note when each ships.
 
 ---
 
@@ -30,12 +30,12 @@ Workflow §1 (A5 events + A6 suggestions) and §7 / §12 (approve / merge) are *
 
 No Task created; no email sent in this workflow.
 
-## 2. Recipient handoff — Gmail-origin forward or assignment email (D037) _(A7.7 API implemented; Owner UI later)_
+## 2. Recipient handoff — Gmail-origin forward or assignment email (D037) _(A7.7 API + A7.8 Owner UI)_
 
 Applies to an **existing** Owner-owned Task (typically an **unassigned** Task from A6 suggestion approval, D080). Handoff does **not** recreate the Task.
 
-1. Owner confirms one dialog (thin UI — **A7.8**, not yet built) disclosing: activate Assignment on the existing Task, issue Capability Link, forward original + all attachments **or** send assignment email (server chooses from Task source), and that follow-up/reminder behaviour belongs to the assignment workflow (**A8** implements reminders — D089). Do **not** claim reminders are currently scheduled.
-2. Owner (or future UI) invokes `POST /api/v1/tasks/{taskId}/handoff` with concurrency protection and a required idempotency key (D090). **A7.7 implements this route** with idempotency-first classification: successful/pending/failed same-key replay, and new initial handoff.
+1. Owner opens `/tasks/[taskId]`, selects an active Recipient, and confirms one dialog (**A7.8**) disclosing: activate Assignment on the existing Task, issue Capability Link, forward original + all attachments **or** send assignment email (server chooses from Task source), Gmail retention boundary when forwarding (D031), and that follow-up/reminder behaviour belongs to the assignment workflow (**A8** implements reminders — D089). Do **not** claim reminders are currently scheduled.
+2. The UI invokes `POST /api/v1/tasks/{taskId}/handoff` with the original If-Match and a stable Idempotency-Key retained in `sessionStorage` for the logical operation (D090). **A7.7** classifies successful/pending/failed same-key replay and new initial handoff. Missing `gmail.send` → re-consent via OAuth start with `returnPath=/tasks/{taskId}`, then **manual** Retry handoff (no auto-send on OAuth return).
 3. On confirm (D092): validate Task, Recipient (D087), Gmail authorization (D093), and (for Gmail-origin) source message + attachment availability. Persist a durable handoff/delivery attempt and one capability. Attempt delivery via Owner’s connected Gmail. **Activate** the Assignment only after Gmail accepts the send. Record provider message id for idempotency. Outbound summary uses existing Task `summaryPoints` (no fresh LLM — D094). Ambiguous provider outcomes leave the attempt `pending` for a later reconciliation slice (not auto-resent).
 4. Gmail-origin: forward full original + all attachments with summary **above** original (D010, D042). If anything required cannot be fetched or assembled, **do not send**; record privacy-safe failed attempt; Owner gets a clear error (D088). Never report partial delivery as success. Never silently downgrade to assignment email.
 5. Non-Gmail: assignment email with summary + Capability Link (no attachments / no Gmail forward), still via Owner Gmail (D094).

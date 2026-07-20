@@ -139,9 +139,23 @@ A7.7 wires the contracted endpoint `POST /api/v1/tasks/{taskId}/handoff` to the 
 - **Assignment email.** Non-Gmail path; summary from Task; capability URL; **no attachments**.
 - **Provider outcomes.** Retryable known failure → `503 HANDOFF_DELIVERY_FAILED`. Permanent known rejection → `400 HANDOFF_DELIVERY_FAILED`. Ambiguous/unknown → `503 DEPENDENCY_UNAVAILABLE`; attempt stays `pending`; capability stays non-actionable; **no automatic resend**; later reconciliation slice required. No exactly-once claim beyond implemented idempotency/send-generation guarantees.
 - **Audits.** Durable Owner audits (`handoff.prepared` / `handoff.sent` / `handoff.failed`) written atomically inside A7.3 transitions when `emitAudits` is set. No duplicate audits on successful/pending replay or retry losers. No raw Recipient email in audit notes; no full idempotency key in logs; no raw capability token/URL in responses.
-- **Deferred.** Reassignment, explicit re-forward, `proposedRecipientId` / `proposedRecipientHint` (not in the current request schema — unknown fields → `400 VALIDATION_ERROR`), Owner confirmation UI, re-consent UI, reconciliation workers, reminders, production rollout.
+- **Deferred.** Reassignment, explicit re-forward, `proposedRecipientId` / `proposedRecipientHint` (not in the current request schema — unknown fields → `400 VALIDATION_ERROR`), reconciliation workers, reminders, production rollout. Owner confirmation UI and re-consent UI ship in A7.8.
 
 Roadmap boundary: **A7.7** = authenticated handoff HTTP + route-level delivery orchestration only. Parent A7 remains open.
+
+### A7.8 Owner confirmation UI + Gmail send re-consent UI (implemented)
+
+A7.8 adds the first thin Owner Task surfaces and wires them to A7.7. Contract, generated clients, Prisma schema, and migrations remain **unchanged**. These pages **did not exist before A7.8**.
+
+- **Pages.** `/tasks` (minimal list) and `/tasks/[taskId]` (detail + handoff). Hard Owner gate via `requireOwnerPage` (redirect to `/login?next=…` with a safe relative path). Home links to Tasks when signed in. No Task-list row handoff; no broad app shell.
+- **Confirmation.** Modal with disclosure (D037/D031/D089), checkbox, then **Confirm handoff**. Body is exactly `{ recipientId, acknowledgement: "handoff_confirmed_v1" }`.
+- **Client operation state.** `sessionStorage` key `aicaa.handoff.pending.v1:<taskId>` holds Task ID, Recipient ID, Idempotency-Key (`crypto.randomUUID()`), original strong If-Match, acknowledgement, timestamps, last public outcome, re-consent flag. No emails, summaries, capability secrets, or Gmail content. 24h display expiry does **not** cancel server operations.
+- **Same-key recovery.** Network retry, retryable failure, pending/ambiguous check, and post–re-consent retry reuse the original key + original ETag. No “start over with a new key” after a durable attempt.
+- **Re-consent.** `POST /api/v1/gmail/oauth/start?returnPath=/tasks/{taskId}` via top-level HTML form POST (302 to Google). Return shows a banner; Owner must click **Retry handoff** (no auto-send). `GET /api/v1/gmail/connection` emits contracted `canSend` / `requiresSendReconsent` from stored grants; handoff `403` remains authoritative.
+- **UX honesty.** Pending → “still unresolved” + Check status. Ambiguous → may-or-may-not-have-sent; no new handoff. Success uses server `deliveryPath`. Delivery explanation before submit is predictive copy only.
+- **Deferred.** Reassignment, re-forward, proposed hints, reconciliation, reminders, Recipient CRUD UI, production rollout. Default OAuth fallback `/settings/gmail` remains orphan technical debt (A7.8 always supplies Task `returnPath`).
+
+Roadmap boundary: **A7.8** = Owner confirmation + re-consent UI only. Parent A7 remains open.
 
 ## Package layout
 
