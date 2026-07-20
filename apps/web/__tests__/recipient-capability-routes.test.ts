@@ -42,7 +42,9 @@ import { POST as submitWorkRequest } from '@/app/api/v1/capabilities/[token]/tas
 const org = 'org_rcp_http';
 const pepper = 'capability-pepper-value-32chars!!';
 const appUrl = 'http://localhost:3000';
-const now = '2026-07-13T18:00:00.000Z';
+// Relative to wall clock: routes validate with Date.now(), so a fixed past `now`
+// plus DEFAULT_CAPABILITY_TTL_MS (7d) expires and collapses to 401 UNAUTHORIZED.
+const now = new Date().toISOString();
 const owner = ownerActor(asOwnerId('owner_rcp_http'), asOrganizationId(org));
 const ORIGINAL_ENV = { ...process.env };
 
