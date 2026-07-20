@@ -1,6 +1,6 @@
 # Data retention
 
-Governed by [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md). Terms: [GLOSSARY.md](GLOSSARY.md). Decisions: [DECISIONS.md](DECISIONS.md) (D020, D021, D028, D031, D078, D082).
+Governed by [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md). Terms: [GLOSSARY.md](GLOSSARY.md). Decisions: [DECISIONS.md](DECISIONS.md) (D020, D021, D028, D031, D078, D082, D100).
 
 ## Purpose
 
@@ -24,7 +24,7 @@ This product must not become a permanent communication archive. Retention separa
 | Transcripts                              | Text from speech                                                    | Treated as task/suggestion content under task retention; not kept as a permanent archive                                                                            |
 | Forwarded Gmail messages and attachments | Copies in Recipient (and Sent) mailboxes                            | **Outside app deletion control** — Workspace/Gmail retention                                                                                                        |
 | Durable workflow intelligence            | Approved preferences/rules, anonymized patterns, confidence signals | May be retained longer; **no raw message bodies**                                                                                                                   |
-| Audit metadata                           | Who approved what, when, message ids, reminder attempts             | Minimal metadata retained as required; scrub free-text payloads when content purges                                                                                 |
+| Audit metadata                           | Who approved what, when, message ids, Follow-up Attempts (D100)     | Minimal metadata retained as required; scrub free-text payloads when content purges; do not require complete email bodies                                           |
 
 ## Temporary communication excerpts
 
@@ -109,7 +109,7 @@ May be retained longer:
 - approved workflow preferences
 - approved assignment rules
 - approved priority rules
-- approved reminder rules
+- approved Follow-up Policy preferences (Phase 1 interval patterns; never raw bodies)
 - Owner corrections (structured, minimized)
 - anonymized operational patterns
 - non-content confidence and evaluation signals
@@ -118,7 +118,7 @@ Avoid retaining raw communication text inside durable learning records.
 
 ## Audit metadata
 
-- Record approvals (especially assignment and Gmail forward), reminder attempts, retention runs, authz denials, and token use.
+- Record approvals (especially assignment and Gmail forward), Follow-up Attempt lifecycle history (D100), Event Notification outcomes, retention runs, authz denials, and token use.
 - When content is purged, scrub narrative fields from audit payloads where feasible; keep who/what/when and external ids.
 
 ## Seven-day rule (summary)

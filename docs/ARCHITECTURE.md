@@ -24,7 +24,7 @@ The following are **implemented** in the repository and included in production v
 
 - Owner Google Workspace authentication (Supabase Auth; single Owner)
 - Owner session API (`GET /api/v1/session`)
-- Owner task HTTP (create, list, get, lifecycle mutations, snooze, dismiss, capability issuance)
+- Owner task HTTP (create, list, get, lifecycle mutations, historical snooze surface, dismiss, capability issuance)
 - Task persistence (`@aicaa/db` / Prisma on Supabase Postgres)
 - Recipient capability HTTP and non-mutating `GET /c/[token]` page
 - Recipient POST actions with explicit confirmation
@@ -50,26 +50,33 @@ The following are **implemented** and **production-operational**. A5 and A6 are 
 - Relational event↔suggestion idempotency and processing state (D081)
 - Excerpt workflow safety-ceiling retention (D082: dismiss +7d / approve +30d)
 
-## Planned for A7 and later (target architecture)
+## Implemented through A7.8 (parent A7 open for production E2E)
 
-The following remain **planned future scope**—described here and in [WORKFLOWS.md](WORKFLOWS.md). **A7.0 decisions are locked** (D086–D094); implementation follows A7.1+.
+**A7.1–A7.8 implementation work is complete** (contracts through Owner confirmation UI + Gmail send re-consent UI). The **parent A7 milestone remains OPEN** until production OAuth rollout and production E2E close. Binding decisions: D086–D094. Do **not** move Follow-up Engine or Event Notification Engine implementation into A7 (D089, D095–D101).
 
-- Gmail assignment email and forward-with-attachments via `POST /api/v1/tasks/{taskId}/handoff` (A7, D037, D090)
+Shipped in A7.1–A7.8 (repository-validated; not yet parent-milestone closed):
+
+- Gmail assignment email and forward-with-attachments via `POST /api/v1/tasks/{taskId}/handoff` (D037, D090)
 - Minimal Owner Recipient management (list/create/update/inactive) — not a CRM (D087)
 - Delivery attempt persistence (`pending` / `sent` / `failed`) and single active capability with re-forward revocation (D086, D092)
 - Gmail OAuth `gmail.readonly` + `gmail.send` for handoff (D093); Owner re-consent when send missing
-- Reminder and retention workers (A8 / A13); optional Supabase Realtime
-- Future `CommunicationAccount` schema (multiple inboxes later; v1 targets one)
-- Android Owner task UI, Messages/call capture, voice, learning (A9–A14)
+- Thin Owner confirmation UI (`/tasks`, `/tasks/[taskId]`) and Gmail send re-consent UI (A7.8)
 
-Do not delete this target architecture; label it accurately when implementing. Do **not** move A8 reminder implementation into A7 (D089).
+## Planned for A8 and later (target architecture)
+
+- **Follow-up Engine** and **Event Notification Engine** (A8; product law D095–D101; [WORKFLOWS.md](WORKFLOWS.md) §10)
+- Retention workers (A13); optional Supabase Realtime
+- Future `CommunicationAccount` schema (multiple inboxes later; v1 targets one)
+- Android Owner task UI, push delivery for Event Notifications, Messages/call capture, voice, learning (A9–A14; FCM remains deferred — D017)
+
+Deferred within A7 (do not block A8 docs): reassignment/explicit re-forward orchestration, proposed-Recipient hints, reconciliation workers, production E2E.
 
 ### A7.4 Gmail send transport (implemented; transport-only)
 
 A7.4 adds the **outbound Gmail transport layer** — send-scope preparation, outbound-message construction (MIME), and provider transport. It is pure send/compose infrastructure. **A7.4 does not** decide eligibility, create a `HandoffAttempt`, activate a capability, or transition persistence state; those belong to later application orchestration. All transport code lives in `apps/web/lib/gmail/transport` and `apps/web/lib/gmail/outbound` and never imports `@aicaa/db`.
 
 - **Scopes.** OAuth now requests `openid`, `email`, `gmail.readonly`, and `gmail.send` (the minimum send scope). We deliberately do **not** request `gmail.modify`, `gmail.compose`, `https://mail.google.com/`, or contacts (D093). Authoritative source: [users.messages.send](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages/send).
-- **Incremental consent.** The auth URL sets `include_granted_scopes=true` so an existing read-only Owner can add `gmail.send` without a destructive reconnect. Existing read-only grants keep polling. A server helper (`buildGmailSendConsentAuthUrl`) can initiate re-consent; the Owner UI route is deferred.
+- **Incremental consent.** The auth URL sets `include_granted_scopes=true` so an existing read-only Owner can add `gmail.send` without a destructive reconnect. Existing read-only grants keep polling. A server helper (`buildGmailSendConsentAuthUrl`) can initiate re-consent; Owner re-consent UI shipped in A7.8.
 - **Send-capability prerequisite.** `gmail.send` is derived from the persisted `grantedScopes` string, never from the mere existence of a connection. The prerequisite check distinguishes _not connected_ (`GMAIL_NOT_CONNECTED`), _connected but send missing_ (`GMAIL_SEND_SCOPE_REQUIRED`, `requiresSendReconsent=true`), and _send available_ — always as approved typed A7 failures, never raw Google errors. Limitation: Google does not always re-return `scope` on refresh, so the last persisted grant is treated as authoritative (conservative — absence of send means re-consent).
 - **MIME.** Standards-compliant RFC 5322: CRLF endings, RFC 2047 encoded-word headers for UTF-8, quoted-printable text parts, base64 attachments, unique boundaries, base64url `raw` encoding. Header injection is impossible (control chars rejected; UTF-8 encoded); addresses strictly validated; the header set is fixed (no caller-supplied headers).
 - **Supported forward shapes:** plain text, HTML, multipart/alternative, regular attachments, and inline images with matching `Content-ID`/`cid:` relationships. **Unsupported/ambiguous shapes** (e.g. a `cid:` reference with no fetchable inline part) are **rejected** as `GMAIL_UNSUPPORTED_SOURCE_SHAPE` rather than sent with broken HTML.
@@ -80,7 +87,7 @@ A7.4 adds the **outbound Gmail transport layer** — send-scope preparation, out
 - **Transport vs orchestration boundary.** The transport accepts an already-authorized access token + a fully-composed message (including a complete, already-issued capability URL — never generated/queried/logged here) and returns a normalized acceptance (`providerMessageId`, `acceptedAt`, optional `providerThreadId`) or a typed failure. Later orchestration wires transport between the A7.3 pending-attempt transaction and `markHandoffAttemptSent`/`Failed`.
 - **Packaging convention.** A focused guard test (`packages/db/__tests__/a7-domain-import-convention.test.ts`) forbids **runtime value** imports of `@aicaa/domain` under `packages/db/src` (the A7.3 serverless regression); `import type` is allowed. Runtime value imports must use the relative `../../../domain/dist/index.js` convention.
 
-Roadmap boundary (unchanged): **A7.4** = send-scope prep + transport/MIME only. Later **application orchestration** performs pending → Gmail call → accepted/failed persistence. Later **reconciliation/worker** work handles stale/uncertain pending attempts, only when explicitly authorized. Handoff delivery is **not** operational end-to-end yet.
+Roadmap boundary: **A7.4** = send-scope prep + transport/MIME only. **A7.5–A7.7** wire orchestration and authenticated handoff HTTP. **A7.8** adds Owner confirmation / re-consent UI. Parent A7 remains open for production E2E. Later **reconciliation/worker** work handles stale/uncertain pending attempts, only when explicitly authorized.
 
 ### A7.5 Handoff application orchestration (implemented; internal service only)
 
@@ -107,7 +114,7 @@ A7.5 adds the **one authoritative application service** that coordinates the A7.
 - **Dependency injection.** The orchestrator injects a persistence store (A7.3 primitives via the traced runtime bridge / PGlite in tests), a Gmail access resolver, an outbound message preparer (A7.4 builders + forward-source loader), a Gmail transport (A7.4), a clock, and a logger — no hidden globals. The store adapter reaches A7.3 **only** through `loadDbRuntime()`; the A7 primitives (`beginInitialHandoff`, `markHandoffSendAccepted`, `markHandoffDeliveryFailed`, `prepareFailedHandoffRetry`, `getHandoffAttemptById`, `invalidState`, `handoffInProgress`) are explicit exports across all four bridge surfaces (re-exports, entry map, `REQUIRED_EXPORTS`, NFT packaging guard). Token rotation happens **inside** `prepareFailedHandoffRetry` (the store passes a precomputed hash), so no raw-token helper is exposed on the runtime bridge or any public route surface.
 - **Production retry needs no injected prior URL.** Both initial and winning-retry paths receive a server-built `capabilityUrl` from the store (freshly minted or freshly rotated). The production message preparer never reconstructs or injects a prior URL; its `missing_capability_url` guard is defense-in-depth only. Proven by test: the production preparer retries end-to-end using only the store-rotated URL.
 
-Roadmap boundary: **A7.5** = internal application orchestration only. It does **not** add public HTTP routes, Recipient CRUD, Owner UI, reconciliation workers, schedulers, reminders, Android, production OAuth rollout, or migrations. Handoff delivery is **not** operational end-to-end yet.
+Roadmap boundary: **A7.5** = internal application orchestration only (no public HTTP, Recipient CRUD, Owner UI, reconciliation, Follow-up Engine, Android, or production E2E in this slice). Later slices A7.6–A7.8 add Recipient HTTP, handoff HTTP, and Owner UI. Parent A7 remains open for production E2E.
 
 ### A7.6 Recipient management + task-create guard (implemented)
 
@@ -120,7 +127,7 @@ A7.6 adds the **authenticated Owner Recipient-management endpoints** and enforce
 - **Task-create guard (D091), defense in depth.** The request parser rejects the create request whenever the top-level JSON object **owns** a `recipientId` property (own-property presence — any value: UUID, unknown id, malformed string, empty string, `null`, number, boolean, object, array), before any validation or side effect, with `400 RECIPIENT_HANDOFF_NOT_AVAILABLE`. A differently cased key (`RecipientId`) or a nested `recipientId` is not the legacy field and follows ordinary field rules — it never creates an Assignment. The `createOwnerTask` service's create-with-assignment branch is **removed** and replaced with a defensive invariant, so internal callers cannot create an Assignment via legacy data; `createOwnerTask` now only ever creates an **unassigned** Task. The rejection is application-data side-effect free: no Task/Assignment/Capability/HandoffAttempt, no Gmail call, and **no durable audit row** (only privacy-safe structured logging, never the supplied value).
 - **Audit.** Successful Recipient create/update/deactivate write a durable Owner-attributed `AuditEvent` **atomically in the same transaction** as the mutation. Updates record **changed field names only** — never raw previous/new email values or the full request body; the Recipient email is never written to `intended_recipient_email`.
 
-Roadmap boundary: **A7.6** = Recipient management endpoints + task-create guard only. It does **not** add the handoff route, route-level delivery orchestration, Owner UI, Gmail re-consent, reassignment/re-forward, reconciliation, reminders, reactivation/deletion, or any OpenAPI/schema/migration change.
+Roadmap boundary: **A7.6** = Recipient management endpoints + task-create guard only. It does **not** add the handoff route, route-level delivery orchestration, Owner UI, Gmail re-consent, reassignment/re-forward, reconciliation, Follow-up Engine, reactivation/deletion, or any OpenAPI/schema/migration change.
 
 ### A7.7 Authenticated Owner handoff HTTP + route-level delivery orchestration (implemented)
 
@@ -139,7 +146,7 @@ A7.7 wires the contracted endpoint `POST /api/v1/tasks/{taskId}/handoff` to the 
 - **Assignment email.** Non-Gmail path; summary from Task; capability URL; **no attachments**.
 - **Provider outcomes.** Retryable known failure → `503 HANDOFF_DELIVERY_FAILED`. Permanent known rejection → `400 HANDOFF_DELIVERY_FAILED`. Ambiguous/unknown → `503 DEPENDENCY_UNAVAILABLE`; attempt stays `pending`; capability stays non-actionable; **no automatic resend**; later reconciliation slice required. No exactly-once claim beyond implemented idempotency/send-generation guarantees.
 - **Audits.** Durable Owner audits (`handoff.prepared` / `handoff.sent` / `handoff.failed`) written atomically inside A7.3 transitions when `emitAudits` is set. No duplicate audits on successful/pending replay or retry losers. No raw Recipient email in audit notes; no full idempotency key in logs; no raw capability token/URL in responses.
-- **Deferred.** Reassignment, explicit re-forward, `proposedRecipientId` / `proposedRecipientHint` (not in the current request schema — unknown fields → `400 VALIDATION_ERROR`), reconciliation workers, reminders, production rollout. Owner confirmation UI and re-consent UI ship in A7.8.
+- **Deferred.** Reassignment, explicit re-forward, `proposedRecipientId` / `proposedRecipientHint` (not in the current request schema — unknown fields → `400 VALIDATION_ERROR`), reconciliation workers, Follow-up Engine, production E2E. Owner confirmation UI and re-consent UI shipped in A7.8.
 
 Roadmap boundary: **A7.7** = authenticated handoff HTTP + route-level delivery orchestration only. Parent A7 remains open.
 
@@ -153,9 +160,9 @@ A7.8 adds the first thin Owner Task surfaces and wires them to A7.7. Contract, g
 - **Same-key recovery.** Network retry, retryable failure, pending/ambiguous check, and post–re-consent retry reuse the original key + original ETag. No “start over with a new key” after a durable attempt.
 - **Re-consent.** `POST /api/v1/gmail/oauth/start?returnPath=/tasks/{taskId}` via top-level HTML form POST (302 to Google). Return shows a banner; Owner must click **Retry handoff** (no auto-send). `GET /api/v1/gmail/connection` emits contracted `canSend` / `requiresSendReconsent` from stored grants; handoff `403` remains authoritative.
 - **UX honesty.** Pending → “still unresolved” + Check status. Ambiguous → may-or-may-not-have-sent; no new handoff. Success uses server `deliveryPath`. Delivery explanation before submit is predictive copy only.
-- **Deferred.** Reassignment, re-forward, proposed hints, reconciliation, reminders, Recipient CRUD UI, production rollout. Default OAuth fallback `/settings/gmail` remains orphan technical debt (A7.8 always supplies Task `returnPath`).
+- **Deferred.** Reassignment, re-forward, proposed hints, reconciliation, Follow-up Engine, Recipient CRUD UI, production E2E. Default OAuth fallback `/settings/gmail` remains orphan technical debt (A7.8 always supplies Task `returnPath`).
 
-Roadmap boundary: **A7.8** = Owner confirmation + re-consent UI only. Parent A7 remains open.
+Roadmap boundary: **A7.8** = Owner confirmation + re-consent UI only. Parent A7 remains open for production E2E.
 
 ## Package layout
 
@@ -174,16 +181,16 @@ Do not share Zod types with Kotlin. Generate clients from OpenAPI. Neon is not u
 
 ## Component map
 
-| Component                    | Responsibility                                                                                              |
-| ---------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Android app                  | Capture, voice, Owner task UI (later); Owner session credentials only                                       |
-| Next.js                      | Owner auth, Owner APIs, capability runtime, Recipient capability routes/pages, mailer, workers              |
-| Supabase Auth                | Google Workspace sign-in for the **Owner only** (D048)                                                      |
-| Supabase Postgres            | System of record                                                                                            |
-| Prisma                       | Server data access only                                                                                     |
-| Gmail API                    | Ingest, assignment mail, forward-with-attachments                                                           |
-| OpenAI                       | Structured extraction and transcription                                                                     |
-| Reminder / retention workers | Deterministic schedules and purge (later milestones); engines in-app, invoked by External Schedulers (D079) |
+| Component                                                | Responsibility                                                                                                                                                   |
+| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Android app                                              | Capture, voice, Owner task UI (later); Owner session credentials only                                                                                            |
+| Next.js                                                  | Owner auth, Owner APIs, capability runtime, Recipient capability routes/pages, mailer, workers                                                                   |
+| Supabase Auth                                            | Google Workspace sign-in for the **Owner only** (D048)                                                                                                           |
+| Supabase Postgres                                        | System of record                                                                                                                                                 |
+| Prisma                                                   | Server data access only                                                                                                                                          |
+| Gmail API                                                | Ingest, assignment mail, forward-with-attachments                                                                                                                |
+| OpenAI                                                   | Structured extraction and transcription                                                                                                                          |
+| Follow-up Engine / Event Notification Engine / retention | Deterministic Follow-up and Event Notification processing (A8, D095–D101) and purge (A13); engines in-app, invoked by External Schedulers where scheduled (D079) |
 
 ## Platform directions
 
@@ -191,15 +198,15 @@ Do not share Zod types with Kotlin. Generate clients from OpenAPI. Neon is not u
 
 **Web:** Owner-authenticated routes for Owner APIs (D048). Recipient mutations use `/api/v1/capabilities/{token}/…` (D059). Browser view `GET /c/[token]` is non-mutating. Capability secrets: hash at rest; one-time raw reveal to Owner (D063); seven-day default TTL with persisted `expiresAt` (D055); multi-use until invalidation (D056). Persistence: `@aicaa/db`. Dismiss, not physical delete (D064).
 
-**Gmail (A5 ingest; A7 outbound planned):** One Owner inbox per organization; poll every five minutes (D065); polling-only in A5 (D066). Inbox-only ingestion (D068); Workspace-domain mailbox gate (D069). A5 OAuth used `gmail.readonly` only (D070). A7 retains `gmail.readonly` and adds `gmail.send` for assignment email and forward; do not request `gmail.modify` without a new Decision (D093). Persistence models and Application Polling Engine are **production-operational**. An **External Scheduler** invokes `GET|POST /api/v1/internal/gmail/poll` every five minutes; recommended initial adapter **cron-job.org** (D079). A5 creates communication events only — not suggestions (D077). Gmail settings UI and History recovery are deferred and do not block A7. On D037 handoff (A7): Owner confirms once; server forwards Gmail-origin originals with attachments (or sends non-Gmail assignment email) using Task `summaryPoints`—no fresh LLM (D094); activate Assignment only after Gmail accepts send (D092).
+**Gmail (A5 ingest; A7 outbound through A7.8):** One Owner inbox per organization; poll every five minutes (D065); polling-only in A5 (D066). Inbox-only ingestion (D068); Workspace-domain mailbox gate (D069). A5 OAuth used `gmail.readonly` only (D070). A7 retains `gmail.readonly` and adds `gmail.send` for assignment email and forward; do not request `gmail.modify` without a new Decision (D093). Persistence models and Application Polling Engine are **production-operational**. An **External Scheduler** invokes `GET|POST /api/v1/internal/gmail/poll` every five minutes; recommended initial adapter **cron-job.org** (D079). A5 creates communication events only — not suggestions (D077). Gmail settings UI and History recovery are deferred. On D037 handoff: Owner confirms once; server forwards Gmail-origin originals with attachments (or sends non-Gmail assignment email) using Task `summaryPoints`—no fresh LLM (D094); activate Assignment only after Gmail accepts send (D092). Phase 1 follow-up interval confirmation is A8 product law (D095), not an A7 acceptance criterion. Parent A7 remains open for production E2E.
 
-**AI / suggestions (A6):** Application Suggestion Engine is separate from Gmail sync (D084). Heuristic relevance then LLM extraction via `packages/ai` (D085). Owner suggestion HTTP; approve creates unassigned Task only (D080). Recommendations never silently become assignments or emails. Optional `proposedRecipientHint` may map to `proposedRecipientId` only via deterministic match to an active Recipient (D094)—never auto-handoff.
+**AI / suggestions (A6):** Application Suggestion Engine is separate from Gmail sync (D084). Heuristic relevance then LLM extraction via `packages/ai` (D085). Owner suggestion HTTP; approve creates unassigned Task only (D080). Recommendations never silently become assignments, emails, or Follow-up Schedules. Optional `proposedRecipientHint` may map to `proposedRecipientId` only via deterministic match to an active Recipient (D094)—never auto-handoff. AI may recommend a Phase 1 follow-up interval; Owner confirmation required (D095).
 
-**Reminders:** Deterministic policies; timezone `America/Vancouver` (D034); first overdue → Recipient; later may CC Owner; waiting pauses; snooze recalculates; completion stops. Scheduling and sends are **A8**. A7 may disclose that follow-up belongs to the assignment workflow but must not claim reminders are scheduled (D089).
+**Follow-up Engine / Event Notification Engine (A8; D095–D101):** Authoritative rules in [WORKFLOWS.md](WORKFLOWS.md) §10. Follow-up Engine is time-driven and Assignment-scoped (Recipient audience; Gmail outbound). Event Notification Engine is event-driven and separate (Owner audience; **A8 delivery by email via Owner’s connected Gmail**, D099). No due-date / overdue / escalation / Owner-CC ladder. `dueAt` is informational only (D098). Waiting suspends Follow-up Schedules (D097). Timezone for interval arithmetic: `America/Vancouver` (D034). A7 must not claim an active Follow-up Schedule while A8 is not operational (D089). FCM/push remains deferred (D017; A9).
 
 **Retention:** Concrete excerpt `purgeAt` always (D082); ingest `syncedAt + 7 days` (D078); bounded 30-day workflow safety ceiling (not refreshed for long-lived active Tasks) / terminal + 7 days (D020, D082); 30-day completed visibility scrub; immediate audio delete on success; does not delete Gmail mailbox copies (D031). Details: [DATA_RETENTION.md](DATA_RETENTION.md).
 
-**Handoff / capability (A7 planned):** One active Recipient capability per Assignment; reassignment or re-forward revokes the prior active capability (D086). Capability URLs use `NEXT_PUBLIC_APP_URL` for A7 (D094). Delivery outcomes `pending` / `sent` / `failed` are a real model (D092), not a permanent placeholder.
+**Handoff / capability (A7.1–A7.8 implemented; parent A7 open):** One active Recipient capability per Assignment; reassignment or re-forward revokes the prior active capability (D086). Capability URLs use `NEXT_PUBLIC_APP_URL` for A7 (D094). Delivery outcomes `pending` / `sent` / `failed` are a real model (D092), not a permanent placeholder.
 
 ## Contract strategy
 
@@ -249,7 +256,7 @@ flowchart TB
     RT["Realtime optional — planned"]
   end
 
-  Scheduler["External scheduler - Gmail poll, reminders, retention"]
+  Scheduler["External scheduler - Gmail poll, Follow-up Engine, retention"]
   OpenAI["OpenAI"]
 
   NL --> API
@@ -287,5 +294,5 @@ flowchart TB
 1. Degrade to manual/voice rather than silent loss.
 2. Retry transient failures with audit.
 3. Never assign or forward without recorded Owner approval.
-4. Idempotency for forwards, reminders, and ingest.
+4. Idempotency for forwards, Follow-up Attempts, and ingest.
 5. Quarantine invalid AI output; do not guess.

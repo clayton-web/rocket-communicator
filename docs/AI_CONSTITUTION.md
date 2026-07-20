@@ -8,7 +8,7 @@ Subordinate to [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md). Complements [
 
 ## Purpose of AI in this product
 
-AI extracts **operational meaning** into strict structured, point-form outputs and **recommends** next steps. AI does not own business decisions. Deterministic application rules own reminders, retention, and state transitions after human approval gates.
+AI extracts **operational meaning** into strict structured, point-form outputs and **recommends** next steps. AI does not own business decisions. Deterministic application rules own the **Follow-up Engine**, **Event Notification Engine**, retention, and state transitions after human approval gates (D027, D095–D101).
 
 ## AI must NEVER
 
@@ -18,7 +18,7 @@ AI extracts **operational meaning** into strict structured, point-form outputs a
 - Invent **commitments** or promises
 - Invent **properties**, clients, files, or transactions
 - Invent **money** or financial amounts
-- Invent **follow-up dates** or due dates
+- Invent **follow-up dates**, due dates, or Phase 1 intervals as facts when not supported by the source
 
 If a value is not present or clearly implied with labeled inference, the AI must mark it **missing** or omit it—not guess.
 
@@ -26,7 +26,7 @@ If a value is not present or clearly implied with labeled inference, the AI must
 
 - **Separate facts from inference** — every summary point has a kind (e.g. fact, inference, missing, risk)
 - **Identify uncertainty** — call out low-confidence interpretation explicitly
-- **Explain recommendations** — assignee, priority, due date, and follow-up timing include brief rationale grounded in extracted points
+- **Explain recommendations** — assignee, priority, informational `dueAt` when present, and **Phase 1 follow-up interval** include brief rationale grounded in extracted points
 - **Provide confidence** — structured confidence metadata on extractions and recommendations
 - **Ask for clarification when confidence is low** — prefer Owner confirmation or “missing information” over silent fill-in
 
@@ -44,7 +44,7 @@ If a value is not present or clearly implied with labeled inference, the AI must
 - Summary preferences (what to emphasize, how to phrase points)
 - Workflow patterns (how work moves through states)
 - Delegation patterns (which Recipient receives which work)
-- Reminder timing preferences (as signals to **propose** policy changes—not to send reminders directly)
+- Follow-up interval preferences and related Owner confirmation edits (as signals to **propose** policy changes—not to send Follow-up Attempts or Event Notifications directly)
 - Writing style for summaries and outcome structuring
 
 ### The AI does NOT permanently learn
@@ -73,39 +73,40 @@ Trusted automation
 Approved autonomous behaviour
 ```
 
-| Stage                             | Meaning                                                                  | Version-one expectation                                       |
-| --------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------- |
-| **Observe**                       | Record anonymized signals from corrections, dismissals, merges, outcomes | In scope (A14)                                                |
-| **Suggest**                       | Create task suggestions and structured drafts for human review           | In scope                                                      |
-| **Recommend**                     | Propose assignee, priority, due, follow-up, or workflow rules            | In scope                                                      |
-| **Approval**                      | Human accepts, edits, or rejects before side effects                     | Required for all consequential actions                        |
-| **Trusted automation**            | User-approved rules may auto-apply within narrow bounds                  | **Not enabled** in version one; architecture must allow later |
-| **Approved autonomous behaviour** | Broader unattended action within documented policy                       | Future only; never default                                    |
+| Stage                             | Meaning                                                                            | Version-one expectation                                       |
+| --------------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| **Observe**                       | Record anonymized signals from corrections, dismissals, merges, outcomes           | In scope (A14)                                                |
+| **Suggest**                       | Create task suggestions and structured drafts for human review                     | In scope                                                      |
+| **Recommend**                     | Propose assignee, priority, informational due, Phase 1 interval, or workflow rules | In scope                                                      |
+| **Approval**                      | Human accepts, edits, or rejects before side effects                               | Required for all consequential actions                        |
+| **Trusted automation**            | User-approved rules may auto-apply within narrow bounds                            | **Not enabled** in version one; architecture must allow later |
+| **Approved autonomous behaviour** | Broader unattended action within documented policy                                 | Future only; never default                                    |
 
-**State clearly:** Every stage requires explicit Owner approval before advancing. Version one stops at **Approval** for task creation, assignment email/forward, rule activation, and consequential follow-up assignment.
+**State clearly:** Every stage requires explicit Owner approval before advancing. Version one stops at **Approval** for task creation, assignment email/forward, Phase 1 follow-up interval confirmation, rule activation, and consequential next-action assignment.
 
 ## Recommendations vs automation
 
-| Allowed without creating irreversible external effects    | Requires Owner approval                                |
-| --------------------------------------------------------- | ------------------------------------------------------ |
-| Relevance skip of obvious junk (heuristic + cheap filter) | Creating an active **Task** from a suggestion          |
-| Creating a **Task Suggestion**                            | Sending Recipient assignment email and capability link |
-| Showing recommended assignee/priority/dates               | Gmail forward with attachments                         |
-| Proposing a workflow rule                                 | Activating a workflow rule                             |
-| Structuring a voice draft / Task Suggestion               | Creating a Task from voice without suggestion approval |
-| Structuring a voice follow-up suggestion                  | Sending assignment email implied by voice follow-up    |
+| Allowed without creating irreversible external effects                     | Requires Owner approval                                                 |
+| -------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Relevance skip of obvious junk (heuristic + cheap filter)                  | Creating an active **Task** from a suggestion                           |
+| Creating a **Task Suggestion**                                             | Sending Recipient assignment email and capability link                  |
+| Showing recommended assignee/priority/informational due / Phase 1 interval | Gmail forward with attachments                                          |
+| Proposing a workflow rule                                                  | Activating a workflow rule                                              |
+| Structuring a voice draft / Task Suggestion                                | Creating a Task from voice without suggestion approval                  |
+| Structuring a voice next-action suggestion                                 | Sending assignment email implied by voice next action                   |
+| Recommending a Phase 1 follow-up interval                                  | Creating/activating a Follow-up Schedule or sending a Follow-up Attempt |
 
-Reminders and retention are **not** AI-controlled sends; they follow deterministic policies. AI may only **recommend** timing changes for human/policy approval.
+Follow-up Engine sends, Event Notification Engine sends, and retention are **not** AI-controlled; they follow deterministic policies (D027, D095–D099). AI may only **recommend** Phase 1 intervals and related fields for Owner confirmation.
 
 ## Voice and multi-intent structuring
 
 **No voice interaction creates a Task directly (D038).** Voice always produces a proposed action (a Task Suggestion unless confirming an action on an existing Task) requiring Owner approval before a new Task exists.
 
-When speech implies multiple actions (complete, record amount, create follow-up, assign Recipient, set due date), the AI produces a **structured proposal**:
+When speech implies multiple actions (complete, record amount, create next action, assign Recipient, set informational due date, recommend Phase 1 interval), the AI produces a **structured proposal**:
 
 - Completing the **current** Task may proceed on Owner confirmation.
-- Any new follow-up begins as a **Task Suggestion**, not a Task.
-- Recipient assignment email, capability link issuance, and Gmail forwarding wait for the Owner’s **single** bundled confirmation when applicable (D037, D090). Reminder **sends** remain A8 (D089). Handoff outbound text uses existing Task `summaryPoints`—no fresh LLM (D094).
+- Any new next action begins as a **Task Suggestion** / **Next-action Suggestion**, not a Task (OpenAPI wire name remains `FollowUpProposal` during A8—temporary contract naming debt).
+- Recipient assignment email, capability link issuance, Gmail forwarding, and Owner-confirmed Phase 1 interval wait for the Owner’s **single** bundled confirmation when applicable (D037, D090, D095). Follow-up Engine and Event Notification Engine **sends** remain A8 (D089). Handoff outbound text uses existing Task `summaryPoints`—no fresh LLM (D094).
 
 ## Cost and safety controls
 
@@ -116,4 +117,4 @@ When speech implies multiple actions (complete, record amount, create follow-up,
 
 ## Violations
 
-Any feature that invents operational fields, auto-creates tasks from voice, auto-sends assignment mail, or stores raw conversations in durable learning **violates this constitution** and must not ship.
+Any feature that invents operational fields, auto-creates tasks from voice, auto-sends assignment mail, auto-activates Follow-up Schedules, auto-sends Follow-up Attempts or Event Notifications, or stores raw conversations in durable learning **violates this constitution** and must not ship.

@@ -1,6 +1,6 @@
 # Security and privacy
 
-Governed by [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md). Definitions: [GLOSSARY.md](GLOSSARY.md). Decisions: D048–D094 in [DECISIONS.md](DECISIONS.md). Retention/forwarding boundary: [DATA_RETENTION.md](DATA_RETENTION.md).
+Governed by [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md). Definitions: [GLOSSARY.md](GLOSSARY.md). Decisions: D048–D101 in [DECISIONS.md](DECISIONS.md). Retention/forwarding boundary: [DATA_RETENTION.md](DATA_RETENTION.md).
 
 ## Distinctions
 
@@ -48,7 +48,7 @@ Governed by [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md). Definitions: [GL
 | Work request → Suggestion                                     | No (Owner review only)      | Yes                      |
 | View assigned Task via link                                   | Via Owner APIs              | Yes (scoped)             |
 | Complete / waiting / notes / return / clarification           | Yes                         | Yes (POST after confirm) |
-| Snooze                                                        | Yes                         | No                       |
+| Confirm Phase 1 follow-up interval (handoff)                  | Yes (D095)                  | No                       |
 | Approve learning / policies / automations                     | Yes (D054)                  | No                       |
 
 ## Server enforcement
@@ -80,7 +80,7 @@ Record capability ID, bound resource IDs, action, timestamp, request ID, outcome
 
 **A5.3 Owner Gmail OAuth audits** (Owner actor only): `gmail_oauth_started`, `gmail_connected`, `gmail_reconnected`, `gmail_disconnected`. Notes never contain tokens or raw OAuth errors.
 
-Also audit: suggestion decisions, assignment/forward/handoff approvals and delivery attempts (privacy-safe), reminder attempts (A8), retention runs, authz denials, Gmail reauth / insufficient-scope, work-request Suggestions.
+Also audit: suggestion decisions, assignment/forward/handoff approvals and delivery attempts (privacy-safe), **Follow-up Attempts** with durable privacy-safe lifecycle history (A8, D100), Event Notification Engine outcomes (A8, D099), retention runs, authz denials, Gmail reauth / insufficient-scope, work-request Suggestions. Do not require retention of complete email bodies for Follow-up Attempt history.
 
 ## Other controls
 

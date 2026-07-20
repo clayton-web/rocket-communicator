@@ -23,7 +23,7 @@ Root entry: [../README.md](../README.md)
 | Mission, engineering rules, complete Architecture Principles | PROJECT_CONSTITUTION                   |
 | Term definitions                                             | GLOSSARY                               |
 | Product scope / MVP / exclusions                             | PRODUCT_SCOPE                          |
-| Binding decisions                                            | DECISIONS                              |
+| Binding decisions (incl. A8.0 D095–D101)                     | DECISIONS                              |
 | Packages, stack, boundaries, Architecture Principles summary | ARCHITECTURE                           |
 | Task / suggestion transitions                                | STATE_MACHINE                          |
 | Authentication, authorization, capability security           | SECURITY_AND_PRIVACY                   |
@@ -32,6 +32,7 @@ Root entry: [../README.md](../README.md)
 | Retention                                                    | DATA_RETENTION                         |
 | AI ladder / never-invent                                     | AI_CONSTITUTION                        |
 | Delivery plan and implementation/production status           | MILESTONES                             |
+| Follow-up Engine / Event Notification Engine (A8 law)        | WORKFLOWS §10 (cite D095–D101)         |
 | Deployment and operations                                    | DEPLOYMENT                             |
 | Process / review gate                                        | ENGINEERING_WORKFLOW, REVIEW_CHECKLIST |
 | Unresolved unknowns                                          | OPEN_QUESTIONS                         |

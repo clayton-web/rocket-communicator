@@ -24,8 +24,10 @@ Governing references: [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md) · [AI_
 - [ ] Android still does not write core business records directly to Supabase tables
 - [ ] Prisma used only through authorized server APIs
 - [ ] Canonical contract approach preserved (OpenAPI source of truth → generated TS/Kotlin clients; JSON Schema only if derived)
-- [ ] Reminder/retention behaviour remains deterministic (not model-driven sends)
-- [ ] Scheduled work (Gmail Application Polling Engine, reminders, retention) remains app-owned engines invoked by External Schedulers—not business logic inside the scheduler platform
+- [ ] Follow-up Engine / Event Notification Engine / retention behaviour remains deterministic (not model-driven sends) (D027, D095–D101)
+- [ ] Scheduled work (Gmail Application Polling Engine, Follow-up Engine processing, retention) remains app-owned engines invoked by External Schedulers—not business logic inside the scheduler platform
+- [ ] Follow-up Engine does not use `dueAt` / overdue / escalation / Owner CC ladders (D095, D098, D099)
+- [ ] Snooze is not treated as A8 Follow-up product law (D101); Waiting is the suspension mechanism (D097)
 
 ## Documentation
 
@@ -38,11 +40,11 @@ Governing references: [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md) · [AI_
 
 ## AI behaviour
 
-- [ ] No invented facts, deadlines, contacts, commitments, properties, money, or follow-up dates ([AI_CONSTITUTION.md](AI_CONSTITUTION.md))
+- [ ] No invented facts, deadlines, contacts, commitments, properties, money, follow-up dates, or Phase 1 intervals as facts ([AI_CONSTITUTION.md](AI_CONSTITUTION.md))
 - [ ] Facts / inference / missing / low-confidence distinguished in outputs
 - [ ] Recommendations include rationale and confidence where applicable
 - [ ] No silent advance of the learning ladder
-- [ ] Task creation and assignment email/forward still require Owner approval in v1
+- [ ] Task creation, assignment email/forward, and Follow-up Schedule activation still require Owner approval in v1
 - [ ] Durable learning does not store raw message bodies
 - [ ] Invalid model output quarantined rather than guessed
 
@@ -59,8 +61,8 @@ Governing references: [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md) · [AI_
 - [ ] Gmail tokens remain server-side and encrypted at rest
 - [ ] Secrets not committed; `.env` patterns respected
 - [ ] Recipient identity not hard-coded in source; no env-default Recipient as production model (D087)
-- [ ] Audit events recorded for approvals, forwards/handoffs, delivery attempts, reminders, capability use, authz failures
-- [ ] A7 handoff does not claim reminders are scheduled; reminder engine remains A8 (D089)
+- [ ] Audit events recorded for approvals, forwards/handoffs, delivery attempts, Follow-up Attempts (D100), Event Notifications, capability use, authz failures
+- [ ] A7 handoff does not claim a Follow-up Schedule is active; Follow-up Engine / Event Notification Engine remain A8 (D089, D095–D101)
 - [ ] Knowingly incomplete Gmail-origin forwards are not sent (D088)
 
 ## Privacy
@@ -70,7 +72,7 @@ Governing references: [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md) · [AI_
 - [ ] Contact and source exclusions enforced
 - [ ] Notification-access consent and revocation handled honestly
 - [ ] Forwarding privacy boundary disclosed (Gmail copies outside app deletion)
-- [ ] A7 confirmation UI discloses retention boundary and does not over-promise reminder scheduling (D089, D094)
+- [ ] A7 confirmation UI discloses retention boundary and does not over-promise Follow-up Schedule activation (D089, D094)
 
 ## Retention
 
@@ -91,7 +93,7 @@ Governing references: [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md) · [AI_
 
 ## Testing
 
-- [ ] Unit tests for domain rules touched (state, retention dates, reminder idempotency)
+- [ ] Unit tests for domain rules touched (state, retention dates, Follow-up Attempt idempotency when A8 is in scope)
 - [ ] Contract/schema validation for API or AI payloads touched
 - [ ] Regression for approval gates (no email without D037 handoff approval)
 - [ ] Forward idempotency tested if mailer touched (idempotency key + provider message id, D094)

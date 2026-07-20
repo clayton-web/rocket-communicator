@@ -122,7 +122,7 @@ Full Owner↔Recipient production E2E is classified **`A4_FULL_E2E_PASS`**. Reta
 
 ## Gmail polling operations (A5.5)
 
-The **Application Polling Engine** is part of Rocket Communicator (eligibility, sequential sync, History ingestion, locks, audit). Scheduling is **intentionally external** and vendor-neutral (D065, D079): any External Scheduler capable of securely invoking the Authenticated Endpoint every five minutes is acceptable. The scheduler never contains polling logic, business rules, or direct database access.
+The **Application Polling Engine** is part of the AI Communication Action Assistant (eligibility, sequential sync, History ingestion, locks, audit). Scheduling is **intentionally external** and vendor-neutral (D065, D079): any External Scheduler capable of securely invoking the Authenticated Endpoint every five minutes is acceptable. The scheduler never contains polling logic, business rules, or direct database access.
 
 **Recommended initial scheduler:** **cron-job.org**, while the project remains on the Vercel Hobby plan. It supports five-minute HTTP scheduling, works with Hobby hosting, has a free tier suitable for current requirements, and keeps the application architecture vendor-neutral. cron-job.org is an **implementation choice / Infrastructure Adapter**, not an architectural requirement.
 
@@ -186,7 +186,7 @@ Response is aggregate counts only — never raw bodies (D084, D085). Overlapping
 
 **D082 retention (Production-confirmed):** dismissed suggestion excerpts → `updatedAt + 7 days`; approved suggestion excerpts → `updatedAt + 30 days` (workflow safety ceiling).
 
-**A7 status:** A7.0 decisions locked (D086–D094). Do not implement handoff, Gmail `gmail.send`, or Recipient management until A7.1+ is authorized. Roadmap: **A7 → A8 → A9** (no early separate A9.0). Reminder engine remains A8 (D089).
+**A7 status:** A7.0 decisions locked (D086–D094). **A7.1–A7.8 implemented and validated** in the repository; **parent A7 remains OPEN** pending production E2E. **A8.0 documentation Decision Lock** recorded (D095–D101); do not implement Follow-up Engine or Event Notification Engine until A8 implementation is authorized. Roadmap: **A7 → A8 → A9** (no early separate A9.0).
 
 ## Capability links in production
 

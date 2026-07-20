@@ -11,6 +11,17 @@ Workspace domain allowlist for Owner sign-in is environment-local configuration 
 | 12  | Tombstone / audit retention after content purge                                | A13     |                                                                                                  |
 | 13  | Custom domain required before private deployment?                              | A15     | Related to #3                                                                                    |
 
+## Closed in A8.0 documentation Decision Lock
+
+| Topic                                    | Resolution                                                                                                                                                     |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A8 due-date / overdue / escalation model | **Retired** — Follow-up Engine + Event Notification Engine (D095–D101)                                                                                         |
+| Snooze as Follow-up control              | **D101** supersedes D060; Waiting is suspension; prefer snooze endpoint **removal** at A8 contract alignment (not deprecated no-op); OpenAPI unchanged in A8.0 |
+| `dueAt` as scheduling input              | **D098** — informational only                                                                                                                                  |
+| Phase 1 waiting restart                  | **D097** — fresh Phase 1 from resume using the same Owner-confirmed preset (no elapsed-time math)                                                              |
+| A8 Owner Event Notification channel      | **D099** — email via Owner’s connected Gmail; FCM/push remains D017 / A9                                                                                       |
+| `FollowUpProposal` wire rename           | **Retain** during A8; docs term Next-action Suggestion; temporary contract naming debt                                                                         |
+
 ## Closed in A7 decisions
 
 | #   | Former question                                                           | Resolution                                                                          |
@@ -26,4 +37,4 @@ Workspace domain allowlist for Owner sign-in is environment-local configuration 
 | 4   | Gmail polling interval ≤5 minutes? | **D065** — every five minutes            |
 | 5   | Keep Gmail Pub/Sub deferred?       | **D066** — deferred for A5; polling only |
 
-Closed former questions map to decisions in [DECISIONS.md](DECISIONS.md) (including D007, D037–D043, D040–D041, D048–D094). Do not reopen without a new Decision.
+Closed former questions map to decisions in [DECISIONS.md](DECISIONS.md) (including D007, D037–D043, D040–D041, D048–D101). Do not reopen without a new Decision.

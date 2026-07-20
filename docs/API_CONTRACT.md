@@ -2,7 +2,9 @@
 
 **Source of truth:** `packages/contracts/openapi/` → bundled `packages/contracts/dist/openapi.bundled.yaml`.
 
-Related: [STATE_MACHINE.md](STATE_MACHINE.md) · [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md) · [DECISIONS.md](DECISIONS.md) (D007, D044–D047, D045, D059, D065–D094) · [GLOSSARY.md](GLOSSARY.md) · [MILESTONES.md](MILESTONES.md) · [DEPLOYMENT.md](DEPLOYMENT.md)
+Related: [STATE_MACHINE.md](STATE_MACHINE.md) · [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md) · [DECISIONS.md](DECISIONS.md) (D007, D044–D047, D045, D059, D065–D101) · [GLOSSARY.md](GLOSSARY.md) · [MILESTONES.md](MILESTONES.md) · [DEPLOYMENT.md](DEPLOYMENT.md)
+
+**A8.0 product law** (Follow-up Engine / Event Notification Engine, D095–D101) is documentation-locked. OpenAPI still contains historical reminder/snooze/`dueAt`-scheduling-shaped stubs—see **Future A8 contract alignment inventory** below. Do **not** treat those stubs as A8 product law.
 
 ## Ownership
 
@@ -97,7 +99,7 @@ Full rules: [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md).
 | POST   | `/api/v1/tasks/{taskId}/resume`                 | Resume                                                                                                               |
 | POST   | `/api/v1/tasks/{taskId}/complete`               | Complete                                                                                                             |
 | POST   | `/api/v1/tasks/{taskId}/notes`                  | Note                                                                                                                 |
-| POST   | `/api/v1/tasks/{taskId}/snooze`                 | Snooze (D060)                                                                                                        |
+| POST   | `/api/v1/tasks/{taskId}/snooze`                 | Historical snooze surface (D060 superseded by D101 for Follow-up product law; contract debt)                         |
 | POST   | `/api/v1/tasks/{taskId}/dismiss`                | Dismiss (D064)                                                                                                       |
 | POST   | `/api/v1/tasks/{taskId}/return-to-owner`        | Clear assignment to Owner                                                                                            |
 | POST   | `/api/v1/tasks/{taskId}/clarification-requests` | Clarification                                                                                                        |
@@ -120,7 +122,7 @@ Full rules: [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md).
 - Success **200** with `HandoffTaskResponse`: Task (+ version/ETag), delivery path/status (`sent`), Recipient summary, `capabilityId` (**no** raw token), `requiresSendReconsent: false`, `idempotentReplay`. All responses `Cache-Control: no-store`.
 - **Idempotency-first:** organization-scoped lookup on `(organizationId, Idempotency-Key)` before current-state / Gmail checks. Matching **sent** → 200 replay (`idempotentReplay: true`) even with the original (pre-bump) If-Match and even after Recipient deactivation or Gmail disconnect. Matching **pending** → `409 HANDOFF_IN_PROGRESS`. Matching **failed** → same-key retry via A7.5 (historical address snapshot). Fingerprint mismatch → `409 IDEMPOTENCY_KEY_CONFLICT`. Only a **new** handoff compares If-Match to the current Task version and requires an unassigned Task.
 - Delivery failure / incomplete forward / missing send scope → **non-2xx** (retryable provider → `503 HANDOFF_DELIVERY_FAILED`; permanent provider → `400 HANDOFF_DELIVERY_FAILED`; ambiguous → `503 DEPENDENCY_UNAVAILABLE` with attempt left pending; send scope → `403 GMAIL_SEND_SCOPE_REQUIRED`). Do not treat pending rows as success.
-- Reminder schedules/sends are **not** part of this operation (D089). Reassignment and explicit re-forward remain deferred.
+- Follow-up Schedules / Follow-up Engine sends / Event Notification Engine processing are **not** part of this operation (D089). Phase 1 interval confirmation is A8 product law (D095), not an A7 acceptance criterion. Reassignment and explicit re-forward remain deferred.
 
 **Administrative capability issue** (`POST …/capabilities`) remains for A4 recovery: returns raw token once; obeys D086 one-active rule; does **not** send mail/forward.
 
@@ -214,7 +216,7 @@ Public Gmail DTOs never include refresh/access tokens, ciphertext, encryption ke
 **A6 server behaviour:**
 
 - Create unassigned Task from the suggestion.
-- Do **not** create TaskAssignment, issue Capability, send assignment email, Gmail-forward, or schedule reminders.
+- Do **not** create TaskAssignment, issue Capability, send assignment email, Gmail-forward, or create a Follow-up Schedule.
 - If `recipientId` is present → HTTP **400** with error code **`RECIPIENT_HANDOFF_NOT_AVAILABLE`**.
 - Recipient handoff remains **A7** via `POST /api/v1/tasks/{taskId}/handoff` (D037, D090).
 
@@ -260,11 +262,12 @@ Durable foundation in `@aicaa/db` (no Gmail send / no HTTP handlers):
 - **One active capability per Assignment:** partial unique index `task_capabilities_one_active_per_assignment_idx` WHERE `status = 'active'` (Prisma cannot express partial uniques; migration SQL is source of truth).
 - **Active Recipient email uniqueness:** partial unique on `(organizationId, email_normalized)` WHERE `active` — inactive historical rows may share a normalized email with a later active Recipient.
 - **Distributed boundary:** (1) DB txn creates pending → commit (2) application calls Gmail (later) (3) DB txn records sent/failed. Uncertain windows (accepted-but-unrecorded, pending-never-sent, timeout) remain discoverable as stale `pending`; no separate `unknown` status. Reconciliation of stale/uncertain pending attempts is **later, explicitly-authorized worker** work — not A7.4.
-- **Roadmap boundary:**
+- **Roadmap boundary (status hygiene):**
   - **A7.4:** Gmail OAuth send-scope preparation and transport/MIME utilities only.
-  - **Later application orchestration:** pending → Gmail call → accepted/failed persistence (wires the primitives above; not implemented).
+  - **A7.5–A7.7:** application orchestration + authenticated handoff HTTP — **implemented**.
+  - **A7.8:** Owner confirmation UI + Gmail send re-consent UI — **implemented**.
   - **Later reconciliation/worker:** stale or uncertain pending attempts, only when explicitly authorized.
-- **Remaining (not yet built):** Owner confirmation UI, Gmail re-consent UI, reassignment/explicit re-forward orchestration, proposed-Recipient hint resolution, reconciliation worker, production E2E. (Recipient management HTTP and create-with-`recipientId` rejection shipped in A7.6; handoff HTTP orchestration shipped in A7.7.)
+- **Remaining (not yet built / deferred):** reassignment/explicit re-forward orchestration, proposed-Recipient hint resolution, reconciliation worker, **production E2E** (parent A7 open). Recipient management HTTP and create-with-`recipientId` rejection shipped in A7.6; handoff HTTP in A7.7; Owner confirmation / re-consent UI in A7.8.
 
 ### CreateTaskRequest.recipientId deprecation (D091)
 
@@ -326,3 +329,25 @@ Lists: cursor pagination (`cursor`, `limit` ≤ 100, `items`, `nextCursor`).
 **`GET /api/v1/tasks`:** Ordered by `updatedAt` descending, then `id` descending. The opaque cursor encodes that composite order. All statuses are returned, including `dismissed`; excluding dismissed (or filtering by status) requires a future contracted query parameter—none exists today.
 
 Summary points: OpenAPI `TaskSummaryPoint` discriminated union; max 20 per resource. `SourceReference` is origin metadata without secrets or full bodies.
+
+## Future A8 contract alignment inventory
+
+**A8.0 did not modify OpenAPI.** Product law is D095–D101 and [WORKFLOWS.md](WORKFLOWS.md) §10. The following existing contract/domain shapes are **debt** relative to that law and must be aligned in A8.1 (or the appropriate next contract stage)—not treated as current product authority:
+
+| Concept                                       | Current contract/domain presence | Alignment disposition                                                                                                                                                                                                            |
+| --------------------------------------------- | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ReminderMetadata` / `nextReminderAt`         | Task reminder stub               | **Replace** with Follow-up Schedule / Attempt shapes (or equivalent)                                                                                                                                                             |
+| `RecipientReminderPreferences`                | Recipient stub (`emailEnabled`)  | **Remove** or **deprecate** unless a later Decision requires Recipient-level prefs; Follow-up Policy is Assignment-scoped (D096)                                                                                                 |
+| `FollowUpProposal` / `followUpProposal`       | Completion next-action payload   | **Retain** wire/schema name during A8 as temporary contract naming debt. Canonical docs/product term: **Next-action Suggestion**. Do **not** rename OpenAPI in A8.0; breaking rename only under a later contract-versioning plan |
+| `proposedDueAt` on suggestions / proposals    | Present                          | **Retain** as informational `dueAt` family (D098); must not schedule Follow-up Engine                                                                                                                                            |
+| Task / approve `dueAt`                        | Present                          | **Retain** as optional informational (D098)                                                                                                                                                                                      |
+| `DerivedTaskUrgency` (`due_soon` / `overdue`) | Present                          | **Retain** as display-only (D098); must never trigger sends                                                                                                                                                                      |
+| `POST …/snooze` / `SnoozeTaskRequest`         | Present                          | Product law removed (D101). At A8 contract alignment **prefer remove** the endpoint (not a deprecated no-op), with contract-versioning / client migration. OpenAPI unchanged in A8.0                                             |
+| Assignment Follow-up Policy fields            | Absent                           | **Add** (Phase 1 preset; Phase 2 system interval is config, not Owner field)                                                                                                                                                     |
+| Follow-up Attempt resources / list            | Absent                           | **Add** for audit/operator surfaces as needed (D100)                                                                                                                                                                             |
+| Follow-up Engine processing endpoint          | Absent                           | **Add** authenticated internal endpoint pattern (D079)                                                                                                                                                                           |
+| Event Notification resources                  | Absent                           | **Add** as A8 event architecture is contracted (D099)                                                                                                                                                                            |
+| Event Notification processing / delivery      | Absent                           | **Add** for A8 Owner email via connected Gmail (D099); push remains D017/A9                                                                                                                                                      |
+| Handoff body Phase 1 interval                 | Absent                           | **Add** when Follow-up Engine ships; **not** an A7 acceptance criterion (D089, D095)                                                                                                                                             |
+
+Owner-approved A8.0 dispositions (docs only): retain `FollowUpProposal` wire name during A8; prefer snooze **removal** at contract alignment; Owner Event Notifications by Gmail email (D099).

@@ -1,6 +1,6 @@
 # Milestones
 
-**Current:** **A7** — **A7.1–A7.8 implemented and validated** (contracts through Owner confirmation UI + Gmail send re-consent UI). Production OAuth rollout and production E2E are **not** started, so the **parent A7 milestone remains OPEN**. A7.0 decisions remain locked (D086–D094). A6 Application Suggestion Engine remains **CLOSED** in Production (tag `v0.6.0-a6-complete`). A5 Gmail connection and polling remains **closed and healthy**. Roadmap: **A7 → A8 → A9** (no early separate A9.0).
+**Current:** **A7** — **A7.1–A7.8 implemented and validated** (contracts through Owner confirmation UI + Gmail send re-consent UI). Production OAuth rollout and production E2E are **not** started, so the **parent A7 milestone remains OPEN**. A7.0 decisions remain locked (D086–D094). **A8.0 documentation Decision Lock** is recorded (D095–D101) while A7 remains open; it does **not** weaken A7 acceptance criteria and does **not** authorize A8 implementation. A6 Application Suggestion Engine remains **CLOSED** in Production (tag `v0.6.0-a6-complete`). A5 Gmail connection and polling remains **closed and healthy**. Roadmap: **A7 → A8 → A9** (no early separate A9.0).
 
 Process: [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW.md) · [REVIEW_CHECKLIST.md](REVIEW_CHECKLIST.md) · Operations: [DEPLOYMENT.md](DEPLOYMENT.md)
 
@@ -98,10 +98,10 @@ Slice status:
 - **A7.4 Gmail transport — complete.** `gmail.send` scope handling + incremental re-consent detection; assignment-email and Gmail-forward builders (forwards include persisted Task `summaryPoints` + all required attachments); MIME/attachment/base64url safety; privacy-safe provider error normalization.
 - **A7.5 internal orchestration — complete.** Internal application service coordinating persistence + transport off the DB transaction; exclusive retry ownership; send-generation stale-result rejection; server-controlled HTTPS-enforced capability base origin.
 - **A7.6 Recipient management + task-create guard — complete.** Authenticated Owner Recipient endpoints + deterministic `POST /api/v1/tasks` rejection of any supplied top-level `recipientId`.
-- **A7.7 authenticated Owner handoff HTTP + route-level delivery orchestration — complete.** `POST /api/v1/tasks/{taskId}/handoff` with idempotency-first classification (successful/pending/failed replay + new initial), server-selected delivery mode, Gmail-forward completeness, assignment-email delivery, send-scope/re-consent errors, private→public error mapping, durable audits on state transitions. **No** Owner UI, re-consent UI, reassignment, explicit re-forward, proposed-Recipient hints, reconciliation worker, reminders, or production rollout. Contract/generated clients/Prisma schema/migrations unchanged.
-- **A7.8 Owner confirmation UI + Gmail send re-consent UI — complete.** New thin Owner pages `/tasks` and `/tasks/[taskId]` (did not exist before A7.8); hard Owner auth gate; Recipient select; modal confirmation with `handoff_confirmed_v1`; sessionStorage pending-operation recovery retaining original If-Match + Idempotency-Key; manual retry after OAuth re-consent (no auto-send); truthful pending/ambiguous UX; connection DTO emits `canSend` / `requiresSendReconsent`. **No** reassignment, re-forward, proposed hints, reconciliation, reminders, Recipient CRUD UI, production rollout, or OpenAPI/schema/migration changes.
+- **A7.7 authenticated Owner handoff HTTP + route-level delivery orchestration — complete.** `POST /api/v1/tasks/{taskId}/handoff` with idempotency-first classification (successful/pending/failed replay + new initial), server-selected delivery mode, Gmail-forward completeness, assignment-email delivery, send-scope/re-consent errors, private→public error mapping, durable audits on state transitions. **No** Owner UI, re-consent UI, reassignment, explicit re-forward, proposed-Recipient hints, reconciliation worker, Follow-up Engine, or production rollout in this slice. Contract/generated clients/Prisma schema/migrations unchanged.
+- **A7.8 Owner confirmation UI + Gmail send re-consent UI — complete.** New thin Owner pages `/tasks` and `/tasks/[taskId]` (did not exist before A7.8); hard Owner auth gate; Recipient select; modal confirmation with `handoff_confirmed_v1`; sessionStorage pending-operation recovery retaining original If-Match + Idempotency-Key; manual retry after OAuth re-consent (no auto-send); truthful pending/ambiguous UX; connection DTO emits `canSend` / `requiresSendReconsent`. **No** reassignment, re-forward, proposed hints, reconciliation, Follow-up Engine, Recipient CRUD UI, production rollout, or OpenAPI/schema/migration changes.
 
-**Intent:** Single Owner confirmation (D037) for Recipient handoff on an **existing** unassigned Task (D080): Assignment + Capability + Gmail forward (Gmail-origin) or assignment email (non-Gmail), via `POST /api/v1/tasks/{taskId}/handoff` (D090). Reminder **engine** remains A8 (D089).
+**Intent:** Single Owner confirmation (D037) for Recipient handoff on an **existing** unassigned Task (D080): Assignment + Capability + Gmail forward (Gmail-origin) or assignment email (non-Gmail), via `POST /api/v1/tasks/{taskId}/handoff` (D090). Follow-up Engine and Event Notification Engine remain A8 (D089, D095–D101).
 
 **Acceptance criteria (full A7 — not yet met):**
 
@@ -114,23 +114,27 @@ Slice status:
 - [ ] One active capability per Assignment; reassignment/re-forward revokes prior active capability; matched **superseded** capabilities may return `CAPABILITY_NO_LONGER_ACTIVE`; other unusable/unmatched cases remain generic `UNAUTHORIZED` (D086) — **error code contracted in A7.1**; reassignment/re-forward orchestration **deferred** (not part of A7.7)
 - [x] Same failed-delivery retry reuses attempt/capability unless Recipient or security-sensitive details changed (D086, D092) — **implemented in A7.7** (same-key failed retry via A7.5 `retryHandoff`; snapshot address preserved)
 - [x] `POST /api/v1/tasks` create-with-`recipientId` rejected/deprecated once handoff ships (D091) — **implemented in A7.6**
-- [x] Thin Owner confirmation UI discloses D037 handoff + Gmail retention boundary; does **not** claim reminders are scheduled (D089, D094) — **implemented in A7.8**
+- [x] Thin Owner confirmation UI discloses D037 handoff + Gmail retention boundary; does **not** claim a Follow-up Schedule is active (D089, D094) — **implemented in A7.8**
 - [x] Insufficient `gmail.send` → clear re-consent / insufficient-scope path (D093) — **API path A7.7**; **Owner re-consent UI A7.8**
-- [x] No reminder schedules, reminder scheduler jobs, or reminder sends in A7 (D089) — **still true after A7.8**
+- [x] No Follow-up Schedules, Follow-up Engine jobs/sends, or Event Notification Engine processing in A7 (D089) — **still true after A7.8**
 - [ ] No fresh LLM during handoff; optional `proposedRecipientHint` → `proposedRecipientId` only via deterministic active-Recipient match (D094) — **no fresh LLM (A7.7/A7.8)**; proposed-hint fields are **not** in the current OpenAPI request and remain **deferred** (unchecked)
 - [ ] Production E2E: Gmail-origin forward + non-Gmail assignment email + Recipient capability action; A4/A5/A6 baselines remain healthy
 
-**Out of scope for A7:** Reminder/escalation engine (A8); Android Owner UI (A9); Gmail settings UI / History recovery; CRM; `gmail.modify` unless a new Decision.
+**Out of scope for A7:** Follow-up Engine and Event Notification Engine (A8; D095–D101); Android Owner UI (A9); Gmail settings UI / History recovery; CRM; `gmail.modify` unless a new Decision.
 
-**Binding decisions:** D037, D042, D080, D086–D094 (and D010, D011, D016, D031 as applicable).
+**Binding decisions:** D037, D042, D080, D086–D094 (and D010, D011, D016, D031 as applicable). A8.0 product law (D095–D101) must not be implemented inside A7.
 
-### A8 — Reminder and escalation engine
+### A8 — Follow-up Engine and Event Notification Engine
 
-Deterministic reminders; first overdue → Recipient; later may CC Owner; waiting pauses; completed stops. Consumes active **delivered** Assignments established by A7 (D089).
+**A8.0 documentation Decision Lock:** D095–D101 (complete as docs-only). Implementation follows A7 official close.
 
-### A9 — Android authentication and task interface
+**Follow-up Engine (D095–D098, D100–D101):** time-driven, Assignment-scoped Recipient follow-ups after delivery `sent`. Phase 1 Owner-confirmed initial interval (24h / 48h / 72h / 1 week); Phase 2 system standard interval (default 24h, not Owner-configurable in v1). Waiting suspends; no snooze product rule; `dueAt` informational only. Authoritative rules: [WORKFLOWS.md](WORKFLOWS.md) §10a.
 
-Sideload Owner app; approve suggestions and manage tasks via API.
+**Event Notification Engine (D099):** event-driven Owner notifications (separate engine; no escalation CC ladder). A8 delivers Owner notifications by email via the Owner’s connected Gmail for the core event list; FCM/push remains deferred (D017; A9). Authoritative rules: [WORKFLOWS.md](WORKFLOWS.md) §10b.
+
+### A9 — Android authentication and Owner interface
+
+Sideload Owner app; approve suggestions, manage Tasks/delegation, and deliver Event Notifications (push remains D017-gated). Manual Task creation remains available but is not the primary goal.
 
 ### A10 — Google Messages notification capture
 

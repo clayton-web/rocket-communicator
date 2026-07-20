@@ -12,15 +12,15 @@ In version one: the **Owner** only. There is no second application login.
 
 ### Owner
 
-The single authenticated application user. Signs in with Google Workspace via Supabase Auth. Primary interface: Android. Approves suggestions, assignments/forwards, and durable learning (D054).
+The single authenticated application user. Signs in with Google Workspace via Supabase Auth. Primary interface: Android. Approves suggestions, assignments/forwards, Follow-up Phase 1 intervals, and durable learning (D054). Receives **Event Notifications** (D099).
 
 ### Recipient
 
-A delegated person identified by email in an Owner-managed Recipient record (D087). Receives assignment emails and acts through capability links. **No** application account or Session (D049). A7 may expose minimal list/create/update/inactive management—not a CRM.
+A delegated person identified by email in an Owner-managed Recipient record (D087). Receives assignment emails and **Follow-up Attempts**, and acts through capability links. **No** application account or Session (D049). A7 may expose minimal list/create/update/inactive management—not a CRM.
 
 **May (via capability):** view assigned task; complete; waiting/resume; notes; return to Owner; request clarification; submit work request → Task Suggestion.
 
-**May not:** create standalone tasks; approve learning; change rules/policies; create automations; snooze.
+**May not:** create standalone tasks; approve learning; change rules/policies; create automations; own Follow-up Policy.
 
 ### Administrator (relationship label)
 
@@ -56,15 +56,23 @@ Candidate work that is **not** yet a Task. Requires Owner approve/edit/dismiss/m
 
 ### Task
 
-Approved actionable work with status, summary, assignment attribute, scheduling, and audit. Never created directly by voice (D038). A6 suggestion approval yields an unassigned Task (D080). Owner/self work remains unassigned (D094).
+Approved actionable work with status, summary, assignment attribute, optional informational `dueAt`, and audit. Never created directly by voice (D038). A6 suggestion approval yields an unassigned Task (D080). Owner/self work remains unassigned (D094).
 
 ### Assignment
 
 Persisted binding of a Task to a Recipient (and intended email), including allowed Recipient actions for that handoff. Assignment is an **attribute of the Task**, not a Task status ([STATE_MACHINE.md](STATE_MACHINE.md)). A Task may have historical assignment rows over time; at most one assignment is active. Delivery outcomes: `pending` / `sent` / `failed` (D092). Activate only after Gmail accepts send.
 
-For Gmail-origin and non-Gmail handoffs, approval of assignment and outbound mail is one confirmation (D037). A6 does not create Assignments (D080). Reminder scheduling is A8 (D089).
+For Gmail-origin and non-Gmail handoffs, approval of assignment and outbound mail is one confirmation (D037). A6 does not create Assignments (D080). **Follow-up Schedules** are Assignment-scoped and owned by A8 (D089, D095–D096).
 
 Assignment ≠ Capability: assignment records who should receive work and which actions are allowed; a Capability is the issued authorization grant for an active assignment. At most one **active** capability per Assignment; re-forward/reassignment revokes the prior (D086).
+
+### Active Assignment
+
+An Assignment that is the current binding for the Task (`cleared_at` unset / not returned) and has not been superseded by reassignment. See [STATE_MACHINE.md](STATE_MACHINE.md).
+
+### Follow-up eligible Assignment
+
+An **active** Assignment whose delivery status is **`sent`**, whose Task is not terminal (`completed` / `dismissed`), that is not suspended by **waiting**, and whose capability/Assignment has not been terminated. Only then may a Follow-up Schedule be active (D096).
 
 ### Capability
 
@@ -86,21 +94,27 @@ Authorization model for Recipient actions via a valid Capability—not a sign-in
 
 Typed bullet in a structured summary (fact, inference, missing, request, etc.).
 
-### Follow-up
+### Next-action Suggestion
 
-Later Suggestion or Task created because prior work produced further action. Voice follow-ups start as Suggestions (D038).
+New work proposed because prior work produced further action (for example after completion). Always begins as a **Task Suggestion** requiring Owner approval (D038). Voice-originated next actions start here.
+
+**Terminology note:** Canonical product/docs term is **Next-action Suggestion**. OpenAPI retains the wire/schema name `FollowUpProposal` during A8 as **temporary contract naming debt** (do not rename in A8.0; breaking rename only under a later contract-versioning plan). Must not be confused with the **Follow-up Engine** (D095).
 
 ### Return to Owner / Clarification Request
 
-Recipient capability actions that hand work back or ask the Owner for information without creating a standalone Task.
+Recipient capability actions that hand work back or ask the Owner for information without creating a standalone Task. These are Event Notification Engine inputs (D099), not Follow-up Engine cadence changes beyond eligibility termination/suspension rules.
 
 ### Task Outcome
 
 Structured completion record (presets and/or notes).
 
-### Waiting / Snooze
+### Waiting
 
-Waiting: pauses reminders until a time. Snooze: Owner-only recalculation of next reminder (Recipients use Waiting).
+Recipient or Owner suspension of actionable work until `waiting_until`. **Waiting suspends** any active Follow-up Schedule; timers do not preserve partial elapsed time (D097). Recipients use Waiting; they do not own Follow-up Policy.
+
+### dueAt
+
+Optional informational timestamp on a Task (or suggestion refine field). AI-extracted when clearly present; Owner-editable; for display and summary context only. **Never** an input to the Follow-up Engine (D098).
 
 ---
 
@@ -132,11 +146,31 @@ Replaceable integration layer for hosting, scheduling, storage, messaging, or cl
 
 ---
 
-## Reminders and retention
+## Follow-up and Event Notification
 
-### Reminder / Reminder Policy / Reminder Attempt
+### Follow-up Engine
 
-Scheduled email attention (v1); deterministic policy; idempotent send record.
+Time-driven, Assignment-scoped engine that sends **Recipient** follow-ups after assignment delivery is `sent` (D095). Not a due-date or escalation engine. Authoritative rules: [WORKFLOWS.md](WORKFLOWS.md) §10.
+
+### Follow-up Policy
+
+Deterministic rules governing Phase 1 presets, Phase 2 standard interval, eligibility, suspension, and termination (D095–D097). Owned by the application; not by the LLM.
+
+### Follow-up Schedule
+
+The active scheduling state for **one Assignment** (Phase 1 or Phase 2). At most one active schedule per Assignment; never transfers between Assignments (D096).
+
+### Follow-up Attempt
+
+One outbound follow-up send (or suppressed/cancelled attempt) under a Follow-up Schedule, with durable privacy-safe history (D100).
+
+### Event Notification Engine
+
+Event-driven engine that notifies the **Owner** about meaningful domain events (D099). Separate from the Follow-up Engine. Push/FCM delivery remains deferred (D017); A9 concern for Android push.
+
+### Event Notification
+
+A single Owner-facing notification produced by the Event Notification Engine for a domain event (for example completion, clarification, return, delivery failure, Gmail disconnect, capability expiry). In A8, delivered by **email via the Owner’s connected Gmail** (D099). Push/FCM remains deferred (D017).
 
 ### Retention / Tombstone
 
@@ -156,15 +190,15 @@ Model certainty metadata; Owner durable preferences without raw bodies (D054); r
 
 ### Canonical Contract / OpenAPI
 
-OpenAPI is the sole HTTP contract source of truth (D007). TypeScript/Kotlin are generated from it.
+OpenAPI is the sole HTTP contract source of truth (D007). TypeScript/Kotlin are generated from OpenAPI.
 
 ### State Machine
 
-Persisted statuses and transitions; derived urgency labels. See [STATE_MACHINE.md](STATE_MACHINE.md).
+Persisted statuses and transitions; derived display labels. See [STATE_MACHINE.md](STATE_MACHINE.md).
 
 ### Audit Event
 
-Append-only security/workflow record. For capability actions: truthful capability attribution without claiming verified personal identity (D052, D057).
+Append-only security/workflow record. For capability actions: truthful capability attribution without claiming verified personal identity (D052, D057). Follow-up Attempts require durable privacy-safe history (D100).
 
 ### Version One / MVP
 

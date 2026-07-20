@@ -14,11 +14,13 @@ Turn ongoing personal business communications into temporary, actionable work—
 
 ## Product philosophy
 
-- The product is an **action assistant**, not a communication archive or CRM.
+- The product is an **AI Communication Action Assistant**, not a conventional task manager, calendar manager, due-date reminder application, communication archive, or CRM.
+- **The product exists to ensure communications are followed through until conclusion.** Communication triage may describe one capability; it does not replace this philosophy.
 - **Humans own decisions**; AI proposes structured options.
 - Communication content is **temporary**; workflow intelligence is **durable**.
 - Automation earns trust through an explicit ladder of approval—never through silent behaviour change.
 - The Android app is the Owner’s primary instrument; the Recipient path stays deliberately thin (email + capability link + minimal web task view).
+- Time-driven Recipient follow-through is owned by the **Follow-up Engine**; event-driven Owner alerts are owned by the **Event Notification Engine** (D095, D099)—separate engines, not an escalation ladder.
 
 ## Long-term vision
 
@@ -38,7 +40,7 @@ The product succeeds when:
 
 1. The Owner trusts suggestions enough to review them quickly, not re-read every message.
 2. Recipient handoffs happen only with explicit Owner approval, with clear audit of who authorized what.
-3. Overdue work is followed up deterministically without reminder spam.
+3. Assigned work is followed through deterministically until conclusion, without follow-up spam or due-date escalation ladders.
 4. Completions capture meaningful outcomes (including voice) and can spawn the next approved action.
 5. Temporary communication data leaves the application on schedule, while durable preferences improve the system.
 6. Operating cost and maintenance remain low enough for private, single-operator use.

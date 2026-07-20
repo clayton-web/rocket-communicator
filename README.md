@@ -2,6 +2,8 @@
 
 Private, Android-first assistant that turns personal business communications into temporary, actionable work for one authenticated **Owner** and delegated **Recipients** who act through task-specific **capability links**—no Recipient application accounts.
 
+The product exists to ensure communications are followed through until conclusion. It is not a conventional task manager, calendar, or due-date reminder application.
+
 **Governing document:** [docs/PROJECT_CONSTITUTION.md](docs/PROJECT_CONSTITUTION.md)
 
 ## Purpose
@@ -18,10 +20,12 @@ Not a permanent communication archive.
 | A4 task + capability             | Complete — **`A4_FULL_E2E_PASS`**: migration applied; full production Owner↔Recipient E2E passed                                  |
 | A5 Gmail connection and polling  | **Complete and Production-operational** (OAuth, encrypted tokens, History seed + incremental poll, locks, dedupe, audit, cron 5m) |
 | A6 Application Suggestion Engine | **Complete and Production-operational** (tag `v0.6.0-a6-complete`)                                                                |
+| A7 Gmail forward / handoff       | **A7.1–A7.8 implemented and validated**; **parent A7 remains OPEN** pending production E2E                                        |
+| A8.0 documentation lock          | **Complete (docs-only)** — Follow-up Engine + Event Notification Engine (D095–D101); no A8 implementation yet                     |
 | Production baseline              | Healthy; A4, A5, and A6 operational                                                                                               |
-| Next                             | **A7** — A7.1 OpenAPI contracted; next handlers/persistence (A7.2+) ([MILESTONES](docs/MILESTONES.md))                            |
+| Next                             | Close parent **A7** (production E2E), then **A8** implementation ([MILESTONES](docs/MILESTONES.md))                               |
 | Deferred (non-blocking)          | Gmail settings UI; History recovery                                                                                               |
-| Later                            | Reminders (A8), Android task UI (A9), notifications, voice, workers                                                               |
+| Later                            | Follow-up Engine / Event Notification Engine (A8), Android Owner UI (A9), notifications, voice, workers                           |
 
 Operations: [DEPLOYMENT](docs/DEPLOYMENT.md). Terms: [GLOSSARY](docs/GLOSSARY.md). Plan: [MILESTONES](docs/MILESTONES.md).
 
