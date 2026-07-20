@@ -10,8 +10,10 @@ export default async function HomePage() {
       {owner ? (
         <>
           <p>Signed in as Owner.</p>
-          <p className="status">Session API: GET /api/v1/session</p>
           <p>Display name: {owner.session.displayName}</p>
+          <p className="status">
+            <Link href="/tasks">Tasks</Link>
+          </p>
         </>
       ) : (
         <>

@@ -49,5 +49,6 @@ describe('HomePage', () => {
     render(await HomePage());
     expect(screen.getByText('Signed in as Owner.')).toBeInTheDocument();
     expect(screen.getByText('Display name: Owner Name')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Tasks' })).toHaveAttribute('href', '/tasks');
   });
 });
