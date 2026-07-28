@@ -1,6 +1,6 @@
 # Security and privacy
 
-Governed by [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md). Definitions: [GLOSSARY.md](GLOSSARY.md). Decisions: D048–D101 in [DECISIONS.md](DECISIONS.md). Retention/forwarding boundary: [DATA_RETENTION.md](DATA_RETENTION.md).
+Governed by [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md). Definitions: [GLOSSARY.md](GLOSSARY.md). Decisions: D048–D101 plus the telemetry boundary in **D113–D115** in [DECISIONS.md](DECISIONS.md). Retention/forwarding boundary: [DATA_RETENTION.md](DATA_RETENTION.md).
 
 ## Distinctions
 
@@ -83,6 +83,25 @@ Record capability ID, bound resource IDs, action, timestamp, request ID, outcome
 **A5.3 Owner Gmail OAuth audits** (Owner actor only): `gmail_oauth_started`, `gmail_connected`, `gmail_reconnected`, `gmail_disconnected`. Notes never contain tokens or raw OAuth errors.
 
 Also audit: suggestion decisions, assignment/forward/handoff approvals and delivery attempts (privacy-safe), **reminder scheduling changes and delivery attempts** with durable privacy-safe lifecycle history, including truthful skip and failure reasons and generation identity (A8, D100, D109), Event Notification Engine outcomes (A8, D099), retention runs, authz denials, Gmail reauth / insufficient-scope, work-request Suggestions. Do not require retention of complete email bodies for reminder history, and never record a capability token or capability URL in it (D109).
+
+## Telemetry and diagnostics boundary (P1; D113–D115)
+
+**Not implemented** — no telemetry, analytics, RUM, or vendor integration exists today. This records the approved boundary before any of it is built.
+
+**Capability URLs are credentials.** The Capability Link carries the raw authorization secret **in the URL path** (`/c/{token}`). Any system that records URLs therefore records credentials.
+
+- **Client telemetry, analytics, performance reporting, error reporting, and logging must never transmit, store, or forward a raw `/c/{token}` path, a capability token, or a capability token hash** (D114).
+- **Chosen default: capability routes are excluded from client telemetry entirely.** Route-template scrubbing was considered and **rejected as the default**, because it places the secret inside the reporting path at least momentarily and depends on a scrubbing implementation remaining correct indefinitely. Full exclusion fails safe.
+- **Server-side** privacy-safe diagnostics for capability routes are permitted **only** with the route identified as a static template that never carries the token value.
+- This is enforced by an **automated assertion**, not review alone (D119).
+
+**Never permitted in any telemetry, log, metric, or error payload** (D114): capability tokens and URLs; OAuth access, refresh, or state tokens; PKCE verifiers; email bodies and subjects; Task notes and summary text; communication excerpts; attachment content; MIME; plaintext Recipient email addresses; full `Idempotency-Key` values; raw provider error bodies; connection strings.
+
+**Permitted:** stable non-secret identifiers, non-reversible fingerprints, categories, enum outcomes, counters, and durations — the existing A7.5 privacy-safe pattern, generalized.
+
+**Telemetry is not authority (D113).** Operational telemetry answers only whether the application is working properly. It is **not** a business record, **not** audit history, and **not** an AI-learning source; it must never drive product behaviour, alter business state, or be promoted into learning input. Audit history must never be derived from telemetry, and telemetry must never be edited to make audit history look consistent.
+
+**No behavioural tracking.** P1 authorizes no commercial analytics vendor, session replay, or behavioural tracking (D115). Passive behaviour, inactivity, and the absence of a correction are never treated as approval or as a decision (D113).
 
 ## Other controls
 

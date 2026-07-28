@@ -14,19 +14,21 @@ Not a permanent communication archive.
 
 ## Current status
 
-| Area                             | Status                                                                                                                                                                   |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| A3 Owner authentication          | Complete; production-verified (`GET /api/v1/session` → 200, `organizationId` = `axford`)                                                                                 |
-| A4 task + capability             | Complete — **`A4_FULL_E2E_PASS`**: migration applied; full production Owner↔Recipient E2E passed                                                                         |
-| A5 Gmail connection and polling  | **Complete and Production-operational** (OAuth, encrypted tokens, History seed + incremental poll, locks, dedupe, audit, cron 5m)                                        |
-| A6 Application Suggestion Engine | **Complete and Production-operational** (tag `v0.6.0-a6-complete`)                                                                                                       |
-| A7 Gmail forward / handoff       | **Complete and Production-operational** (tag `v0.7.0-a7-complete`) — production E2E passed: both delivery paths, Recipient capability completion, Owner notes visibility |
-| A8.0 documentation lock          | **Complete (docs-only)** — D095–D101; **partly superseded by A8.1**                                                                                                      |
-| A8.1 documentation lock          | **Complete (docs-only)** — due-date-driven reminder model (D102–D110); constitution amended under a narrow exception; **no A8 code, schema, contract, or UI exists**     |
-| Production baseline              | Healthy; A4, A5, A6, and A7 operational                                                                                                                                  |
-| Next                             | **P1** Application Experience Foundation, then A8 implementation — each requires explicit authorization ([MILESTONES](docs/MILESTONES.md))                               |
-| Deferred (non-blocking)          | A7 deferred backlog (reassignment / re-forward, proposed-Recipient hints, reconciliation worker, Recipient management UI); Gmail settings UI; History recovery           |
-| Later                            | Follow-up Engine / Event Notification Engine (A8), Android Owner UI (A9), notifications, voice, workers; Owner-created additional reminders (deferred slice, D110)       |
+| Area                             | Status                                                                                                                                                                                                         |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A3 Owner authentication          | Complete; production-verified (`GET /api/v1/session` → 200, `organizationId` = `axford`)                                                                                                                       |
+| A4 task + capability             | Complete — **`A4_FULL_E2E_PASS`**: migration applied; full production Owner↔Recipient E2E passed                                                                                                               |
+| A5 Gmail connection and polling  | **Complete and Production-operational** (OAuth, encrypted tokens, History seed + incremental poll, locks, dedupe, audit, cron 5m)                                                                              |
+| A6 Application Suggestion Engine | **Complete and Production-operational** (tag `v0.6.0-a6-complete`)                                                                                                                                             |
+| A7 Gmail forward / handoff       | **Complete and Production-operational** (tag `v0.7.0-a7-complete`) — production E2E passed: both delivery paths, Recipient capability completion, Owner notes visibility                                       |
+| A8.0 documentation lock          | **Complete (docs-only)** — D095–D101; **partly superseded by A8.1**                                                                                                                                            |
+| A8.1 documentation lock          | **Complete (docs-only)** — due-date-driven reminder model (D102–D110); constitution amended under a narrow exception; **no A8 code, schema, contract, or UI exists**                                           |
+| P1.0 documentation lock          | **Complete (docs-only)** — Owner **web** experience foundation scoped (D111–D120); **no P1 code, shell, token package, telemetry, or browser harness exists**                                                  |
+| Production baseline              | Healthy; A4, A5, A6, and A7 operational                                                                                                                                                                        |
+| Next                             | **P1.1–P1.5** Application Experience Foundation implementation (authorized, not started), then remaining A8 implementation slices ([MILESTONES](docs/MILESTONES.md))                                           |
+| Deferred (non-blocking)          | A7 deferred backlog (reassignment / re-forward, proposed-Recipient hints, reconciliation worker, Recipient management UI); Gmail settings UI; History recovery                                                 |
+| Later                            | Follow-up Engine / Event Notification Engine (A8), Android Owner UI (A9), notifications, voice, workers; Owner-created additional reminders (deferred slice, D110)                                             |
+| Open product decision            | **D120** — product name. The official name is “AI Communication Action Assistant”; “Rocket Communicator” has no repository authority. P1 keeps the current name ([OPEN_QUESTIONS](docs/OPEN_QUESTIONS.md) #22) |
 
 Operations: [DEPLOYMENT](docs/DEPLOYMENT.md). Terms: [GLOSSARY](docs/GLOSSARY.md). Plan: [MILESTONES](docs/MILESTONES.md).
 
@@ -43,6 +45,8 @@ packages/eslint-config/
 packages/typescript-config/
 docs/
 ```
+
+`packages/ui/` is authorized as a **semantic-token layer only** (D116) and **does not exist yet**; it is created during P1.4. It is not a component library.
 
 Package responsibilities: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 

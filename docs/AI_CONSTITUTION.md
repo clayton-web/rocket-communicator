@@ -52,8 +52,22 @@ If a value is not present or clearly implied with labeled inference, the AI must
 - Communication content (raw bodies, notification text, email threads)
 - Personal conversations as narrative history
 - Private message history
+- **Operational telemetry** — timing, error rates, request failures, retries, connectivity, and rendering errors are health measurement, not learning input (D113)
+- **Passive behaviour** — page views, clicks, dwell time, inactivity, and the **absence of a correction** are never approval and never a decision (D113)
 
 Learning records must not retain raw message bodies. See [DATA_RETENTION.md](DATA_RETENTION.md).
+
+### Measurement is not learning (D113)
+
+The four operational data classes are distinct and defined in [GLOSSARY.md](GLOSSARY.md): **business records**, **audit history**, **operational telemetry**, and **structured learning signals**.
+
+- **Operational telemetry must never silently become training data or a learning signal.** It must never drive product behaviour or alter business state.
+- **A structured learning signal must never be inferred from low-level click or usage tracking.** It records what decision the Owner made, what alternatives existed, and what happened afterward.
+- **Human corrections outrank passive usage tracking** as learning evidence.
+- **AI recommendations must remain distinguishable from human-approved decisions** and must never become authoritative business facts.
+- **Learning signals must never rewrite audit history.**
+
+No learning signals are captured today. Capture remains **A14**; P1 and A8 create no learning tables (D110, D113).
 
 ## Learning ladder
 
@@ -117,4 +131,4 @@ When speech implies multiple actions (complete, record amount, create next actio
 
 ## Violations
 
-Any feature that invents operational fields, auto-creates tasks from voice, auto-sends assignment mail, auto-activates Reminder Schedules, auto-sends reminders or Event Notifications, or stores raw conversations in durable learning **violates this constitution** and must not ship.
+Any feature that invents operational fields, auto-creates tasks from voice, auto-sends assignment mail, auto-activates Reminder Schedules, auto-sends reminders or Event Notifications, stores raw conversations in durable learning, **treats operational telemetry as a learning signal**, **infers Owner approval from passive behaviour or inactivity**, or **lets AI adapt the interface without approval** (D113) **violates this constitution** and must not ship.

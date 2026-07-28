@@ -4,6 +4,8 @@ Persisted states and transitions (`packages/domain`). Related: [API_CONTRACT.md]
 
 **Mental model:** Task status is independent of Assignment. Assignment binds Recipient + allowed actions. Capability authorizes those actions via a Capability Link. **Reminder Schedules are Task-scoped** and driven by the Owner-selected due date (D102, D104; supersedes the Assignment-scoped rule in D096). See Glossary.
 
+**P1 introduces no state change.** The P1.0 lock (D111–D120) adds no persisted state, transition, actor, permission, concurrency rule, or audit semantic. It governs how existing states are **presented** — truthful loading, error, ambiguous, offline, and stale affordances (D112) and organization-local date display (D117) — and must never present a transition as having occurred before the server confirms it.
+
 ---
 
 ## Task suggestion
@@ -45,6 +47,8 @@ AI and voice create suggestions, never tasks (D038).
 **Current derivation (implemented, contract debt):** both labels are computed from the instant-typed `dueAt` field, with `due_soon` using a 24-hour window before that instant. That threshold is an artefact of the pre-A8.1 instant representation. When the due date aligns to a local calendar date (D109), the derivation must be restated in local-calendar terms; until then, do not cite the 24-hour window as reminder law — reminder occurrences never use it (D103).
 
 These labels remain **derived and never persisted**, and are not computed while `waiting`, `completed`, or `dismissed`. They are **no longer display-only**: D098 is superseded by D102, so the due date they derive from is now the authoritative reminder scheduling input. The labels themselves still **must not** be the scheduling mechanism — reminder occurrences are computed from the due **date** by the rules in [WORKFLOWS.md](WORKFLOWS.md) §10a (D103), not from a label. Escalation, Owner CC ladders, and label-triggered sends remain prohibited (D099).
+
+**Display rendering (P1, D117; not implemented).** When these labels and their dates are rendered on the Owner web surface, they must be formatted in the configured Owner **organization** timezone (`America/Vancouver`, D034) and must **never** silently use the browser, device, or machine-local timezone. That formatter is **presentation infrastructure only** and must not be used as, or grow into, the scheduling resolver — **D103** remains the sole authority for occurrence arithmetic.
 
 ### Due date
 

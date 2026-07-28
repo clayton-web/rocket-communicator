@@ -14,7 +14,7 @@ The product exists to ensure communications are followed through until conclusio
 
 Roles and permissions: [GLOSSARY.md](GLOSSARY.md) (Owner, Recipient, Administrator label). Security matrix: [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md).
 
-Android is the Owner’s primary interface (capture, review, voice). Web serves Owner auth/APIs, thin Owner handoff surfaces (A7.8), and the minimal Recipient capability view.
+Android is the Owner’s **intended** primary interface (capture, review, voice) and remains **A9** by name. Web serves Owner auth/APIs, Owner handoff surfaces (A7.8), and the minimal Recipient capability view; it is the currently-operational Owner instrument. **P1** makes that web Owner surface reliable — a shared application shell, truthful experience states, organization-local display, and operational observability (D111–D120) — without displacing the Android plan and without adding product features. Details: [MILESTONES.md](MILESTONES.md).
 
 ## Included communication sources (v1)
 
@@ -30,6 +30,8 @@ Android is the Owner’s primary interface (capture, review, voice). Web serves 
 
 WhatsApp, Messenger, Signal; call recording / live-call transcription; historical SMS import; replacing Messages or Phone; automatic client replies; multiple Gmail accounts; Play Store; Rocket PM; Neon; FCM unless later justified (D017); permanent archive; full Recipient dashboard; second Authenticated User; general-purpose reminder application / escalation ladders / Owner CC ladders; arbitrary recurrence; general calendar management; Owner snooze as a Follow-up control (D101). Also excluded from the **initial A8 slice** (D110): preset reminder choices, Owner-created additional reminders and their routes/UI, recurrence editor, reminder-time picker, Recipient reminder preferences, Android reminder UI, AI-controlled scheduling.
 
+Excluded from **P1** (D111): Android application implementation; offline database or local business-record cache; service-worker caching of authenticated business data; offline mutation queues; background synchronization; conflict resolution; new Task, suggestion, Recipient-management, or Gmail-settings features; A8 reminder scheduler, persistence, due-date control, or schedule-status functionality; OpenAPI reminder-debt and dormant reminder-calculator cleanup; schema or migration changes; a general component library; Kotlin design-token generation; arbitrary visual redesign; commercial analytics or behavioural tracking; **AI-controlled UX adaptation**; audit-model changes; reconciliation workers. Dark mode and a health or readiness endpoint are **not** P1 requirements (D115, D119).
+
 ## Product rules (cite decisions)
 
 - Suggestions require Owner approve/edit/dismiss/merge before a Task exists (D008). No auto-create Tasks in v1.
@@ -39,7 +41,8 @@ WhatsApp, Messenger, Signal; call recording / live-call transcription; historica
 - Summaries are structured typed points (facts vs inference vs missing), not prose. Handoff uses existing Task `summaryPoints`—no fresh LLM (D094).
 - **Task due date** is optional and, when explicitly selected by the Owner, is the **authoritative deterministic scheduling input** for reminders (D102). It is an organization-local **calendar date** with no Owner-selected time (D103). This supersedes D098 (`dueAt` informational only).
 - **Follow-up Engine / Event Notification Engine (A8, not implemented):** authoritative rules in [WORKFLOWS.md](WORKFLOWS.md) §10 and D102–D110. Reminders are **Task-scoped** (D104) and send at **09:00 organization-local**: one on the calendar day before the due date (D105), then one each calendar day after it while incomplete, bounded at **14 successful overdue deliveries per schedule generation** (D106). Recipient reminders vs Owner event notifications remain separate; no escalation CC ladder (D099). Owner Event Notifications are delivered by email via the Owner’s connected Gmail; FCM/push remains deferred (D017). Waiting suspends and is the only pause mechanism (D097, D107). AI recommends; deterministic rules send (D027). **Production reminder delivery is gated** on the Event Notification Engine plus the minimum Owner schedule-status UI (D108).
-- Learning Owner-only (D054); propose rules, never silently apply.
+- Learning Owner-only (D054); propose rules, never silently apply. **Operational telemetry is not a learning signal**, and passive behaviour or inactivity is never approval (D113).
+- **Interfaces state what is true (D112).** No optimistic mutation success: the Owner and Recipient interfaces must never render or imply that a business mutation succeeded before the server confirms it, and an ambiguous outcome stays ambiguous. Owner dates and timestamps display in the organization timezone, never silently the browser's (D117). P1 foundation only; adds no product feature.
 
 ## Future-ready (not v1 features)
 

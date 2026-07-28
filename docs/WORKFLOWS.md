@@ -19,7 +19,7 @@ Owner approval is required to create Tasks, Assignments, forwards, and Next-acti
 
 ## Implemented and planned workflow map
 
-Workflow §1 (A5 events + A6 suggestions) and §7 / §12 (approve / merge) are **production-operational**. Workflow §2 (Recipient handoff) is **production-operational** as of A7 close: both delivery paths, Recipient capability completion, and Owner-visible notes are production-verified. Reassignment and explicit re-forward within §2 remain deferred ([MILESTONES.md](MILESTONES.md) A7 deferred backlog). §10 Follow-up Engine and Event Notification Engine are **A8** and **not implemented**: the due-date-driven reminder model is documentation-locked in **A8.1 (D102–D110)** and awaits implementation authorization. §14–§15 and Android capture remain later milestones. Sections below retain target behaviour; milestone labels note when each ships.
+Workflow §1 (A5 events + A6 suggestions) and §7 / §12 (approve / merge) are **production-operational**. Workflow §2 (Recipient handoff) is **production-operational** as of A7 close: both delivery paths, Recipient capability completion, and Owner-visible notes are production-verified. Reassignment and explicit re-forward within §2 remain deferred ([MILESTONES.md](MILESTONES.md) A7 deferred backlog). §10 Follow-up Engine and Event Notification Engine are **A8** and **not implemented**: the due-date-driven reminder model is documentation-locked in **A8.1 (D102–D110)** and awaits implementation authorization. §14–§15 and Android capture remain later milestones. §16 Owner web experience states is **P1**, documentation-locked in **P1.0 (D111–D120)** and not implemented; it changes no workflow behaviour and governs presentation and observation only. Sections below retain target behaviour; milestone labels note when each ships.
 
 ---
 
@@ -220,3 +220,32 @@ Policy-driven: excerpt purge; completed content scrub; audio already deleted on 
 ## 15. Learning / rule proposal _(planned — A14)_
 
 Record `LearningSignal`; optionally propose `WorkflowRule`. Apply only on Owner approval (D054). Recipients do not participate. No silent activation in v1. Owner due-date selections and edits—including a recommended due date compared with the Owner-selected due date, and the outcome that followed—are eligible **future** learning signals without storing raw message bodies (D100, D022, D109). A8 creates **no** learning tables and captures no passive usage.
+
+A **structured learning signal** is a purposefully retained Owner decision with the alternatives that existed and what followed (D113). It must never be inferred from operational telemetry, page views, clicks, dwell time, or inactivity, and the **absence of a correction is not approval**. Human corrections outrank passive usage tracking. Neither **P1** nor A8 captures learning signals or creates learning tables (D110, D113). Class definitions: [GLOSSARY.md](GLOSSARY.md); AI boundary: [AI_CONSTITUTION.md](AI_CONSTITUTION.md).
+
+## 16. Owner web experience states _(planned — P1; authorized, not implemented)_
+
+P1 changes **no** workflow above: no new transition, permission, audit semantic, or business behaviour (D111). It governs how the workflows already implemented are **presented and observed**. Scope and criteria: [MILESTONES.md](MILESTONES.md).
+
+Seven truthful states apply to every current Owner and Recipient surface (D112):
+
+| State                  | Required behaviour                                                                                                                                                       |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Loading**            | Permitted for **reads only**. Skeletons and route loading states may improve perceived responsiveness; they must never stand in for an unconfirmed mutation              |
+| **Empty**              | Distinguish "nothing exists yet" from "nothing matched" from "we could not load it". Never present a failed load as an empty list                                        |
+| **Retryable error**    | Offer retry **through** the existing concurrency and idempotency machinery, never around it. Which context is reused depends on the case — see the retry rule below (§2) |
+| **Ambiguous outcome**  | Present as genuinely uncertain. A `pending` or ambiguous handoff may or may not have sent; it must never be smoothed into success or failure (§2, D092)                  |
+| **Offline**            | Explicit truthful state. No false success, no permanently stuck in-progress control, and no queued mutation — offline mutation queues are out of P1 scope (D111)         |
+| **Stale data**         | Label as of a stated time rather than presenting it as current                                                                                                           |
+| **Mutation in flight** | Show that the request is in flight and that the outcome is not yet known. **No optimistic success**                                                                      |
+
+**Retry rule — two distinct cases (D112).** Conflating them is a truthfulness defect in either direction.
+
+| Case                                    | What the client knows                                                 | Required behaviour                                                                                                                                                                                                                                                                                                                                           |
+| --------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Ambiguous or transport retry**        | Nothing trustworthy — the result never arrived, or arrived unresolved | Retry the **same logical mutation** with the **same `Idempotency-Key`** and the **original `If-Match`**. The server classifies idempotency **before** re-checking preconditions, so a literal replay deliberately carries a now-stale `If-Match` and is replayed rather than rejected. **No "start over with a new key" after a durable attempt** (§2, A7.8) |
+| **Confirmed `412 PRECONDITION_FAILED`** | A definite server answer: the supplied version is stale               | **Refresh authoritative state and re-present it** before the Owner makes or confirms a new attempt. Never silently loop on a known-stale `If-Match`; never show a confirmed stale conflict as success or as merely transient. A fresh attempt is a **new Owner decision**, not a transport retry                                                             |
+
+The Owner shell provides one **generic** attention and operational-status destination (D118). It is not reminder-specific, and while A8 is unimplemented it must not claim or imply that any schedule, automation, or notification capability exists (D089). The future **D108** Owner schedule-status surface populates it during **A8.6** — it does **not** exist now.
+
+Owner dates and timestamps render in the organization timezone (`America/Vancouver`, D034), never silently the browser's (D117). This is **presentation only**: §10a and **D103** remain the sole authority for reminder occurrence arithmetic.

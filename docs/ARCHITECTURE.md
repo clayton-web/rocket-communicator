@@ -62,8 +62,9 @@ Shipped in A7 (production-verified):
 - Gmail OAuth `gmail.readonly` + `gmail.send` for handoff (D093); Owner re-consent when send missing
 - Thin Owner confirmation UI (`/tasks`, `/tasks/[taskId]`) and Gmail send re-consent UI (A7.8), with a `/tasks` segment error boundary and Owner-visible Recipient notes / completion outcome
 
-## Planned for A8 and later (target architecture)
+## Planned for P1, A8, and later (target architecture)
 
+- **P1 Owner web experience foundation** (authorized by D111–D120; **not implemented** — see [P1 section](#p1-owner-web-experience-foundation-authorized-not-implemented) below)
 - **Follow-up Engine** (due-date-driven, Task-scoped) and **Event Notification Engine** (A8; product law D102–D110 superseding parts of D095–D101; [WORKFLOWS.md](WORKFLOWS.md) §10)
 - Retention workers (A13); optional Supabase Realtime
 - Future `CommunicationAccount` schema (multiple inboxes later; v1 targets one)
@@ -164,20 +165,42 @@ A7.8 adds the first thin Owner Task surfaces and wires them to A7.7. Contract, g
 
 Roadmap boundary: **A7.8** = Owner confirmation + re-consent UI only. A7 is closed and production-operational.
 
+### P1 Owner web experience foundation (authorized, not implemented)
+
+Authorized by **D111–D120**; scope, slices, and acceptance criteria: [MILESTONES.md](MILESTONES.md). **Nothing in this subsection exists yet** — there is no application shell, no `packages/ui`, no observability seam, no browser test harness, no route loading state, no global error fallback, and no not-found state. This records the approved direction so P1 implementation does not re-decide it.
+
+**Why a foundation and not polish.** A7.8 deliberately shipped thin Owner surfaces. The consequence is that `apps/web/app/layout.tsx` is an `<html><body>` wrapper with no navigation, no Owner identity context, no sign-out affordance, and no `<main>` landmark; there is one segment error boundary (`app/tasks/error.tsx`) and no other boundary of any kind; and every Owner page is `force-dynamic` with sequential server data fetching and no loading state. The experience layer does not exist rather than existing poorly (D111).
+
+**Shell.** One shared layout for authenticated Owner routes providing navigation, Owner identity context, sign-out, a `<main>` landmark, and mobile-first layout, plus **one generic Owner attention and operational-status destination** (D118). The destination is deliberately generic so the future **D108** Owner schedule-status surface can populate it without a second shell redesign. It must not carry reminder navigation, reminder copy, or any implication that automation exists while A8 is unimplemented (D089).
+
+**Truthful state layer.** The seven states in D112 become shared, documented affordances rather than per-component improvisation. The A7.8 truthful-outcome behaviour above is the reference implementation and is **generalized, not replaced**: pending stays “still unresolved”, ambiguous stays “may or may not have sent”, and same-key recovery keeps reusing the original Idempotency-Key and original If-Match for ambiguous and transport retries. A confirmed `412 PRECONDITION_FAILED` remains the separate case it already is: the idempotency classification above runs before the precondition check, so only a genuinely new request can be rejected as stale, and the Owner must be shown refreshed authoritative state before a new attempt rather than looping on a known-stale ETag. Skeletons and loading affordances are permitted for **reads only**; **no optimistic mutation success**.
+
+**Observability seam (D115).** One application-owned, vendor-neutral interface supporting a single correlation reference, privacy-safe structured JSON server diagnostics on standard output, route or operation timing, and silent-failure detection. It **extends existing seams rather than replacing them**: the per-request `requestId` already minted in `lib/*/route-context.ts`, the A7.5 privacy-safe handoff logger, and the existing database runtime failure classifier. A hosted or OpenTelemetry backend must remain an adapter (Architecture Principle 2). **No schema change is required:** `AuditEvent` already has `requestId` and `correlationId` columns with an index on `requestId`; the actual defect is that the public error envelope in `lib/http/errors.ts` and `lib/auth/http.ts` discards the route-context identifier and mints a fresh `randomUUID()` with `correlationId: null`, so the reference the Owner sees cannot be found in server logs.
+
+**Presentation foundation (D116).** `packages/ui` holds semantic tokens only. Shared presentation covers Task title and summary derivation (currently triplicated as an identical `summaryText` helper in `task-detail.tsx`, `handoff-panel.tsx`, and `recipient-capability-panel.tsx`), status labels, timestamp formatting, and semantic state presentation. Tokens land as a **no-op refactor first** so any later visual change is traceable.
+
+**Organization-local display (D117).** One Owner web display formatter bound to the configured organization timezone (`America/Vancouver`, D034), never the browser or device timezone. **Presentation only** — it is not, and must not become, the A8 scheduling resolver, which remains **D103**.
+
+**Verification (D119).** A lightweight browser test layer for critical Owner and Recipient journeys, run as a **separate job** rather than inside `pnpm verify`. Plus structural gates: one Owner authentication call per Owner page request, a documented and asserted maximum database round-trip count per route, and an automated assertion that no capability token or raw `/c/{token}` path can reach any telemetry, log, or error payload (D114).
+
+**Out of P1.** Android application experience (A9 by name), offline storage or caching of authenticated business data, service workers, mutation queues, background sync, conflict resolution, a general component library, Kotlin token generation, commercial analytics, and any A8 runtime behaviour. Dark mode and a health or readiness endpoint are **not** P1 requirements (D115, D119).
+
 ## Package layout
 
-| Path                                                    | Responsibility                                                                                                                                                                                  |
-| ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `apps/android`                                          | Kotlin + Jetpack Compose Owner UX (auth/task UI in later milestones; A1 shell + A2 api-contract module exist)                                                                                   |
-| `apps/web`                                              | Next.js App Router: Owner session APIs; Owner task HTTP; Owner Recipient management HTTP; Owner handoff HTTP (`…/handoff`); capability runtime; Recipient capability APIs and `/c/[token]` page |
-| `packages/contracts`                                    | Canonical OpenAPI 3.1; generated TypeScript and Kotlin DTOs (D007)                                                                                                                              |
-| `packages/domain`                                       | Pure TypeScript state machines, policies, retention helpers—no I/O                                                                                                                              |
-| `packages/db`                                           | Prisma schema, migrations, repositories, transactions (server-only; D006, D062)                                                                                                                 |
-| `packages/ai`                                           | LLM extraction adapters for A6+ (D085); **exists as of A6.3** (`@aicaa/ai`)                                                                                                                     |
-| `packages/eslint-config` / `packages/typescript-config` | Shared tooling                                                                                                                                                                                  |
-| `packages/ui`                                           | Deferred                                                                                                                                                                                        |
+| Path                                                    | Responsibility                                                                                                                                                                                                                                               |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `apps/android`                                          | Kotlin + Jetpack Compose Owner UX (auth/task UI in later milestones; A1 shell + A2 api-contract module exist)                                                                                                                                                |
+| `apps/web`                                              | Next.js App Router: Owner session APIs; Owner task HTTP; Owner Recipient management HTTP; Owner handoff HTTP (`…/handoff`); capability runtime; Recipient capability APIs and `/c/[token]` page                                                              |
+| `packages/contracts`                                    | Canonical OpenAPI 3.1; generated TypeScript and Kotlin DTOs (D007)                                                                                                                                                                                           |
+| `packages/domain`                                       | Pure TypeScript state machines, policies, retention helpers—no I/O                                                                                                                                                                                           |
+| `packages/db`                                           | Prisma schema, migrations, repositories, transactions (server-only; D006, D062)                                                                                                                                                                              |
+| `packages/ai`                                           | LLM extraction adapters for A6+ (D085); **exists as of A6.3** (`@aicaa/ai`)                                                                                                                                                                                  |
+| `packages/eslint-config` / `packages/typescript-config` | Shared tooling                                                                                                                                                                                                                                               |
+| `packages/ui`                                           | **Semantic-token layer only, authorized by D116; does not yet exist.** Supersedes its previous **Deferred** status. Colour, type scale, spacing, radius, and motion tokens for `apps/web`. **Not** a component library; **no** Kotlin token generation in P1 |
 
 Do not share Zod types with Kotlin. Generate clients from OpenAPI. Neon is not used in v1 (D005).
+
+**Cross-platform sharing reality (D116).** What `apps/android` can realistically inherit from the web foundation is **product and presentation rules**, **semantic token values**, and **generated contract enums**. What it **cannot** inherit directly is React components, TypeScript formatter implementations, and browser-specific interaction code. Android parity is therefore achieved by re-implementing documented rules against shared token values — not by sharing UI code.
 
 ## Component map
 
@@ -197,6 +220,10 @@ Do not share Zod types with Kotlin. Generate clients from OpenAPI. Neon is not u
 **Android:** `minSdk` 31; application id `com.aicommunication.assistant`; private sideload (D019, D040). Device target Galaxy S24+; dialer parsing OPEN #1. Does not write core business rows directly to Supabase—calls Owner session APIs. FCM deferred (D017).
 
 **Web:** Owner-authenticated routes for Owner APIs (D048). Recipient mutations use `/api/v1/capabilities/{token}/…` (D059). Browser view `GET /c/[token]` is non-mutating. Capability secrets: hash at rest; one-time raw reveal to Owner (D063); seven-day default TTL with persisted `expiresAt` (D055); multi-use until invalidation (D056). Persistence: `@aicaa/db`. Dismiss, not physical delete (D064).
+
+**Web Owner experience (P1; authorized, not implemented).** P1 adds the shared Owner application shell, truthful experience states, organization-timezone-aware display, the observability seam, and boundary and accessibility coverage (D111–D119). It adds **no** business behaviour, route, permission, or contract change. **Android remains the Owner's intended primary interface** (A9 by name); the web Owner surface is the currently-operational Owner instrument, and P1 makes it reliable rather than replacing the Android plan.
+
+**Telemetry (P1).** Client telemetry **excludes capability routes entirely** — a `/c/{token}` path carries an authorization secret (D114). No commercial telemetry vendor, session replay, or behavioural analytics is authorized (D115).
 
 **Gmail (A5 ingest; A7 outbound — both closed):** One Owner inbox per organization; poll every five minutes (D065); polling-only in A5 (D066). Inbox-only ingestion (D068); Workspace-domain mailbox gate (D069). A5 OAuth used `gmail.readonly` only (D070). A7 retains `gmail.readonly` and adds `gmail.send` for assignment email and forward; do not request `gmail.modify` without a new Decision (D093). Persistence models and Application Polling Engine are **production-operational**. An **External Scheduler** invokes `GET|POST /api/v1/internal/gmail/poll` every five minutes; recommended initial adapter **cron-job.org** (D079). A5 creates communication events only — not suggestions (D077). Gmail settings UI and History recovery are deferred. On D037 handoff: Owner confirms once; server forwards Gmail-origin originals with attachments (or sends non-Gmail assignment email) using Task `summaryPoints`—no fresh LLM (D094); activate Assignment only after Gmail accepts send (D092). Handoff confirms **no** follow-up interval: preset intervals are retired and reminders derive from the Owner-selected Task due date (D102). **A7 is closed**: the full production E2E passed on both delivery paths (tag `v0.7.0-a7-complete`; see [MILESTONES.md](MILESTONES.md)).
 
@@ -298,6 +325,12 @@ flowchart TB
 - Application retention does not control Gmail copies after forward (D031).
 - Capability link possession equals authorization (misuse risk; D051). Re-forward revokes the prior active capability (D086).
 - Initial A7 delivery may be synchronous and subject to host runtime limits; architecture should allow a later worker (D094).
+- **No Owner application shell, route loading state, global error fallback, or not-found state exists.** One segment error boundary exists (`app/tasks/error.tsx`). P1 addresses this (D111, D119).
+- **The correlation reference the Owner sees is not the one in server logs.** Route context mints a per-request `requestId` used in diagnostics, but the public error envelope generates a separate `randomUUID()` with `correlationId: null`, so an Owner-reported reference cannot be traced. `AuditEvent` already has both columns; P1.1 unifies usage without a schema change (D115).
+- **No operational telemetry, timing, or silent-failure detection exists.** Privacy-safe structured logging exists only for handoff (A7.5) and database runtime failures, and the latter is not wired into capability routes. P1.1 addresses this (D115).
+- **Owner authentication runs twice per Owner page request** — once in `proxy.ts` session refresh and once in `getAuthenticatedOwner()` — with no request-scoped memoization. P1.3 addresses this (D119).
+- **Owner Task list queries load every Task note unbounded.** `listTasks` includes `notes` with no `take`, so payload size grows with note history. P1.3 addresses this.
+- **Confirmation dialog accessibility is inconsistent.** The Owner handoff dialog implements a focus trap and Escape handling; the Recipient capability dialog has `role="dialog"` and `aria-modal` but no focus trap, no Escape handler, and no initial focus. P1.5 addresses this (D119).
 
 ## Failure principles
 

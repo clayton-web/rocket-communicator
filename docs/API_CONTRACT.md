@@ -6,6 +6,12 @@ Related: [STATE_MACHINE.md](STATE_MACHINE.md) · [SECURITY_AND_PRIVACY.md](SECUR
 
 **A8 product law** (due-date-driven Follow-up Engine / Event Notification Engine, **D102–D110**, superseding parts of D095–D101) is documentation-locked. **No A8 contract, route, schema, or generated client is implemented.** OpenAPI still contains historical reminder/snooze stubs—see **Future A8 contract alignment inventory** below. Do **not** treat those stubs as A8 product law.
 
+**P1 makes no contract change (D111, D119).** The P1.0 lock (D111–D120) adds no path, DTO, enum, error code, header, or generated client, and does **not** authorize the OpenAPI reminder-debt cleanup below. Two consequences for P1 implementers:
+
+- **No health or readiness endpoint is added.** It is not authorized and not a P1 acceptance requirement (D115); a contract test currently asserts `/health` is absent from the bundled spec. Adding one needs its own decision.
+- **The correlation reference reuses the existing envelope.** `ErrorResponse` already carries `requestId` and `correlationId`, and `AuditEvent` already has both columns. P1.1 fixes how they are **populated** — the envelope currently discards the route-context `requestId` and emits a fresh UUID with `correlationId: null` — with no contract or schema change (D115).
+- Renaming the product would change OpenAPI `info.title` and is therefore outside P1 scope; the current official name stands (**D120**, Open).
+
 ## Ownership
 
 | Layer                 | Owns                                               |

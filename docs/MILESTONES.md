@@ -1,6 +1,6 @@
 # Milestones
 
-**Current:** **A7 is CLOSED** — Gmail forwarding and assignment email are **Production-operational**. A7.1–A7.8 shipped and the full production E2E passed on production SHA `8da353692c39484467f8f4651acf101fa172f4e8` (both delivery paths, Recipient capability completion, Owner-visible notes). Completion tag: `v0.7.0-a7-complete`. A7.0 decisions remain locked (D086–D094). **A8.0 documentation Decision Lock** is recorded (D095–D101) and is now partly superseded. **A8.1 documentation Decision Lock** is recorded (**D102–D110**): A8 is revised to a **due-date-driven** reminder model under a narrow constitutional exception. A8 implementation is **not** started — no A8 code, schema, migration, contract, environment configuration, scheduler, or UI exists — and requires explicit authorization. A6 Application Suggestion Engine remains **CLOSED** in Production (tag `v0.6.0-a6-complete`). A5 Gmail connection and polling remains **closed and healthy**. Milestone identifiers are unchanged: **A7 → A8 → A9** (no early separate A9.0). **P1** (Application Experience Foundation) is a distinct milestone sequenced before the A8 Owner UI and is **not** folded into A8; see [Delivery sequence](#delivery-sequence). Handoff items deliberately deferred out of A7 are listed under [A7 deferred backlog](#a7-deferred-backlog-not-a-milestone).
+**Current:** **A7 is CLOSED** — Gmail forwarding and assignment email are **Production-operational**. A7.1–A7.8 shipped and the full production E2E passed on production SHA `8da353692c39484467f8f4651acf101fa172f4e8` (both delivery paths, Recipient capability completion, Owner-visible notes). Completion tag: `v0.7.0-a7-complete`. A7.0 decisions remain locked (D086–D094). **A8.0 documentation Decision Lock** is recorded (D095–D101) and is now partly superseded. **A8.1 documentation Decision Lock** is recorded (**D102–D110**): A8 is revised to a **due-date-driven** reminder model under a narrow constitutional exception. A8 implementation is **not** started — no A8 code, schema, migration, contract, environment configuration, scheduler, or UI exists — and requires explicit authorization. **P1.0 documentation Decision Lock** is recorded (**D111–D120**): [P1](#p1--application-experience-foundation) is now scoped, and P1 implementation (P1.1–P1.5) is **authorized but not started** — no P1 code, shell, token package, telemetry, browser test harness, or observability seam exists. A6 Application Suggestion Engine remains **CLOSED** in Production (tag `v0.6.0-a6-complete`). A5 Gmail connection and polling remains **closed and healthy**. Milestone identifiers are unchanged: **A7 → A8 → A9** (no early separate A9.0). **P1** (Application Experience Foundation) is a distinct milestone sequenced before the remaining A8 implementation slices and is **not** folded into A8; see [Delivery sequence](#delivery-sequence). Handoff items deliberately deferred out of A7 are listed under [A7 deferred backlog](#a7-deferred-backlog-not-a-milestone).
 
 Process: [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW.md) · [REVIEW_CHECKLIST.md](REVIEW_CHECKLIST.md) · Operations: [DEPLOYMENT.md](DEPLOYMENT.md)
 
@@ -159,7 +159,7 @@ Handoff work deliberately **descoped from A7** at closure. None of it blocks A8,
 
 Sequencing only — **no milestone is renumbered**. A8, A9, and later milestone identifiers are unchanged.
 
-1. **P1** — Application Experience Foundation (distinct milestone; **not** part of A8 and not folded into it). Its scope and decision lock are defined by P1's own documentation pass, not here.
+1. **P1** — Application Experience Foundation (distinct milestone; **not** part of A8 and not folded into it). **P1.0 decision lock is complete** (D111–D120); P1.1–P1.5 are authorized and not started. Scope: [P1](#p1--application-experience-foundation).
 2. **A8.1** — documentation and decision lock (**complete**)
 3. **A8.2** — timezone and pure scheduling logic
 4. **A8.3** — persistence and APIs
@@ -169,6 +169,70 @@ Sequencing only — **no milestone is renumbered**. A8, A9, and later milestone 
 8. **A8.7** — controlled production enablement and evidence
 
 P1 precedes the A8 Owner UI so the due-date control and schedule panel are built once on a settled experience foundation. Documentation precedes A8 code (Engineering Rule #1).
+
+**Honest dependency note.** A8.2, A8.3, A8.4, and A8.5 do not touch the Owner interface and are not technically blocked by P1's visible work. What P1 genuinely owes A8 is narrower and specific: the observability seam and correlation reference before a scheduler exists in production (D115), the generic Owner attention and operational-status destination required by D108 (D118), and the organization-timezone-aware display formatter (D117). P1 nevertheless runs first under Implementation Rule #1 (one milestone at a time) so the token layer and shell do not compete with new A8.6 UI code.
+
+### P1 — Application Experience Foundation
+
+**Status:** **P1.0 documentation Decision Lock complete (docs-only)** — D111–D120. **P1.1–P1.5 authorized, not started.** No P1 code exists: there is no application shell, no `packages/ui`, no telemetry or observability seam, no browser test harness, no loading state, no global error fallback, and no not-found state.
+
+**Purpose.** Establish the minimum shared Owner web application experience and operational foundations needed for reliable Owner use, and so later A8 Owner-facing surfaces are built **once**, consistently. P1 is a **foundation** milestone, not cosmetic polish (D111): the experience layer it creates has never existed, because A7.8 deliberately shipped thin Owner surfaces with no shell.
+
+**Platform.** The existing Owner web routes (`/`, `/login`, `/tasks`, `/tasks/{taskId}`) plus the Recipient capability surface (`/c/{token}`) where truthfulness, boundary coverage, and accessibility require it. **Android application experience remains A9 by name** and must not be pulled into P1 (D111).
+
+**In scope — the nine authorized foundation areas (D111):**
+
+1. **Owner web application shell** — consistent navigation, Owner identity context, sign-out access, a `<main>` landmark, mobile-first layout, and a generic Owner-level attention and operational-status destination (D118).
+2. **Truthful experience states** — loading, empty, retryable error, ambiguous mutation outcome, offline or lost connectivity, stale data, and mutation in progress (D112). **No optimistic mutation success.**
+3. **Operational data taxonomy** — business records, audit history, operational telemetry, and structured learning signals defined and separated (D113).
+4. **Minimal observability foundation** — vendor-neutral seam for one correlation reference, privacy-safe structured server diagnostics, route or operation timing, and silent-failure detection (D115).
+5. **Capability-route telemetry prohibition** — capability routes fully excluded from client telemetry; no capability token or raw `/c/{token}` path in any telemetry, log, or error payload (D114).
+6. **Shared presentation rules** — Task title and summary derivation, status labels, timestamp formatting, semantic state presentation, and organization-local date display; `packages/ui` as a semantic-token layer only (D116).
+7. **Organization-timezone-aware display** — presentation infrastructure only; D103 remains the scheduling authority (D117).
+8. **Boundary and accessibility foundation** — route loading state, segment error boundaries, global error fallback, not-found state, keyboard-accessible dialogs, focus handling, semantic landmarks, and baseline contrast (D119).
+9. **Browser-level verification** — a lightweight browser test layer for critical Owner and Recipient journeys, run as a separate job (D119).
+
+**Explicitly out of scope for P1:**
+
+Android application implementation; offline database or local business-record cache; service-worker caching of authenticated business data; offline mutation queues; background synchronization; conflict resolution; new Task, suggestion, Recipient-management, or Gmail-settings features; the A8 reminder scheduler or persistence; the A8 due-date control; A8 schedule-status functionality; OpenAPI reminder-debt cleanup; dormant reminder calculator cleanup; schema or migration changes; a general or broad component library; design-token generation for Kotlin; arbitrary visual redesign; commercial analytics or behavioural tracking; AI-controlled UX adaptation; audit-model changes; reconciliation workers; and unrelated A6 or A7 backlog features.
+
+**Additionally not P1 requirements:** **dark mode** is not a closure requirement — no existing decision or product authority requires it, and a dual-theme slice needs separate authorization (D119). A **health or readiness endpoint** is not authorized and is not a closure requirement — existing session and task smoke checks plus P1.1 diagnostics are sufficient, a contract test asserts `/health` is absent from the bundled OpenAPI, and a new unauthenticated surface needs its own decision; it is recorded as a separately authorized operational proposal (D115).
+
+**Implementation sequence (locked; implementation not started):**
+
+| Slice    | Content                                                                                                                                                                                                        |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **P1.0** | **Documentation and decision lock — complete.** D111–D120; no code                                                                                                                                             |
+| **P1.1** | Minimal observability and unified correlation foundation (D115), with the **baseline captured before any experience change** (D119)                                                                            |
+| **P1.2** | Browser verification harness for critical existing Owner and Recipient journeys (D119), as a separate job                                                                                                      |
+| **P1.3** | Request and render reliability plus truthful loading and error states (D112): request-scoped auth deduplication, route loading states, bounded list queries, client request timeouts                           |
+| **P1.4** | Owner shell, constrained presentation foundation, organization-timezone display, and the Owner attention / operational-status destination (D116, D117, D118). Tokens land as a **no-op refactor first** (D116) |
+| **P1.5** | Boundary completion, accessibility verification, connectivity feedback, and production validation against the P1.1 baseline (D112, D119)                                                                       |
+
+P1.1 precedes every visible change because no baseline exists today; measuring after changing forfeits the comparison (D119). P1.2 precedes P1.3–P1.5 so visual and render refactors have a regression net before, not after. The `/c/{token}` surface is touched **last** within P1.5: it is externally visible and security-sensitive.
+
+**Acceptance criteria (P1 closure):**
+
+- [ ] **P1.0 lock recorded** — D111–D120 approved; P1 scope, exclusions, slices, and criteria documented; `REVIEW_CHECKLIST.md` carries answerable P1 gates
+- [ ] **Consistent Owner shell** across all authenticated Owner routes: navigation, Owner identity context, reachable sign-out, `<main>` landmark, mobile-first layout
+- [ ] **A shell location exists for the future D108 Owner status surface** (D118), generic rather than reminder-specific, and truthful when empty
+- [ ] **Truthful loading, error, and lost-connectivity feedback** on every current route (D112)
+- [ ] **No optimistic mutation success** anywhere; ambiguous handoff outcomes still presented as genuinely uncertain (D112)
+- [ ] **Retry semantics correct in both directions** (D112): an ambiguous or transport retry reuses the same `Idempotency-Key` and the original `If-Match` so a durable attempt replays; a confirmed `412 PRECONDITION_FAILED` refreshes authoritative state before a new attempt rather than looping on a known-stale `If-Match`
+- [ ] **One useful correlation reference** joins the user-visible error reference, server diagnostics, and the audit row where one exists — proven by forcing a real failure and following a single value end to end (D115)
+- [ ] **Privacy-safe telemetry with capability-secret protection** — an automated assertion proves no capability token or raw `/c/{token}` path can appear in any telemetry, log, or error payload (D114)
+- [ ] **Route-boundary coverage** — every current route has a loading state, segment error boundary coverage, a global error fallback, and a styled not-found state (D119)
+- [ ] **Keyboard and focus behaviour validated for both confirmation dialogs**, including Escape and focus restoration (D119)
+- [ ] **Accessibility gate met** — zero **serious or critical** automated findings on the current routes; contrast passes in the shipped theme (D119)
+- [ ] **Browser-level critical-journey coverage** for Owner sign-in, Task list, Task detail, handoff confirmation, and the Recipient capability journey, running as a separate job (D119)
+- [ ] **Organization-timezone-aware display** in use for Owner dates and timestamps, with a test proving no dependence on browser, device, or machine-local timezone (D117)
+- [ ] **Baseline captured in P1.1 before experience changes**, and any numeric performance threshold **ratified from that evidence** rather than asserted in advance, distinguishing absolute usability thresholds from relative improvement goals (D119)
+- [ ] **Structural assertions pass** — exactly one Owner authentication call per Owner page request; documented and asserted maximum database round trips per route (D119)
+- [ ] **No A4–A7 behavioural regression** — production regression checks re-pass unchanged; unauthenticated gates unchanged
+- [ ] **No A8 runtime implementation** — D102–D110 remain documentation-only; no reminder schema, scheduler, endpoint, flag, due-date control, or schedule-status behaviour
+- [ ] **No schema, migration, OpenAPI, generated-client, or Android implementation change**; audit model and mutation-truthfulness semantics unchanged; `pnpm verify` green
+
+**Binding decisions:** D111–D119 (**D120 remains Open** and must be resolved before any product rename; the documented P1 default is to keep the current official name). D102–D110 remain locked and must not be redesigned or implemented by P1. D079 Architecture Principles and D089 (no claim of active reminder behaviour) continue to apply.
 
 ### A8 — Follow-up Engine and Event Notification Engine
 

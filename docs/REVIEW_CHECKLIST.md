@@ -55,6 +55,38 @@ Gates for the due-date-driven Follow-up Engine (D102–D110). These record **exp
 - [ ] Deferred scope absent: no preset reminder choices, Owner-created additional reminders, custom-reminder routes or UI, recurrence editor, reminder-time picker, Recipient reminder preferences, or AI-controlled scheduling (D110)
 - [ ] No regression to A7 assignment delivery on either path
 
+## Owner web experience foundation (P1; apply when P1 work is in scope)
+
+Gates for D111–D120. Record **expected behaviour and required proof**; no specific implementation is pre-approved.
+
+- [ ] Change stays inside the **nine authorized P1 areas** (D111); nothing from the P1 exclusion list in [MILESTONES.md](MILESTONES.md) was implemented
+- [ ] **No optimistic mutation success** — nothing renders, animates, or implies a business mutation succeeded before the server confirmed it (D112)
+- [ ] **Ambiguous outcomes stay ambiguous**; pending handoff copy still says the send may or may not have happened (D092, D112)
+- [ ] **Ambiguous or transport retry** reuses the **same `Idempotency-Key`** and the **original `If-Match`** so the server can replay a durable attempt; no new-key "start over" after a durable attempt (D112, §2)
+- [ ] **Confirmed `412 PRECONDITION_FAILED`** refreshes authoritative state and re-presents it before a new attempt; no silent loop on a known-stale `If-Match`, and a stale conflict is not shown as success or as merely transient (D112)
+- [ ] Offline and lost-connectivity states are explicit and truthful; **no mutation queue, no service-worker caching of authenticated business data, no local business-record cache** (D111)
+- [ ] Loading affordances used for **reads only**; empty states distinguish "none yet" from "none matched" from "failed to load" (D112)
+- [ ] **One correlation reference** joins the user-visible error reference, server diagnostics, and the audit row where one exists — proven by forcing a real failure and tracing a single value (D115)
+- [ ] **No capability token and no raw `/c/{token}` path** in any telemetry, log, metric, or error payload — proven by an automated assertion, not review alone (D114)
+- [ ] Capability routes remain **excluded from client telemetry** (D114); server diagnostics identify them by static template only
+- [ ] No prohibited telemetry payload: no OAuth tokens, email bodies or subjects, Task notes, summary text, communication excerpts, MIME, plaintext Recipient email, or raw provider errors (D114)
+- [ ] **Operational telemetry is not treated as audit history, a business record, or a learning signal**; it drives no product behaviour (D113)
+- [ ] Observability seam is **vendor-neutral** and application-owned; no commercial telemetry vendor, session replay, or behavioural analytics (D115)
+- [ ] **No health or readiness endpoint** added, and none required for closure (D115)
+- [ ] Owner dates and timestamps use the **organization** timezone, proven not to depend on browser, device, or machine-local timezone (D117)
+- [ ] The display formatter is **not** used as a scheduling resolver; **D103** remains the authority for reminder arithmetic
+- [ ] Shell provides one **generic** Owner attention / operational-status destination; **no reminder navigation, copy, or status**, and no claim that automation exists while A8 is unimplemented (D089, D118)
+- [ ] `packages/ui` remains a **semantic-token layer only** — no general component library, no Kotlin token generation (D116)
+- [ ] Tokens landed as a **no-op refactor first** (identical values, references swapped) before any value change (D116)
+- [ ] Every current route has a **loading state, segment error boundary coverage, global error fallback, and not-found state** (D119)
+- [ ] **Both** confirmation dialogs validated for keyboard, focus trap, Escape, and focus restoration (D119)
+- [ ] Accessibility gate met: **zero serious or critical** automated findings; contrast passes in the shipped theme. Dark mode is **not** required (D119)
+- [ ] Browser test layer covers the critical Owner and Recipient journeys and runs as a **separate job**, not inside `pnpm verify` (D119)
+- [ ] Structural gates pass: **one** Owner authentication call per Owner page request; documented and asserted maximum database round trips per route (D119)
+- [ ] **Baseline captured in P1.1 before any experience change**; numeric thresholds ratified from that evidence, not asserted (D119)
+- [ ] **No A8 runtime implementation**; no schema, migration, OpenAPI, generated-client, or Android implementation change; audit and mutation-truthfulness semantics unchanged (D119)
+- [ ] Product name unchanged — the current official name still appears in web metadata and shell copy; no implicit rename (**D120**, Open)
+
 ## Documentation
 
 - [ ] Docs updated **before** or as part of completion (Engineering Rule #1)
@@ -134,6 +166,8 @@ Gates for the due-date-driven Follow-up Engine (D102–D110). These record **exp
 - [ ] Manual and voice fallbacks available when capture fails
 - [ ] Best-effort call/notification limitations not over-promised in UI copy
 - [ ] Cognitive load: point-form, clear next action, no dashboard creep
+- [ ] Interface states what is true: no optimistic success, ambiguous stays ambiguous, stale data labelled as of a stated time (D112)
+- [ ] Copy does not claim a capability the milestone has not shipped — notably no implied reminder, schedule, or notification behaviour while A8 is unimplemented (D089)
 
 ## Technical debt
 

@@ -214,6 +214,78 @@ Model certainty metadata; Owner durable preferences without raw bodies (D054); r
 
 ---
 
+## Operational data classes (D113)
+
+Four distinct classes. They are never conflated, and one is never derived from another except as stated. Retention: [DATA_RETENTION.md](DATA_RETENTION.md). Privacy boundary: D114.
+
+### Business record
+
+The current operational state of communications, Tasks, Assignments, notes, statuses, Recipients, capabilities, and outcomes. Authority: the application system of record. **May** drive product behaviour.
+
+### Audit history
+
+The truth-preserving record of what actually happened: which **Actor** performed each action, under what authority, and whether it succeeded (D057, D074, D100, D109). Append-only in effect; records are **superseded, never deleted or silently rewritten**. Must never be altered to suit analysis, and must never be derived from operational telemetry.
+
+### Operational telemetry
+
+Health, performance, and reliability measurement that answers only **“is the application working properly?”** — route or operation timing, request failures, retry outcomes, connectivity changes, application and rendering errors, and stale-data presentation.
+
+It is **not** a business record, **not** audit history, and **not** an AI-learning source. It must **never** drive product behaviour, alter business state, or be promoted into learning input (D113). Payload prohibitions and the capability-route exclusion: D114.
+
+### Structured learning signal
+
+A purposefully retained representation of a meaningful Owner decision and its outcome, answering **“what decision was made, what alternatives existed, and what happened afterward?”**
+
+Must never rewrite audit history, and must never be inferred from low-level click or usage tracking. **Passive behaviour, inactivity, and the absence of a correction are not approval and are not decisions** (D113). Human corrections outrank passive usage tracking. Capture remains **A14**; P1 and A8 create no learning tables (D110, D113).
+
+### Recommendation
+
+An AI-proposed value or option (for example a proposed assignee, priority, or due date). A recommendation is **never** an authoritative business fact and must remain distinguishable from a human-approved decision (D027, D102, D113).
+
+### Automated action
+
+An action performed by the application without a contemporaneous human act, attributed to a **`system`** actor and never to the Owner as though performed manually (D074, D107). Must be reversible, observable, and explicitly authorized.
+
+### Human correction
+
+An explicit Owner act that changes, overrides, or rejects a recommendation or prior value. The highest-value future learning evidence (D113), and the only kind that may be read as a decision.
+
+### Deterministic fallback
+
+The requirement that the core Task lifecycle remains fully operational without AI. AI may assist with identification, suggestion, classification, summarization, prioritization, and recommendation, but is never required for the deterministic workflow (D027, D085, D113).
+
+---
+
+## Owner web experience (P1)
+
+P1 terms. Scope and authority: D111–D120; slices and criteria: [MILESTONES.md](MILESTONES.md). **Not implemented** — P1.1–P1.5 have not started.
+
+### Owner Application Shell
+
+The minimum persistent chrome for authenticated Owner routes: consistent navigation, Owner identity context, sign-out access, a `<main>` landmark, and mobile-first layout (D111). It is not a dashboard and adds no business behaviour.
+
+### Owner Attention Surface
+
+The single **generic** Owner-level attention and operational-status destination in the shell, which future authorized features populate (D118). It exists so the future **D108** Owner schedule-status surface can be added without a second shell redesign. It is **not** reminder-specific, and while A8 is unimplemented it must not claim or imply that any automation, schedule, or notification capability exists (D089).
+
+### Truthful experience state
+
+One of the seven interface states P1 governs — loading, empty, retryable error, ambiguous mutation outcome, offline or lost connectivity, stale data, and mutation in progress (D112). Loading affordances are permitted for **reads only**; **no optimistic mutation success** is permitted; an ambiguous outcome is presented as genuinely uncertain rather than smoothed into success or failure.
+
+### Correlation reference
+
+The single identifier shared across the user-visible error reference, server diagnostics, and the audit row where one exists (D115). `AuditEvent` already carries `requestId` and `correlationId`, and route context already mints a per-request `requestId`; P1 unifies their use rather than adding a schema field.
+
+### Semantic token
+
+A named design value (colour, type scale, spacing, radius, motion) held in the tokens-only `packages/ui` layer (D116). Tokens are introduced as a **no-op refactor first** — identical values, references swapped — before any value changes. `packages/ui` is **not** a component library, and P1 generates **no** Kotlin tokens.
+
+### Organization-local display
+
+Rendering of dates and timestamps in the configured Owner organization timezone (`America/Vancouver`, D034), never silently using the browser, device, or machine-local timezone (D117). **Presentation only** — D103 remains the sole authority for reminder calendar arithmetic and the 09:00 organization-local occurrence rule.
+
+---
+
 ## Contracts and audit
 
 ### Canonical Contract / OpenAPI
