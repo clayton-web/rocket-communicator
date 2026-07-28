@@ -300,7 +300,9 @@ describe('Recipient capability application services (Phase 4D)', () => {
     });
     expect(completed.task.status).toBe('completed');
     expect(completed.task.outcome?.note).toBe('Completion note for Owner');
-    expect(completed.task.notes?.some((n) => n.body === 'Standing note before complete')).toBe(true);
+    expect(completed.task.notes?.some((n) => n.body === 'Standing note before complete')).toBe(
+      true,
+    );
     expect(completed.audit.action).toBe('complete_task');
     expect(completed.audit.note).toBe('Completion note for Owner');
     expect(JSON.stringify(completed)).not.toContain(token);
