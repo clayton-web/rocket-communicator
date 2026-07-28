@@ -4,10 +4,11 @@ End-to-end flows. Terms: [GLOSSARY.md](GLOSSARY.md). Transitions: [STATE_MACHINE
 
 Owner approval is required to create Tasks, Assignments, forwards, and Next-action Suggestions that become Tasks. Recipient capability actions on an already assigned Task use POST after confirm ([STATE_MACHINE.md](STATE_MACHINE.md)).
 
-## Implemented through A6
+## Implemented through A7
 
 | Workflow                                                  | Section                                   | Status                                                     |
 | --------------------------------------------------------- | ----------------------------------------- | ---------------------------------------------------------- |
+| Recipient handoff (forward or assignment email)           | §2                                        | **Production-operational** (A7 closed)                     |
 | Owner typed task creation and lifecycle                   | (via Owner APIs; partial overlap with §7) | **Production-verified**                                    |
 | Recipient actions via Capability Link                     | §8                                        | **Production-verified**                                    |
 | Waiting (Owner; Recipient waiting)                        | §9                                        | **Production-verified** (Follow-up Engine side effects A8) |
@@ -18,7 +19,7 @@ Owner approval is required to create Tasks, Assignments, forwards, and Next-acti
 
 ## Implemented and planned workflow map
 
-Workflow §1 (A5 events + A6 suggestions) and §7 / §12 (approve / merge) are **production-operational**. Workflow §2 (Recipient handoff) has its **API route (A7.7) and Owner confirmation / re-consent UI (A7.8) implemented and validated**; production E2E remains open (parent A7 open). §10 Follow-up Engine and Event Notification Engine are **A8** (D095–D101; documentation locked in A8.0). §14–§15 and Android capture remain later milestones. Sections below retain target behaviour; milestone labels note when each ships.
+Workflow §1 (A5 events + A6 suggestions) and §7 / §12 (approve / merge) are **production-operational**. Workflow §2 (Recipient handoff) is **production-operational** as of A7 close: both delivery paths, Recipient capability completion, and Owner-visible notes are production-verified. Reassignment and explicit re-forward within §2 remain deferred ([MILESTONES.md](MILESTONES.md) A7 deferred backlog). §10 Follow-up Engine and Event Notification Engine are **A8** (D095–D101; documentation locked in A8.0). §14–§15 and Android capture remain later milestones. Sections below retain target behaviour; milestone labels note when each ships.
 
 ---
 
@@ -30,7 +31,7 @@ Workflow §1 (A5 events + A6 suggestions) and §7 / §12 (approve / merge) are *
 
 No Task created; no email sent in this workflow.
 
-## 2. Recipient handoff — Gmail-origin forward or assignment email (D037) _(A7.7 API + A7.8 Owner UI)_
+## 2. Recipient handoff — Gmail-origin forward or assignment email (D037) _(A7 — production-operational)_
 
 Applies to an **existing** Owner-owned Task (typically an **unassigned** Task from A6 suggestion approval, D080). Handoff does **not** recreate the Task.
 

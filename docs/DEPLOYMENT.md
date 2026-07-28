@@ -17,6 +17,8 @@ Platform assumptions below describe the **current** deployment. Per Architecture
 
 Production uses a **Supabase transaction pooler** connection for `DATABASE_URL` (serverless-friendly). Use the pooler URL Vercel expects for Prisma—not the direct session URL—for API routes and migrations unless your operator checklist specifies otherwise.
 
+**Host and port must match (A7 production incident).** Copy the connection string from the Supabase **Connect** dialog and do not recombine parts of two different strings. The pooler port only answers on the **Shared Pooler (Supavisor)** host form `aws-<region>.pooler.supabase.com`; the direct database host form `db.<project-ref>.supabase.co` serves the direct port only. Pairing the direct host with the pooler port produces an endpoint no server answers, and every Prisma call then fails at connection time (`PrismaClientInitializationError`) while non-database pages keep rendering — which looks like an application bug rather than configuration. The Shared Pooler host also resolves over IPv4, which Vercel requires without the dedicated IPv4 add-on. Local Prisma CLI work uses the session port on the same Shared Pooler host.
+
 ## Required environment variables (names only)
 
 Configure in Vercel **Production** (and matching Preview/Development as needed). See `apps/web/.env.example` for placeholders.
@@ -33,9 +35,9 @@ Configure in Vercel **Production** (and matching Preview/Development as needed).
 
 ### Database (A4)
 
-| Variable       | Purpose                                                                                                                            |
-| -------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `DATABASE_URL` | Server-only Postgres URL for Prisma (`@aicaa/db`). Use Supabase **transaction pooler** in production. Never expose to the browser. |
+| Variable       | Purpose                                                                                                                                                                                                                             |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL` | Server-only Postgres URL for Prisma (`@aicaa/db`). Use the Supabase **Shared Pooler transaction** URI in production (host and port must come from the same Connect string — see Platform assumptions). Never expose to the browser. |
 
 ### Capability tokens (A4)
 
@@ -93,6 +95,10 @@ A4 foundation migration: `packages/db/prisma/migrations/20260713190000_a4_persis
 
 A5 Gmail persistence migration: `packages/db/prisma/migrations/20260716140000_a5_gmail_persistence/` (**applied in production** as part of closed A5). Forward-only; do not rewrite history.
 
+A6 suggestion persistence migration: `packages/db/prisma/migrations/20260717180000_a6_suggestion_persistence/` (**applied in production** as part of closed A6).
+
+A7 handoff migrations: `packages/db/prisma/migrations/20260718210000_a7_handoff_persistence/` and `packages/db/prisma/migrations/20260718223000_a7_handoff_concurrency_hardening/` (**applied and verified in production** as part of closed A7).
+
 **Apply to production** (with production `DATABASE_URL` configured for the target):
 
 ```bash
@@ -117,8 +123,9 @@ After deploy, confirm (authenticated Owner session required for protected routes
 | `GET /api/v1/tasks`         | `200`; cursor page shape                                     |
 | `GET /c/{token}`            | Non-mutating capability page for a valid issued link         |
 | Recipient capability `POST` | Mutations require `confirmation: "confirmed"` and `If-Match` |
+| Owner `/tasks` (browser)    | Task list renders; Task detail renders notes and outcome     |
 
-Full Owner↔Recipient production E2E is classified **`A4_FULL_E2E_PASS`**. Retained operator E2E artifacts are intentional runbook data—not repository secrets.
+Full Owner↔Recipient production E2E is classified **`A4_FULL_E2E_PASS`**. The A7 handoff E2E (both delivery paths + Recipient capability completion + Owner-visible notes) passed at closure; see [MILESTONES.md](MILESTONES.md). Retained operator E2E artifacts are intentional runbook data—not repository secrets.
 
 ## Gmail polling operations (A5.5)
 
@@ -186,7 +193,18 @@ Response is aggregate counts only — never raw bodies (D084, D085). Overlapping
 
 **D082 retention (Production-confirmed):** dismissed suggestion excerpts → `updatedAt + 7 days`; approved suggestion excerpts → `updatedAt + 30 days` (workflow safety ceiling).
 
-**A7 status:** A7.0 decisions locked (D086–D094). **A7.1–A7.8 implemented and validated** in the repository; **parent A7 remains OPEN** pending production E2E. **A8.0 documentation Decision Lock** recorded (D095–D101); do not implement Follow-up Engine or Event Notification Engine until A8 implementation is authorized. Roadmap: **A7 → A8 → A9** (no early separate A9.0).
+### Handoff operations (A7 — Production-operational)
+
+**A7 is CLOSED** (tag `v0.7.0-a7-complete`; A7.0 decisions D086–D094). Production SHA at closure: `8da353692c39484467f8f4651acf101fa172f4e8`. Handoff has **no scheduler job**: delivery runs inside the authenticated Owner request (D094(3)), so there is nothing to enable or pause. Production evidence and the deferred-item list live in [MILESTONES.md](MILESTONES.md).
+
+Operator notes:
+
+- Both delivery paths are production-verified: `gmail_forward` for Gmail-origin Tasks and `assignment_email` otherwise. The server chooses; operators do not.
+- The Owner grant must carry `gmail.readonly` **and** `gmail.send` (D093). If send scope is missing, the Owner Task page offers re-consent and then a **manual** retry — no automatic send on OAuth return.
+- Handoff idempotency is durable. A repeated same-key call replays the single attempt; it does not send a second message.
+- Recipients are currently managed through the A7.6 Owner Recipient endpoints; there is no Recipient management UI yet (A7 deferred backlog).
+
+**A8.0 documentation Decision Lock** recorded (D095–D101); do not implement the Follow-up Engine or Event Notification Engine until A8 implementation is authorized. Roadmap: **A7 → A8 → A9** (no early separate A9.0).
 
 ## Capability links in production
 
@@ -197,8 +215,9 @@ Capability URLs are derived from `NEXT_PUBLIC_APP_URL` and the issued path token
 For operator sanity checks (read-only), use Supabase SQL editor or `psql` against production with least privilege:
 
 - `recipients`, `tasks`, `task_assignments`, `task_capabilities`, `audit_events`, `task_suggestions`
+- `handoff_attempts` (A7; authoritative delivery lifecycle per D092), `task_notes`
 
-Compare counts before/after E2E or deploy; do not paste row contents containing PII into tickets. A7 may add handoff/delivery-attempt tables (D092)—include them in checks when they exist.
+Compare counts before/after E2E or deploy; do not paste row contents containing PII into tickets.
 
 ## Rollback principles
 

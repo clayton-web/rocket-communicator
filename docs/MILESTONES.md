@@ -1,6 +1,6 @@
 # Milestones
 
-**Current:** **A7** — **A7.1–A7.8 implemented and validated** (contracts through Owner confirmation UI + Gmail send re-consent UI). Production OAuth rollout and production E2E are **not** started, so the **parent A7 milestone remains OPEN**. A7.0 decisions remain locked (D086–D094). **A8.0 documentation Decision Lock** is recorded (D095–D101) while A7 remains open; it does **not** weaken A7 acceptance criteria and does **not** authorize A8 implementation. A6 Application Suggestion Engine remains **CLOSED** in Production (tag `v0.6.0-a6-complete`). A5 Gmail connection and polling remains **closed and healthy**. Roadmap: **A7 → A8 → A9** (no early separate A9.0).
+**Current:** **A7 is CLOSED** — Gmail forwarding and assignment email are **Production-operational**. A7.1–A7.8 shipped and the full production E2E passed on production SHA `8da353692c39484467f8f4651acf101fa172f4e8` (both delivery paths, Recipient capability completion, Owner-visible notes). Completion tag: `v0.7.0-a7-complete`. A7.0 decisions remain locked (D086–D094). **A8.0 documentation Decision Lock** is recorded (D095–D101); A8 implementation is **not** started and requires explicit authorization. A6 Application Suggestion Engine remains **CLOSED** in Production (tag `v0.6.0-a6-complete`). A5 Gmail connection and polling remains **closed and healthy**. Roadmap: **A7 → A8 → A9** (no early separate A9.0). Handoff items deliberately deferred out of A7 are listed under [A7 deferred backlog](#a7-deferred-backlog-not-a-milestone).
 
 Process: [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW.md) · [REVIEW_CHECKLIST.md](REVIEW_CHECKLIST.md) · Operations: [DEPLOYMENT.md](DEPLOYMENT.md)
 
@@ -84,11 +84,24 @@ Connect one inbox; poll every **five minutes** (D065); create communication even
 
 ---
 
-## Planned
-
 ### A7 — Gmail forwarding and assignment email
 
-**Status:** A7.0 decisions **locked** (D086–D094). Slices **A7.1–A7.8 are implemented and validated**. The **parent A7 milestone remains OPEN**: production migration/OAuth rollout and production E2E are **not** implemented yet. Reassignment, explicit re-forward, proposed-Recipient hint resolution, and reconciliation workers remain deferred.
+**Status:** Complete and **Production-operational**. A7 is **CLOSED**. Completion tag: `v0.7.0-a7-complete`. A7.0 decisions locked (D086–D094).
+
+**Delivered intent:** Single Owner confirmation (D037) for Recipient handoff on an **existing** unassigned Task (D080): Assignment + Capability + Gmail forward (Gmail-origin) or assignment email (non-Gmail), via `POST /api/v1/tasks/{taskId}/handoff` (D090). Follow-up Engine and Event Notification Engine remain **A8** (D089, D095–D101).
+
+**Production closure evidence (2026-07-28):**
+
+- Production SHA `8da353692c39484467f8f4651acf101fa172f4e8` on `main`; Vercel production deployment `dpl_4bhuar8LWAhC1tJhYfhfcbsnCuSS` **Ready** and holding the production alias
+- Migrations `20260718210000_a7_handoff_persistence` and `20260718223000_a7_handoff_concurrency_hardening` **applied and verified** in Production
+- **Database recovery:** Production `DATABASE_URL` had combined the direct database host with the pooler port, which no server answers, so every Owner database route failed at connection time. Corrected to the Supabase **Shared Pooler (Supavisor) transaction** host; see [DEPLOYMENT.md](DEPLOYMENT.md). A `/tasks` segment error boundary now surfaces an explicit actionable error instead of a blank page when a dependency fails
+- **Authenticated Owner Tasks validated:** Owner sign-in, `/tasks` list, and `/tasks/[taskId]` detail load reliably in Production (direct load and in-app navigation)
+- **Gmail send re-consent completed:** the stored Owner grant carries `gmail.readonly` + `gmail.send` (D093); polling capability remained intact
+- **Both delivery paths verified sent** with recorded provider message ids: `gmail_forward` on a Gmail-origin Task and `assignment_email` on a non-Gmail Task
+- **Recipient capability completion:** non-mutating capability GET; standing note, clarification request, and completion with a completion note; one active capability per Assignment; repeat submission idempotent
+- **Owner status update and notes visibility:** Task reached `completed` with delivery `sent`; Recipient standing notes and the completion outcome + completion note render on Owner Task detail with correct attribution labels and no capability token or URL exposure
+- **Truthful audit chain** for the controlled Task, all outcomes `succeeded`: `create_task` (owner) → `handoff.prepared` → `handoff.sent` (owner) → `add_task_note` → `request_clarification` → `complete_task` (capability)
+- **No regression:** A4/A5/A6 remain healthy; unauthenticated gates unchanged (`/` → 200, `/tasks` → 307 to `/login`, `/api/v1/tasks` → 401, `/api/v1/session` → 401)
 
 Slice status:
 
@@ -100,33 +113,51 @@ Slice status:
 - **A7.6 Recipient management + task-create guard — complete.** Authenticated Owner Recipient endpoints + deterministic `POST /api/v1/tasks` rejection of any supplied top-level `recipientId`.
 - **A7.7 authenticated Owner handoff HTTP + route-level delivery orchestration — complete.** `POST /api/v1/tasks/{taskId}/handoff` with idempotency-first classification (successful/pending/failed replay + new initial), server-selected delivery mode, Gmail-forward completeness, assignment-email delivery, send-scope/re-consent errors, private→public error mapping, durable audits on state transitions. **No** Owner UI, re-consent UI, reassignment, explicit re-forward, proposed-Recipient hints, reconciliation worker, Follow-up Engine, or production rollout in this slice. Contract/generated clients/Prisma schema/migrations unchanged.
 - **A7.8 Owner confirmation UI + Gmail send re-consent UI — complete.** New thin Owner pages `/tasks` and `/tasks/[taskId]` (did not exist before A7.8); hard Owner auth gate; Recipient select; modal confirmation with `handoff_confirmed_v1`; sessionStorage pending-operation recovery retaining original If-Match + Idempotency-Key; manual retry after OAuth re-consent (no auto-send); truthful pending/ambiguous UX; connection DTO emits `canSend` / `requiresSendReconsent`. **No** reassignment, re-forward, proposed hints, reconciliation, Follow-up Engine, Recipient CRUD UI, production rollout, or OpenAPI/schema/migration changes.
+- **A7 closure fixes — complete.** `/tasks` segment error boundary (explicit actionable error instead of a blank page); Owner Task detail renders Recipient notes plus the completion outcome and completion note with truthful attribution. No contract, schema, or migration change.
 
-**Intent:** Single Owner confirmation (D037) for Recipient handoff on an **existing** unassigned Task (D080): Assignment + Capability + Gmail forward (Gmail-origin) or assignment email (non-Gmail), via `POST /api/v1/tasks/{taskId}/handoff` (D090). Follow-up Engine and Event Notification Engine remain A8 (D089, D095–D101).
-
-**Acceptance criteria (full A7 — not yet met):**
+**Acceptance criteria (closure state):**
 
 - [x] OpenAPI defines `POST /api/v1/tasks/{taskId}/handoff` with `If-Match` and required idempotency key; generated clients committed (A7.1)
 - [x] Minimal Owner Recipient management: list active, create/update, mark inactive (D087)—no CRM — **implemented in A7.6**
 - [x] Handoff consumes existing Owner-owned / A6-approved **unassigned** Tasks; does **not** recreate the Task — **implemented in A7.7**
-- [x] Server selects Gmail-forward vs assignment-email from Task source; both send via Owner’s connected Gmail (`gmail.readonly` + `gmail.send`, D093) — **implemented in A7.7** (route-level; production OAuth re-consent UI still open)
+- [x] Server selects Gmail-forward vs assignment-email from Task source; both send via Owner’s connected Gmail (`gmail.readonly` + `gmail.send`, D093) — **implemented in A7.7**; **both paths production-verified** at closure
 - [x] Gmail-origin forward includes Task `summaryPoints` above original and all attachments; knowingly incomplete forwards are not sent (D088) — **implemented in A7.7**
 - [x] Delivery model `pending` / `sent` / `failed` (D092); actionable capability only after successful send; durable HandoffAttempt (or equivalent) preferred — **implemented in A7.7** (via A7.3–A7.5 + route)
-- [ ] One active capability per Assignment; reassignment/re-forward revokes prior active capability; matched **superseded** capabilities may return `CAPABILITY_NO_LONGER_ACTIVE`; other unusable/unmatched cases remain generic `UNAUTHORIZED` (D086) — **error code contracted in A7.1**; reassignment/re-forward orchestration **deferred** (not part of A7.7)
+- [x] One active capability per Assignment; matched **superseded** capabilities may return `CAPABILITY_NO_LONGER_ACTIVE`; other unusable/unmatched cases remain generic `UNAUTHORIZED` (D086) — one-active enforcement and error codes shipped and production-verified. **Descoped at closure:** reassignment / explicit re-forward revocation orchestration → [A7 deferred backlog](#a7-deferred-backlog-not-a-milestone)
 - [x] Same failed-delivery retry reuses attempt/capability unless Recipient or security-sensitive details changed (D086, D092) — **implemented in A7.7** (same-key failed retry via A7.5 `retryHandoff`; snapshot address preserved)
 - [x] `POST /api/v1/tasks` create-with-`recipientId` rejected/deprecated once handoff ships (D091) — **implemented in A7.6**
 - [x] Thin Owner confirmation UI discloses D037 handoff + Gmail retention boundary; does **not** claim a Follow-up Schedule is active (D089, D094) — **implemented in A7.8**
 - [x] Insufficient `gmail.send` → clear re-consent / insufficient-scope path (D093) — **API path A7.7**; **Owner re-consent UI A7.8**
 - [x] No Follow-up Schedules, Follow-up Engine jobs/sends, or Event Notification Engine processing in A7 (D089) — **still true after A7.8**
-- [ ] No fresh LLM during handoff; optional `proposedRecipientHint` → `proposedRecipientId` only via deterministic active-Recipient match (D094) — **no fresh LLM (A7.7/A7.8)**; proposed-hint fields are **not** in the current OpenAPI request and remain **deferred** (unchecked)
-- [ ] Production E2E: Gmail-origin forward + non-Gmail assignment email + Recipient capability action; A4/A5/A6 baselines remain healthy
+- [x] No fresh LLM during handoff (D094) — **verified in A7.7/A7.8 and in production**. **Descoped at closure:** optional `proposedRecipientHint` → `proposedRecipientId` deterministic resolution is **not** in the current OpenAPI request → [A7 deferred backlog](#a7-deferred-backlog-not-a-milestone)
+- [x] Production E2E: Gmail-origin forward + non-Gmail assignment email + Recipient capability action; A4/A5/A6 baselines remain healthy — **passed 2026-07-28** (see production closure evidence above)
 
 **Out of scope for A7:** Follow-up Engine and Event Notification Engine (A8; D095–D101); Android Owner UI (A9); Gmail settings UI / History recovery; CRM; `gmail.modify` unless a new Decision.
 
 **Binding decisions:** D037, D042, D080, D086–D094 (and D010, D011, D016, D031 as applicable). A8.0 product law (D095–D101) must not be implemented inside A7.
 
+#### A7 deferred backlog (not a milestone)
+
+Handoff work deliberately **descoped from A7** at closure. None of it blocks A8, and none of it is authorized to start implicitly — each item needs its own planned, reviewed slice under [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW.md).
+
+| Deferred item                                                                             | Notes                                                                        |
+| ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Reassignment and explicit re-forward orchestration (revoking the prior active capability) | D086 policy, domain, and persistence primitives exist; no orchestration/HTTP |
+| `proposedRecipientHint` → `proposedRecipientId` deterministic resolution                  | D094(6); fields absent from the current handoff request schema               |
+| Reconciliation worker for stale or uncertain `pending` handoff attempts                   | Discoverable as stale `pending`; no `unknown` status was introduced          |
+| Owner UI for Recipient management (create/update/deactivate)                              | A7.6 HTTP endpoints exist; Recipients are currently managed via those APIs   |
+| Orphan OAuth fallback path `/settings/gmail`                                              | Unreachable in practice; A7.8 always supplies a Task `returnPath`            |
+| Gmail settings UI and Gmail History recovery / `resync_required` operator UX              | Deferred from A5; unchanged by A7                                            |
+
+**Naming note:** do **not** label this backlog “A7.5”. `A7.5` already names the **completed** internal handoff orchestration slice listed above, and reusing the label would make the milestone history untruthful. A future authorized slice needs a new, unused identifier.
+
+---
+
+## Planned
+
 ### A8 — Follow-up Engine and Event Notification Engine
 
-**A8.0 documentation Decision Lock:** D095–D101 (complete as docs-only). Implementation follows A7 official close.
+**A8.0 documentation Decision Lock:** D095–D101 (complete as docs-only). A7 is now closed, so A8 implementation is **eligible** but still requires explicit authorization and its own planning/review pass. **Not started.**
 
 **Follow-up Engine (D095–D098, D100–D101):** time-driven, Assignment-scoped Recipient follow-ups after delivery `sent`. Phase 1 Owner-confirmed initial interval (24h / 48h / 72h / 1 week); Phase 2 system standard interval (default 24h, not Owner-configurable in v1). Waiting suspends; no snooze product rule; `dueAt` informational only. Authoritative rules: [WORKFLOWS.md](WORKFLOWS.md) §10a.
 

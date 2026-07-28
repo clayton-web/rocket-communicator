@@ -108,7 +108,7 @@ Full rules: [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md).
 
 ### Owner Recipient handoff (A7.1 contracted; A7.7 implemented)
 
-**Status: OpenAPI contracted (A7.1); handlers implemented and validated (A7.7).** Binding: D037, D086–D094. `operationId`: `handoffTask`.
+**Status: OpenAPI contracted (A7.1); handlers implemented (A7.7) and production-verified at A7 close** (both delivery paths sent; Recipient capability completion observed). Binding: D037, D086–D094. `operationId`: `handoffTask`.
 
 | Method | Path                             | Purpose                                                                                          | Status             |
 | ------ | -------------------------------- | ------------------------------------------------------------------------------------------------ | ------------------ |
@@ -267,7 +267,7 @@ Durable foundation in `@aicaa/db` (no Gmail send / no HTTP handlers):
   - **A7.5–A7.7:** application orchestration + authenticated handoff HTTP — **implemented**.
   - **A7.8:** Owner confirmation UI + Gmail send re-consent UI — **implemented**.
   - **Later reconciliation/worker:** stale or uncertain pending attempts, only when explicitly authorized.
-- **Remaining (not yet built / deferred):** reassignment/explicit re-forward orchestration, proposed-Recipient hint resolution, reconciliation worker, **production E2E** (parent A7 open). Recipient management HTTP and create-with-`recipientId` rejection shipped in A7.6; handoff HTTP in A7.7; Owner confirmation / re-consent UI in A7.8.
+- **Remaining (descoped from A7 at close; deferred to a future authorized slice):** reassignment / explicit re-forward orchestration, proposed-Recipient hint resolution, reconciliation worker. Recipient management HTTP and create-with-`recipientId` rejection shipped in A7.6; handoff HTTP in A7.7; Owner confirmation / re-consent UI in A7.8. A7 closed after a production E2E covering both delivery paths — see [MILESTONES.md](MILESTONES.md).
 
 ### CreateTaskRequest.recipientId deprecation (D091)
 

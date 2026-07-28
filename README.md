@@ -14,18 +14,18 @@ Not a permanent communication archive.
 
 ## Current status
 
-| Area                             | Status                                                                                                                            |
-| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| A3 Owner authentication          | Complete; production-verified (`GET /api/v1/session` → 200, `organizationId` = `axford`)                                          |
-| A4 task + capability             | Complete — **`A4_FULL_E2E_PASS`**: migration applied; full production Owner↔Recipient E2E passed                                  |
-| A5 Gmail connection and polling  | **Complete and Production-operational** (OAuth, encrypted tokens, History seed + incremental poll, locks, dedupe, audit, cron 5m) |
-| A6 Application Suggestion Engine | **Complete and Production-operational** (tag `v0.6.0-a6-complete`)                                                                |
-| A7 Gmail forward / handoff       | **A7.1–A7.8 implemented and validated**; **parent A7 remains OPEN** pending production E2E                                        |
-| A8.0 documentation lock          | **Complete (docs-only)** — Follow-up Engine + Event Notification Engine (D095–D101); no A8 implementation yet                     |
-| Production baseline              | Healthy; A4, A5, and A6 operational                                                                                               |
-| Next                             | Close parent **A7** (production E2E), then **A8** implementation ([MILESTONES](docs/MILESTONES.md))                               |
-| Deferred (non-blocking)          | Gmail settings UI; History recovery                                                                                               |
-| Later                            | Follow-up Engine / Event Notification Engine (A8), Android Owner UI (A9), notifications, voice, workers                           |
+| Area                             | Status                                                                                                                                                                   |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| A3 Owner authentication          | Complete; production-verified (`GET /api/v1/session` → 200, `organizationId` = `axford`)                                                                                 |
+| A4 task + capability             | Complete — **`A4_FULL_E2E_PASS`**: migration applied; full production Owner↔Recipient E2E passed                                                                         |
+| A5 Gmail connection and polling  | **Complete and Production-operational** (OAuth, encrypted tokens, History seed + incremental poll, locks, dedupe, audit, cron 5m)                                        |
+| A6 Application Suggestion Engine | **Complete and Production-operational** (tag `v0.6.0-a6-complete`)                                                                                                       |
+| A7 Gmail forward / handoff       | **Complete and Production-operational** (tag `v0.7.0-a7-complete`) — production E2E passed: both delivery paths, Recipient capability completion, Owner notes visibility |
+| A8.0 documentation lock          | **Complete (docs-only)** — Follow-up Engine + Event Notification Engine (D095–D101); no A8 implementation yet                                                            |
+| Production baseline              | Healthy; A4, A5, A6, and A7 operational                                                                                                                                  |
+| Next                             | **A8** implementation, once explicitly authorized ([MILESTONES](docs/MILESTONES.md))                                                                                     |
+| Deferred (non-blocking)          | A7 deferred backlog (reassignment / re-forward, proposed-Recipient hints, reconciliation worker, Recipient management UI); Gmail settings UI; History recovery           |
+| Later                            | Follow-up Engine / Event Notification Engine (A8), Android Owner UI (A9), notifications, voice, workers                                                                  |
 
 Operations: [DEPLOYMENT](docs/DEPLOYMENT.md). Terms: [GLOSSARY](docs/GLOSSARY.md). Plan: [MILESTONES](docs/MILESTONES.md).
 
