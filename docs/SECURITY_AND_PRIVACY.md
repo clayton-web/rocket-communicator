@@ -48,7 +48,9 @@ Governed by [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md). Definitions: [GL
 | Work request → Suggestion                                     | No (Owner review only)      | Yes                      |
 | View assigned Task via link                                   | Via Owner APIs              | Yes (scoped)             |
 | Complete / waiting / notes / return / clarification           | Yes                         | Yes (POST after confirm) |
-| Confirm Phase 1 follow-up interval (handoff)                  | Yes (D095)                  | No                       |
+| Set / change / remove the Task due date driving reminders     | Yes (D102, D104)            | No                       |
+| Pause reminders other than via Waiting                        | No (D101, D107)             | No                       |
+| Configure reminder times or add custom reminders              | No (D103, D110)             | No                       |
 | Approve learning / policies / automations                     | Yes (D054)                  | No                       |
 
 ## Server enforcement
@@ -80,7 +82,7 @@ Record capability ID, bound resource IDs, action, timestamp, request ID, outcome
 
 **A5.3 Owner Gmail OAuth audits** (Owner actor only): `gmail_oauth_started`, `gmail_connected`, `gmail_reconnected`, `gmail_disconnected`. Notes never contain tokens or raw OAuth errors.
 
-Also audit: suggestion decisions, assignment/forward/handoff approvals and delivery attempts (privacy-safe), **Follow-up Attempts** with durable privacy-safe lifecycle history (A8, D100), Event Notification Engine outcomes (A8, D099), retention runs, authz denials, Gmail reauth / insufficient-scope, work-request Suggestions. Do not require retention of complete email bodies for Follow-up Attempt history.
+Also audit: suggestion decisions, assignment/forward/handoff approvals and delivery attempts (privacy-safe), **reminder scheduling changes and delivery attempts** with durable privacy-safe lifecycle history, including truthful skip and failure reasons and generation identity (A8, D100, D109), Event Notification Engine outcomes (A8, D099), retention runs, authz denials, Gmail reauth / insufficient-scope, work-request Suggestions. Do not require retention of complete email bodies for reminder history, and never record a capability token or capability URL in it (D109).
 
 ## Other controls
 

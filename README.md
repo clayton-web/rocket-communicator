@@ -2,7 +2,7 @@
 
 Private, Android-first assistant that turns personal business communications into temporary, actionable work for one authenticated **Owner** and delegated **Recipients** who act through task-specific **capability links**—no Recipient application accounts.
 
-The product exists to ensure communications are followed through until conclusion. It is not a conventional task manager, calendar, or due-date reminder application.
+The product exists to ensure communications are followed through until conclusion. It is not a conventional task manager, calendar manager, or general-purpose reminder application. Under one narrow exception (D102), an explicitly selected Task due date may drive deterministic follow-through on delegated work.
 
 **Governing document:** [docs/PROJECT_CONSTITUTION.md](docs/PROJECT_CONSTITUTION.md)
 
@@ -21,11 +21,12 @@ Not a permanent communication archive.
 | A5 Gmail connection and polling  | **Complete and Production-operational** (OAuth, encrypted tokens, History seed + incremental poll, locks, dedupe, audit, cron 5m)                                        |
 | A6 Application Suggestion Engine | **Complete and Production-operational** (tag `v0.6.0-a6-complete`)                                                                                                       |
 | A7 Gmail forward / handoff       | **Complete and Production-operational** (tag `v0.7.0-a7-complete`) — production E2E passed: both delivery paths, Recipient capability completion, Owner notes visibility |
-| A8.0 documentation lock          | **Complete (docs-only)** — Follow-up Engine + Event Notification Engine (D095–D101); no A8 implementation yet                                                            |
+| A8.0 documentation lock          | **Complete (docs-only)** — D095–D101; **partly superseded by A8.1**                                                                                                      |
+| A8.1 documentation lock          | **Complete (docs-only)** — due-date-driven reminder model (D102–D110); constitution amended under a narrow exception; **no A8 code, schema, contract, or UI exists**     |
 | Production baseline              | Healthy; A4, A5, A6, and A7 operational                                                                                                                                  |
-| Next                             | **A8** implementation, once explicitly authorized ([MILESTONES](docs/MILESTONES.md))                                                                                     |
+| Next                             | **P1** Application Experience Foundation, then A8 implementation — each requires explicit authorization ([MILESTONES](docs/MILESTONES.md))                               |
 | Deferred (non-blocking)          | A7 deferred backlog (reassignment / re-forward, proposed-Recipient hints, reconciliation worker, Recipient management UI); Gmail settings UI; History recovery           |
-| Later                            | Follow-up Engine / Event Notification Engine (A8), Android Owner UI (A9), notifications, voice, workers                                                                  |
+| Later                            | Follow-up Engine / Event Notification Engine (A8), Android Owner UI (A9), notifications, voice, workers; Owner-created additional reminders (deferred slice, D110)       |
 
 Operations: [DEPLOYMENT](docs/DEPLOYMENT.md). Terms: [GLOSSARY](docs/GLOSSARY.md). Plan: [MILESTONES](docs/MILESTONES.md).
 

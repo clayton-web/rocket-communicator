@@ -204,7 +204,27 @@ Operator notes:
 - Handoff idempotency is durable. A repeated same-key call replays the single attempt; it does not send a second message.
 - Recipients are currently managed through the A7.6 Owner Recipient endpoints; there is no Recipient management UI yet (A7 deferred backlog).
 
-**A8.0 documentation Decision Lock** recorded (D095–D101); do not implement the Follow-up Engine or Event Notification Engine until A8 implementation is authorized. Roadmap: **A7 → A8 → A9** (no early separate A9.0).
+**A8.0 documentation Decision Lock** recorded (D095–D101) and partly superseded. **A8.1 documentation Decision Lock** recorded (**D102–D110**): A8 is a **due-date-driven** reminder model. Do not implement the Follow-up Engine or Event Notification Engine until A8 implementation is authorized. Roadmap: **A7 → A8 → A9** (no early separate A9.0).
+
+### Reminder engine operations (A8 — not implemented)
+
+**Nothing in this subsection exists yet.** No reminder scheduler job, endpoint, feature flag, environment variable, or database table has been created. This records the approved enablement gate so it cannot be missed later; it is not a runbook for existing infrastructure.
+
+**Production-enablement dependency and closure gate (D108).** Scheduler and delivery code **may** be developed and merged behind a **disabled** production feature flag before the Event Notification Engine is finished. However:
+
+> **Production reminder delivery must not be enabled until both the Event Notification Engine and the minimum Owner schedule-status UI are operational.**
+
+Before enablement, the Event Notification Engine must be able to notify the Owner about at least: overdue reminder ceiling reached; permanent reminder-delivery failure; no active assignment where Owner action is required; and a schedule entering `requiresOwnerAttention`. A Task-page status alone is **not** sufficient — the Owner must not have to inspect Tasks continually to discover that an automation stopped. The same gate applies to any claim that A8 is closed.
+
+**Additional pre-enablement conditions.**
+
+- Existing historical due-date data must **not** auto-activate reminders on deploy. Explicit Owner opt-in or re-save is required (D109), and the first production observation must confirm no pre-existing Task fired a reminder.
+- Delivery must be observed at **09:00 organization-local**, not UTC (D103).
+- No capability token or capability URL may appear in reminder logs, telemetry, audit, or metadata (D109).
+
+**Organization timezone configuration (future, not implemented).** The Owner organization timezone is the sole scheduling authority and is `America/Vancouver` (D034, D103). It is currently a documented product constant with **no** environment variable, configuration record, or database column. If A8 implementation introduces configuration for it, that configuration and its validation must be documented **when it exists** — do not treat any variable name as configured in advance.
+
+**Scheduler adapter (future).** Reminder processing is expected to follow the existing pattern: an application-owned engine behind one authenticated internal endpoint invoked by an interchangeable External Scheduler (D079), authenticated with the existing `CRON_SECRET` bearer family. No such job may be created or enabled before the gate above is satisfied.
 
 ## Capability links in production
 

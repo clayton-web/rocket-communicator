@@ -52,7 +52,7 @@ The following are **implemented** and **production-operational**. A5 and A6 are 
 
 ## Implemented through A7 (closed and production-operational)
 
-**A7 is complete and production-operational** (contracts through Owner confirmation UI + Gmail send re-consent UI, closed after a full production E2E on both delivery paths). Binding decisions: D086–D094. Do **not** move Follow-up Engine or Event Notification Engine implementation into A8 scope without explicit authorization (D089, D095–D101).
+**A7 is complete and production-operational** (contracts through Owner confirmation UI + Gmail send re-consent UI, closed after a full production E2E on both delivery paths). Binding decisions: D086–D094. Do **not** begin Follow-up Engine or Event Notification Engine implementation without explicit authorization (D089, D102–D110).
 
 Shipped in A7 (production-verified):
 
@@ -64,7 +64,7 @@ Shipped in A7 (production-verified):
 
 ## Planned for A8 and later (target architecture)
 
-- **Follow-up Engine** and **Event Notification Engine** (A8; product law D095–D101; [WORKFLOWS.md](WORKFLOWS.md) §10)
+- **Follow-up Engine** (due-date-driven, Task-scoped) and **Event Notification Engine** (A8; product law D102–D110 superseding parts of D095–D101; [WORKFLOWS.md](WORKFLOWS.md) §10)
 - Retention workers (A13); optional Supabase Realtime
 - Future `CommunicationAccount` schema (multiple inboxes later; v1 targets one)
 - Android Owner task UI, push delivery for Event Notifications, Messages/call capture, voice, learning (A9–A14; FCM remains deferred — D017)
@@ -181,16 +181,16 @@ Do not share Zod types with Kotlin. Generate clients from OpenAPI. Neon is not u
 
 ## Component map
 
-| Component                                                | Responsibility                                                                                                                                                   |
-| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Android app                                              | Capture, voice, Owner task UI (later); Owner session credentials only                                                                                            |
-| Next.js                                                  | Owner auth, Owner APIs, capability runtime, Recipient capability routes/pages, mailer, workers                                                                   |
-| Supabase Auth                                            | Google Workspace sign-in for the **Owner only** (D048)                                                                                                           |
-| Supabase Postgres                                        | System of record                                                                                                                                                 |
-| Prisma                                                   | Server data access only                                                                                                                                          |
-| Gmail API                                                | Ingest, assignment mail, forward-with-attachments                                                                                                                |
-| OpenAI                                                   | Structured extraction and transcription                                                                                                                          |
-| Follow-up Engine / Event Notification Engine / retention | Deterministic Follow-up and Event Notification processing (A8, D095–D101) and purge (A13); engines in-app, invoked by External Schedulers where scheduled (D079) |
+| Component                                                | Responsibility                                                                                                                                                                                   |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Android app                                              | Capture, voice, Owner task UI (later); Owner session credentials only                                                                                                                            |
+| Next.js                                                  | Owner auth, Owner APIs, capability runtime, Recipient capability routes/pages, mailer, workers                                                                                                   |
+| Supabase Auth                                            | Google Workspace sign-in for the **Owner only** (D048)                                                                                                                                           |
+| Supabase Postgres                                        | System of record                                                                                                                                                                                 |
+| Prisma                                                   | Server data access only                                                                                                                                                                          |
+| Gmail API                                                | Ingest, assignment mail, forward-with-attachments                                                                                                                                                |
+| OpenAI                                                   | Structured extraction and transcription                                                                                                                                                          |
+| Follow-up Engine / Event Notification Engine / retention | Deterministic due-date-driven reminder and Event Notification processing (A8, D102–D110) and purge (A13); engines in-app, invoked by External Schedulers where scheduled (D079). Not implemented |
 
 ## Platform directions
 
@@ -198,11 +198,19 @@ Do not share Zod types with Kotlin. Generate clients from OpenAPI. Neon is not u
 
 **Web:** Owner-authenticated routes for Owner APIs (D048). Recipient mutations use `/api/v1/capabilities/{token}/…` (D059). Browser view `GET /c/[token]` is non-mutating. Capability secrets: hash at rest; one-time raw reveal to Owner (D063); seven-day default TTL with persisted `expiresAt` (D055); multi-use until invalidation (D056). Persistence: `@aicaa/db`. Dismiss, not physical delete (D064).
 
-**Gmail (A5 ingest; A7 outbound — both closed):** One Owner inbox per organization; poll every five minutes (D065); polling-only in A5 (D066). Inbox-only ingestion (D068); Workspace-domain mailbox gate (D069). A5 OAuth used `gmail.readonly` only (D070). A7 retains `gmail.readonly` and adds `gmail.send` for assignment email and forward; do not request `gmail.modify` without a new Decision (D093). Persistence models and Application Polling Engine are **production-operational**. An **External Scheduler** invokes `GET|POST /api/v1/internal/gmail/poll` every five minutes; recommended initial adapter **cron-job.org** (D079). A5 creates communication events only — not suggestions (D077). Gmail settings UI and History recovery are deferred. On D037 handoff: Owner confirms once; server forwards Gmail-origin originals with attachments (or sends non-Gmail assignment email) using Task `summaryPoints`—no fresh LLM (D094); activate Assignment only after Gmail accepts send (D092). Phase 1 follow-up interval confirmation is A8 product law (D095), not an A7 acceptance criterion. Parent A7 remains open for production E2E.
+**Gmail (A5 ingest; A7 outbound — both closed):** One Owner inbox per organization; poll every five minutes (D065); polling-only in A5 (D066). Inbox-only ingestion (D068); Workspace-domain mailbox gate (D069). A5 OAuth used `gmail.readonly` only (D070). A7 retains `gmail.readonly` and adds `gmail.send` for assignment email and forward; do not request `gmail.modify` without a new Decision (D093). Persistence models and Application Polling Engine are **production-operational**. An **External Scheduler** invokes `GET|POST /api/v1/internal/gmail/poll` every five minutes; recommended initial adapter **cron-job.org** (D079). A5 creates communication events only — not suggestions (D077). Gmail settings UI and History recovery are deferred. On D037 handoff: Owner confirms once; server forwards Gmail-origin originals with attachments (or sends non-Gmail assignment email) using Task `summaryPoints`—no fresh LLM (D094); activate Assignment only after Gmail accepts send (D092). Handoff confirms **no** follow-up interval: preset intervals are retired and reminders derive from the Owner-selected Task due date (D102). **A7 is closed**: the full production E2E passed on both delivery paths (tag `v0.7.0-a7-complete`; see [MILESTONES.md](MILESTONES.md)).
 
-**AI / suggestions (A6):** Application Suggestion Engine is separate from Gmail sync (D084). Heuristic relevance then LLM extraction via `packages/ai` (D085). Owner suggestion HTTP; approve creates unassigned Task only (D080). Recommendations never silently become assignments, emails, or Follow-up Schedules. Optional `proposedRecipientHint` may map to `proposedRecipientId` only via deterministic match to an active Recipient (D094)—never auto-handoff. AI may recommend a Phase 1 follow-up interval; Owner confirmation required (D095).
+**AI / suggestions (A6):** Application Suggestion Engine is separate from Gmail sync (D084). Heuristic relevance then LLM extraction via `packages/ai` (D085). Owner suggestion HTTP; approve creates unassigned Task only (D080). Recommendations never silently become assignments, emails, or Reminder Schedules. Optional `proposedRecipientHint` may map to `proposedRecipientId` only via deterministic match to an active Recipient (D094)—never auto-handoff. AI may recommend a **due date**; only explicit Owner selection has scheduling effect, and AI may never create, activate, alter, or suppress a Reminder Schedule (D027, D102).
 
-**Follow-up Engine / Event Notification Engine (A8; D095–D101):** Authoritative rules in [WORKFLOWS.md](WORKFLOWS.md) §10. Follow-up Engine is time-driven and Assignment-scoped (Recipient audience; Gmail outbound). Event Notification Engine is event-driven and separate (Owner audience; **A8 delivery by email via Owner’s connected Gmail**, D099). No due-date / overdue / escalation / Owner-CC ladder. `dueAt` is informational only (D098). Waiting suspends Follow-up Schedules (D097). Timezone for interval arithmetic: `America/Vancouver` (D034). A7 must not claim an active Follow-up Schedule while A8 is not operational (D089). FCM/push remains deferred (D017; A9).
+**Follow-up Engine / Event Notification Engine (A8; D102–D110 supersede parts of D095–D101). Not implemented — A8 has not started.** Authoritative rules in [WORKFLOWS.md](WORKFLOWS.md) §10.
+
+- **Follow-up Engine** is **due-date-driven and Task-scoped** (Recipient audience; Gmail outbound). An explicitly Owner-selected due date is the authoritative scheduling input (D102), superseding `dueAt` independence (D098). Schedules are Task-scoped and survive reassignment (D104), superseding the Assignment-scoped rule (D096).
+- **Occurrences** are **09:00 organization-local** on a local calendar date, computed with timezone-aware **local-calendar arithmetic** and resolved individually to absolute instants for execution and audit. Fixed 24-hour millisecond arithmetic (for example `MS_PER_DAY`) is **prohibited**, and resolution must not depend on browser, device, or machine-local timezone (D103). Organization timezone: `America/Vancouver` (D034).
+- **Shape:** one advance reminder the morning before the due date (D105); one reminder each morning after it while incomplete, capped at **14 successful overdue deliveries per generation**, then `requiresOwnerAttention` (D106). Waiting suspends and is the only pause mechanism (D097, D107). Sends are attributed to a **`system`** actor; Owner scheduling changes to the **`owner`** actor (D107).
+- **Persistence direction (staged, not implemented):** two durable concepts — a Task Reminder Schedule and reminder delivery attempts with database-enforced idempotency. A planned-occurrence table is deferred until Owner-created dated reminders are authorized (D109, D110). No schema or migration is approved.
+- **Event Notification Engine** remains event-driven, separate, and its own A8 deliverable (Owner audience; **delivery by email via Owner's connected Gmail**, D099). No escalation stages or Owner-CC ladders. FCM/push remains deferred (D017; A9).
+- **Production-enablement gate (D108):** scheduler and delivery may merge behind a **disabled** production feature flag, but production reminder delivery must not be enabled until both the Event Notification Engine and the minimum Owner schedule-status UI are operational.
+- A7 must not claim an active Reminder Schedule while A8 is not operational (D089).
 
 **Retention:** Concrete excerpt `purgeAt` always (D082); ingest `syncedAt + 7 days` (D078); bounded 30-day workflow safety ceiling (not refreshed for long-lived active Tasks) / terminal + 7 days (D020, D082); 30-day completed visibility scrub; immediate audio delete on success; does not delete Gmail mailbox copies (D031). Details: [DATA_RETENTION.md](DATA_RETENTION.md).
 
@@ -225,6 +233,8 @@ Do not share Zod types with Kotlin. Generate clients from OpenAPI. Neon is not u
 Full rules: [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md).
 
 ## Diagram
+
+**Target architecture, not a statement of what is built.** Built today: the Next.js host, PostgreSQL, Owner auth, the Gmail poll endpoint and Polling Engine, the suggestion/AI path, the assignment-and-forward mailer, and the capability web view plus capability APIs. **Planned, not built:** the Android notification listener, voice capture, and Compose Owner UI; optional Realtime; and the scheduler's Follow-up Engine (A8) and retention (A13) invocations. Current implementation status is owned by [MILESTONES.md](MILESTONES.md).
 
 ```mermaid
 flowchart TB
@@ -256,7 +266,7 @@ flowchart TB
     RT["Realtime optional — planned"]
   end
 
-  Scheduler["External scheduler - Gmail poll, Follow-up Engine, retention"]
+  Scheduler["External scheduler - Gmail poll (built); Follow-up Engine, retention - planned"]
   OpenAI["OpenAI"]
 
   NL --> API
@@ -294,5 +304,5 @@ flowchart TB
 1. Degrade to manual/voice rather than silent loss.
 2. Retry transient failures with audit.
 3. Never assign or forward without recorded Owner approval.
-4. Idempotency for forwards, Follow-up Attempts, and ingest.
+4. Idempotency for forwards, reminder delivery attempts, and ingest.
 5. Quarantine invalid AI output; do not guess.

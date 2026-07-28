@@ -12,11 +12,11 @@ In version one: the **Owner** only. There is no second application login.
 
 ### Owner
 
-The single authenticated application user. Signs in with Google Workspace via Supabase Auth. Primary interface: Android. Approves suggestions, assignments/forwards, Follow-up Phase 1 intervals, and durable learning (D054). Receives **Event Notifications** (D099).
+The single authenticated application user. Signs in with Google Workspace via Supabase Auth. Primary interface: Android. Approves suggestions, assignments/forwards, Task due dates that drive reminders (D102), and durable learning (D054). Receives **Event Notifications** (D099).
 
 ### Recipient
 
-A delegated person identified by email in an Owner-managed Recipient record (D087). Receives assignment emails and **Follow-up Attempts**, and acts through capability links. **No** application account or Session (D049). A7 may expose minimal list/create/update/inactive management—not a CRM.
+A delegated person identified by email in an Owner-managed Recipient record (D087). Receives assignment emails and **reminders**, and acts through capability links. Has **no** reminder preferences (D110). **No** application account or Session (D049). A7 may expose minimal list/create/update/inactive management—not a CRM.
 
 **May (via capability):** view assigned task; complete; waiting/resume; notes; return to Owner; request clarification; submit work request → Task Suggestion.
 
@@ -56,13 +56,13 @@ Candidate work that is **not** yet a Task. Requires Owner approve/edit/dismiss/m
 
 ### Task
 
-Approved actionable work with status, summary, assignment attribute, optional informational `dueAt`, and audit. Never created directly by voice (D038). A6 suggestion approval yields an unassigned Task (D080). Owner/self work remains unassigned (D094).
+Approved actionable work with status, summary, assignment attribute, optional **due date** (an Owner-selected local calendar date that drives reminders when present — D102), and audit. Never created directly by voice (D038). A6 suggestion approval yields an unassigned Task (D080). Owner/self work remains unassigned (D094).
 
 ### Assignment
 
 Persisted binding of a Task to a Recipient (and intended email), including allowed Recipient actions for that handoff. Assignment is an **attribute of the Task**, not a Task status ([STATE_MACHINE.md](STATE_MACHINE.md)). A Task may have historical assignment rows over time; at most one assignment is active. Delivery outcomes: `pending` / `sent` / `failed` (D092). Activate only after Gmail accepts send.
 
-For Gmail-origin and non-Gmail handoffs, approval of assignment and outbound mail is one confirmation (D037). A6 does not create Assignments (D080). **Follow-up Schedules** are Assignment-scoped and owned by A8 (D089, D095–D096).
+For Gmail-origin and non-Gmail handoffs, approval of assignment and outbound mail is one confirmation (D037). A6 does not create Assignments (D080). **Reminder Schedules** are Task-scoped and owned by A8 (D089, D104).
 
 Assignment ≠ Capability: assignment records who should receive work and which actions are allowed; a Capability is the issued authorization grant for an active assignment. At most one **active** capability per Assignment; re-forward/reassignment revokes the prior (D086).
 
@@ -72,7 +72,7 @@ An Assignment that is the current binding for the Task (`cleared_at` unset / not
 
 ### Follow-up eligible Assignment
 
-An **active** Assignment whose delivery status is **`sent`**, whose Task is not terminal (`completed` / `dismissed`), that is not suspended by **waiting**, and whose capability/Assignment has not been terminated. Only then may a Follow-up Schedule be active (D096).
+An **active** Assignment whose delivery status is **`sent`**, whose Task is not terminal (`completed` / `dismissed`), that is not suspended by **waiting**, and whose capability/Assignment has not been terminated. Under D104 the Reminder Schedule is Task-scoped and may exist without one, but **Recipient reminder delivery requires** these conditions; otherwise the occurrence is recorded as skipped without consuming the local calendar day (D107).
 
 ### Capability
 
@@ -98,11 +98,11 @@ Typed bullet in a structured summary (fact, inference, missing, request, etc.).
 
 New work proposed because prior work produced further action (for example after completion). Always begins as a **Task Suggestion** requiring Owner approval (D038). Voice-originated next actions start here.
 
-**Terminology note:** Canonical product/docs term is **Next-action Suggestion**. OpenAPI retains the wire/schema name `FollowUpProposal` during A8 as **temporary contract naming debt** (do not rename in A8.0; breaking rename only under a later contract-versioning plan). Must not be confused with the **Follow-up Engine** (D095).
+**Terminology note:** Canonical product/docs term is **Next-action Suggestion**. OpenAPI retains the wire/schema name `FollowUpProposal` during A8 as **temporary contract naming debt** (do not rename in A8.0; breaking rename only under a later contract-versioning plan). Must not be confused with the **Follow-up Engine** (D102).
 
 ### Return to Owner / Clarification Request
 
-Recipient capability actions that hand work back or ask the Owner for information without creating a standalone Task. These are Event Notification Engine inputs (D099), not Follow-up Engine cadence changes beyond eligibility termination/suspension rules.
+Recipient capability actions that hand work back or ask the Owner for information without creating a standalone Task. These are Event Notification Engine inputs (D099). They do not change reminder cadence, which derives only from the due date (D102–D106), beyond the delivery-eligibility and suspension rules in D107.
 
 ### Task Outcome
 
@@ -110,11 +110,39 @@ Structured completion record (presets and/or notes).
 
 ### Waiting
 
-Recipient or Owner suspension of actionable work until `waiting_until`. **Waiting suspends** any active Follow-up Schedule; timers do not preserve partial elapsed time (D097). Recipients use Waiting; they do not own Follow-up Policy.
+Recipient or Owner suspension of actionable work until `waiting_until`. **Waiting suspends** the Reminder Schedule and is the **only** pause mechanism (D097, D101, D107); no partial elapsed time is preserved. On resume, the next **future** 09:00 organization-local occurrence is computed with no backlog. Recipients use Waiting; they do not own Follow-up Policy.
 
-### dueAt
+### Due date
 
-Optional informational timestamp on a Task (or suggestion refine field). AI-extracted when clearly present; Owner-editable; for display and summary context only. **Never** an input to the Follow-up Engine (D098).
+Optional Owner-selected **organization-local calendar date** on a Task. When present it is the **authoritative deterministic scheduling input** for reminders (D102) — this supersedes D098, which treated it as informational only. The Owner selects **no** due time; reminder occurrences are fixed at 09:00 organization-local (D103). AI may recommend a due date; only an explicit Owner selection has effect (D027, D102).
+
+**`dueAt`** is the existing instant-typed field carrying this value in the current contract and schema. Under D109 the authoritative representation is a local **calendar date**, and `dueAt` is retained temporarily for contract compatibility; the field-level migration is **not implemented** and exact names are not locked.
+
+### Reminder Schedule
+
+The **Task-scoped** scheduling state derived from a Task's due date: at most one per Task, surviving reassignment, carrying the current **generation**, status, advance-occurrence disposition, next overdue occurrence, per-generation overdue delivered count, and `requiresOwnerAttention` (D104, D109). Supersedes the Assignment-scoped Follow-up Schedule (D096). **Not implemented.**
+
+### Reminder occurrence
+
+A single scheduled reminder moment: **09:00 organization-local** on a specific local calendar date, resolved individually to an absolute instant for execution and audit (D103). Either the one **advance** occurrence on the day before the due date (D105) or an **overdue** occurrence on a calendar day after it (D106).
+
+### Schedule generation
+
+A monotonically increasing marker opened by a **material due-date change** — the Owner selecting a different local calendar date. Prior generations' attempts, counts, and audit are preserved; the new generation's overdue delivered count starts at zero; and in-flight work is invalidated by a generation check immediately before send (D104). Saving the same due date opens no generation.
+
+**Not** the A7 handoff **send generation** ([ARCHITECTURE.md](ARCHITECTURE.md)), which is an internal per-attempt counter used to reject stale Gmail send results. The two are unrelated.
+
+### Reminder delivery attempt
+
+One processed reminder occurrence with its outcome (`sent` / `failed` / `skipped`), truthful skip or failure reason (for example `advance_window_elapsed`), generation identity, and a server-derived idempotency identity enforced by a database constraint (D109). Durable and privacy-safe (D100); superseded rather than deleted or rewritten. Contains **no** capability token or capability URL.
+
+### Overdue ceiling
+
+The bound on daily overdue reminders: **14 successfully delivered overdue reminders per schedule generation**. Retryable failures, permanent failures, skipped occurrences, scheduler claims, and advance reminders do **not** count. On reaching it, Recipient reminders stop, the schedule enters `requiresOwnerAttention`, the Owner is notified, and nothing restarts automatically (D106).
+
+### requiresOwnerAttention
+
+Reminder Schedule state meaning automated follow-through has stopped or been suspended and the Owner must act — for example the overdue ceiling was reached, delivery failed permanently, or there is no active assignment. It must be surfaced by an Owner notification, not only by a Task page (D106, D108).
 
 ---
 
@@ -150,19 +178,19 @@ Replaceable integration layer for hosting, scheduling, storage, messaging, or cl
 
 ### Follow-up Engine
 
-Time-driven, Assignment-scoped engine that sends **Recipient** follow-ups after assignment delivery is `sent` (D095). Not a due-date or escalation engine. Authoritative rules: [WORKFLOWS.md](WORKFLOWS.md) §10.
+**Due-date-driven, Task-scoped** engine that sends **Recipient** reminders derived from the Owner-selected Task due date (D102). Authorized by the narrow constitutional exception for delegated communication work; it is **not** a calendar manager, a general-purpose reminder application, or an escalation engine. Authoritative rules: [WORKFLOWS.md](WORKFLOWS.md) §10a. **Not implemented.**
 
 ### Follow-up Policy
 
-Deterministic rules governing Phase 1 presets, Phase 2 standard interval, eligibility, suspension, and termination (D095–D097). Owned by the application; not by the LLM.
+Deterministic rules governing occurrence computation, the advance-reminder skip rule, daily overdue recurrence, the overdue ceiling, eligibility, suspension, and stopping (D102–D107). Owned by the application; never by the LLM. The A8.0 Phase 1 preset / Phase 2 interval policy is retired (D095 superseded in part).
 
 ### Follow-up Schedule
 
-The active scheduling state for **one Assignment** (Phase 1 or Phase 2). At most one active schedule per Assignment; never transfers between Assignments (D096).
+Superseded term. The operative concept is the Task-scoped **Reminder Schedule** (D104). Historical A8.0 usage meant Assignment-scoped state (D096).
 
 ### Follow-up Attempt
 
-One outbound follow-up send (or suppressed/cancelled attempt) under a Follow-up Schedule, with durable privacy-safe history (D100).
+Superseded term. The operative concept is the **reminder delivery attempt** (D109). The durable privacy-safe history obligation from D100 carries over unchanged.
 
 ### Event Notification Engine
 
@@ -198,7 +226,7 @@ Persisted statuses and transitions; derived display labels. See [STATE_MACHINE.m
 
 ### Audit Event
 
-Append-only security/workflow record. For capability actions: truthful capability attribution without claiming verified personal identity (D052, D057). Follow-up Attempts require durable privacy-safe history (D100).
+Append-only security/workflow record. For capability actions: truthful capability attribution without claiming verified personal identity (D052, D057). Reminder scheduling changes, sends, skips, failures, and stop/suspension events require durable privacy-safe history (D100, D109); automated sends are attributed to a **`system`** actor and Owner scheduling changes to the **`owner`** actor (D107).
 
 ### Version One / MVP
 

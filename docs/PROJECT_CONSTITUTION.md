@@ -14,13 +14,14 @@ Turn ongoing personal business communications into temporary, actionable work—
 
 ## Product philosophy
 
-- The product is an **AI Communication Action Assistant**, not a conventional task manager, calendar manager, due-date reminder application, communication archive, or CRM.
+- The product is an **AI Communication Action Assistant**, not a conventional task manager, calendar manager, general-purpose reminder application, communication archive, or CRM.
+- **Narrow due-date exception (D102, amended 2026-07-28):** an **explicitly selected Task due date may drive deterministic follow-through on delegated communication work.** This exception is limited to Recipient follow-through on work the Owner has deliberately delegated. It does **not** authorize general-purpose personal reminders, arbitrary recurrence, escalation ladders, Owner CC ladders, silent AI-controlled scheduling, or general calendar management. Prior wording prohibited every "due-date reminder application" characteristic; see [Amendment history](#amendment-history).
 - **The product exists to ensure communications are followed through until conclusion.** Communication triage may describe one capability; it does not replace this philosophy.
 - **Humans own decisions**; AI proposes structured options.
 - Communication content is **temporary**; workflow intelligence is **durable**.
 - Automation earns trust through an explicit ladder of approval—never through silent behaviour change.
 - The Android app is the Owner’s primary instrument; the Recipient path stays deliberately thin (email + capability link + minimal web task view).
-- Time-driven Recipient follow-through is owned by the **Follow-up Engine**; event-driven Owner alerts are owned by the **Event Notification Engine** (D095, D099)—separate engines, not an escalation ladder.
+- Time-driven Recipient follow-through is owned by the **Follow-up Engine**, driven by the Owner-selected Task due date (D102–D110); event-driven Owner alerts are owned by the **Event Notification Engine** (D099)—separate engines, not an escalation ladder.
 
 ## Long-term vision
 
@@ -40,7 +41,7 @@ The product succeeds when:
 
 1. The Owner trusts suggestions enough to review them quickly, not re-read every message.
 2. Recipient handoffs happen only with explicit Owner approval, with clear audit of who authorized what.
-3. Assigned work is followed through deterministically until conclusion, without follow-up spam or due-date escalation ladders.
+3. Assigned work is followed through deterministically until conclusion, without follow-up spam or escalation ladders. Due-date-driven follow-up remains bounded and stops on completion or at an approved ceiling (D102, D106).
 4. Completions capture meaningful outcomes (including voice) and can spawn the next approved action.
 5. Temporary communication data leaves the application on schedule, while durable preferences improve the system.
 6. Operating cost and maintenance remain low enough for private, single-operator use.
@@ -115,3 +116,13 @@ When documents conflict, resolve in this order unless a newer **Approved** decis
 ## Amendment
 
 Amend this constitution only deliberately: record the change in [DECISIONS.md](DECISIONS.md), update dependent docs, and note the reason. Silent drift is forbidden.
+
+## Amendment history
+
+Amendments are recorded here so superseded governing wording remains inspectable. Do not delete rows.
+
+| Date       | Section            | Previous wording                                                                                                                                                          | Amended wording                                                                                                                                                             | Authority | Reason                                                                                                                                                                                                                                                             |
+| ---------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 2026-07-28 | Product philosophy | "not a conventional task manager, calendar manager, **due-date reminder application**, communication archive, or CRM" — read as prohibiting all due-date-driven follow-up | "not a conventional task manager, calendar manager, **general-purpose reminder application**, communication archive, or CRM" **plus** an explicit narrow due-date exception | **D102**  | The revised A8 Follow-up Engine makes an explicitly Owner-selected Task due date the deterministic scheduling input for delegated-work follow-through. The blanket prohibition was narrowed rather than deleted; every non-delegated reminder use remains excluded |
+| 2026-07-28 | Success definition | "without follow-up spam or **due-date escalation ladders**"                                                                                                               | "without follow-up spam or **escalation ladders**" plus an explicit bounded-follow-up statement                                                                             | **D102**  | Escalation ladders remain prohibited; the previous phrasing could be misread as prohibiting bounded due-date follow-up now authorized under D102 and ceilinged by D106                                                                                             |
+| 2026-07-28 | Engine ownership   | "Time-driven Recipient follow-through is owned by the **Follow-up Engine**; … **Event Notification Engine** (**D095**, D099)" — no stated scheduling driver               | Same engine separation, now stating the driver: "driven by the Owner-selected Task due date (**D102–D110**)"                                                                | **D102**  | The Follow-up Engine's scheduling driver moved from the retired D095 handoff-interval model to the Owner-selected due date. Engine separation and the escalation-ladder prohibition are unchanged                                                                  |

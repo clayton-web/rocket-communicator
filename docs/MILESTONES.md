@@ -1,6 +1,6 @@
 # Milestones
 
-**Current:** **A7 is CLOSED** — Gmail forwarding and assignment email are **Production-operational**. A7.1–A7.8 shipped and the full production E2E passed on production SHA `8da353692c39484467f8f4651acf101fa172f4e8` (both delivery paths, Recipient capability completion, Owner-visible notes). Completion tag: `v0.7.0-a7-complete`. A7.0 decisions remain locked (D086–D094). **A8.0 documentation Decision Lock** is recorded (D095–D101); A8 implementation is **not** started and requires explicit authorization. A6 Application Suggestion Engine remains **CLOSED** in Production (tag `v0.6.0-a6-complete`). A5 Gmail connection and polling remains **closed and healthy**. Roadmap: **A7 → A8 → A9** (no early separate A9.0). Handoff items deliberately deferred out of A7 are listed under [A7 deferred backlog](#a7-deferred-backlog-not-a-milestone).
+**Current:** **A7 is CLOSED** — Gmail forwarding and assignment email are **Production-operational**. A7.1–A7.8 shipped and the full production E2E passed on production SHA `8da353692c39484467f8f4651acf101fa172f4e8` (both delivery paths, Recipient capability completion, Owner-visible notes). Completion tag: `v0.7.0-a7-complete`. A7.0 decisions remain locked (D086–D094). **A8.0 documentation Decision Lock** is recorded (D095–D101) and is now partly superseded. **A8.1 documentation Decision Lock** is recorded (**D102–D110**): A8 is revised to a **due-date-driven** reminder model under a narrow constitutional exception. A8 implementation is **not** started — no A8 code, schema, migration, contract, environment configuration, scheduler, or UI exists — and requires explicit authorization. A6 Application Suggestion Engine remains **CLOSED** in Production (tag `v0.6.0-a6-complete`). A5 Gmail connection and polling remains **closed and healthy**. Milestone identifiers are unchanged: **A7 → A8 → A9** (no early separate A9.0). **P1** (Application Experience Foundation) is a distinct milestone sequenced before the A8 Owner UI and is **not** folded into A8; see [Delivery sequence](#delivery-sequence). Handoff items deliberately deferred out of A7 are listed under [A7 deferred backlog](#a7-deferred-backlog-not-a-milestone).
 
 Process: [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW.md) · [REVIEW_CHECKLIST.md](REVIEW_CHECKLIST.md) · Operations: [DEPLOYMENT.md](DEPLOYMENT.md)
 
@@ -155,13 +155,34 @@ Handoff work deliberately **descoped from A7** at closure. None of it blocks A8,
 
 ## Planned
 
+### Delivery sequence
+
+Sequencing only — **no milestone is renumbered**. A8, A9, and later milestone identifiers are unchanged.
+
+1. **P1** — Application Experience Foundation (distinct milestone; **not** part of A8 and not folded into it). Its scope and decision lock are defined by P1's own documentation pass, not here.
+2. **A8.1** — documentation and decision lock (**complete**)
+3. **A8.2** — timezone and pure scheduling logic
+4. **A8.3** — persistence and APIs
+5. **A8.4** — scheduler and delivery behind a **disabled** production feature flag
+6. **A8.5** — Event Notification Engine
+7. **A8.6** — Owner UI, built on P1 foundations
+8. **A8.7** — controlled production enablement and evidence
+
+P1 precedes the A8 Owner UI so the due-date control and schedule panel are built once on a settled experience foundation. Documentation precedes A8 code (Engineering Rule #1).
+
 ### A8 — Follow-up Engine and Event Notification Engine
 
-**A8.0 documentation Decision Lock:** D095–D101 (complete as docs-only). A7 is now closed, so A8 implementation is **eligible** but still requires explicit authorization and its own planning/review pass. **Not started.**
+**A8.0 documentation Decision Lock:** D095–D101 (docs-only). Partly **superseded** by A8.1.
 
-**Follow-up Engine (D095–D098, D100–D101):** time-driven, Assignment-scoped Recipient follow-ups after delivery `sent`. Phase 1 Owner-confirmed initial interval (24h / 48h / 72h / 1 week); Phase 2 system standard interval (default 24h, not Owner-configurable in v1). Waiting suspends; no snooze product rule; `dueAt` informational only. Authoritative rules: [WORKFLOWS.md](WORKFLOWS.md) §10a.
+**A8.1 documentation Decision Lock:** **D102–D110 (complete as docs-only).** Revises A8 to a **due-date-driven** reminder model, amends [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md) under a narrow exception, and supersedes D098 plus parts of D095, D096, and D099. **No A8 code, schema, migration, contract, environment configuration, scheduler, or UI exists.** A8 implementation requires explicit authorization and its own planning/review pass. **Not started.**
 
-**Event Notification Engine (D099):** event-driven Owner notifications (separate engine; no escalation CC ladder). A8 delivers Owner notifications by email via the Owner’s connected Gmail for the core event list; FCM/push remains deferred (D017; A9). Authoritative rules: [WORKFLOWS.md](WORKFLOWS.md) §10b.
+**Follow-up Engine (D102–D110):** due-date-driven, **Task-scoped** Recipient reminders. An optional Owner-selected due date — an organization-local **calendar date** with no Owner-selected time — drives one advance reminder at **09:00 organization-local on the day before**, then one reminder at 09:00 organization-local on **each calendar day after** while the Task remains incomplete and eligible, bounded at **14 successful overdue deliveries per schedule generation**. Occurrences use **local-calendar arithmetic**, never fixed 24-hour millisecond offsets, so 09:00 local survives daylight-saving transitions. Waiting suspends and is the **only** pause mechanism. Sends are attributed to a **`system`** actor. Authoritative rules: [WORKFLOWS.md](WORKFLOWS.md) §10a.
+
+**Event Notification Engine (D099):** event-driven Owner notifications (separate engine; no escalation CC ladder). A8 delivers Owner notifications by email via the Owner’s connected Gmail for the core event list; FCM/push remains deferred (D017; A9). It remains a **separate A8 deliverable** and must additionally cover overdue ceiling reached, permanent reminder-delivery failure, no active assignment requiring Owner action, and schedule entering `requiresOwnerAttention` (D106, D108). Authoritative rules: [WORKFLOWS.md](WORKFLOWS.md) §10b.
+
+**Production-enablement gate and closure gate (D108):** scheduler and delivery may merge behind a **disabled** production feature flag, but **production reminder delivery must not be enabled — and A8 must not be claimed closed — until both the Event Notification Engine and the minimum Owner schedule-status UI are operational.** A Task-page status alone is insufficient: the Owner must not have to inspect Tasks continually to discover that an automation stopped.
+
+**Deferred to a separately authorized future slice (D110):** Owner-created additional dated reminders, and their routes, UI, rules, and schema. Not authorized to start implicitly; a future slice needs its own planning/review pass and a new, unused identifier. Also excluded from A8 entirely: preset reminder choices, recurrence editor, reminder-time picker, arbitrary rules, cron expressions, general calendar management, a separate pause mechanism, Recipient reminder preferences, Android reminder UI, and AI-controlled scheduling.
 
 ### A9 — Android authentication and Owner interface
 

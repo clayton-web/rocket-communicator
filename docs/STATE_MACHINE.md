@@ -1,8 +1,8 @@
 # State machine
 
-Persisted states and transitions (`packages/domain`). Related: [API_CONTRACT.md](API_CONTRACT.md) · [GLOSSARY.md](GLOSSARY.md) · [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md) · [DECISIONS.md](DECISIONS.md) (incl. A8.0 D095–D101)
+Persisted states and transitions (`packages/domain`). Related: [API_CONTRACT.md](API_CONTRACT.md) · [GLOSSARY.md](GLOSSARY.md) · [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md) · [DECISIONS.md](DECISIONS.md) (incl. A8.1 D102–D110, which supersede parts of A8.0 D095–D101)
 
-**Mental model:** Task status is independent of Assignment. Assignment binds Recipient + allowed actions. Capability authorizes those actions via a Capability Link. Follow-up Schedules are Assignment-scoped (D096). See Glossary.
+**Mental model:** Task status is independent of Assignment. Assignment binds Recipient + allowed actions. Capability authorizes those actions via a Capability Link. **Reminder Schedules are Task-scoped** and driven by the Owner-selected due date (D102, D104; supersedes the Assignment-scoped rule in D096). See Glossary.
 
 ---
 
@@ -37,36 +37,44 @@ AI and voice create suggestions, never tasks (D038).
 
 **Assignment is an attribute**, not a Task status (`TaskAssignment`). At most one Assignment is active; historical rows may exist. Capability grants attach to a specific Assignment—not to “whoever is assigned” generically. At most one **active** Recipient capability per Assignment; reassignment or re-forward revokes the prior active capability (D086). Delivery outcomes `pending` / `sent` / `failed` (D092); actionable capability only after successful send. Handoff is Owner `POST /api/v1/tasks/{taskId}/handoff` (D090)—not part of suggestion approve.
 
-### Derived display labels (never persisted; never schedule)
+### Derived display labels (never persisted)
 
-- `due_soon` — actionable task with informational `dueAt` within 24 hours
-- `overdue` — actionable task with informational `dueAt` in the past
+- `due_soon` — actionable task whose due date is approaching but not yet passed
+- `overdue` — actionable task whose due date has passed
 
-These labels are **display-only** (D098). They must **not** trigger Follow-up Attempts, alter Follow-up cadence, escalate, CC the Owner, or create/modify an Assignment. Not computed while `waiting`, `completed`, or `dismissed`.
+**Current derivation (implemented, contract debt):** both labels are computed from the instant-typed `dueAt` field, with `due_soon` using a 24-hour window before that instant. That threshold is an artefact of the pre-A8.1 instant representation. When the due date aligns to a local calendar date (D109), the derivation must be restated in local-calendar terms; until then, do not cite the 24-hour window as reminder law — reminder occurrences never use it (D103).
 
-### `dueAt`
+These labels remain **derived and never persisted**, and are not computed while `waiting`, `completed`, or `dismissed`. They are **no longer display-only**: D098 is superseded by D102, so the due date they derive from is now the authoritative reminder scheduling input. The labels themselves still **must not** be the scheduling mechanism — reminder occurrences are computed from the due **date** by the rules in [WORKFLOWS.md](WORKFLOWS.md) §10a (D103), not from a label. Escalation, Owner CC ladders, and label-triggered sends remain prohibited (D099).
 
-Optional informational field only (D098). Independent from the Follow-up Engine.
+### Due date
+
+**Optional** and, when present, the **authoritative deterministic scheduling input** for reminders (D102). It is an Owner-**organization-local calendar date**; the Owner selects **no** due time (D103). AI may recommend a due date; only explicit Owner selection has effect (D027, D102).
+
+Reminders derived from it: one advance reminder at 09:00 organization-local on the day **before** the due date (D105), then one reminder at 09:00 organization-local on **each** calendar day after it while the Task remains incomplete and eligible, bounded by the ceiling in D106. Authoritative rules: [WORKFLOWS.md](WORKFLOWS.md) §10a. **Not implemented** — A8 has not started.
+
+**Semantic direction (not yet implemented, D109):** the authoritative representation is a local calendar date; the existing instant-typed `dueAt` field is retained temporarily for contract compatibility. Existing historical due-date data must **not** automatically activate reminders; explicit Owner opt-in or re-save is required after implementation.
 
 ### Waiting and resume
 
 Entering `waiting` stores `priorActionableStatus` (`open` or `in_progress`). `resume` restores that status.
 
-**Follow-up interaction (D097):** Waiting **suspends** Follow-up eligibility. Do not preserve partial elapsed timers. On resume: fresh Phase 2 from resume time if the first Follow-up Attempt was already successfully delivered; otherwise fresh Phase 1 from resume time using the same Owner-confirmed Phase 1 preset.
+**Reminder interaction (D097, D107):** Waiting **suspends** reminders and is the **only** pause mechanism—no separate pause control exists. Do not preserve partial elapsed timers. On resume, compute the **next future** 09:00 organization-local occurrence from the due date, with **no backlog**. Because occurrences are anchored to a calendar date rather than an elapsed interval, no elapsed-time accounting is needed; the Phase 1 / Phase 2 restart mechanics in D097 no longer apply.
 
-### Assignment activity and Follow-up eligibility
+### Reminder Schedule scope and delivery eligibility
 
-See [GLOSSARY.md](GLOSSARY.md) (**Active Assignment**, **Follow-up eligible Assignment**).
+See [GLOSSARY.md](GLOSSARY.md) (**Active Assignment**, **Reminder Schedule**).
 
-A Follow-up Schedule exists only while its Assignment is active and follow-up eligible (D096). Eligibility ends at minimum when:
+A Reminder Schedule is **Task-scoped**: at most one per Task, it survives reassignment, and it never sends a backlog of missed occurrences (D104). This supersedes the Assignment-scoped rule in D096.
 
-- Task is `completed` or `dismissed`
-- Assignment is returned to Owner (cleared)
-- Assignment is reassigned (prior schedule terminates; new Assignment needs new Phase 1)
-- Capability or Assignment is otherwise terminated
-- Delivery never reached `sent` (no active schedule created)
+**Schedule stops** when the Task is `completed` or `dismissed`, when the due date is removed, or when the overdue ceiling is reached (D106, D107).
 
-Authoritative Phase 1 / Phase 2 rules: [WORKFLOWS.md](WORKFLOWS.md) §10a (D095).
+**Schedule is suspended** by Waiting, and by a permanent delivery failure for the affected assignment (D107).
+
+**Delivery is prevented** — without consuming the local calendar day — when there is no active assignment; the occurrence is recorded as skipped (D107). Assignment return to Owner and capability termination therefore stop delivery while the Task-scoped schedule itself persists until a stop condition applies.
+
+A **material due-date change** opens a new schedule generation, preserving all prior history and resetting only the per-generation overdue delivered count (D104).
+
+Authoritative rules: [WORKFLOWS.md](WORKFLOWS.md) §10a (D102–D110).
 
 ### Transitions
 
@@ -81,7 +89,7 @@ Authoritative Phase 1 / Phase 2 rules: [WORKFLOWS.md](WORKFLOWS.md) §10a (D095)
 
 ### Snooze (historical; not A8 product law)
 
-Owner snooze exists in A4 OpenAPI/domain surfaces but is **superseded for Follow-up product behaviour by D101**. Waiting is the approved suspension mechanism. Do not treat snooze as part of the Follow-up Engine model. At future A8 contract alignment, **prefer removing** the snooze endpoint (not a deprecated no-op), with contract-versioning / client migration. OpenAPI is unchanged in A8.0.
+Owner snooze exists in A4 OpenAPI/domain surfaces but is **superseded for Follow-up product behaviour by D101**, and Waiting remains the **only** pause mechanism under D107. Do not treat snooze as part of the reminder model or as a second pause control. At future A8 contract alignment, **prefer removing** the snooze endpoint (not a deprecated no-op), with contract-versioning / client migration. OpenAPI and the generated clients are **unchanged by both the A8.0 and A8.1 documentation locks**; the endpoint remains contract debt ([API_CONTRACT.md](API_CONTRACT.md)).
 
 ### Lifecycle deletion (D064)
 
@@ -91,7 +99,7 @@ Physical task deletion is out of scope. Abandoned work uses **dismiss** (`dismis
 
 Allowed/denied actions and identity rules: [GLOSSARY.md](GLOSSARY.md) · [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md). Transitions above. Multi-use until invalidation (D056). Typed notes/clarification in A4 (D058). Work request → pending Suggestion (D061).
 
-**Return to Owner** clears Assignment; Task status unchanged; prior Follow-up Schedule terminates (D096). **Request clarification** does not automatically change Task status; it is an Event Notification Engine input (D099).
+**Return to Owner** clears Assignment; Task status unchanged. The Task-scoped Reminder Schedule is **not** terminated, but with no active assignment Recipient delivery is **prevented** and occurrences are recorded as skipped without consuming the local day (D104, D107); where Owner action is required this is an Owner notification event (D108). **Request clarification** does not automatically change Task status; it is an Event Notification Engine input (D099).
 
 ## Completion (one-tap)
 
@@ -99,7 +107,7 @@ Allowed/denied actions and identity rules: [GLOSSARY.md](GLOSSARY.md) · [SECURI
 
 Any next action remains a **Task Suggestion** / **Next-action Suggestion** requiring Owner approval (D038).
 
-Recipient completion uses the same request shape but requires capability auth and explicit POST confirmation. Completion ends Follow-up eligibility and is an Event Notification Engine input (D096, D099).
+Recipient completion uses the same request shape but requires capability auth and explicit POST confirmation. Completion **stops** future reminders and is an Event Notification Engine input (D099, D107). A claimed but undelivered reminder must not become a misleading post-completion send: the engine rechecks Task state immediately before delivery (§10a).
 
 ## Voice
 

@@ -24,10 +24,36 @@ Governing references: [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md) · [AI_
 - [ ] Android still does not write core business records directly to Supabase tables
 - [ ] Prisma used only through authorized server APIs
 - [ ] Canonical contract approach preserved (OpenAPI source of truth → generated TS/Kotlin clients; JSON Schema only if derived)
-- [ ] Follow-up Engine / Event Notification Engine / retention behaviour remains deterministic (not model-driven sends) (D027, D095–D101)
-- [ ] Scheduled work (Gmail Application Polling Engine, Follow-up Engine processing, retention) remains app-owned engines invoked by External Schedulers—not business logic inside the scheduler platform
-- [ ] Follow-up Engine does not use `dueAt` / overdue / escalation / Owner CC ladders (D095, D098, D099)
-- [ ] Snooze is not treated as A8 Follow-up product law (D101); Waiting is the suspension mechanism (D097)
+- [ ] Follow-up Engine / Event Notification Engine / retention behaviour remains deterministic (not model-driven sends) (D027, D102–D110)
+- [ ] Scheduled work (Gmail Application Polling Engine, reminder processing, retention) remains app-owned engines invoked by External Schedulers—not business logic inside the scheduler platform
+- [ ] Reminders derive only from an **explicitly Owner-selected** due date; no escalation stages and no Owner CC ladders (D099, D102)
+- [ ] Snooze is not treated as A8 product law (D101); **Waiting is the only** suspension mechanism, and no separate pause control was added (D097, D107)
+
+## Reminder engine (A8; apply when reminder work is in scope)
+
+Gates for the due-date-driven Follow-up Engine (D102–D110). These record **expected behaviour and required proof**; no specific resolver implementation is pre-approved.
+
+- [ ] Occurrences computed by **local-calendar arithmetic** (increment the calendar date, then resolve 09:00 local) — **not** by `MS_PER_DAY` or any fixed 24-hour millisecond recurrence (D103)
+- [ ] **09:00 organization-local preserved across daylight-saving transitions**, proven by test across a real DST boundary (absolute gap between consecutive occurrences correctly 23 or 25 hours on the transition day)
+- [ ] No dependency on browser, device, or server machine-local timezone; organization timezone is the only authority (D034, D103)
+- [ ] Deterministic IANA timezone resolution, with defined behaviour for DST **gap** (non-existent local time) and **ambiguity** (repeated local time)
+- [ ] **Adversarial timezone-resolver tests** pass identically under Node, Vitest, and the deployed runtime — including a zone where the reminder hour itself transitions
+- [ ] Idempotency **enforced by a database constraint**, not application code; identity is server-derived and encodes the local calendar day (D109)
+- [ ] **Generation validated immediately before send**; stale claims from a superseded generation cannot deliver (D104)
+- [ ] **Pre-send recheck** of Task status, assignment state, and schedule state immediately before the provider call (D107)
+- [ ] Automated sends attributed to a **`system`** actor; Owner scheduling changes to the **`owner`** actor; no automated send attributed to the Owner as if manual (D107)
+- [ ] **No capability token or capability URL** in reminder metadata, audit, logs, or telemetry (D109)
+- [ ] **No retroactive sends:** an elapsed advance occurrence is recorded as skipped with `advance_window_elapsed`, decided once at establishment and never reclassified later (D105)
+- [ ] **No backlog:** a past due date, a resume from Waiting, and a reassignment each schedule only the next future occurrence (D105, D107)
+- [ ] Reassignment preserves the **Task-scoped** schedule and sends no backlog (D104)
+- [ ] Overdue ceiling stops at **14 successful overdue deliveries per generation**; failures, skips, claims, and advance reminders excluded from the count (D106)
+- [ ] Material due-date change opens a new generation, preserves all prior history, resets only the per-generation count, and discloses the restart; a same-value save does neither (D104)
+- [ ] Duplicate or overlapping scheduler invocations produce **at most one delivery per local calendar day**
+- [ ] Completion, dismissal, and due-date removal stop future sends; reminder history is superseded, never deleted or rewritten (D107)
+- [ ] Existing historical due-date data did **not** auto-activate reminders; Owner opt-in or re-save is required (D109)
+- [ ] **No production enablement** before the Event Notification Engine **and** the minimum Owner schedule-status UI are operational (D108)
+- [ ] Deferred scope absent: no preset reminder choices, Owner-created additional reminders, custom-reminder routes or UI, recurrence editor, reminder-time picker, Recipient reminder preferences, or AI-controlled scheduling (D110)
+- [ ] No regression to A7 assignment delivery on either path
 
 ## Documentation
 
@@ -40,11 +66,11 @@ Governing references: [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md) · [AI_
 
 ## AI behaviour
 
-- [ ] No invented facts, deadlines, contacts, commitments, properties, money, follow-up dates, or Phase 1 intervals as facts ([AI_CONSTITUTION.md](AI_CONSTITUTION.md))
+- [ ] No invented facts, deadlines, contacts, commitments, properties, money, follow-up dates, or due dates as facts ([AI_CONSTITUTION.md](AI_CONSTITUTION.md))
 - [ ] Facts / inference / missing / low-confidence distinguished in outputs
 - [ ] Recommendations include rationale and confidence where applicable
 - [ ] No silent advance of the learning ladder
-- [ ] Task creation, assignment email/forward, and Follow-up Schedule activation still require Owner approval in v1
+- [ ] Task creation, assignment email/forward, and any due date that drives reminders still require an explicit Owner act in v1 (D102)
 - [ ] Durable learning does not store raw message bodies
 - [ ] Invalid model output quarantined rather than guessed
 
@@ -61,8 +87,8 @@ Governing references: [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md) · [AI_
 - [ ] Gmail tokens remain server-side and encrypted at rest
 - [ ] Secrets not committed; `.env` patterns respected
 - [ ] Recipient identity not hard-coded in source; no env-default Recipient as production model (D087)
-- [ ] Audit events recorded for approvals, forwards/handoffs, delivery attempts, Follow-up Attempts (D100), Event Notifications, capability use, authz failures
-- [ ] A7 handoff does not claim a Follow-up Schedule is active; Follow-up Engine / Event Notification Engine remain A8 (D089, D095–D101)
+- [ ] Audit events recorded for approvals, forwards/handoffs, delivery attempts, reminder scheduling and attempts (D100, D109), Event Notifications, capability use, authz failures
+- [ ] A7 handoff does not claim a Reminder Schedule is active; Follow-up Engine / Event Notification Engine remain A8 and unimplemented (D089, D102–D110)
 - [ ] Knowingly incomplete Gmail-origin forwards are not sent (D088)
 
 ## Privacy
@@ -72,7 +98,7 @@ Governing references: [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md) · [AI_
 - [ ] Contact and source exclusions enforced
 - [ ] Notification-access consent and revocation handled honestly
 - [ ] Forwarding privacy boundary disclosed (Gmail copies outside app deletion)
-- [ ] A7 confirmation UI discloses retention boundary and does not over-promise Follow-up Schedule activation (D089, D094)
+- [ ] A7 confirmation UI discloses retention boundary and does not over-promise reminder activation (D089, D094)
 
 ## Retention
 
@@ -93,7 +119,7 @@ Governing references: [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md) · [AI_
 
 ## Testing
 
-- [ ] Unit tests for domain rules touched (state, retention dates, Follow-up Attempt idempotency when A8 is in scope)
+- [ ] Unit tests for domain rules touched (state, retention dates, reminder occurrence computation and idempotency when A8 is in scope)
 - [ ] Contract/schema validation for API or AI payloads touched
 - [ ] Regression for approval gates (no email without D037 handoff approval)
 - [ ] Forward idempotency tested if mailer touched (idempotency key + provider message id, D094)
