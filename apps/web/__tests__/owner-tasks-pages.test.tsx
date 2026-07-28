@@ -30,6 +30,7 @@ import { getGmailConnection } from '@/lib/gmail/service';
 import TasksPage from '@/app/tasks/page';
 import TaskDetailPage from '@/app/tasks/[taskId]/page';
 import TasksError from '@/app/tasks/error';
+import { TaskDetail } from '@/app/tasks/_components/task-detail';
 
 /** Shape of the production failure: Prisma could not reach the configured database host. */
 function unreachableDatabaseError(): Error {
@@ -42,6 +43,7 @@ function unreachableDatabaseError(): Error {
 
 describe('A7.8 Owner Task pages auth gate', () => {
   beforeEach(() => {
+    cleanup();
     vi.mocked(requireOwnerPage).mockResolvedValue({
       user: { id: 'owner_1' } as never,
       actor: { kind: 'owner', ownerId: 'owner_1', organizationId: 'org_1' },
@@ -99,6 +101,104 @@ describe('A7.8 Owner Task pages auth gate', () => {
     expect(getGmailConnection).toHaveBeenCalled();
     expect(screen.getByRole('heading', { name: 'Task' })).toBeInTheDocument();
     expect(screen.getByTestId('handoff-panel-stub')).toBeInTheDocument();
+  });
+
+  it('renders Recipient notes and completion outcome note for the Owner', () => {
+    render(
+      <TaskDetail
+        task={{
+          id: 'task_notes_1',
+          organizationId: 'org_1',
+          status: 'completed',
+          priorActionableStatus: null,
+          summaryPoints: [
+            {
+              id: 'sp1',
+              kind: 'request',
+              label: 'Request',
+              order: 0,
+              value: 'Controlled completion',
+            },
+          ],
+          dueAt: null,
+          waitingUntil: null,
+          priority: 'normal',
+          derivedUrgency: 'normal',
+          notes: [
+            {
+              id: 'note_1',
+              body: 'Recipient typed note before completion',
+              createdAt: '2026-07-28T18:30:13.960Z',
+              attribution: {
+                kind: 'capability',
+                capability: {
+                  capabilityId: 'cap_1',
+                  assignmentId: 'asg_1',
+                  taskId: 'task_notes_1',
+                  intendedRecipientEmail: 'recipient@example.com',
+                  action: 'add_task_note',
+                  recordedAt: '2026-07-28T18:30:13.960Z',
+                  outcome: 'succeeded',
+                  resourceVersion: 3,
+                  taskStatus: 'open',
+                  attributionLabel:
+                    'Action performed through capability link assigned to recipient@example.com (add task note)',
+                },
+              },
+            },
+          ],
+          outcome: {
+            outcomeType: 'completed',
+            completedAt: '2026-07-28T18:30:45.463Z',
+            note: 'Done via capability complete note',
+            attribution: {
+              kind: 'capability',
+              capability: {
+                capabilityId: 'cap_1',
+                assignmentId: 'asg_1',
+                taskId: 'task_notes_1',
+                intendedRecipientEmail: 'recipient@example.com',
+                action: 'complete_task',
+                recordedAt: '2026-07-28T18:30:45.463Z',
+                outcome: 'succeeded',
+                resourceVersion: 5,
+                taskStatus: 'completed',
+                attributionLabel:
+                  'Action performed through capability link assigned to recipient@example.com (complete task)',
+              },
+            },
+          },
+          reminder: { nextReminderAt: null, reminderStage: 0, waitingPaused: false },
+          retention: { deleteAfter: '2026-08-18T00:00:00.000Z', policy: 'active_task' },
+          version: 5,
+          etag: '"task-task_notes_1-v5"',
+          createdAt: '2026-07-28T18:00:00.000Z',
+          updatedAt: '2026-07-28T18:30:45.463Z',
+        }}
+        initialRecipients={[]}
+        recipientsNextCursor={null}
+        initialConnection={{
+          status: 'connected',
+          provider: 'gmail',
+          historyState: 'valid',
+          pollingIntervalMinutes: 5,
+          inboxOnly: true,
+          readonlyScope: true,
+          canSend: true,
+          requiresSendReconsent: false,
+        }}
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: 'Notes' })).toBeInTheDocument();
+    expect(screen.getByText('Recipient typed note before completion')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Completion' })).toBeInTheDocument();
+    expect(screen.getByText('Done via capability complete note')).toBeInTheDocument();
+    expect(screen.getByText(/Outcome: completed/)).toBeInTheDocument();
+
+    const rendered = document.body.textContent ?? '';
+    expect(rendered).not.toMatch(/cap_[A-Za-z0-9_-]{20,}/);
+    expect(rendered).not.toContain('/c/');
   });
 });
 

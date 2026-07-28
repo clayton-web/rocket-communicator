@@ -505,6 +505,63 @@ describe('Recipient capability HTTP routes (Phase 4E)', () => {
       expect(await conflict.json()).toMatchObject({ error: { code: 'DOMAIN_CONFLICT' } });
     });
 
+    it('persists a completion note on the Task outcome for Owner retrieval', async () => {
+      const { created, token, version } = await seedAssignedIssued('task_complete_note_route');
+      const noted = await addNote(
+        jsonRequest(
+          `http://localhost/api/v1/capabilities/${token}/tasks/${created.task.id}/notes`,
+          'POST',
+          { body: 'Route standing note', confirmation: 'confirmed' },
+          { 'if-match': etag(created.task.id, version) },
+        ),
+        params(token, created.task.id),
+      );
+      expect(noted.status).toBe(200);
+      const notedBody = await noted.json();
+
+      const done = await complete(
+        jsonRequest(
+          `http://localhost/api/v1/capabilities/${token}/tasks/${created.task.id}/complete`,
+          'POST',
+          {
+            outcomeType: 'completed',
+            note: 'Route completion note',
+            confirmation: 'confirmed',
+          },
+          { 'if-match': etag(created.task.id, notedBody.version) },
+        ),
+        params(token, created.task.id),
+      );
+      expect(done.status).toBe(200);
+      const completedBody = await done.json();
+      expect(completedBody.status).toBe('completed');
+      expect(completedBody.outcome?.note).toBe('Route completion note');
+      expect(
+        completedBody.notes.some((n: { body: string }) => n.body === 'Route standing note'),
+      ).toBe(true);
+      expectNoSecrets(completedBody, token);
+
+      const repeat = await complete(
+        jsonRequest(
+          `http://localhost/api/v1/capabilities/${token}/tasks/${created.task.id}/complete`,
+          'POST',
+          {
+            outcomeType: 'completed',
+            note: 'Must not overwrite',
+            confirmation: 'confirmed',
+          },
+          { 'if-match': etag(created.task.id, completedBody.version) },
+        ),
+        params(token, created.task.id),
+      );
+      expect(repeat.status).toBe(409);
+      expect(await repeat.json()).toMatchObject({ error: { code: 'DOMAIN_CONFLICT' } });
+
+      const persisted = await getTaskById(db.prisma, org, created.task.id);
+      expect(persisted.outcome?.note).toBe('Route completion note');
+      expect(persisted.version).toBe(completedBody.version);
+    });
+
     it('returns to Owner atomically and revokes the capability', async () => {
       const { created, token, version, issued } = await seedAssignedIssued('task_return');
       const response = await returnToOwner(

@@ -31,6 +31,7 @@ import {
   submitCapabilityWorkRequest,
 } from '@/lib/capability';
 import { startOwnerTask } from '@/lib/tasks';
+import { getOwnerTask } from '@/lib/tasks/queries';
 import { seedAssignedTaskViaService } from './helpers/seed-assigned-task';
 
 const org = 'org_rcp_svc';
@@ -280,6 +281,58 @@ describe('Recipient capability application services (Phase 4D)', () => {
     ).toBe(true);
     expect(audits.some((a) => a.action === 'complete_task')).toBe(true);
     expect(JSON.stringify(audits)).not.toContain(token);
+  });
+
+  it('persists completion note and returns it to Owner retrieval', async () => {
+    const { created, issued, version } = await seedAssignedIssued('task_complete_note');
+    const token = issued.rawToken;
+
+    const noted = await addCapabilityTaskNote({
+      ...baseCmd(created.task.id, token, version),
+      body: 'Standing note before complete',
+    });
+    expect(noted.task.notes?.some((n) => n.body === 'Standing note before complete')).toBe(true);
+
+    const completed = await completeCapabilityTask({
+      ...baseCmd(created.task.id, token, noted.task.version),
+      outcomeType: 'completed',
+      note: 'Completion note for Owner',
+    });
+    expect(completed.task.status).toBe('completed');
+    expect(completed.task.outcome?.note).toBe('Completion note for Owner');
+    expect(completed.task.notes?.some((n) => n.body === 'Standing note before complete')).toBe(true);
+    expect(completed.audit.action).toBe('complete_task');
+    expect(completed.audit.note).toBe('Completion note for Owner');
+    expect(JSON.stringify(completed)).not.toContain(token);
+
+    const persisted = await getTaskById(db.prisma, org, created.task.id);
+    expect(persisted.status).toBe('completed');
+    expect(persisted.outcome?.note).toBe('Completion note for Owner');
+    expect(persisted.notes.some((n) => n.body === 'Standing note before complete')).toBe(true);
+
+    const ownerView = await getOwnerTask({
+      db: db.prisma,
+      owner,
+      taskId: created.task.id,
+      now: '2026-07-13T17:30:00.000Z',
+    });
+    expect(ownerView.status).toBe('completed');
+    expect(ownerView.outcome?.note).toBe('Completion note for Owner');
+    expect(ownerView.notes?.some((n) => n.body === 'Standing note before complete')).toBe(true);
+    expect(JSON.stringify(ownerView)).not.toContain(token);
+
+    // Repeat completion against a terminal Task must fail safely (idempotent/no second note).
+    await expect(
+      completeCapabilityTask({
+        ...baseCmd(created.task.id, token, completed.task.version),
+        outcomeType: 'completed',
+        note: 'Second completion note must not apply',
+      }),
+    ).rejects.toMatchObject({ code: 'DOMAIN_CONFLICT' });
+
+    const afterRepeat = await getTaskById(db.prisma, org, created.task.id);
+    expect(afterRepeat.outcome?.note).toBe('Completion note for Owner');
+    expect(afterRepeat.version).toBe(completed.task.version);
   });
 
   it('returns to Owner atomically and keeps history', async () => {

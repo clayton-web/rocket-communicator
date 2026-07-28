@@ -109,6 +109,26 @@
   line-height: 1.45;
 }
 
+.notesList {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.noteBody {
+  margin: 0 0 0.4rem;
+  font-family:
+    'Segoe UI',
+    system-ui,
+    -apple-system,
+    sans-serif;
+  color: var(--ink);
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
 .field {
   display: grid;
   gap: 0.4rem;
