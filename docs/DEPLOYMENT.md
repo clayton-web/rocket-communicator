@@ -204,25 +204,23 @@ Operator notes:
 - Handoff idempotency is durable. A repeated same-key call replays the single attempt; it does not send a second message.
 - Recipients are currently managed through the A7.6 Owner Recipient endpoints; there is no Recipient management UI yet (A7 deferred backlog).
 
-**A8.0 documentation Decision Lock** recorded (D095–D101) and partly superseded. **A8.1 documentation Decision Lock** recorded (**D102–D110**): A8 is a **due-date-driven** reminder model. Do not implement the Follow-up Engine or Event Notification Engine until A8 implementation is authorized. **P1.0 documentation Decision Lock** recorded (**D111–D120**): the Owner web experience foundation is scoped; P1.1–P1.5 are authorized and not started. Roadmap: **A7 → A8 → A9** (no early separate A9.0), with **P1** sequenced before the remaining A8 implementation slices.
+**A8.0 documentation Decision Lock** recorded (D095–D101) and partly superseded. **A8.1 documentation Decision Lock** recorded (**D102–D110**): A8 is a **due-date-driven** reminder model. Do not implement the Follow-up Engine or Event Notification Engine until A8 implementation is authorized. **P1.0 documentation Decision Lock** recorded (**D111–D120**): the Owner web experience foundation is scoped; **P1.1 is implemented**; P1.2–P1.5 are authorized and not started. Roadmap: **A7 → A8 → A9** (no early separate A9.0), with **P1** sequenced before the remaining A8 implementation slices.
 
-### Owner web experience foundation operations (P1 — not implemented)
+### Owner web experience foundation operations (P1)
 
-**Nothing in this subsection exists yet.** No telemetry, observability seam, application shell, token package, or browser test harness has been created. This records the approved operational posture so it is not re-decided during implementation.
+**P1.1 observability is implemented.** Later P1 slices (shell, browser harness, UX boundaries) are not. P1.1 is **not** production-validated against the baseline — that comparison is P1.5 (D119).
 
-**No new environment variable, telemetry endpoint, or vendor is introduced by the P1.0 lock.** If P1.1 introduces configuration, document it **when it exists** — do not treat any variable name as configured in advance.
+**No new environment variable was introduced by P1.1.** The existing `ENABLE_DB_RUNTIME_DIAGNOSTICS` remains an **incident-only** gated DB probe (disabled in Production by default). Always-on operational diagnostics use the application-owned seam in `apps/web/lib/observability/` and emit privacy-safe JSON on standard output (`operation_timing`, `operational_failure`).
 
-**Vendor-neutral by requirement (D115).** The observability seam is one application-owned interface. Structured diagnostics are emitted as privacy-safe JSON on standard output and read through the host's existing log surface. A hosted backend or OpenTelemetry exporter must remain an **adapter** (D079); no commercial telemetry vendor, session replay, or behavioural analytics is authorized.
+**Vendor-neutral by requirement (D115).** Structured diagnostics are read through the host's existing log surface. A hosted backend or OpenTelemetry exporter must remain an **adapter** (D079); no commercial telemetry vendor, session replay, or behavioural analytics is authorized.
 
-**No health or readiness endpoint is authorized, and none is required for P1 closure (D115).** Existing operator smoke checks — `GET /api/v1/session` returning 200 or 401 and an authenticated `GET /api/v1/tasks` — plus P1.1 structured diagnostics and silent-failure detection are sufficient. A contract test asserts `/health` is absent from the bundled OpenAPI, and a new unauthenticated surface would need its own decision. Recorded here as a separately authorized operational proposal, not P1 work.
+**No health or readiness endpoint is authorized, and none is required for P1 closure (D115).** Existing operator smoke checks — `GET /api/v1/session` returning 200 or 401 and an authenticated `GET /api/v1/tasks` — plus P1.1 structured diagnostics and silent-failure detection are sufficient. A contract test asserts `/health` is absent from the bundled OpenAPI.
 
-**Existing diagnostics posture is unchanged.** `ENABLE_DB_RUNTIME_DIAGNOSTICS` remains **disabled in Production** by default (see [Re-enabling internal diagnostics](#re-enabling-internal-diagnostics)). P1.1 must not make production observability depend on flipping an incident-only flag; the always-on privacy-safe path is the structured diagnostics seam.
+**Capability routes are excluded from client telemetry (D114).** Server-side diagnostics identify capability routes only by static templates (`/c/[token]`, `/api/v1/capabilities/[token]/…`). Full prohibition list: [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md).
 
-**Capability routes are excluded from client telemetry (D114).** A `/c/{token}` URL contains an authorization secret. No client telemetry, analytics, performance reporting, or error reporting may transmit a raw capability path, token, or token hash. Server-side diagnostics may identify capability routes only by a static template that never carries the token value. Full prohibition list: [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md).
+**Baseline before change (D119).** Captured in [P1_1_BASELINE.md](P1_1_BASELINE.md). Numeric thresholds are ratified from evidence afterward, not asserted in advance.
 
-**Baseline before change (D119).** P1.1 captures the performance and reliability baseline **before** any experience change reaches production. Numeric thresholds are ratified from that evidence afterward, not asserted in advance. Any production observation window must state the risk it proves and why its duration is proportionate.
-
-**Browser verification runs as a separate job (D119)** rather than inside `pnpm verify`, so contract, unit, and lint gates stay fast and deterministic.
+**Browser verification runs as a separate job (D119)** rather than inside `pnpm verify` — **P1.2**, not started.
 
 ### Reminder engine operations (A8 — not implemented)
 

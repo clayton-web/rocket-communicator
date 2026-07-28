@@ -258,7 +258,7 @@ The requirement that the core Task lifecycle remains fully operational without A
 
 ## Owner web experience (P1)
 
-P1 terms. Scope and authority: D111–D120; slices and criteria: [MILESTONES.md](MILESTONES.md). **Not implemented** — P1.1–P1.5 have not started.
+P1 terms. Scope and authority: D111–D120; slices and criteria: [MILESTONES.md](MILESTONES.md). **P1.1 observability is implemented;** shell, presentation, and browser-harness slices are not started.
 
 ### Owner Application Shell
 
@@ -274,7 +274,7 @@ One of the seven interface states P1 governs — loading, empty, retryable error
 
 ### Correlation reference
 
-The single identifier shared across the user-visible error reference, server diagnostics, and the audit row where one exists (D115). `AuditEvent` already carries `requestId` and `correlationId`, and route context already mints a per-request `requestId`; P1 unifies their use rather than adding a schema field.
+The single identifier shared across the user-visible API error reference, structured server diagnostics, and the audit row where one exists (D115). Operatively this is the request-scoped **`requestId`** (UUID). `correlationId` remains a separate optional parent/trace field and is not collapsed into `requestId`. RSC `error.digest` is a Next.js framework digest and is not this reference. See [P1_1_BASELINE.md](P1_1_BASELINE.md).
 
 ### Semantic token
 

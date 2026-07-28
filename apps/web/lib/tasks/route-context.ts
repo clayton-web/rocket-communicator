@@ -1,8 +1,17 @@
-import { randomUUID } from 'node:crypto';
 import { getAuthenticatedOwner, type AuthenticatedOwner } from '@/lib/auth/require-owner';
 import { logDatabaseRuntimeFailure } from '@/lib/db/diagnostics';
 import { getDb } from '@/lib/db/server';
 import { mapOwnerTaskRouteError, unauthorizedResponse } from '@/lib/http/errors';
+import {
+  createRequestId,
+  elapsedMs,
+  emitOperationalLog,
+  getRequestId,
+  logOperationalFailure,
+  monotonicNowMs,
+  runWithRequestContext,
+  toSafeRouteTemplate,
+} from '@/lib/observability';
 import type { DbClient } from '@aicaa/db';
 import type { OwnerActor } from '@aicaa/domain';
 import type { NextResponse } from 'next/server';
@@ -21,6 +30,7 @@ export interface OwnerTaskRouteContext {
 /**
  * Authenticate Owner session and prepare task route context.
  * Capability tokens/headers are not an Owner authorization surface (D059).
+ * Reuses the request-scoped requestId when present (P1.1 / D115).
  */
 export async function requireOwnerTaskContext(
   request: Request,
@@ -33,7 +43,7 @@ export async function requireOwnerTaskContext(
   if (!authenticated) {
     return { ok: false, response: unauthorizedResponse() };
   }
-  const requestId = randomUUID();
+  const requestId = getRequestId() ?? createRequestId();
   return {
     ok: true,
     context: {
@@ -51,20 +61,66 @@ export async function runOwnerTaskRoute(
   handler: (context: OwnerTaskRouteContext) => Promise<Response>,
 ): Promise<Response> {
   const pathname = new URL(request.url).pathname;
-  let requestId: string | undefined;
+  const routeTemplate = toSafeRouteTemplate(pathname);
 
-  try {
-    const auth = await requireOwnerTaskContext(request);
-    if (!auth.ok) {
-      return auth.response;
-    }
-    requestId = auth.context.requestId;
-    return await handler(auth.context);
-  } catch (error) {
-    logDatabaseRuntimeFailure(error, {
-      routePathname: pathname,
-      requestId,
-    });
-    return mapOwnerTaskRouteError(error);
-  }
+  return runWithRequestContext(
+    {
+      requestId: createRequestId(),
+      routeTemplate,
+      operation: 'owner_task_route',
+      correlationId: null,
+    },
+    async () => {
+      const started = monotonicNowMs();
+      let requestId = getRequestId();
+
+      try {
+        const auth = await requireOwnerTaskContext(request);
+        if (!auth.ok) {
+          emitOperationalLog({
+            event: 'operation_timing',
+            level: 'info',
+            operation: 'owner_task_route',
+            routeTemplate,
+            requestId,
+            durationMs: elapsedMs(started),
+            outcome: 'rejected',
+          });
+          return auth.response;
+        }
+        requestId = auth.context.requestId;
+        const response = await handler(auth.context);
+        emitOperationalLog({
+          event: 'operation_timing',
+          level: 'info',
+          operation: 'owner_task_route',
+          routeTemplate,
+          requestId,
+          durationMs: elapsedMs(started),
+          outcome: 'ok',
+        });
+        return response;
+      } catch (error) {
+        logDatabaseRuntimeFailure(error, {
+          routePathname: routeTemplate,
+          requestId,
+        });
+        logOperationalFailure(error, {
+          routePathname: routeTemplate,
+          operation: 'owner_task_route',
+          requestId,
+        });
+        emitOperationalLog({
+          event: 'operation_timing',
+          level: 'error',
+          operation: 'owner_task_route',
+          routeTemplate,
+          requestId,
+          durationMs: elapsedMs(started),
+          outcome: 'error',
+        });
+        return mapOwnerTaskRouteError(error);
+      }
+    },
+  );
 }

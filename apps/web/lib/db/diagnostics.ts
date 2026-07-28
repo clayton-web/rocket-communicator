@@ -1,6 +1,7 @@
 import { AuthConfigError } from '@/lib/auth/errors';
 import { CapabilityTokenError } from '@/lib/capability/errors';
 import { TaskServiceError } from '@/lib/tasks/errors';
+import { toSafeRouteTemplate } from '@/lib/observability/route-template';
 
 export const DATABASE_RUNTIME_FAILURE_EVENT = 'database_runtime_failure' as const;
 
@@ -384,7 +385,7 @@ export function buildDatabaseRuntimeFailureLogPayload(
       prismaErrorCode: prismaErrorCode(error),
       nodeErrorCode: nodeErrorCodeFromCause(error),
       clientVersion: clientVersion(error),
-      routePathname: context.routePathname,
+      routePathname: context.routePathname ? toSafeRouteTemplate(context.routePathname) : undefined,
       deploymentRuntime: deploymentRuntimeMarker(),
       databaseUrlPresent: isDatabaseUrlPresent(),
       requestId: context.requestId,
@@ -405,7 +406,11 @@ export function serializeDatabaseRuntimeFailureLogPayload(
   payload: DatabaseRuntimeFailureLogPayload,
 ): string {
   try {
-    return JSON.stringify(payload);
+    const safe: DatabaseRuntimeFailureLogPayload = {
+      ...payload,
+      routePathname: payload.routePathname ? toSafeRouteTemplate(payload.routePathname) : undefined,
+    };
+    return JSON.stringify(safe);
   } catch {
     return JSON.stringify({
       event: DATABASE_RUNTIME_FAILURE_EVENT,

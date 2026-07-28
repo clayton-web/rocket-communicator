@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import type { DbClient } from '@aicaa/db';
 import type { components } from '@aicaa/contracts/schema';
 import type { NextResponse } from 'next/server';
@@ -7,6 +6,17 @@ import { getCapabilityTokenConfig } from './config';
 import { mapRecipientCapabilityRouteError } from '@/lib/http/errors';
 import { jsonErrorResponse } from '@/lib/auth/http';
 import { assertTaskId } from '@/lib/http/request';
+import {
+  createRequestId,
+  elapsedMs,
+  emitOperationalLog,
+  getRequestId,
+  logOperationalFailure,
+  monotonicNowMs,
+  runWithRequestContext,
+  toSafeRouteTemplate,
+} from '@/lib/observability';
+import { logDatabaseRuntimeFailure } from '@/lib/db/diagnostics';
 
 type ErrorResponse = components['schemas']['ErrorResponse'];
 
@@ -58,7 +68,7 @@ export async function requireRecipientCapabilityContext(
         db: await getDb(),
         pepper: config.pepper,
         now: new Date().toISOString(),
-        requestId: randomUUID(),
+        requestId: getRequestId() ?? createRequestId(),
         rawToken,
         taskId,
       },
@@ -73,13 +83,67 @@ export async function runRecipientCapabilityRoute(
   params: Promise<{ token: string; taskId: string }>,
   handler: (context: RecipientCapabilityRouteContext) => Promise<Response>,
 ): Promise<Response> {
-  try {
-    const prepared = await requireRecipientCapabilityContext(request, params);
-    if (!prepared.ok) {
-      return prepared.response;
-    }
-    return await handler(prepared.context);
-  } catch (error) {
-    return mapRecipientCapabilityRouteError(error);
-  }
+  const pathname = new URL(request.url).pathname;
+  // D114: never put the raw token-bearing path into diagnostics.
+  const routeTemplate = toSafeRouteTemplate(pathname);
+
+  return runWithRequestContext(
+    {
+      requestId: createRequestId(),
+      routeTemplate,
+      operation: 'recipient_capability_route',
+      correlationId: null,
+    },
+    async () => {
+      const started = monotonicNowMs();
+      let requestId = getRequestId();
+      try {
+        const prepared = await requireRecipientCapabilityContext(request, params);
+        if (!prepared.ok) {
+          emitOperationalLog({
+            event: 'operation_timing',
+            level: 'info',
+            operation: 'recipient_capability_route',
+            routeTemplate,
+            requestId,
+            durationMs: elapsedMs(started),
+            outcome: 'rejected',
+          });
+          return prepared.response;
+        }
+        requestId = prepared.context.requestId;
+        const response = await handler(prepared.context);
+        emitOperationalLog({
+          event: 'operation_timing',
+          level: 'info',
+          operation: 'recipient_capability_route',
+          routeTemplate,
+          requestId,
+          durationMs: elapsedMs(started),
+          outcome: 'ok',
+        });
+        return response;
+      } catch (error) {
+        logDatabaseRuntimeFailure(error, {
+          routePathname: routeTemplate,
+          requestId,
+        });
+        logOperationalFailure(error, {
+          routePathname: routeTemplate,
+          operation: 'recipient_capability_route',
+          requestId,
+        });
+        emitOperationalLog({
+          event: 'operation_timing',
+          level: 'error',
+          operation: 'recipient_capability_route',
+          routeTemplate,
+          requestId,
+          durationMs: elapsedMs(started),
+          outcome: 'error',
+        });
+        return mapRecipientCapabilityRouteError(error);
+      }
+    },
+  );
 }

@@ -64,7 +64,7 @@ Shipped in A7 (production-verified):
 
 ## Planned for P1, A8, and later (target architecture)
 
-- **P1 Owner web experience foundation** (authorized by D111–D120; **not implemented** — see [P1 section](#p1-owner-web-experience-foundation-authorized-not-implemented) below)
+- **P1 Owner web experience foundation** (authorized by D111–D120; **P1.1 observability implemented**; shell/UI slices not started — see [P1 section](#p1-owner-web-experience-foundation) below)
 - **Follow-up Engine** (due-date-driven, Task-scoped) and **Event Notification Engine** (A8; product law D102–D110 superseding parts of D095–D101; [WORKFLOWS.md](WORKFLOWS.md) §10)
 - Retention workers (A13); optional Supabase Realtime
 - Future `CommunicationAccount` schema (multiple inboxes later; v1 targets one)
@@ -165,9 +165,13 @@ A7.8 adds the first thin Owner Task surfaces and wires them to A7.7. Contract, g
 
 Roadmap boundary: **A7.8** = Owner confirmation + re-consent UI only. A7 is closed and production-operational.
 
-### P1 Owner web experience foundation (authorized, not implemented)
+### P1 Owner web experience foundation
 
-Authorized by **D111–D120**; scope, slices, and acceptance criteria: [MILESTONES.md](MILESTONES.md). **Nothing in this subsection exists yet** — there is no application shell, no `packages/ui`, no observability seam, no browser test harness, no route loading state, no global error fallback, and no not-found state. This records the approved direction so P1 implementation does not re-decide it.
+Authorized by **D111–D120**; scope, slices, and acceptance criteria: [MILESTONES.md](MILESTONES.md). Baseline evidence: [P1_1_BASELINE.md](P1_1_BASELINE.md).
+
+**P1.1 (observability) — implemented; architecture, security, and regression review passed. Production validation against the baseline is P1.5 (D119).** Application-owned modules under `apps/web/lib/observability/` provide request-scoped `requestId` (AsyncLocalStorage), safe route templates, always-on structured JSON diagnostics, failure classification, and operation timing. Public error envelopes (`lib/auth/http.ts`, `lib/http/errors.ts`) **reuse** the request-scoped `requestId` instead of minting an unrelated UUID. Owner and capability API route runners, Owner Task RSC pages, capability page load, and internal cron routes enter the request context. Capability diagnostics use `/c/[token]` and `/api/v1/capabilities/[token]/…` templates only (D114). The gated `ENABLE_DB_RUNTIME_DIAGNOSTICS` probe remains an incident tool and is not the always-on path. A7.5 handoff logger is unchanged.
+
+**Still not implemented (later P1 slices):** application shell, `packages/ui`, browser test harness, route loading states, global error fallback, not-found state, organization-timezone display formatter, connectivity UI.
 
 **Why a foundation and not polish.** A7.8 deliberately shipped thin Owner surfaces. The consequence is that `apps/web/app/layout.tsx` is an `<html><body>` wrapper with no navigation, no Owner identity context, no sign-out affordance, and no `<main>` landmark; there is one segment error boundary (`app/tasks/error.tsx`) and no other boundary of any kind; and every Owner page is `force-dynamic` with sequential server data fetching and no loading state. The experience layer does not exist rather than existing poorly (D111).
 
@@ -175,13 +179,13 @@ Authorized by **D111–D120**; scope, slices, and acceptance criteria: [MILESTON
 
 **Truthful state layer.** The seven states in D112 become shared, documented affordances rather than per-component improvisation. The A7.8 truthful-outcome behaviour above is the reference implementation and is **generalized, not replaced**: pending stays “still unresolved”, ambiguous stays “may or may not have sent”, and same-key recovery keeps reusing the original Idempotency-Key and original If-Match for ambiguous and transport retries. A confirmed `412 PRECONDITION_FAILED` remains the separate case it already is: the idempotency classification above runs before the precondition check, so only a genuinely new request can be rejected as stale, and the Owner must be shown refreshed authoritative state before a new attempt rather than looping on a known-stale ETag. Skeletons and loading affordances are permitted for **reads only**; **no optimistic mutation success**.
 
-**Observability seam (D115).** One application-owned, vendor-neutral interface supporting a single correlation reference, privacy-safe structured JSON server diagnostics on standard output, route or operation timing, and silent-failure detection. It **extends existing seams rather than replacing them**: the per-request `requestId` already minted in `lib/*/route-context.ts`, the A7.5 privacy-safe handoff logger, and the existing database runtime failure classifier. A hosted or OpenTelemetry backend must remain an adapter (Architecture Principle 2). **No schema change is required:** `AuditEvent` already has `requestId` and `correlationId` columns with an index on `requestId`; the actual defect is that the public error envelope in `lib/http/errors.ts` and `lib/auth/http.ts` discards the route-context identifier and mints a fresh `randomUUID()` with `correlationId: null`, so the reference the Owner sees cannot be found in server logs.
+**Observability seam (D115).** See P1.1 status above. Hosted or OpenTelemetry backends remain adapters (Architecture Principle 2). **No schema change:** `AuditEvent` already has `requestId` and `correlationId`. RSC `error.digest` remains a Next.js framework reference and is not the application `requestId` (documented gap in the baseline).
 
 **Presentation foundation (D116).** `packages/ui` holds semantic tokens only. Shared presentation covers Task title and summary derivation (currently triplicated as an identical `summaryText` helper in `task-detail.tsx`, `handoff-panel.tsx`, and `recipient-capability-panel.tsx`), status labels, timestamp formatting, and semantic state presentation. Tokens land as a **no-op refactor first** so any later visual change is traceable.
 
 **Organization-local display (D117).** One Owner web display formatter bound to the configured organization timezone (`America/Vancouver`, D034), never the browser or device timezone. **Presentation only** — it is not, and must not become, the A8 scheduling resolver, which remains **D103**.
 
-**Verification (D119).** A lightweight browser test layer for critical Owner and Recipient journeys, run as a **separate job** rather than inside `pnpm verify`. Plus structural gates: one Owner authentication call per Owner page request, a documented and asserted maximum database round-trip count per route, and an automated assertion that no capability token or raw `/c/{token}` path can reach any telemetry, log, or error payload (D114).
+**Verification (D119).** A lightweight browser test layer for critical Owner and Recipient journeys, run as a **separate job** rather than inside `pnpm verify`. Plus structural gates: one Owner authentication call per Owner page request, a documented and asserted maximum database round-trip count per route, and an automated assertion that no capability token or raw `/c/{token}` path can reach any telemetry, log, or error payload (D114). Auth deduplication and query bounds remain **P1.3**.
 
 **Out of P1.** Android application experience (A9 by name), offline storage or caching of authenticated business data, service workers, mutation queues, background sync, conflict resolution, a general component library, Kotlin token generation, commercial analytics, and any A8 runtime behaviour. Dark mode and a health or readiness endpoint are **not** P1 requirements (D115, D119).
 
@@ -325,12 +329,12 @@ flowchart TB
 - Application retention does not control Gmail copies after forward (D031).
 - Capability link possession equals authorization (misuse risk; D051). Re-forward revokes the prior active capability (D086).
 - Initial A7 delivery may be synchronous and subject to host runtime limits; architecture should allow a later worker (D094).
-- **No Owner application shell, route loading state, global error fallback, or not-found state exists.** One segment error boundary exists (`app/tasks/error.tsx`). P1 addresses this (D111, D119).
-- **The correlation reference the Owner sees is not the one in server logs.** Route context mints a per-request `requestId` used in diagnostics, but the public error envelope generates a separate `randomUUID()` with `correlationId: null`, so an Owner-reported reference cannot be traced. `AuditEvent` already has both columns; P1.1 unifies usage without a schema change (D115).
-- **No operational telemetry, timing, or silent-failure detection exists.** Privacy-safe structured logging exists only for handoff (A7.5) and database runtime failures, and the latter is not wired into capability routes. P1.1 addresses this (D115).
+- **API error correlation is unified (P1.1):** public `ErrorResponse.requestId` reuses the request-scoped identifier shared with structured diagnostics and audit writes. **Remaining gap:** RSC `error.digest` on the Owner Task segment boundary is still a Next.js framework digest, not the application `requestId` ([P1_1_BASELINE.md](P1_1_BASELINE.md)).
+- **Operational diagnostics and timing exist (P1.1)** via `apps/web/lib/observability/` (always-on JSON). The gated DB incident probe and A7.5 handoff logger remain. Capability routes use safe templates only (D114).
 - **Owner authentication runs twice per Owner page request** — once in `proxy.ts` session refresh and once in `getAuthenticatedOwner()` — with no request-scoped memoization. P1.3 addresses this (D119).
 - **Owner Task list queries load every Task note unbounded.** `listTasks` includes `notes` with no `take`, so payload size grows with note history. P1.3 addresses this.
 - **Confirmation dialog accessibility is inconsistent.** The Owner handoff dialog implements a focus trap and Escape handling; the Recipient capability dialog has `role="dialog"` and `aria-modal` but no focus trap, no Escape handler, and no initial focus. P1.5 addresses this (D119).
+- **No Owner application shell, route loading state, global error fallback, or not-found state exists.** One segment error boundary exists (`app/tasks/error.tsx`). Later P1 slices address this (D111, D119).
 
 ## Failure principles
 

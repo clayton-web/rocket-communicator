@@ -1,5 +1,4 @@
 import 'server-only';
-import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import type { components } from '@aicaa/contracts/schema';
 import type { DbClient } from '@aicaa/db';
@@ -8,6 +7,16 @@ import { getAuthenticatedOwner, type AuthenticatedOwner } from '@/lib/auth/requi
 import { jsonErrorResponse, unauthorizedResponse } from '@/lib/auth/http';
 import { logDatabaseRuntimeFailure } from '@/lib/db/diagnostics';
 import { getDb } from '@/lib/db/server';
+import {
+  createRequestId,
+  elapsedMs,
+  emitOperationalLog,
+  getRequestId,
+  logOperationalFailure,
+  monotonicNowMs,
+  runWithRequestContext,
+  toSafeRouteTemplate,
+} from '@/lib/observability';
 import { GmailConfigError } from './config';
 import { GmailRequestError } from './errors';
 import { GmailSyncError } from './sync-errors';
@@ -33,7 +42,7 @@ export async function requireOwnerGmailContext(
   if (!authenticated) {
     return { ok: false, response: unauthorizedResponse() };
   }
-  const requestId = randomUUID();
+  const requestId = getRequestId() ?? createRequestId();
   return {
     ok: true,
     context: {
@@ -84,16 +93,62 @@ export async function runOwnerGmailRoute(
   handler: (context: OwnerGmailRouteContext) => Promise<Response>,
 ): Promise<Response> {
   const pathname = new URL(request.url).pathname;
-  let requestId: string | undefined;
-  try {
-    const auth = await requireOwnerGmailContext(request);
-    if (!auth.ok) {
-      return auth.response;
-    }
-    requestId = auth.context.requestId;
-    return await handler(auth.context);
-  } catch (error) {
-    logDatabaseRuntimeFailure(error, { routePathname: pathname, requestId });
-    return mapGmailRequestError(error);
-  }
+  const routeTemplate = toSafeRouteTemplate(pathname);
+
+  return runWithRequestContext(
+    {
+      requestId: createRequestId(),
+      routeTemplate,
+      operation: 'owner_gmail_route',
+      correlationId: null,
+    },
+    async () => {
+      const started = monotonicNowMs();
+      let requestId = getRequestId();
+      try {
+        const auth = await requireOwnerGmailContext(request);
+        if (!auth.ok) {
+          emitOperationalLog({
+            event: 'operation_timing',
+            level: 'info',
+            operation: 'owner_gmail_route',
+            routeTemplate,
+            requestId,
+            durationMs: elapsedMs(started),
+            outcome: 'rejected',
+          });
+          return auth.response;
+        }
+        requestId = auth.context.requestId;
+        const response = await handler(auth.context);
+        emitOperationalLog({
+          event: 'operation_timing',
+          level: 'info',
+          operation: 'owner_gmail_route',
+          routeTemplate,
+          requestId,
+          durationMs: elapsedMs(started),
+          outcome: 'ok',
+        });
+        return response;
+      } catch (error) {
+        logDatabaseRuntimeFailure(error, { routePathname: routeTemplate, requestId });
+        logOperationalFailure(error, {
+          routePathname: routeTemplate,
+          operation: 'owner_gmail_route',
+          requestId,
+        });
+        emitOperationalLog({
+          event: 'operation_timing',
+          level: 'error',
+          operation: 'owner_gmail_route',
+          routeTemplate,
+          requestId,
+          durationMs: elapsedMs(started),
+          outcome: 'error',
+        });
+        return mapGmailRequestError(error);
+      }
+    },
+  );
 }

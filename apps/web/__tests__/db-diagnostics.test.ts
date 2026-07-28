@@ -231,7 +231,10 @@ describe('database runtime diagnostics', () => {
         correlationId: null,
       },
     });
-    expect(consoleErrorSpy).not.toHaveBeenCalled();
+    // Gated DB incident probe must stay silent when disabled. Always-on operational
+    // diagnostics (P1.1) may still emit privacy-safe JSON lines.
+    const serializedLogs = consoleErrorSpy.mock.calls.map((call) => String(call[0])).join('\n');
+    expect(serializedLogs).not.toContain('database_runtime_failure');
   });
 
   it('logs sanitized diagnostics on Owner route only when diagnostics are enabled', async () => {

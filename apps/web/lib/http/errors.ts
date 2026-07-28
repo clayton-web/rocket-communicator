@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import type { components } from '@aicaa/contracts/schema';
-import { jsonErrorResponse, unauthorizedResponse } from '@/lib/auth/http';
+import { jsonErrorResponse, unauthorizedResponse, type ErrorEnvelopeIds } from '@/lib/auth/http';
 import type { CapabilityTokenErrorCode } from '@/lib/capability/errors';
 import type { RecipientCapabilityServiceErrorCode } from '@/lib/capability/recipient-errors';
 import {
@@ -24,6 +24,7 @@ import {
   readTaskServiceErrorMessage,
   safeReadString,
 } from '@/lib/errors/safe-error-shapes';
+import { getCorrelationId, getRequestId } from '@/lib/observability/request-context';
 import type { RecipientManagementErrorCode } from '@/lib/recipients/errors';
 import type { TaskServiceErrorCode } from '@/lib/tasks/errors';
 
@@ -35,6 +36,7 @@ export function jsonErrorResponseWithDetails(
   message: string,
   status: number,
   details?: ReadonlyArray<{ field: string; message: string }>,
+  ids?: ErrorEnvelopeIds,
 ): NextResponse<ErrorResponse> {
   return NextResponse.json(
     {
@@ -42,8 +44,11 @@ export function jsonErrorResponseWithDetails(
         code,
         message,
         details: details ? [...details] : undefined,
-        requestId: randomUUID(),
-        correlationId: null,
+        requestId: ids?.requestId ?? getRequestId() ?? randomUUID(),
+        correlationId:
+          ids && 'correlationId' in ids
+            ? (ids.correlationId ?? null)
+            : (getCorrelationId() ?? null),
       },
     },
     { status },
