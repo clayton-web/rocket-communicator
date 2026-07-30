@@ -49,19 +49,26 @@ describe('Owner route loading boundaries', () => {
     expect(text).not.toMatch(/\/c\/|token|capability|@/i);
   });
 
-  it('adds no loading boundary to the Recipient capability route', () => {
+  /*
+   * P1.3 asserted the Recipient capability route had no loading boundary, recording a
+   * deliberate deferral rather than an oversight. P1.5 added one, so that guard is rewritten
+   * into its positive form here and `p1-5-capability-loading.test.tsx` owns its behaviour.
+   * The claim that still matters at this level is that the capability boundary is a separate
+   * file: these Owner boundaries speak about Tasks, and reusing one on `/c/{token}` would
+   * tell a stranger holding a dead link that a Task exists.
+   */
+  it('gives the Recipient capability route a boundary of its own', () => {
     const capabilityRoute = join(__dirname, '../app/c/[token]');
 
-    expect(existsSync(join(capabilityRoute, 'loading.tsx'))).toBe(false);
-    expect(existsSync(join(capabilityRoute, 'loading.jsx'))).toBe(false);
+    expect(existsSync(join(capabilityRoute, 'loading.tsx'))).toBe(true);
   });
 
   /*
    * P1.4 asserted that no global boundary existed at all. P1.5 adds the error and not-found
    * boundaries deliberately, and `p1-5-boundaries.test.tsx` is the positive guard for them.
    * What survives here is the one absence that is still intended: a global `loading.tsx`
-   * would apply a Task-shaped loading state to `/`, `/login`, and `/c/{token}`, none of which
-   * load a Task.
+   * would apply a Task-shaped loading state to `/` and `/login`, neither of which loads a
+   * Task, and would pre-empt the capability route's own generic boundary.
    */
   it('adds no application-wide loading boundary', () => {
     const appRoot = join(__dirname, '../app');

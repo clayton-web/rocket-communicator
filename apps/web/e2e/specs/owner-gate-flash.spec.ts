@@ -36,6 +36,16 @@ test.use({ trace: 'off', screenshot: 'off', video: 'off' });
 
 const OWNER_PATH_HEADER = 'x-aicaa-owner-path';
 
+/**
+ * The Recipient capability route's own loading copy (P1.5).
+ *
+ * Excluded from the Owner probe below. When this spec was written, every loading status in
+ * the application belonged to an Owner route, because `/c/{token}` deliberately had no
+ * boundary; it has one now, and counting it as Owner chrome would report a correct Recipient
+ * experience as a leak.
+ */
+const CAPABILITY_LOADING_TEXT = 'Loading task…';
+
 /** Owner chrome and loading states, counted as rendered nodes rather than as source strings. */
 async function paintedOwnerUi(page: Page) {
   return {
@@ -45,6 +55,7 @@ async function paintedOwnerUi(page: Page) {
     loading: await page
       .getByRole('status')
       .filter({ hasText: /^Loading/ })
+      .filter({ hasNotText: CAPABILITY_LOADING_TEXT })
       .count(),
   };
 }
@@ -208,8 +219,11 @@ test('capability GET stays outside Owner authentication and Owner chrome', async
   const operations = await readAuthOperations();
   expect(operations.total).toBe(0);
 
-  // And nothing of the Owner application is rendered for a Recipient.
+  // And nothing of the Owner application is rendered for a Recipient, either while the
+  // capability route's own loading boundary is up or once the panel has resolved.
   await page.goto(fixture.capability.capabilityPath);
+  expect(await paintedOwnerUi(page)).toEqual(NOTHING_PAINTED);
+  await expect(page.getByRole('heading', { level: 1, name: 'Assigned task' })).toBeVisible();
   expect(await paintedOwnerUi(page)).toEqual(NOTHING_PAINTED);
 });
 

@@ -176,6 +176,160 @@ test.describe('Recipient timestamps ignore the browser timezone', () => {
   });
 });
 
+/**
+ * Recipient capability loading boundary (P1.5, D112).
+ *
+ * The boundary renders before the token has been validated, so the interesting claim is not
+ * that it appears but that it appears *identically* for a live link and a dead one. A visitor
+ * who could tell the two apart from the loading state would learn whether a token is real
+ * without ever resolving it.
+ *
+ * Throughput is throttled through CDP rather than by delaying the loader. The application is
+ * unmodified and unaware; the bytes simply arrive slowly enough for the browser to paint the
+ * streamed shell before the resolved content lands. Slowing the real loader would have meant
+ * shipping a probe or an environment switch into production code.
+ */
+test.describe('Recipient capability loading boundary', () => {
+  /** Emulate a slow connection so the streamed shell is observable before it resolves. */
+  async function throttle(page: import('@playwright/test').Page) {
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Network.enable');
+    await cdp.send('Network.emulateNetworkConditions', {
+      offline: false,
+      latency: 200,
+      downloadThroughput: 8 * 1024,
+      uploadThroughput: 8 * 1024,
+    });
+    return async () => {
+      await cdp.send('Network.emulateNetworkConditions', {
+        offline: false,
+        latency: 0,
+        downloadThroughput: -1,
+        uploadThroughput: -1,
+      });
+    };
+  }
+
+  /** Resolves once the generic loading copy is actually painted, not merely serialized. */
+  function waitForPaintedLoading(page: import('@playwright/test').Page) {
+    return page
+      .waitForFunction(() => document.body?.innerText?.includes('Loading task'), null, {
+        timeout: 15_000,
+        polling: 10,
+      })
+      .then(() => true)
+      .catch(() => false);
+  }
+
+  test('paints a generic loading state, then the Recipient panel', async ({ page, browser }) => {
+    const ownerContext = await browser.newContext();
+    const ownerPage = await ownerContext.newPage();
+    await signInAsOwner(ownerPage);
+    const fixture = await seedCapabilityFixture(ownerPage.request, 'cap-loading-valid');
+
+    const restore = await throttle(page);
+    const painted = waitForPaintedLoading(page);
+    await page.goto(fixture.capability.capabilityPath, { waitUntil: 'commit' });
+    expect(await painted).toBe(true);
+
+    // Nothing private is on screen while the server is still answering. Booleans only: a
+    // `toContain` failure message would print the surrounding HTML, which carries the token.
+    const duringLoad = await page.locator('body').innerText();
+    expect(duringLoad.includes(fixture.taskTitle)).toBe(false);
+    expect(duringLoad.includes(fixture.recipientEmail)).toBe(false);
+    expect(duringLoad.includes(fixture.capability.token)).toBe(false);
+    // No Owner chrome, and no claim about the link either way.
+    expect(duringLoad).not.toMatch(/Sign out|Attention|Link unavailable/);
+
+    await restore();
+    await expect(page.getByRole('heading', { level: 1, name: 'Assigned task' })).toBeVisible();
+    await expect(page.getByText(fixture.taskTitle)).toBeVisible();
+    await expect(page.getByRole('heading', { level: 2, name: 'Actions' })).toBeVisible();
+    // The transient state is gone once the real view owns the page.
+    await expect(page.getByText('Loading task')).toHaveCount(0);
+
+    await ownerContext.close();
+  });
+
+  test('paints the same loading state for a dead link, then Link unavailable', async ({ page }) => {
+    const restore = await throttle(page);
+    const painted = waitForPaintedLoading(page);
+    await page.goto(`/c/${'z'.repeat(48)}`, { waitUntil: 'commit' });
+    expect(await painted).toBe(true);
+
+    // The loading state gives away nothing about why this token will fail.
+    const duringLoad = await page.locator('body').innerText();
+    expect(duringLoad).not.toMatch(/expired|revoked|invalid|malformed|completed|unavailable/i);
+
+    await restore();
+    await expect(page.getByRole('heading', { level: 1, name: 'Link unavailable' })).toBeVisible();
+    await expect(page.getByText('Loading task')).toHaveCount(0);
+  });
+
+  test('serves byte-identical loading markup to valid and invalid links', async ({
+    page,
+    browser,
+  }) => {
+    const ownerContext = await browser.newContext();
+    const ownerPage = await ownerContext.newPage();
+    await signInAsOwner(ownerPage);
+    const fixture = await seedCapabilityFixture(ownerPage.request, 'cap-loading-parity');
+
+    const validResponse = await page.goto(fixture.capability.capabilityPath);
+    const validHtml = (await validResponse?.text()) ?? '';
+    const invalidResponse = await page.goto(`/c/${'q'.repeat(48)}`);
+    const invalidHtml = (await invalidResponse?.text()) ?? '';
+
+    // Streaming does not change the status either link already returned.
+    expect(validResponse?.status()).toBe(200);
+    expect(invalidResponse?.status()).toBe(200);
+
+    // The fallback is genuinely emitted, and the same fragment reaches both visitors.
+    const fragment =
+      /<main class="[^"]*"><p class="[^"]*" role="status">Loading task…<\/p><\/main>/;
+    const validFragment = validHtml.match(fragment)?.[0];
+    const invalidFragment = invalidHtml.match(fragment)?.[0];
+    expect(validFragment).toBeDefined();
+    expect(validFragment).toBe(invalidFragment);
+
+    // Each resolves to its own outcome, and only the valid one carries Task content.
+    expect(validHtml.includes('Assigned task')).toBe(true);
+    expect(invalidHtml.includes('Link unavailable')).toBe(true);
+    expect(validHtml.includes(fixture.taskTitle)).toBe(true);
+    expect(invalidHtml.includes(fixture.taskTitle)).toBe(false);
+
+    await ownerContext.close();
+  });
+
+  test('resolves both outcomes without any Owner authentication', async ({ page, browser }) => {
+    const ownerContext = await browser.newContext();
+    const ownerPage = await ownerContext.newPage();
+    await signInAsOwner(ownerPage);
+    const fixture = await seedCapabilityFixture(ownerPage.request, 'cap-loading-auth');
+
+    const before = structuredEventLines().filter((line) =>
+      line.includes('"operation":"owner_authentication"'),
+    ).length;
+
+    await page.goto(fixture.capability.capabilityPath);
+    await expect(page.getByRole('heading', { level: 1, name: 'Assigned task' })).toBeVisible();
+    await page.goto(`/c/${'w'.repeat(48)}`);
+    await expect(page.getByRole('heading', { level: 1, name: 'Link unavailable' })).toBeVisible();
+
+    const after = structuredEventLines().filter((line) =>
+      line.includes('"operation":"owner_authentication"'),
+    ).length;
+    expect(after).toBe(before);
+
+    // The boundary added no capability-page log line carrying a token either.
+    const structured = structuredEventLines();
+    expect(structured.some((line) => line.includes(fixture.capability.token))).toBe(false);
+    expect(structured.some((line) => line.includes('Loading task'))).toBe(false);
+
+    await ownerContext.close();
+  });
+});
+
 test('cancelling the confirmation dialog leaves the Task unchanged', async ({ page, browser }) => {
   const ownerContext = await browser.newContext();
   const ownerPage = await ownerContext.newPage();
