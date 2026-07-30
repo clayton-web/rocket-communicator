@@ -219,18 +219,23 @@ describe('token extraction was a verified no-op (D116)', () => {
     }
   });
 
-  it('keeps the Recipient capability stylesheet untouched behind compatibility aliases', () => {
-    const globals = readFileSync(join(webApp, 'globals.css'), 'utf8');
-    const capability = readFileSync(
-      join(webApp, 'c/[token]/recipient-capability.module.css'),
-      'utf8',
+  it('no longer needs compatibility aliases for the Recipient capability stylesheet', () => {
+    const globals = stripComments(readFileSync(join(webApp, 'globals.css'), 'utf8'));
+    const capability = stripComments(
+      readFileSync(join(webApp, 'c/[token]/recipient-capability.module.css'), 'utf8'),
     );
 
-    // The capability surface is touched last, in P1.5. Its stylesheet still consumes the
-    // short names, so they must remain defined or that page silently loses its palette.
+    /*
+     * This assertion is the inverse of the P1.4 one it replaces. While the capability
+     * stylesheet consumed the short names, they HAD to stay defined or that page silently
+     * lost its palette; P1.5 migrated it to the tokens they aliased, so now their continued
+     * presence would mean the migration had regressed.
+     */
     for (const legacy of ['--ink', '--muted', '--line', '--accent']) {
-      expect(capability).toContain(`var(${legacy})`);
-      expect(globals).toMatch(new RegExp(`${legacy}:\\s*var\\(--aicaa-`));
+      expect(capability, `${legacy} must not be consumed`).not.toContain(`var(${legacy})`);
+      expect(globals, `${legacy} must not be declared`).not.toMatch(
+        new RegExp(`${legacy}\\s*:`, 'm'),
+      );
     }
   });
 });

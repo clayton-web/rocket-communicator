@@ -8,19 +8,15 @@
   font-family: var(--aicaa-font-serif);
 
   /*
-   * Compatibility aliases for the Recipient capability surface.
+   * Last of the P1.4 compatibility aliases. `--ink`, `--muted`, `--line`, and `--accent` were
+   * removed in P1.5 once the capability stylesheet was migrated to the `--aicaa-*` tokens it
+   * aliased; that stylesheet no longer consumes any short name.
    *
-   * `app/c/[token]/recipient-capability.module.css` consumes these short names. P1 touches
-   * `/c/{token}` last, in P1.5, because it is externally visible and security-sensitive, so
-   * P1.4 deliberately does not edit that stylesheet. Aliasing keeps the capability page
-   * rendering byte-identically while removing the literal values from this file. P1.5 should
-   * migrate that stylesheet to the `--aicaa-*` tokens directly and delete this block.
+   * `--paper` is unused — no stylesheet or component reads it — and stays only because the
+   * P1.5 cleanup was authorized for the other four by name. Removing it is a one-line change
+   * with no consumer to break, awaiting its own authorization.
    */
-  --ink: var(--aicaa-color-ink);
-  --muted: var(--aicaa-color-muted);
   --paper: var(--aicaa-color-paper);
-  --line: var(--aicaa-color-line);
-  --accent: var(--aicaa-color-accent);
 }
 
 * {
