@@ -132,6 +132,50 @@ test('capability page diagnostics record a route template and never the raw toke
   await ownerContext.close();
 });
 
+/**
+ * Recipient timestamps render in the organization timezone (P1.5, D117/D122).
+ *
+ * The unit suite proves the formatter under a foreign process `TZ`; this proves the browser
+ * cannot override it either. That was the actual defect: the panel is a client component, so
+ * the removed `toLocaleString` call resolved against whatever zone and locale the Recipient's
+ * device happened to report.
+ */
+test.describe('Recipient timestamps ignore the browser timezone', () => {
+  // Pinned far from the organization zone and off the application's locale. A browser-local
+  // formatter would render this instant on a different clock, frequently a different calendar
+  // day, and in Japanese date order.
+  test.use({ timezoneId: 'Asia/Tokyo', locale: 'ja-JP' });
+
+  test('capability expiry renders in the organization timezone', async ({ page, browser }) => {
+    const ownerContext = await browser.newContext();
+    const ownerPage = await ownerContext.newPage();
+    await signInAsOwner(ownerPage);
+    const fixture = await seedCapabilityFixture(ownerPage.request, 'cap-timezone');
+
+    // Built here from the format D117/D122 describe rather than imported from the application,
+    // so this cannot pass merely because the application agrees with itself.
+    const expected = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Vancouver',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZoneName: 'short',
+    }).format(new Date(fixture.capability.expiresAt));
+
+    await page.goto(fixture.capability.capabilityPath);
+    await expect(page.getByRole('heading', { level: 1, name: 'Assigned task' })).toBeVisible();
+
+    const meta = page.locator('p', { hasText: 'Status:' }).first();
+    await expect(meta).toContainText(`Link available until ${expected}`);
+    // The Pacific zone label is the part a Tokyo-local render could not produce at all.
+    await expect(meta).toContainText(/P[SD]T/);
+
+    await ownerContext.close();
+  });
+});
+
 test('cancelling the confirmation dialog leaves the Task unchanged', async ({ page, browser }) => {
   const ownerContext = await browser.newContext();
   const ownerPage = await ownerContext.newPage();

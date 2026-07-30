@@ -13,6 +13,11 @@ import {
   publicErrorMessage,
   reloadCapabilityTask,
 } from '@/lib/capability/client-api';
+import {
+  formatOwnerDate,
+  formatOwnerDateTime,
+  isRenderableInstant,
+} from '@/lib/presentation/datetime';
 import { summaryPointText } from '@/lib/presentation/task-title';
 import styles from './recipient-capability.module.css';
 
@@ -43,18 +48,22 @@ const ACTION_LABELS: Record<RecipientUiAction, string> = {
   submit_work_request: 'Submit work request',
 };
 
-function formatInstant(value: string | null | undefined): string | null {
-  if (!value) {
-    return null;
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return null;
-  }
-  return date.toLocaleString(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  });
+/**
+ * Organization-timezone label for an optional instant, or `null` to omit the field entirely.
+ *
+ * The shared formatters render `Unknown date` for a value they cannot parse, which is right
+ * for a field the Owner expects to be there. All three timestamps on this surface are
+ * optional and are dropped from the meta line when absent, so an absent value has to stay
+ * absent here rather than become a claim about a date nobody set.
+ *
+ * The formatter is passed in rather than chosen here: which of the two applies is a property
+ * of what the timestamp means, and that belongs at the call site where the meaning is known.
+ */
+function optionalInstantLabel(
+  value: string | null | undefined,
+  format: (value: string | null | undefined) => string,
+): string | null {
+  return isRenderableInstant(value) ? format(value) : null;
 }
 
 /**
@@ -201,9 +210,24 @@ export function RecipientCapabilityPanel({
     );
   }
 
-  const dueLabel = formatInstant(task.dueAt);
-  const waitingLabel = formatInstant(task.waitingUntil);
-  const expiresLabel = formatInstant(expiresAt);
+  /*
+   * Organization timezone, not the Recipient's browser (D117, D122). This surface used to
+   * call `toLocaleString(undefined, …)`, so a deadline read differently to the Owner who set
+   * it and the Recipient acting on it — the inconsistency D117 was approved to remove — and,
+   * this being a client component, differently again between the server render and hydration.
+   *
+   * Which formatter each timestamp gets follows the rule in `datetime.ts` and the two Owner
+   * surfaces: a due or waiting date shows no time of day, because the time would be noise;
+   * the capability expiry is a precise cutoff, so it keeps its time and its zone label.
+   *
+   * Naming debt: `formatOwnerDate`/`formatOwnerDateTime` and `OWNER_DISPLAY_TIME_ZONE` are
+   * named for their first caller, but D117 scopes the zone to the organization, not to the
+   * Owner role — which is why they are correct here. Renaming them is a repository-wide
+   * change and is deliberately not part of this fix.
+   */
+  const dueLabel = optionalInstantLabel(task.dueAt, formatOwnerDate);
+  const waitingLabel = optionalInstantLabel(task.waitingUntil, formatOwnerDate);
+  const expiresLabel = optionalInstantLabel(expiresAt, formatOwnerDateTime);
   const intendedEmail = task.assignment?.intendedRecipientEmail;
 
   return (

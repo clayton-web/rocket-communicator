@@ -496,6 +496,25 @@ describe('Recipient summary point presentation', () => {
     expect(screen.getByText(/Status:/)).toBeInTheDocument();
   });
 
+  it('renders no note timestamp, because this surface shows none', () => {
+    renderPanel([] as TaskDto['summaryPoints'], {
+      notes: [
+        {
+          id: 'note_1',
+          body: 'Recipient note',
+          createdAt: '2026-08-01T21:30:00.000Z',
+          attribution: { kind: 'owner', ownerUserId: 'owner_ui' },
+        },
+      ] as TaskDto['notes'],
+    });
+
+    // Notes render their body only. Recorded so a future note timestamp is a deliberate
+    // addition through the shared formatter rather than a reintroduced local one.
+    expect(screen.getByText('Recipient note')).toBeInTheDocument();
+    expect(document.body.textContent ?? '').not.toContain('2026-08-01');
+    expect(document.body.textContent ?? '').not.toContain('2:30');
+  });
+
   it('renders no capability token or internal identifier in the summary', () => {
     renderPanel([
       {
@@ -512,5 +531,189 @@ describe('Recipient summary point presentation', () => {
     expect(body).not.toContain(token);
     expect(body).not.toContain('p1_secret_id');
     expect(body).not.toContain('task_ui_1');
+  });
+});
+
+/**
+ * Recipient timestamps render in the organization timezone (P1.5, D117/D122).
+ *
+ * The panel used to call `toLocaleString(undefined, …)`, so the same deadline read one way to
+ * the Owner who set it and another to the Recipient acting on it — the cross-surface
+ * inconsistency D117 was approved to remove — and, this being a client component, differently
+ * again between the server render and hydration. D122 recorded `/c/{token}` as a known gap
+ * deferred to this slice.
+ *
+ * Every expectation below is a literal `America/Vancouver` rendering. That is deliberate: a
+ * developer machine in Vancouver cannot tell a fixed zone from its own, so these strings are
+ * only real evidence when the file also runs under a foreign `TZ`, which validation does.
+ */
+describe('Recipient timestamp presentation (P1.5)', () => {
+  afterEach(cleanup);
+
+  function renderWithTimestamps(
+    overrides: Partial<TaskDto>,
+    expiresAt = '2026-07-20T19:00:00.000Z',
+  ) {
+    return render(
+      <RecipientCapabilityPanel
+        token={token}
+        initialTask={baseTask(overrides)}
+        permittedActions={['view_assigned_task', 'add_task_note']}
+        expiresAt={expiresAt}
+      />,
+    );
+  }
+
+  /** The status/date meta line, which is where all three Recipient timestamps render. */
+  function metaLine(): string {
+    const paragraph = [...document.querySelectorAll('p')].find((node) =>
+      node.textContent?.startsWith('Status:'),
+    );
+    return paragraph?.textContent ?? '';
+  }
+
+  it('renders a due date in the organization timezone rather than the host timezone', () => {
+    renderWithTimestamps({ dueAt: '2026-08-01T21:30:00.000Z' });
+    expect(metaLine()).toContain('Due Aug 1, 2026');
+  });
+
+  it('renders the capability expiry as an instant carrying its zone', () => {
+    renderWithTimestamps({}, '2026-07-20T19:00:00.000Z');
+    expect(metaLine()).toContain('Link available until Jul 20, 2026, 12:00 p.m. PDT');
+  });
+
+  it('keeps a late-evening due instant on its organization calendar day', () => {
+    // 22:00 in Vancouver, already the next day in UTC. A formatter that resolved the date in
+    // UTC — or in any zone east of it — would advance the deadline by a day.
+    renderWithTimestamps({ dueAt: '2026-08-02T05:00:00.000Z' });
+    expect(metaLine()).toContain('Due Aug 1, 2026');
+    expect(metaLine()).not.toContain('Aug 2, 2026');
+  });
+
+  it('renders a winter instant in standard time', () => {
+    renderWithTimestamps({}, '2026-01-15T20:00:00.000Z');
+    expect(metaLine()).toContain('Link available until Jan 15, 2026, 12:00 p.m. PST');
+  });
+
+  it.each([
+    ['before spring forward', '2026-03-08T09:59:00.000Z', 'Mar 8, 2026, 1:59 a.m. PST'],
+    ['after spring forward', '2026-03-08T10:01:00.000Z', 'Mar 8, 2026, 3:01 a.m. PDT'],
+    ['first pass of the repeated hour', '2026-11-01T08:30:00.000Z', 'Nov 1, 2026, 1:30 a.m. PDT'],
+    ['second pass of the repeated hour', '2026-11-01T09:30:00.000Z', 'Nov 1, 2026, 1:30 a.m. PST'],
+  ])('resolves daylight saving %s', (_label, expiresAt, expected) => {
+    renderWithTimestamps({}, expiresAt);
+    expect(metaLine()).toContain(`Link available until ${expected}`);
+  });
+
+  it('renders a waiting-until date without a time of day, matching the Owner surface', () => {
+    renderWithTimestamps({ status: 'waiting', waitingUntil: '2026-09-04T23:00:00.000Z' });
+    expect(metaLine()).toContain('Waiting until Sep 4, 2026');
+    expect(metaLine()).not.toContain('4:00 p.m.');
+  });
+
+  it('omits absent optional timestamps instead of claiming a date', () => {
+    renderWithTimestamps({ dueAt: null, waitingUntil: null });
+    const meta = metaLine();
+    expect(meta).toContain('Status:');
+    expect(meta).not.toContain('Due');
+    expect(meta).not.toContain('Waiting until');
+    expect(meta).not.toContain('Unknown date');
+  });
+
+  it('omits an unparseable timestamp rather than rendering a fabricated one', () => {
+    renderWithTimestamps({ dueAt: 'not-a-timestamp' as TaskDto['dueAt'] });
+    const meta = metaLine();
+    expect(meta).not.toContain('Due');
+    expect(meta).not.toContain('Unknown date');
+    expect(meta).not.toContain('Invalid Date');
+  });
+
+  it('exposes no raw ISO timestamp to the Recipient', () => {
+    renderWithTimestamps({ dueAt: '2026-08-01T21:30:00.000Z' }, '2026-07-20T19:00:00.000Z');
+    const body = document.body.textContent ?? '';
+    expect(body).not.toContain('2026-08-01T21:30:00.000Z');
+    expect(body).not.toContain('2026-07-20T19:00:00.000Z');
+  });
+
+  it('leaves summary points, notes, status, and actions in place', () => {
+    renderWithTimestamps({
+      dueAt: '2026-08-01T21:30:00.000Z',
+      notes: [
+        {
+          id: 'note_1',
+          body: 'Existing note',
+          createdAt: '2026-07-14T19:00:00.000Z',
+          attribution: { kind: 'owner', ownerUserId: 'owner_ui' },
+        },
+      ] as TaskDto['notes'],
+    });
+
+    expect(screen.getByText('Follow up with the customer')).toBeInTheDocument();
+    expect(screen.getByText('Existing note')).toBeInTheDocument();
+    expect(metaLine()).toContain('Status:');
+    expect(screen.getByRole('button', { name: /note/i })).toBeInTheDocument();
+  });
+});
+
+/**
+ * Source guards for the Recipient timestamp path.
+ *
+ * Behavioural tests above prove the current output. These prove the *mechanism*, so a future
+ * edit cannot restore host-timezone rendering while still producing correct strings on a
+ * machine that happens to sit in Vancouver.
+ */
+describe('Recipient timestamp source guards (P1.5)', () => {
+  const readSource = async (relative: string) => {
+    const { readFileSync } = await import('node:fs');
+    return readFileSync(new URL(relative, import.meta.url), 'utf8');
+  };
+
+  /**
+   * Source with comments removed, so a guard reads what the file *does*.
+   *
+   * The panel's comment records the API this change removed, and a naive substring search
+   * cannot tell that mention apart from a real call.
+   */
+  const readCode = async (relative: string) =>
+    (await readSource(relative)).replaceAll(/\/\*[\s\S]*?\*\//g, '').replaceAll(/\/\/.*$/gm, '');
+
+  it('leaves no environment-dependent date formatting in the Recipient panel', async () => {
+    const code = await readCode('../app/c/[token]/recipient-capability-panel.tsx');
+
+    expect(code).not.toContain('toLocaleString');
+    expect(code).not.toContain('toLocaleDateString');
+    expect(code).not.toContain('toLocaleTimeString');
+    // A formatter built here would carry its own zone decision, which is the thing D117
+    // centralized; the panel must reach the zone only through the shared module.
+    expect(code).not.toContain('Intl.DateTimeFormat');
+    expect(code).toContain("from '@/lib/presentation/datetime'");
+  });
+
+  it('leaves the shared module as the only place naming the organization timezone', async () => {
+    const datetime = await readSource('../lib/presentation/datetime.ts');
+    const panel = await readCode('../app/c/[token]/recipient-capability-panel.tsx');
+
+    expect(datetime).toContain("OWNER_DISPLAY_TIME_ZONE = 'America/Vancouver'");
+    expect(panel).not.toContain('America/Vancouver');
+  });
+
+  it('leaves the Owner callers on the formatters they already used', async () => {
+    const detail = await readSource('../app/(owner)/tasks/_components/task-detail.tsx');
+    const list = await readSource('../app/(owner)/tasks/_components/task-list.tsx');
+
+    expect(detail).toContain('formatOwnerDate(task.dueAt)');
+    expect(detail).toContain('formatOwnerDate(task.waitingUntil)');
+    expect(detail).toContain('formatOwnerDateTime(note.createdAt)');
+    expect(list).toContain('formatOwnerDate(task.dueAt)');
+  });
+
+  it('changes no capability authorization, token, or write behaviour', async () => {
+    const source = await readSource('../app/c/[token]/recipient-capability-panel.tsx');
+
+    // The panel remains a presentation component: it reads the token only to pass it to the
+    // existing client API, and performs no token parsing or authorization of its own.
+    expect(source).not.toContain('createHash');
+    expect(source).not.toContain('pepper');
+    expect(source).not.toContain('validateCapabilityToken');
   });
 });
