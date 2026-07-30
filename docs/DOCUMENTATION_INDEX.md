@@ -39,6 +39,7 @@ Root entry: [../README.md](../README.md)
 | **Telemetry privacy boundary and capability-route prohibition**                                                     | SECURITY_AND_PRIVACY (cite D114)                                                     |
 | **Observability seam direction and operations**                                                                     | ARCHITECTURE + DEPLOYMENT (cite D115); baseline [P1_1_BASELINE.md](P1_1_BASELINE.md) |
 | **P1.1 baseline evidence**                                                                                          | [P1_1_BASELINE.md](P1_1_BASELINE.md)                                                 |
+| **P1.2 browser verification harness (environment, commands, coverage, gaps)**                                       | [P1_2_BROWSER_HARNESS.md](P1_2_BROWSER_HARNESS.md)                                   |
 | **Product name status**                                                                                             | DECISIONS **D120** (Open) + OPEN_QUESTIONS #22                                       |
 | Deployment and operations                                                                                           | DEPLOYMENT                                                                           |
 | Process / review gate                                                                                               | ENGINEERING_WORKFLOW, REVIEW_CHECKLIST                                               |

@@ -204,11 +204,11 @@ Operator notes:
 - Handoff idempotency is durable. A repeated same-key call replays the single attempt; it does not send a second message.
 - Recipients are currently managed through the A7.6 Owner Recipient endpoints; there is no Recipient management UI yet (A7 deferred backlog).
 
-**A8.0 documentation Decision Lock** recorded (D095–D101) and partly superseded. **A8.1 documentation Decision Lock** recorded (**D102–D110**): A8 is a **due-date-driven** reminder model. Do not implement the Follow-up Engine or Event Notification Engine until A8 implementation is authorized. **P1.0 documentation Decision Lock** recorded (**D111–D120**): the Owner web experience foundation is scoped; **P1.1 is implemented**; P1.2–P1.5 are authorized and not started. Roadmap: **A7 → A8 → A9** (no early separate A9.0), with **P1** sequenced before the remaining A8 implementation slices.
+**A8.0 documentation Decision Lock** recorded (D095–D101) and partly superseded. **A8.1 documentation Decision Lock** recorded (**D102–D110**): A8 is a **due-date-driven** reminder model. Do not implement the Follow-up Engine or Event Notification Engine until A8 implementation is authorized. **P1.0 documentation Decision Lock** recorded (**D111–D120**): the Owner web experience foundation is scoped; **P1.1 and P1.2 are implemented**; P1.3–P1.5 are authorized and not started. Roadmap: **A7 → A8 → A9** (no early separate A9.0), with **P1** sequenced before the remaining A8 implementation slices.
 
 ### Owner web experience foundation operations (P1)
 
-**P1.1 observability is implemented.** Later P1 slices (shell, browser harness, UX boundaries) are not. P1.1 is **not** production-validated against the baseline — that comparison is P1.5 (D119).
+**P1.1 observability and the P1.2 browser harness are implemented.** Later P1 slices (shell, UX boundaries) are not. P1.1 is **not** production-validated against the baseline — that comparison is P1.5 (D119).
 
 **No new environment variable was introduced by P1.1.** The existing `ENABLE_DB_RUNTIME_DIAGNOSTICS` remains an **incident-only** gated DB probe (disabled in Production by default). Always-on operational diagnostics use the application-owned seam in `apps/web/lib/observability/` and emit privacy-safe JSON on standard output (`operation_timing`, `operational_failure`).
 
@@ -220,7 +220,7 @@ Operator notes:
 
 **Baseline before change (D119).** Captured in [P1_1_BASELINE.md](P1_1_BASELINE.md). Numeric thresholds are ratified from evidence afterward, not asserted in advance.
 
-**Browser verification runs as a separate job (D119)** rather than inside `pnpm verify` — **P1.2**, not started.
+**Browser verification runs as a separate job (D119)** rather than inside `pnpm verify` — **P1.2 is implemented, pending review**: `pnpm --filter @aicaa/web e2e`. It targets a **controlled local environment only** (disposable local Postgres plus a local Supabase Auth double) and refuses any non-loopback database. It is never run against production, and it produces **no** preview or production evidence. It has been executed on **macOS only** and is **not part of any CI workflow**; running it elsewhere needs PostgreSQL binaries on `PATH` plus a Chromium install step. Stop the disposable cluster with `pnpm --filter @aicaa/web e2e:db:stop` when finished. Prerequisites, commands, coverage, and known gaps: [P1_2_BROWSER_HARNESS.md](P1_2_BROWSER_HARNESS.md).
 
 ### Reminder engine operations (A8 — not implemented)
 

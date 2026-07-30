@@ -76,6 +76,22 @@ describe('A7.8 Owner Task pages auth gate', () => {
     expect(screen.getByRole('heading', { name: 'Tasks' })).toBeInTheDocument();
   });
 
+  /**
+   * The truthful empty state, asserted here rather than in the browser harness: the browser
+   * harness shares one disposable database and one env-configured organization across both
+   * viewport projects, so it cannot observe a globally empty Task list without depending on
+   * execution order. See docs/P1_2_BROWSER_HARNESS.md ("Known gaps").
+   */
+  it('renders the empty Task list state distinctly from a failure or a populated list', async () => {
+    vi.mocked(listOwnerTasks).mockResolvedValue({ items: [], nextCursor: null });
+
+    render(await TasksPage());
+
+    expect(screen.getByRole('status')).toHaveTextContent('No Tasks yet.');
+    expect(screen.queryAllByRole('listitem')).toHaveLength(0);
+    expect(screen.queryByText('Tasks could not be loaded')).not.toBeInTheDocument();
+  });
+
   it('loads Task detail only after Owner gate with return path', async () => {
     vi.mocked(getOwnerTask).mockResolvedValue({
       id: 'task_1',

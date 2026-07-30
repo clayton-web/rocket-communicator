@@ -126,6 +126,10 @@ junit.xml
 **/test-results/
 **/playwright-report/
 
+# P1.2 browser harness artifacts (reports, traces, screenshots, captured app log).
+# Never commit: these are diagnostic outputs, not sources.
+apps/web/e2e/.artifacts/
+
 # Cursor local (keep project rules/skills that should be committed)
 .cursor/cache/
 .cursor/*.log
