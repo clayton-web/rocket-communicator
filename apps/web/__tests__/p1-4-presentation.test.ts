@@ -165,6 +165,44 @@ describe('Task title derivation (P1.4)', () => {
   it('trims surrounding whitespace from point text', () => {
     expect(summaryPointText({ kind: 'request', label: '  Padded  ' })).toBe('Padded');
   });
+
+  it('falls back to the label when a point carries an empty value', () => {
+    expect(summaryPointText({ kind: 'confirmed_fact', label: 'Fact', value: '   ' })).toBe('Fact');
+  });
+});
+
+/**
+ * Single summary-point display rule (P1.5).
+ *
+ * P1.4 reduced three copies of this normalization to one shared helper plus one remaining
+ * copy in the Recipient capability panel, which was left in place because `/c/{token}` was
+ * scheduled last. That copy diverged: it did not trim and did not fall back on an empty
+ * value, so the same Task read differently to an Owner and to a Recipient. P1.5 removed it.
+ */
+describe('Summary point text has one definition (P1.5)', () => {
+  const readSource = async (relative: string) => {
+    const { readFileSync } = await import('node:fs');
+    return readFileSync(new URL(relative, import.meta.url), 'utf8');
+  };
+
+  it.each([
+    ['../app/c/[token]/recipient-capability-panel.tsx', 'the Recipient capability panel'],
+    ['../app/(owner)/tasks/_components/task-detail.tsx', 'the Owner Task detail'],
+  ])('routes %s (%s) through the shared helper', async (relative) => {
+    const source = await readSource(relative);
+
+    expect(source).toContain('summaryPointText');
+    // The signature of a re-implementation: reading `value` off a point to decide display
+    // text. Only `task-title.ts` may do that.
+    expect(source).not.toMatch(/'value' in point/);
+  });
+
+  it('leaves the shared helper as the only definition of the rule', async () => {
+    const helper = await readSource('../lib/presentation/task-title.ts');
+
+    expect(helper).toContain("'value' in point");
+    expect(helper).toContain('export function summaryPointText');
+  });
 });
 
 describe('Task status presentation (P1.4)', () => {

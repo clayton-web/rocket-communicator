@@ -13,6 +13,7 @@ import {
   publicErrorMessage,
   reloadCapabilityTask,
 } from '@/lib/capability/client-api';
+import { summaryPointText } from '@/lib/presentation/task-title';
 import styles from './recipient-capability.module.css';
 
 type TaskDto = components['schemas']['Task'];
@@ -56,15 +57,15 @@ function formatInstant(value: string | null | undefined): string | null {
   });
 }
 
-function summaryLabel(point: TaskDto['summaryPoints'][number]): string {
-  return point.label || point.kind.replaceAll('_', ' ');
-}
-
-function summaryText(point: TaskDto['summaryPoints'][number]): string {
-  if ('value' in point && typeof point.value === 'string') {
-    return point.value;
-  }
-  return point.label;
+/**
+ * Eyebrow label above a summary point.
+ *
+ * Trimmed so it can be compared against `summaryPointText`, which trims: an untrimmed label
+ * would fail that comparison on whitespace alone and let a duplicate through.
+ */
+function summaryPointLabel(point: TaskDto['summaryPoints'][number]): string {
+  const label = typeof point.label === 'string' ? point.label.trim() : '';
+  return label !== '' ? label : point.kind.replaceAll('_', ' ');
 }
 
 export function RecipientCapabilityPanel({
@@ -224,17 +225,31 @@ export function RecipientCapabilityPanel({
         {expiresLabel ? ` · Link available until ${expiresLabel}` : ''}
       </p>
 
-      <section className={styles.section} aria-labelledby={`${titleId}-summary`}>
-        <h2 id={`${titleId}-summary`}>Instructions</h2>
-        <ul className={styles.points}>
-          {task.summaryPoints.map((point) => (
-            <li key={point.id} className={styles.point}>
-              <span className={styles.pointLabel}>{summaryLabel(point)}</span>
-              {summaryText(point)}
-            </li>
-          ))}
-        </ul>
-      </section>
+      {task.summaryPoints.length > 0 ? (
+        <section className={styles.section} aria-labelledby={`${titleId}-summary`}>
+          <h2 id={`${titleId}-summary`}>Instructions</h2>
+          <ul className={styles.points}>
+            {task.summaryPoints.map((point) => {
+              const text = summaryPointText(point);
+              const label = summaryPointLabel(point);
+
+              /*
+               * Summary point variants without a `value` field — amount, deadline, and
+               * missing_information — have only their label to show, so rendering the label
+               * as the eyebrow and again as the body printed the same words twice and made a
+               * screen reader announce them twice. Suppressing the eyebrow when it is exactly
+               * the body keeps one reading of the point without discarding any Task data.
+               */
+              return (
+                <li key={point.id} className={styles.point}>
+                  {label === text ? null : <span className={styles.pointLabel}>{label}</span>}
+                  {text}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ) : null}
 
       {task.notes && task.notes.length > 0 ? (
         <section className={styles.section} aria-labelledby={`${titleId}-notes`}>

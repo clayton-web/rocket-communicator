@@ -353,3 +353,164 @@ describe('Recipient capability page UI', () => {
     expect(screen.getByRole('heading', { name: 'Link unavailable' })).toBeInTheDocument();
   });
 });
+
+/**
+ * Recipient summary-point presentation (P1.5).
+ *
+ * The panel used to carry its own `summaryText` copy, the last of the three the P1.4
+ * presentation refactor set out to remove. That copy returned `point.label` whenever a point
+ * had no `value` field, while the eyebrow label above it returned `point.label` too — so
+ * `amount`, `deadline`, and `missing_information` points printed their label twice in a row
+ * and a screen reader announced the same wording twice.
+ *
+ * These assert rendered text rather than the helper in isolation, because the defect was
+ * never in either helper alone: it was in rendering both of them for the same point.
+ */
+function pointItems(): string[] {
+  return [...document.querySelectorAll('li')].map((item) => item.textContent ?? '');
+}
+
+function renderPanel(summaryPoints: TaskDto['summaryPoints'], overrides: Partial<TaskDto> = {}) {
+  return render(
+    <RecipientCapabilityPanel
+      token={token}
+      initialTask={baseTask({ summaryPoints, ...overrides })}
+      permittedActions={['view_assigned_task', 'add_task_note']}
+      expiresAt="2026-07-20T19:00:00.000Z"
+    />,
+  );
+}
+
+describe('Recipient summary point presentation', () => {
+  // These assert element counts, so a leaked previous render would fail them for the wrong
+  // reason. Vitest runs without globals here, so RTL's automatic cleanup is not registered.
+  afterEach(cleanup);
+
+  it('renders a value-less point once instead of repeating its label', () => {
+    renderPanel([
+      { id: 'p1', kind: 'amount', label: 'Invoice total', order: 0, amount: 4102, currency: 'USD' },
+    ] as TaskDto['summaryPoints']);
+
+    // Previously "Invoice totalInvoice total": the eyebrow and the body were the same words.
+    expect(pointItems()).toEqual(['Invoice total']);
+    expect(screen.getAllByText('Invoice total')).toHaveLength(1);
+  });
+
+  it('keeps the eyebrow label when it describes rather than repeats the point', () => {
+    renderPanel([
+      {
+        id: 'p1',
+        kind: 'next_action',
+        label: 'Next',
+        order: 0,
+        value: 'Follow up with the customer',
+      },
+    ] as TaskDto['summaryPoints']);
+
+    // A label that adds information is not a duplicate and must survive.
+    expect(pointItems()).toEqual(['NextFollow up with the customer']);
+  });
+
+  it('preserves every distinct point, in order', () => {
+    renderPanel([
+      { id: 'p1', kind: 'next_action', label: 'Next', order: 0, value: 'Call Sarah' },
+      { id: 'p2', kind: 'request', label: 'Request', order: 1, value: 'Send documents by Friday' },
+      {
+        id: 'p3',
+        kind: 'deadline',
+        label: 'Inspection deadline',
+        order: 2,
+        localDate: '2026-08-01',
+      },
+    ] as TaskDto['summaryPoints']);
+
+    expect(pointItems()).toEqual([
+      'NextCall Sarah',
+      'RequestSend documents by Friday',
+      'Inspection deadline',
+    ]);
+  });
+
+  it('keeps a summary point that extends its label rather than repeating it', () => {
+    renderPanel([
+      {
+        id: 'p1',
+        kind: 'confirmed_fact',
+        label: 'Call Sarah',
+        order: 0,
+        value: 'Call Sarah about the inspection report',
+      },
+    ] as TaskDto['summaryPoints']);
+
+    // Only an exact match is a duplicate. Extra words are meaning, not repetition.
+    expect(pointItems()).toEqual(['Call SarahCall Sarah about the inspection report']);
+  });
+
+  it('treats a whitespace-only difference as a duplicate, following summaryPointText', () => {
+    renderPanel([
+      { id: 'p1', kind: 'missing_information', label: '  Missing address  ', order: 0 },
+    ] as unknown as TaskDto['summaryPoints']);
+
+    // Both sides are trimmed by the shared rule, so the padding cannot smuggle a second copy.
+    expect(pointItems()).toEqual(['Missing address']);
+  });
+
+  it('does not deduplicate two separate points that happen to share wording', () => {
+    renderPanel([
+      { id: 'p1', kind: 'next_action', label: 'Next', order: 0, value: 'Call Sarah' },
+      { id: 'p2', kind: 'commitment', label: 'Commitment', order: 1, value: 'Call Sarah' },
+    ] as TaskDto['summaryPoints']);
+
+    // Suppression is scoped to one point's own label. Distinct points are Task data.
+    expect(pointItems()).toEqual(['NextCall Sarah', 'CommitmentCall Sarah']);
+  });
+
+  it('renders no summary container at all when there are no points', () => {
+    renderPanel([]);
+
+    expect(screen.queryByRole('heading', { name: 'Instructions' })).not.toBeInTheDocument();
+    // An empty list is a container that announces a structure with nothing in it.
+    expect(document.querySelectorAll('ul')).toHaveLength(0);
+  });
+
+  it('leaves notes, actions, and status untouched by the summary change', () => {
+    renderPanel(
+      [
+        { id: 'p1', kind: 'amount', label: 'Invoice total', order: 0, amount: 10, currency: 'USD' },
+      ] as TaskDto['summaryPoints'],
+      {
+        notes: [
+          {
+            id: 'note_1',
+            body: 'Recipient note stays visible',
+            createdAt: '2026-07-13T19:05:00.000Z',
+            attribution: { kind: 'owner', ownerUserId: 'owner_ui' },
+          },
+        ] as TaskDto['notes'],
+      },
+    );
+
+    expect(screen.getByRole('heading', { name: 'Notes' })).toBeInTheDocument();
+    expect(screen.getByText('Recipient note stays visible')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add note' })).toBeInTheDocument();
+    expect(screen.getByText(/Status:/)).toBeInTheDocument();
+  });
+
+  it('renders no capability token or internal identifier in the summary', () => {
+    renderPanel([
+      {
+        id: 'p1_secret_id',
+        kind: 'amount',
+        label: 'Invoice total',
+        order: 0,
+        amount: 1,
+        currency: 'USD',
+      },
+    ] as TaskDto['summaryPoints']);
+
+    const body = document.body.textContent ?? '';
+    expect(body).not.toContain(token);
+    expect(body).not.toContain('p1_secret_id');
+    expect(body).not.toContain('task_ui_1');
+  });
+});
