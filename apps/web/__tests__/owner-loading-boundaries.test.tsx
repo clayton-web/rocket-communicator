@@ -56,11 +56,17 @@ describe('Owner route loading boundaries', () => {
     expect(existsSync(join(capabilityRoute, 'loading.jsx'))).toBe(false);
   });
 
-  it('adds no global loading, error, or not-found boundary', () => {
+  /*
+   * P1.4 asserted that no global boundary existed at all. P1.5 adds the error and not-found
+   * boundaries deliberately, and `p1-5-boundaries.test.tsx` is the positive guard for them.
+   * What survives here is the one absence that is still intended: a global `loading.tsx`
+   * would apply a Task-shaped loading state to `/`, `/login`, and `/c/{token}`, none of which
+   * load a Task.
+   */
+  it('adds no application-wide loading boundary', () => {
     const appRoot = join(__dirname, '../app');
 
     expect(existsSync(join(appRoot, 'loading.tsx'))).toBe(false);
-    expect(existsSync(join(appRoot, 'error.tsx'))).toBe(false);
-    expect(existsSync(join(appRoot, 'global-error.tsx'))).toBe(false);
+    expect(existsSync(join(appRoot, 'loading.jsx'))).toBe(false);
   });
 });

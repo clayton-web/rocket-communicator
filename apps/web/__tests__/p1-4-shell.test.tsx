@@ -232,7 +232,14 @@ describe('Owner shell module boundaries', () => {
     expect(context).not.toContain('owner_authentication');
   });
 
-  it('introduces exactly one client component in the shell', () => {
+  /*
+   * The shell itself stays server-rendered: `owner-nav.tsx` is the only chrome that needs
+   * browser state. P1.5 adds `error.tsx`, which Next.js requires to be a client component
+   * because an error boundary has to catch failures during client rendering. It is a
+   * boundary, not chrome, and the list is pinned so shell markup cannot drift clientward
+   * behind it.
+   */
+  it('adds no client component to the shell beyond the nav and the error boundary', () => {
     const clientModules: string[] = [];
     const walk = (dir: string) => {
       for (const entry of readdirSync(dir)) {
@@ -250,7 +257,7 @@ describe('Owner shell module boundaries', () => {
     };
     walk(ownerGroup);
 
-    expect(clientModules).toEqual(['owner-nav.tsx']);
+    expect(clientModules.sort()).toEqual(['error.tsx', 'owner-nav.tsx']);
   });
 
   it('renders Task detail on the server now that only handoff needs browser state', () => {

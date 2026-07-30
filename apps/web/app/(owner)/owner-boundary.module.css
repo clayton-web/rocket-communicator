@@ -1,0 +1,74 @@
+/*
+ * Styling for the Owner route group's boundary surfaces only — the group error boundary and
+ * the group not-found state. Values come from `@aicaa/ui/tokens.css` (D116).
+ *
+ * These rules intentionally mirror the Task surface's heading, body, banner, and button
+ * treatment rather than importing `tasks/tasks.module.css`: `/attention` and any future Owner
+ * segment must be able to fail without depending on the Task surface's stylesheet.
+ */
+
+.title {
+  margin: 0 0 var(--aicaa-space-sm);
+  font-size: var(--aicaa-text-heading-page);
+  font-weight: var(--aicaa-weight-semibold);
+  letter-spacing: var(--aicaa-tracking-tight);
+}
+
+.muted {
+  margin: 0 0 var(--aicaa-space-lg);
+  color: var(--aicaa-color-muted);
+  font-family: var(--aicaa-font-sans);
+  line-height: var(--aicaa-leading-normal);
+}
+
+.banner {
+  margin: var(--aicaa-space-lg) 0;
+  padding: var(--aicaa-space-sm) var(--aicaa-space-md);
+  border: var(--aicaa-border-width) var(--aicaa-border-style) var(--aicaa-color-line);
+  border-left-width: var(--aicaa-border-emphasis-width);
+  font-family: var(--aicaa-font-sans);
+  font-size: var(--aicaa-text-md);
+  color: var(--aicaa-color-ink);
+  background: var(--aicaa-color-surface-banner);
+}
+
+.bannerError {
+  border-left-color: var(--aicaa-color-critical);
+}
+
+.bannerInfo {
+  border-left-color: var(--aicaa-color-accent);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--aicaa-space-xs);
+  margin-top: var(--aicaa-space-lg);
+}
+
+.button {
+  min-height: var(--aicaa-target-min);
+  min-width: var(--aicaa-target-min);
+  padding: 0.55rem var(--aicaa-space-lg);
+  border: var(--aicaa-border-width) var(--aicaa-border-style) var(--aicaa-color-accent);
+  background: var(--aicaa-color-accent);
+  color: var(--aicaa-color-surface);
+  font-family: var(--aicaa-font-sans);
+  font-size: var(--aicaa-text-md);
+  cursor: pointer;
+}
+
+.button:focus-visible {
+  outline: var(--aicaa-focus-ring-width) var(--aicaa-border-style) var(--aicaa-color-focus-ring);
+  outline-offset: var(--aicaa-focus-ring-offset);
+}
+
+.reference {
+  display: inline-block;
+  padding: 0.1rem var(--aicaa-space-2xs);
+  border: var(--aicaa-border-width) var(--aicaa-border-style) var(--aicaa-color-line);
+  background: var(--aicaa-color-surface-card);
+  font-family: var(--aicaa-font-sans);
+  font-size: var(--aicaa-text-xs);
+}
