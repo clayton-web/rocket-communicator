@@ -38,6 +38,7 @@
   "devDependencies": {
     "@aicaa/eslint-config": "workspace:*",
     "@aicaa/typescript-config": "workspace:*",
+    "@axe-core/playwright": "^4.12.1",
     "@playwright/test": "^1.62.0",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.2.0",
