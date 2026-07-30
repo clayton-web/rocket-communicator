@@ -16,19 +16,29 @@ function asJson(value: unknown): Prisma.InputJsonValue {
   return value as Prisma.InputJsonValue;
 }
 
+/**
+ * Upper bound on notes returned in a full-detail Task bundle.
+ * Matches the OpenAPI `Task.notes` `maxItems` so a long-lived Task cannot emit
+ * a response that violates the contract. When a Task exceeds the bound the most
+ * recent notes are retained; the returned array stays oldest-first.
+ */
+export const TASK_DETAIL_NOTE_LIMIT = 100;
+
 async function loadTaskBundle(db: Client, organizationId: string, taskId: string) {
   const row = await db.task.findFirst({
     where: { id: taskId, organizationId },
     include: {
       // Domain Task.assignment is only the active assignment (clearedAt IS NULL).
       assignments: { where: { clearedAt: null }, take: 1 },
-      notes: { orderBy: { createdAt: 'asc' } },
+      // Newest-first with a deterministic tie-break, bounded, then reversed below
+      // so callers still observe oldest-first ordering.
+      notes: { orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: TASK_DETAIL_NOTE_LIMIT },
     },
   });
   if (!row) {
     throw notFound(`Task ${taskId} not found for organization.`);
   }
-  return row;
+  return { ...row, notes: [...row.notes].reverse() };
 }
 
 export async function getTaskById(
@@ -38,6 +48,39 @@ export async function getTaskById(
 ): Promise<Task> {
   const row = await loadTaskBundle(db, organizationId, taskId);
   return mapTask(row, row.assignments[0] ?? null, row.notes);
+}
+
+/**
+ * Authorization-only Task projection for Recipient capability validation.
+ *
+ * Loads the Task row plus its active assignment and deliberately performs **no**
+ * note relation query, so an unusable capability never pays for the note bundle.
+ * `notes` is therefore always empty and this value must never be serialized into
+ * a response: callers that need full detail load {@link getTaskById} once, after
+ * authorization has succeeded.
+ *
+ * Field coverage is driven by the policy functions that consume it:
+ * - `assertCapabilityBelongsToTask` → `id`, `assignment.id`
+ * - `assertTaskAllowsCapabilityMutation` → `status`
+ * - capability delivery gate → `assignment.deliveryStatus`
+ * - organization binding → `organizationId`
+ * - concurrency/eligibility context → `version`, `waitingUntil`, `dueAt`, `outcome`
+ */
+export async function getTaskForCapabilityAuthorization(
+  db: Client,
+  organizationId: string,
+  taskId: string,
+): Promise<Task> {
+  const row = await db.task.findFirst({
+    where: { id: taskId, organizationId },
+    include: {
+      assignments: { where: { clearedAt: null }, take: 1 },
+    },
+  });
+  if (!row) {
+    throw notFound(`Task ${taskId} not found for organization.`);
+  }
+  return mapTask(row, row.assignments[0] ?? null, []);
 }
 
 export interface ListTasksQuery {
@@ -58,6 +101,11 @@ export interface ListTasksResult {
  * Order (OpenAPI listTasks): `updatedAt` DESC, then `id` DESC.
  * Includes all statuses (including `dismissed`); no status filter is contracted.
  * GET-only — no writes.
+ *
+ * Notes are **not** queried for list results: `Task.notes` is optional in the
+ * contract, no list consumer reads it, and loading every note for every row made
+ * list cost grow with note history. Listed Tasks therefore carry an empty
+ * `notes` array; full note history is available from the detail bundle.
  */
 export async function listTasks(db: Client, query: ListTasksQuery): Promise<ListTasksResult> {
   const limit = Math.min(Math.max(query.limit ?? 25, 1), 100);
@@ -81,12 +129,11 @@ export async function listTasks(db: Client, query: ListTasksQuery): Promise<List
     take: limit + 1,
     include: {
       assignments: { where: { clearedAt: null }, take: 1 },
-      notes: { orderBy: { createdAt: 'asc' } },
     },
   });
 
   const page = rows.slice(0, limit);
-  const items = page.map((row) => mapTask(row, row.assignments[0] ?? null, row.notes));
+  const items = page.map((row) => mapTask(row, row.assignments[0] ?? null, []));
   const last = page[page.length - 1];
   const nextCursor =
     rows.length > limit && last
@@ -206,14 +253,22 @@ export async function createTask(
 }
 
 /**
- * Persist a full task snapshot only when the expected version matches (optimistic concurrency).
+ * Persist a full task snapshot only when the expected version matches (optimistic concurrency),
+ * without reloading the task afterwards.
+ *
+ * Identical write and concurrency semantics to {@link updateTaskWithExpectedVersion}; it exists
+ * so a unit of work that already performs an authoritative reload at its transaction boundary
+ * does not pay for a second full-detail read it discards.
+ *
+ * Package-internal on purpose, and deliberately not exported from the package entry points:
+ * a caller outside a unit of work that reloads would have nothing authoritative to return.
  */
-export async function updateTaskWithExpectedVersion(
+export async function applyTaskUpdateWithExpectedVersion(
   db: Client,
   organizationId: string,
   expectedVersion: number,
   task: Task,
-): Promise<Task> {
+): Promise<void> {
   if (task.organizationId !== organizationId) {
     throw organizationMismatch('Task organizationId must match the persistence scope.');
   }
@@ -239,7 +294,19 @@ export async function updateTaskWithExpectedVersion(
   if (result.count !== 1) {
     throw optimisticConcurrency(`Task ${task.id} version ${expectedVersion} was not current.`);
   }
+}
 
+/**
+ * Persist a full task snapshot only when the expected version matches (optimistic concurrency),
+ * returning the reloaded authoritative task.
+ */
+export async function updateTaskWithExpectedVersion(
+  db: Client,
+  organizationId: string,
+  expectedVersion: number,
+  task: Task,
+): Promise<Task> {
+  await applyTaskUpdateWithExpectedVersion(db, organizationId, expectedVersion, task);
   return getTaskById(db, organizationId, task.id);
 }
 

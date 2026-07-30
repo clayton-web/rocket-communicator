@@ -33,6 +33,7 @@ export {
   getGmailOAuthCredentialByAccountId,
   getRecipientById,
   getTaskById,
+  getTaskForCapabilityAuthorization,
   markHandoffDeliveryFailed,
   markHandoffSendAccepted,
   prepareFailedHandoffRetry,

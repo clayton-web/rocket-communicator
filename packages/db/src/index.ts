@@ -54,10 +54,12 @@ export {
 } from './repositories/recipient-repository.js';
 export {
   getTaskById,
+  getTaskForCapabilityAuthorization,
   listTasks,
   createTask,
   updateTaskWithExpectedVersion,
   appendTaskNote,
+  TASK_DETAIL_NOTE_LIMIT,
   createActiveAssignment,
   updateActiveAssignmentCapabilityBinding,
   updateActiveAssignmentDeliveryStatus,

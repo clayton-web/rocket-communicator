@@ -4,31 +4,48 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 /**
- * P1.1 baseline evidence (structural): Owner page requests currently call
- * supabase.auth.getUser() twice — once in proxy session refresh and once in
- * getAuthenticatedOwner. Deduplication is deferred to P1.3 (D119).
+ * The two performance items P1.1 recorded as baseline debt (docs/P1_1_BASELINE.md §7)
+ * were closed by P1.3. The baseline document keeps the historical measurement; these
+ * assertions guard the current state so the debt cannot silently return.
+ *
+ * Behavioural proof lives in `p1-3-performance-structural.test.ts`, `proxy.test.ts`, and
+ * `owner-auth-call-count.test.ts`; these are the source-level guards only.
  */
-describe('P1.1 auth-call baseline (structural; not optimized)', () => {
+describe('P1.1 baseline debt closed by P1.3 (structural)', () => {
   const root = join(__dirname, '..');
 
-  it('documents two getUser call sites on the Owner page path', () => {
-    const proxy = readFileSync(join(root, 'proxy.ts'), 'utf8');
-    const requireOwner = readFileSync(join(root, 'lib/auth/require-owner.ts'), 'utf8');
+  /** Comments legitimately name the calls being reasoned about; only code counts here. */
+  function withoutComments(source: string): string {
+    return source.replaceAll(/\/\*[\s\S]*?\*\//g, '').replaceAll(/\/\/.*$/gm, '');
+  }
 
-    expect(proxy).toMatch(/auth\.getUser\(\)/);
+  it('no longer performs a verified getUser in the proxy', () => {
+    const proxy = withoutComments(readFileSync(join(root, 'proxy.ts'), 'utf8'));
+    const requireOwner = withoutComments(
+      readFileSync(join(root, 'lib/auth/require-owner.ts'), 'utf8'),
+    );
+
+    // The proxy refreshes cookies only; it must not call the verifying endpoint.
+    expect(proxy).not.toMatch(/auth\.getUser\(\)/);
+    expect(proxy).toMatch(/auth\.getSession\(\)/);
+
+    // Route/RSC authorization remains the single server-verified identity call, and it
+    // must stay a real getUser rather than a trusted cookie read.
     expect(requireOwner).toMatch(/auth\.getUser\(\)/);
-
-    // No request-scoped memoization exists yet (P1.3 work).
-    expect(requireOwner).not.toMatch(/AsyncLocalStorage/);
-    expect(requireOwner).not.toMatch(/memoiz|cache\(.*getUser/i);
+    expect(requireOwner).not.toMatch(/auth\.getSession\(/);
   });
 
-  it('Owner task list repository still includes unbounded notes (P1.3 debt)', () => {
+  it('Owner task list repository no longer loads the note relation', () => {
     const repo = readFileSync(
       join(root, '../../packages/db/src/repositories/task-repository.ts'),
       'utf8',
     );
-    // listTasks include block still loads notes without take — baseline observation.
-    expect(repo).toMatch(/notes:\s*\{\s*orderBy:\s*\{\s*createdAt:\s*'asc'\s*\}\s*\}/);
+    const listTasks = repo.slice(
+      repo.indexOf('export async function listTasks'),
+      repo.indexOf('type TaskListCursor'),
+    );
+
+    expect(listTasks).not.toMatch(/notes:/);
+    expect(listTasks).toMatch(/mapTask\(row, row\.assignments\[0\] \?\? null, \[\]\)/);
   });
 });

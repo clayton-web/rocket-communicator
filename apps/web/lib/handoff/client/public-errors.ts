@@ -210,6 +210,50 @@ export function classifyHandoffPublicError(
   }
 }
 
+/**
+ * Classify a request that produced no server response at all (P1.3 / D112).
+ *
+ * `status` is 0 because no status was received; this is deliberately not reported as a
+ * confirmed rejection and never as a `412`. For a mutation the outcome is genuinely
+ * ambiguous — the server may or may not have applied it — so the operation stays
+ * replayable under its original `Idempotency-Key` and `If-Match` (`allowSameKeyRetry`),
+ * and a fresh operation is not permitted (`allowNewOperation: false`). A read carries no
+ * such uncertainty and may simply be requested again.
+ */
+export function classifyTransportFailure(input: {
+  kind: 'timeout' | 'network';
+  mutation: boolean;
+}): ParsedPublicError {
+  const cause =
+    input.kind === 'timeout'
+      ? 'The server did not respond in time.'
+      : 'The request could not reach the server.';
+
+  if (input.mutation) {
+    return {
+      status: 0,
+      code: 'UNKNOWN',
+      message: `${cause} This request may or may not have been applied. Check the current status before trying again.`,
+      outcomeCategory: 'ambiguous',
+      allowSameKeyRetry: true,
+      allowNewOperation: false,
+      refetchTask: false,
+      refetchRecipients: false,
+    };
+  }
+
+  return {
+    status: 0,
+    code: 'UNKNOWN',
+    message: `${cause} Check your connection and try again.`,
+    outcomeCategory: 'unknown',
+    allowSameKeyRetry: false,
+    allowNewOperation: true,
+    refetchTask: false,
+    refetchRecipients: false,
+  };
+}
+
 export function parsePublicErrorResponse(status: number, body: unknown): ParsedPublicError {
   if (!isRecord(body) || !isRecord(body.error)) {
     return classifyHandoffPublicError(status, 'UNKNOWN');

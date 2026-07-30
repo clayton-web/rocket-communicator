@@ -6,6 +6,7 @@ export type DbRuntimeModule = Awaited<ReturnType<typeof loadTracedRuntimeModule>
 const REQUIRED_EXPORTS = [
   'createPrismaClient',
   'getTaskById',
+  'getTaskForCapabilityAuthorization',
   'listTasks',
   'createTask',
   'getRecipientById',

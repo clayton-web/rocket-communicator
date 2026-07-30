@@ -53,6 +53,15 @@ describe('require-owner authenticated request validation', () => {
     await expect(getAuthenticatedOwner()).resolves.toBeNull();
   });
 
+  it('rejects the request when the session cookie cannot be read at all', async () => {
+    // `@supabase/ssr` throws while decoding a truncated or foreign `sb-*-auth-token`
+    // cookie instead of reporting an auth error. An unreadable cookie is not an identity,
+    // so it must reject rather than propagate and turn every Owner request into a 500.
+    getUser.mockRejectedValue(new Error('Invalid UTF-8 sequence'));
+
+    await expect(getAuthenticatedOwner()).resolves.toBeNull();
+  });
+
   it('does not trust user_metadata.custom_claims.hd when identity claims are absent', async () => {
     getUser.mockResolvedValue({
       data: {

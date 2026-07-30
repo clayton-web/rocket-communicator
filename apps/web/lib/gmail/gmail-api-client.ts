@@ -15,8 +15,13 @@ import { classifyGmailHttpError, GmailSyncError } from './sync-errors';
 
 const GMAIL_API_BASE = 'https://gmail.googleapis.com/gmail/v1/users/me';
 
-/** Default timeout for the outbound send request. */
-const GMAIL_SEND_TIMEOUT_MS = 30_000;
+/**
+ * Default timeout for the outbound send request.
+ *
+ * The browser timeout in `lib/http/client-timeout.ts` must stay above this so a send that
+ * is still within its own budget is never reported to the Owner as ambiguous.
+ */
+export const GMAIL_SEND_TIMEOUT_MS = 30_000;
 
 export interface GmailProfile {
   emailAddress?: string;

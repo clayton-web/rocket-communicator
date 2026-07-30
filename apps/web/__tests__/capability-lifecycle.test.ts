@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   DEFAULT_CAPABILITY_TTL_MS,
   asAssignmentId,
@@ -710,5 +710,155 @@ describe('capability issuance and validation (PGlite)', () => {
       'Action performed through capability link assigned to recipient@example.com (complete task)',
     );
     expect(label).not.toMatch(/authenticated|verified recipient|Sarah completed/i);
+  });
+
+  /**
+   * P1.3: authorization must run against the lean projection, so a capability that is
+   * rejected never pays for the full Task-and-notes bundle, and an authorized one loads
+   * that bundle exactly once.
+   */
+  describe('Task load counts during validation (P1.3)', () => {
+    let taskLoads: { full: number; authorization: number };
+
+    function countingRuntime() {
+      return {
+        ...aicaaDb,
+        getTaskById: async (...args: Parameters<typeof aicaaDb.getTaskById>) => {
+          taskLoads.full += 1;
+          return aicaaDb.getTaskById(...args);
+        },
+        getTaskForCapabilityAuthorization: async (
+          ...args: Parameters<typeof aicaaDb.getTaskForCapabilityAuthorization>
+        ) => {
+          taskLoads.authorization += 1;
+          return aicaaDb.getTaskForCapabilityAuthorization(...args);
+        },
+      };
+    }
+
+    beforeEach(() => {
+      taskLoads = { full: 0, authorization: 0 };
+      setDbRuntimeForTests(countingRuntime() as unknown as typeof aicaaDb);
+    });
+
+    afterEach(() => {
+      setDbRuntimeForTests(aicaaDb);
+    });
+
+    async function issueForCounting(capabilityId: string, auditId: string) {
+      return issueCapabilityForTask(
+        issueArgs('task_count', {
+          now: '2026-07-14T09:00:00.000Z',
+          capabilityId: asCapabilityId(capabilityId),
+          auditId,
+        }),
+      );
+    }
+
+    beforeAll(async () => {
+      await createTask(
+        db.prisma,
+        org,
+        baseTask({
+          id: asTaskId('task_count'),
+          assignment: assignment({ id: asAssignmentId('asg_count') }),
+        }),
+        assignment({ id: asAssignmentId('asg_count') }),
+      );
+    });
+
+    it('loads the full bundle exactly once for an authorized capability', async () => {
+      const issued = await issueForCounting('cap_count_ok', 'audit_count_ok');
+      taskLoads = { full: 0, authorization: 0 };
+
+      const validated = await validateCapabilityToken({
+        db: db.prisma,
+        rawToken: issued.rawToken,
+        pepper,
+        now: '2026-07-14T09:01:00.000Z',
+        mode: 'get',
+        action: 'view_assigned_task',
+        taskId: 'task_count',
+      });
+
+      expect(taskLoads.authorization).toBe(1);
+      expect(taskLoads.full).toBe(1);
+      // The returned context still carries the authoritative full Task.
+      expect(validated.task.id).toBe('task_count');
+      expect(Array.isArray(validated.task.notes)).toBe(true);
+
+      await revokeCapabilityForOwner({
+        db: db.prisma,
+        owner,
+        capabilityId: 'cap_count_ok',
+        now: '2026-07-14T09:02:00.000Z',
+        auditId: 'audit_count_ok_rev',
+      });
+    });
+
+    it('loads no Task at all when the token itself is unusable', async () => {
+      await expect(
+        validateCapabilityToken({
+          db: db.prisma,
+          rawToken: 'unknown-token-value-with-enough-length________',
+          pepper,
+          now: '2026-07-14T09:03:00.000Z',
+          mode: 'get',
+          action: 'view_assigned_task',
+        }),
+      ).rejects.toMatchObject({ code: 'INVALID_CAPABILITY' });
+
+      expect(taskLoads.authorization).toBe(0);
+      expect(taskLoads.full).toBe(0);
+    });
+
+    it('loads no full bundle when a gate that needs the Task rejects', async () => {
+      const issued = await issueForCounting('cap_count_scope', 'audit_count_scope');
+      taskLoads = { full: 0, authorization: 0 };
+
+      await expect(
+        validateCapabilityToken({
+          db: db.prisma,
+          rawToken: issued.rawToken,
+          pepper,
+          now: '2026-07-14T09:04:00.000Z',
+          mode: 'get',
+          action: 'view_assigned_task',
+          taskId: 'task_count',
+          assignmentId: 'asg_not_this_one',
+        }),
+      ).rejects.toMatchObject({ code: 'WRONG_RESOURCE' });
+
+      expect(taskLoads.authorization).toBe(1);
+      expect(taskLoads.full).toBe(0);
+
+      await revokeCapabilityForOwner({
+        db: db.prisma,
+        owner,
+        capabilityId: 'cap_count_scope',
+        now: '2026-07-14T09:05:00.000Z',
+        auditId: 'audit_count_scope_rev',
+      });
+    });
+
+    it('loads no full bundle for an expired capability', async () => {
+      const issued = await issueForCounting('cap_count_exp', 'audit_count_exp');
+      taskLoads = { full: 0, authorization: 0 };
+
+      await expect(
+        validateCapabilityToken({
+          db: db.prisma,
+          rawToken: issued.rawToken,
+          pepper,
+          now: '2026-07-21T09:00:00.000Z',
+          mode: 'get',
+          action: 'view_assigned_task',
+          taskId: 'task_count',
+        }),
+      ).rejects.toMatchObject({ code: 'CAPABILITY_EXPIRED' });
+
+      expect(taskLoads.authorization).toBe(0);
+      expect(taskLoads.full).toBe(0);
+    });
   });
 });

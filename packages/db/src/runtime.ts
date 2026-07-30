@@ -48,6 +48,7 @@ export {
 } from './repositories/recipient-repository.js';
 export {
   getTaskById,
+  getTaskForCapabilityAuthorization,
   listTasks,
   createTask,
   updateTaskWithExpectedVersion,

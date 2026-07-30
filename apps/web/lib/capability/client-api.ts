@@ -1,5 +1,6 @@
 import type { components } from '@aicaa/contracts/schema';
 import type { RecipientUiAction } from '@/lib/capability/available-actions';
+import { fetchWithTimeout, isRequestTimeoutError } from '@/lib/http/client-timeout';
 
 type TaskDto = components['schemas']['Task'];
 type TaskOutcomeType = components['schemas']['TaskOutcomeType'];
@@ -8,6 +9,26 @@ export type RecipientMutationResult =
   | { ok: true; task: TaskDto; status: number }
   | { ok: true; workRequest: components['schemas']['SubmitWorkRequestResponse']; status: 201 }
   | { ok: false; status: number; code?: string; message: string };
+
+/**
+ * Result of a request that produced no server response (P1.3 / D112).
+ *
+ * `status: 0` keeps this distinct from every confirmed status — in particular it is not
+ * a `412`, so the panel's stale-version recovery path is not triggered. A submission is
+ * described as genuinely uncertain because the server may still have applied it.
+ */
+function transportFailure(error: unknown, mutation: boolean): RecipientMutationResult {
+  const cause = isRequestTimeoutError(error)
+    ? 'The server did not respond in time.'
+    : 'The request could not reach the server.';
+  return {
+    ok: false,
+    status: 0,
+    message: mutation
+      ? `${cause} Your update may or may not have been saved. Reload this page to see the latest status before trying again.`
+      : `${cause} Check your connection and try again.`,
+  };
+}
 
 function apiBase(token: string, taskId: string, suffix = ''): string {
   return `/api/v1/capabilities/${encodeURIComponent(token)}/tasks/${encodeURIComponent(taskId)}${suffix}`;
@@ -46,19 +67,27 @@ export async function postCapabilityAction(input: {
     submit_work_request: '/work-requests',
   };
 
-  const response = await fetch(apiBase(input.token, input.taskId, pathByAction[input.action]), {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'if-match': input.etag,
-    },
-    body: JSON.stringify({
-      ...input.body,
-      confirmation: 'confirmed',
-    }),
-    referrerPolicy: 'no-referrer',
-    credentials: 'same-origin',
-  });
+  let response: Response;
+  try {
+    response = await fetchWithTimeout(
+      apiBase(input.token, input.taskId, pathByAction[input.action]),
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'if-match': input.etag,
+        },
+        body: JSON.stringify({
+          ...input.body,
+          confirmation: 'confirmed',
+        }),
+        referrerPolicy: 'no-referrer',
+        credentials: 'same-origin',
+      },
+    );
+  } catch (error) {
+    return transportFailure(error, true);
+  }
 
   if (!response.ok) {
     const err = await parseError(response);
@@ -80,12 +109,17 @@ export async function reloadCapabilityTask(input: {
   token: string;
   taskId: string;
 }): Promise<RecipientMutationResult> {
-  const response = await fetch(apiBase(input.token, input.taskId), {
-    method: 'GET',
-    referrerPolicy: 'no-referrer',
-    credentials: 'same-origin',
-    cache: 'no-store',
-  });
+  let response: Response;
+  try {
+    response = await fetchWithTimeout(apiBase(input.token, input.taskId), {
+      method: 'GET',
+      referrerPolicy: 'no-referrer',
+      credentials: 'same-origin',
+      cache: 'no-store',
+    });
+  } catch (error) {
+    return transportFailure(error, false);
+  }
 
   if (!response.ok) {
     const err = await parseError(response);

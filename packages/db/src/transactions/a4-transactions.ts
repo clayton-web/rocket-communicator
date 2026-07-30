@@ -7,9 +7,9 @@ import { createTaskSuggestion } from '../repositories/suggestion-repository.js';
 import { updateExcerptPurgeAtIfPresent } from '../repositories/communication-event-repository.js';
 import {
   appendTaskNote,
+  applyTaskUpdateWithExpectedVersion,
   clearAssignment,
   getTaskById,
-  updateTaskWithExpectedVersion,
 } from '../repositories/task-repository.js';
 import type { AuditEventRecord } from '../mappers/domain-mappers.js';
 
@@ -68,7 +68,7 @@ export async function persistReturnToOwner(input: {
   audit: CreateAuditEventInput;
 }): Promise<{ task: Task; audit: AuditEventRecord }> {
   return input.db.$transaction(async (tx) => {
-    const task = await updateTaskWithExpectedVersion(
+    await applyTaskUpdateWithExpectedVersion(
       tx,
       input.organizationId,
       input.expectedVersion,
@@ -110,7 +110,7 @@ export async function persistCapabilityAction(input: {
   audit: CreateAuditEventInput;
 }): Promise<{ task: Task; audit: AuditEventRecord; excerptUpdated: boolean }> {
   return input.db.$transaction(async (tx) => {
-    await updateTaskWithExpectedVersion(
+    await applyTaskUpdateWithExpectedVersion(
       tx,
       input.organizationId,
       input.expectedVersion,
@@ -155,7 +155,7 @@ export async function persistWorkRequest(input: {
   audit: CreateAuditEventInput;
 }): Promise<{ task: Task; suggestion: TaskSuggestion; audit: AuditEventRecord }> {
   return input.db.$transaction(async (tx) => {
-    await updateTaskWithExpectedVersion(
+    await applyTaskUpdateWithExpectedVersion(
       tx,
       input.organizationId,
       input.expectedVersion,

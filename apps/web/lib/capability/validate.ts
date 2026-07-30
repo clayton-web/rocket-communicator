@@ -54,8 +54,12 @@ export async function validateCapabilityToken(
   }
 
   const tokenHash = hashCapabilityToken(command.rawToken, pepper);
-  const { findCapabilityByTokenHash, getTaskById, isPersistedCapabilityActionable } =
-    await loadDbRuntime();
+  const {
+    findCapabilityByTokenHash,
+    getTaskById,
+    getTaskForCapabilityAuthorization,
+    isPersistedCapabilityActionable,
+  } = await loadDbRuntime();
   const found = await findCapabilityByTokenHash(command.db, tokenHash);
   if (!found) {
     throw capabilityTokenError('INVALID_CAPABILITY', 'Capability token is invalid.');
@@ -89,18 +93,27 @@ export async function validateCapabilityToken(
     });
   }
 
-  const task = await getTaskById(command.db, organizationId, command.taskId ?? capability.taskId);
+  const taskId = command.taskId ?? capability.taskId;
+
+  // Authorization-only projection: identical gate order to the full bundle it replaces,
+  // but no note relation is queried — so a capability that fails any gate below never
+  // pays for the note bundle. The full bundle is loaded once, after authorization.
+  const authorizationTask = await getTaskForCapabilityAuthorization(
+    command.db,
+    organizationId,
+    taskId,
+  );
 
   // Defense in depth for A7 handoff: pending/failed denormalized delivery must not be usable.
   // A4 assignments typically leave deliveryStatus null — actionableAt remains the primary gate.
   // Authoritative delivery source is HandoffAttempt.status (mirrored into actionableAt on send).
-  const deliveryStatus = task.assignment?.deliveryStatus;
+  const deliveryStatus = authorizationTask.assignment?.deliveryStatus;
   if (deliveryStatus === 'pending' || deliveryStatus === 'failed') {
     throw capabilityTokenError('INVALID_CAPABILITY', 'Capability token is invalid.');
   }
 
   try {
-    assertCapabilityBelongsToTask(actor, task);
+    assertCapabilityBelongsToTask(actor, authorizationTask);
   } catch {
     throw capabilityTokenError('WRONG_RESOURCE', 'Capability token is invalid.', {
       reason: 'assignment_mismatch',
@@ -126,13 +139,16 @@ export async function validateCapabilityToken(
     command.mode === 'mutation' || command.action !== 'view_assigned_task';
   if (requiresMutableTask) {
     try {
-      assertTaskAllowsCapabilityMutation(task);
+      assertTaskAllowsCapabilityMutation(authorizationTask);
     } catch (error) {
       const message =
         error instanceof DomainError ? error.message : 'Capability action is not permitted.';
       throw capabilityTokenError('TERMINAL_TASK', message);
     }
   }
+
+  // Authorized: load the authoritative full-detail bundle exactly once.
+  const task = await getTaskById(command.db, organizationId, taskId);
 
   return {
     actor,

@@ -34,6 +34,7 @@ export const FORBIDDEN_RUNTIME_PACKAGE_REQUIRE_ALT = "require('@aicaa/db/runtime
 export const REQUIRED_RUNTIME_EXPORTS = [
   'createPrismaClient',
   'getTaskById',
+  'getTaskForCapabilityAuthorization',
   'listTasks',
   'createTask',
   'getRecipientById',

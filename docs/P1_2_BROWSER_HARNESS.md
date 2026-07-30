@@ -142,8 +142,19 @@ The Next.js server and Auth double are started and stopped by Playwright itself
 (`reuseExistingServer: false`), so a prior orphan on the same port fails clearly rather than silently
 becoming the harness target. The app server is launched through `e2e/scripts/run-web-server.mjs`,
 which owns both `next dev` and the redacting log capture: a shell pipe (`next | redact-stream`)
-orphans `next` on SIGTERM and holds port 3210 for the next run. After a clean suite both loopback
-servers should be gone; the Postgres cluster is the only intentional survivor.
+orphans `next` on SIGTERM and holds port 3210 for the next run.
+
+The harness uses exactly three ports, all defaulted in `e2e/config/e2e-env.ts` and
+`e2e/scripts/local-db.mjs` and all overridable by environment variable:
+
+| Port      | Process              | Variable        | After a clean run                        |
+| --------- | -------------------- | --------------- | ---------------------------------------- |
+| **3210**  | Next.js dev server   | `E2E_APP_PORT`  | released — Playwright owns the lifecycle |
+| **54329** | Supabase Auth double | `E2E_AUTH_PORT` | released — Playwright owns the lifecycle |
+| **55432** | Disposable Postgres  | `E2E_PG_PORT`   | still listening until `e2e:db:stop`      |
+
+Cleanup verification must check all three. After a clean suite both loopback servers (3210 and 54329) should be gone; the Postgres cluster on 55432 is the only intentional survivor, and
+`e2e:db:stop` must leave 55432 free with no stale postmaster socket or PID file.
 
 ---
 
@@ -287,10 +298,13 @@ noted. Transport-level and artifact-sweep contracts run once, on desktop.
 | Basic accessibility: headings, accessible names, keyboard activation      | `accessibility-basics.spec.ts`         | yes            |
 | Raw tokens absent from retained artifacts                                 | `zz-artifact-safety.spec.ts`           | desktop        |
 
+| P1.3 addition: unanswered mutation reported as uncertain, not success or 412 | `p1-3-transport-failure.spec.ts` | desktop |
+
 Experience states distinguished by browser assertions: **unauthorized**, **not found**,
-**conflict (412)**, **precondition required (428)**, and **success**. **Loading is not asserted**
-because no loading state exists yet (P1.4/P1.5). The **empty** Task-list state is asserted in
-`apps/web/__tests__/owner-tasks-pages.test.tsx` rather than in the browser — see "Known gaps".
+**conflict (412)**, **precondition required (428)**, **ambiguous transport outcome**, and
+**success**. The **empty** Task-list state is asserted in
+`apps/web/__tests__/owner-tasks-pages.test.tsx` rather than in the browser — see "Known gaps",
+as is the **loading** state added in P1.3.
 
 ---
 
@@ -355,7 +369,24 @@ Recorded truthfully rather than claimed as coverage.
    is excluded from P1.2. Consequently the **ambiguous-retry branch that replays an original
    `Idempotency-Key`** is not exercised at browser level; it remains covered by the existing A7
    integration tests. The confirmed-412 recovery branch _is_ exercised here.
-3. **Loading states are not asserted** because none exist yet (P1.4/P1.5).
+3. **The transient loading state has no browser-level evidence, for a structural reason rather
+   than by omission.** P1.3 added route loading boundaries for `/tasks` and `/tasks/{taskId}`, but
+   this harness runs `next dev`, and **Next.js disables prefetching in development**. The client
+   router therefore has no copy of the `[taskId]` loading boundary until it fetches that segment,
+   so holding the segment request open — the only way to make the boundary observable for longer
+   than a frame — leaves the router with nothing to render and it simply stays on `/tasks`. This
+   was tried and confirmed, including after warming the segment with a sibling Task.
+
+   The remaining ways to observe it are all timing-dependent (racing a fast local server, or CDP
+   bandwidth throttling), which would trade a real assertion for a flaky one — precisely what D119
+   warns against. The boundary is therefore asserted where it is deterministic:
+   `apps/web/__tests__/owner-loading-boundaries.test.tsx` renders both boundaries and asserts the
+   truthful `role="status"` text, the absence of any Task content, status, or capability material,
+   and that no loading file was added to `/c/{token}`. All existing browser journeys still pass
+   with the boundaries in place, which is what confirms they do not disturb final state. A
+   production-build harness run would make browser-level observation deterministic; that belongs
+   with P1.5 production validation.
+
 4. **The empty Task-list state has no browser-level evidence, by design rather than by omission.**
    The Task list is scoped by `organizationId` only, and that value comes from the
    `OWNER_ORGANIZATION_ID` environment variable, so a single running server has exactly one
@@ -422,10 +453,13 @@ Observed while capturing evidence. **Not fixed here** — P1.2 must not implemen
    so notes and completion are reachable only via the API. The representative Owner mutation is
    therefore driven through the authenticated HTTP surface and verified in the UI. Relevant to P1.4.
 5. **No loading state on any route.** Navigation shows the previous view until the server responds.
+   **Addressed in P1.3** for `/tasks` and `/tasks/{taskId}`; `/c/{token}` remains deferred to P1.5.
 6. **No `data-testid` anywhere**, and none was added. Roles, labels, and headings were sufficient —
    worth preserving in P1.5.
 7. **Duplicate Owner authentication per page request** remains observable in timing diagnostics
    (`owner_authentication` on each Owner page load), consistent with the known P1.3 deduplication item.
+   **Addressed in P1.3:** the proxy now performs cookie maintenance only, leaving one server-verified
+   `getUser()` per Owner request ([P1_3_EVIDENCE.md](P1_3_EVIDENCE.md) §1).
 
 ---
 
@@ -456,14 +490,17 @@ Counted truthfully rather than as a headline:
 
 | Measure                                         | Count                                                   |
 | ----------------------------------------------- | ------------------------------------------------------- |
-| Browser cases discovered                        | 56 (28 per viewport project)                            |
-| Browser cases executed                          | 49                                                      |
-| Intentional static project exclusions           | 7 (transport, correlation, and sweep contracts, mobile) |
+| Browser cases discovered                        | 58 (29 per viewport project)                            |
+| Browser cases executed                          | 50                                                      |
+| Intentional static project exclusions           | 8 (transport, correlation, and sweep contracts, mobile) |
 | Runtime skips depending on data                 | 0                                                       |
 | Structural unit assertions guarding the harness | 22                                                      |
 
-These are **not** 56 independent behavioural contracts: the 7 exclusions are the same server-side
+These are **not** 58 independent behavioural contracts: the 8 exclusions are the same server-side
 contracts already executed on desktop, deliberately not cloned across viewports.
+
+Counts include the one desktop-only case P1.3 added (`p1-3-transport-failure.spec.ts`); the
+original P1.2 figures were 56 / 49 / 7.
 
 Evidence is **local, macOS, Chromium-only, and outside CI**. No preview or production evidence is
 claimed, WebKit is **unexecuted** rather than passing or failing, D119 is **not** satisfied in full,

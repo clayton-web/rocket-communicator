@@ -59,6 +59,7 @@ export function resolveTracedRuntimePath(): string {
 export type TracedRuntimeModule = {
   createPrismaClient: typeof TracedRuntimeBindings.createPrismaClient;
   getTaskById: typeof TracedRuntimeBindings.getTaskById;
+  getTaskForCapabilityAuthorization: typeof TracedRuntimeBindings.getTaskForCapabilityAuthorization;
   listTasks: typeof TracedRuntimeBindings.listTasks;
   createTask: typeof TracedRuntimeBindings.createTask;
   getRecipientById: typeof TracedRuntimeBindings.getRecipientById;
@@ -135,6 +136,7 @@ export async function loadTracedRuntimeModule(): Promise<TracedRuntimeModule> {
   return {
     createPrismaClient: tracedRuntime.createPrismaClient,
     getTaskById: tracedRuntime.getTaskById,
+    getTaskForCapabilityAuthorization: tracedRuntime.getTaskForCapabilityAuthorization,
     listTasks: tracedRuntime.listTasks,
     createTask: tracedRuntime.createTask,
     getRecipientById: tracedRuntime.getRecipientById,

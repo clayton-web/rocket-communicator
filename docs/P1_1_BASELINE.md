@@ -6,6 +6,8 @@
 
 Governing decisions: D113–D115, D119.
 
+> This document records the **P1.1 baseline as it was measured**, before any experience change, and is deliberately not rewritten. The P1.3 measurements taken against it are in [P1_3_EVIDENCE.md](P1_3_EVIDENCE.md); where a gap below has since been addressed, it is annotated in place.
+
 ---
 
 ## 1. Correlation coverage
@@ -36,7 +38,7 @@ Governing decisions: D113–D115, D119.
 
 **Automated proof:** `apps/web/__tests__/p1-1-baseline-structural.test.ts`.
 
-**Optimization:** deferred to **P1.3** (request-scoped auth deduplication). P1.1 does not change this behaviour.
+**Optimization:** deferred to **P1.3** (request-scoped auth deduplication). P1.1 does not change this behaviour. **P1.3 outcome:** the proxy call became `getSession()` (cookie maintenance, discarded result), leaving `getAuthenticatedOwner()` as the single server-verified identity operation — see [P1_3_EVIDENCE.md](P1_3_EVIDENCE.md) §1.
 
 ---
 
@@ -50,7 +52,7 @@ Governing decisions: D113–D115, D119.
 | Owner task HTTP (`runOwnerTaskRoute`) | Auth + `getDb` + handler-specific queries                               | Timing emitted as `owner_task_route`                           |
 | Recipient capability HTTP             | Token validate + mutation/read                                          | Timing emitted as `recipient_capability_route`; path templated |
 
-Exact round-trip counts were **not** instrumented at the Prisma query level in P1.1; P1.3 may assert a documented maximum.
+Exact round-trip counts were **not** instrumented at the Prisma query level in P1.1; P1.3 may assert a documented maximum. **P1.3 outcome:** documented maxima are now asserted for the Owner list, Task detail, capability authorization, and shared mutation paths — see [P1_3_EVIDENCE.md](P1_3_EVIDENCE.md) §2.
 
 ---
 
@@ -104,10 +106,10 @@ Volume is proportionate for a vendor-neutral stdout seam. If production ingestio
 ## 7. Known measurement gaps
 
 1. RSC `error.digest` is not the application `requestId`.
-2. No Prisma-level query counter yet.
+2. No Prisma-level query counter yet. — **P1.3:** addressed with a test-only Prisma extension; no production counter was added ([P1_3_EVIDENCE.md](P1_3_EVIDENCE.md) §2).
 3. No production RUM / Web Vitals baseline (none authorized).
-4. Auth still double-calls `getUser` (P1.3).
-5. Task-list notes remain unbounded (P1.3).
+4. Auth still double-calls `getUser` (P1.3). — **P1.3:** reduced to one verified `getUser` per Owner request; the proxy now performs cookie maintenance only ([P1_3_EVIDENCE.md](P1_3_EVIDENCE.md) §1). Deployed-runtime confirmation remains P1.5.
+5. Task-list notes remain unbounded (P1.3). — **P1.3:** the list queries no notes at all, and the detail bundle is bounded to the contract maximum ([P1_3_EVIDENCE.md](P1_3_EVIDENCE.md) §2).
 6. Browser journey harness is **P1.2**.
 7. Internal cron routes enter request context and failure logging but do **not** emit `operation_timing` (outside the P1.1 minimum span list).
 8. Owner page timings are server-component wall clocks overlapping auth+load; they are **not** Web Vitals or full HTML render metrics.

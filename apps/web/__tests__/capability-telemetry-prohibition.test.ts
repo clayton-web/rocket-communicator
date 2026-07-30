@@ -99,7 +99,8 @@ describe('P1.1 capability-route diagnostic protection (D114)', () => {
 
   it('proxy keeps no-store / no-referrer / noindex for /c/ routes', () => {
     const source = readFileSync(join(__dirname, '../proxy.ts'), 'utf8');
-    expect(source).toContain("pathname.startsWith('/c/')");
+    expect(source).toContain("CAPABILITY_PAGE_PREFIX = '/c/'");
+    expect(source).toContain('pathname.startsWith(CAPABILITY_PAGE_PREFIX)');
     expect(source).toContain('no-store');
     expect(source).toContain('no-referrer');
     expect(source).toContain('noindex');

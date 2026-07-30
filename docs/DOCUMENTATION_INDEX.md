@@ -40,6 +40,8 @@ Root entry: [../README.md](../README.md)
 | **Observability seam direction and operations**                                                                     | ARCHITECTURE + DEPLOYMENT (cite D115); baseline [P1_1_BASELINE.md](P1_1_BASELINE.md) |
 | **P1.1 baseline evidence**                                                                                          | [P1_1_BASELINE.md](P1_1_BASELINE.md)                                                 |
 | **P1.2 browser verification harness (environment, commands, coverage, gaps)**                                       | [P1_2_BROWSER_HARNESS.md](P1_2_BROWSER_HARNESS.md)                                   |
+| **P1.3 performance, auth-count, and database-work evidence**                                                        | [P1_3_EVIDENCE.md](P1_3_EVIDENCE.md)                                                 |
+| **Loading-state ownership across P1.3 / P1.4 / P1.5**                                                               | MILESTONES → P1 implementation sequence (cite D112, D119)                            |
 | **Product name status**                                                                                             | DECISIONS **D120** (Open) + OPEN_QUESTIONS #22                                       |
 | Deployment and operations                                                                                           | DEPLOYMENT                                                                           |
 | Process / review gate                                                                                               | ENGINEERING_WORKFLOW, REVIEW_CHECKLIST                                               |

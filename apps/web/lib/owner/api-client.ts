@@ -1,13 +1,17 @@
 /**
  * Thin Owner browser API client (A7.8).
  * All requests use cache: 'no-store'. Never logs bodies, keys, or emails.
+ * Every request is bounded by the shared client timeout (P1.3 / D112); a request that
+ * produces no response is reported truthfully rather than as a server rejection.
  */
 
 import type { components } from '@aicaa/contracts/schema';
 import {
+  classifyTransportFailure,
   parsePublicErrorResponse,
   type ParsedPublicError,
 } from '@/lib/handoff/client/public-errors';
+import { fetchWithTimeout, isRequestTimeoutError } from '@/lib/http/client-timeout';
 
 type TaskDto = components['schemas']['Task'];
 type RecipientDto = components['schemas']['Recipient'];
@@ -32,13 +36,43 @@ function fail(status: number, body: unknown): OwnerApiResult<never> {
   return { ok: false, error: parsePublicErrorResponse(status, body) };
 }
 
+/**
+ * Run one bounded request. A completed response — success or error — is handed back to
+ * the caller untouched. Only a request that produced no response is classified here.
+ */
+async function send(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  options: { mutation: boolean },
+): Promise<{ ok: true; response: Response } | { ok: false; error: ParsedPublicError }> {
+  try {
+    return { ok: true, response: await fetchWithTimeout(input, init) };
+  } catch (error) {
+    return {
+      ok: false,
+      error: classifyTransportFailure({
+        kind: isRequestTimeoutError(error) ? 'timeout' : 'network',
+        mutation: options.mutation,
+      }),
+    };
+  }
+}
+
 export async function fetchOwnerTask(taskId: string): Promise<OwnerApiResult<TaskDto>> {
-  const response = await fetch(`/api/v1/tasks/${encodeURIComponent(taskId)}`, {
-    method: 'GET',
-    credentials: 'same-origin',
-    cache: 'no-store',
-    headers: { Accept: 'application/json' },
-  });
+  const sent = await send(
+    `/api/v1/tasks/${encodeURIComponent(taskId)}`,
+    {
+      method: 'GET',
+      credentials: 'same-origin',
+      cache: 'no-store',
+      headers: { Accept: 'application/json' },
+    },
+    { mutation: false },
+  );
+  if (!sent.ok) {
+    return sent;
+  }
+  const response = sent.response;
   const body = await readJson(response);
   if (!response.ok) {
     return fail(response.status, body);
@@ -61,12 +95,20 @@ export async function fetchOwnerTasks(input?: {
   if (input?.limit) {
     url.searchParams.set('limit', String(input.limit));
   }
-  const response = await fetch(url.pathname + url.search, {
-    method: 'GET',
-    credentials: 'same-origin',
-    cache: 'no-store',
-    headers: { Accept: 'application/json' },
-  });
+  const sent = await send(
+    url.pathname + url.search,
+    {
+      method: 'GET',
+      credentials: 'same-origin',
+      cache: 'no-store',
+      headers: { Accept: 'application/json' },
+    },
+    { mutation: false },
+  );
+  if (!sent.ok) {
+    return sent;
+  }
+  const response = sent.response;
   const body = await readJson(response);
   if (!response.ok) {
     return fail(response.status, body);
@@ -86,12 +128,20 @@ export async function fetchActiveRecipients(input?: {
   if (input?.limit) {
     url.searchParams.set('limit', String(input.limit));
   }
-  const response = await fetch(url.pathname + url.search, {
-    method: 'GET',
-    credentials: 'same-origin',
-    cache: 'no-store',
-    headers: { Accept: 'application/json' },
-  });
+  const sent = await send(
+    url.pathname + url.search,
+    {
+      method: 'GET',
+      credentials: 'same-origin',
+      cache: 'no-store',
+      headers: { Accept: 'application/json' },
+    },
+    { mutation: false },
+  );
+  if (!sent.ok) {
+    return sent;
+  }
+  const response = sent.response;
   const body = await readJson(response);
   if (!response.ok) {
     return fail(response.status, body);
@@ -101,12 +151,20 @@ export async function fetchActiveRecipients(input?: {
 }
 
 export async function fetchGmailConnection(): Promise<OwnerApiResult<GmailConnectionDto>> {
-  const response = await fetch('/api/v1/gmail/connection', {
-    method: 'GET',
-    credentials: 'same-origin',
-    cache: 'no-store',
-    headers: { Accept: 'application/json' },
-  });
+  const sent = await send(
+    '/api/v1/gmail/connection',
+    {
+      method: 'GET',
+      credentials: 'same-origin',
+      cache: 'no-store',
+      headers: { Accept: 'application/json' },
+    },
+    { mutation: false },
+  );
+  if (!sent.ok) {
+    return sent;
+  }
+  const response = sent.response;
   const body = await readJson(response);
   if (!response.ok) {
     return fail(response.status, body);
@@ -120,21 +178,29 @@ export async function postTaskHandoff(input: {
   ifMatch: string;
   idempotencyKey: string;
 }): Promise<OwnerApiResult<HandoffTaskResponse>> {
-  const response = await fetch(`/api/v1/tasks/${encodeURIComponent(input.taskId)}/handoff`, {
-    method: 'POST',
-    credentials: 'same-origin',
-    cache: 'no-store',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-      'If-Match': input.ifMatch,
-      'Idempotency-Key': input.idempotencyKey,
+  const sent = await send(
+    `/api/v1/tasks/${encodeURIComponent(input.taskId)}/handoff`,
+    {
+      method: 'POST',
+      credentials: 'same-origin',
+      cache: 'no-store',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'If-Match': input.ifMatch,
+        'Idempotency-Key': input.idempotencyKey,
+      },
+      body: JSON.stringify({
+        recipientId: input.recipientId,
+        acknowledgement: 'handoff_confirmed_v1',
+      }),
     },
-    body: JSON.stringify({
-      recipientId: input.recipientId,
-      acknowledgement: 'handoff_confirmed_v1',
-    }),
-  });
+    { mutation: true },
+  );
+  if (!sent.ok) {
+    return sent;
+  }
+  const response = sent.response;
   const body = await readJson(response);
   if (!response.ok) {
     return fail(response.status, body);
