@@ -3,8 +3,8 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
-import TaskListLoading from '@/app/tasks/loading';
-import TaskDetailLoading from '@/app/tasks/[taskId]/loading';
+import TaskListLoading from '@/app/(owner)/tasks/loading';
+import TaskDetailLoading from '@/app/(owner)/tasks/[taskId]/loading';
 
 /**
  * P1.3 route loading boundaries (D112). These are deliberately minimal: they must be

@@ -258,15 +258,19 @@ The requirement that the core Task lifecycle remains fully operational without A
 
 ## Owner web experience (P1)
 
-P1 terms. Scope and authority: D111–D120; slices and criteria: [MILESTONES.md](MILESTONES.md). **P1.1 observability is implemented;** shell, presentation, and browser-harness slices are not started.
+P1 terms. Scope and authority: D111–D126; slices and criteria: [MILESTONES.md](MILESTONES.md). **P1.1 observability, P1.2 browser harness, P1.3 request/render reliability, and P1.4 shell and presentation are implemented** (P1.2–P1.4 pending architectural review, local evidence only). Boundary completion, accessibility closure, connectivity feedback, and production validation remain **P1.5**.
 
 ### Owner Application Shell
 
 The minimum persistent chrome for authenticated Owner routes: consistent navigation, Owner identity context, sign-out access, a `<main>` landmark, and mobile-first layout (D111). It is not a dashboard and adds no business behaviour.
 
+**Implemented in P1.4** as `apps/web/app/(owner)/layout.tsx`. `(owner)` is a Next.js **route group**, so it wraps `/tasks`, `/tasks/{taskId}`, and `/attention` without contributing a URL segment. `/`, `/login`, `/auth/**`, and `/c/{token}` are deliberately outside it. Navigation is exactly three destinations — Tasks, Attention, and sign-out — and the product name is a link rather than an `<h1>`, so each page keeps one page-owned heading. The shell performs no database query and shares the page's single verified identity operation ([P1_4_EVIDENCE.md](P1_4_EVIDENCE.md)).
+
 ### Owner Attention Surface
 
 The single **generic** Owner-level attention and operational-status destination in the shell, which future authorized features populate (D118). It exists so the future **D108** Owner schedule-status surface can be added without a second shell redesign. It is **not** reminder-specific, and while A8 is unimplemented it must not claim or imply that any automation, schedule, or notification capability exists (D089).
+
+**Implemented in P1.4** at **`/attention`** (D121) and currently, truthfully, **empty**: it reads nothing, holds no queue, shows no count, tracks no schedule, and says so explicitly.
 
 ### Truthful experience state
 
@@ -280,9 +284,13 @@ The single identifier shared across the user-visible API error reference, struct
 
 A named design value (colour, type scale, spacing, radius, motion) held in the tokens-only `packages/ui` layer (D116). Tokens are introduced as a **no-op refactor first** — identical values, references swapped — before any value changes. `packages/ui` is **not** a component library, and P1 generates **no** Kotlin tokens.
 
+**Implemented in P1.4** as a single `packages/ui/tokens.css` with **no build step and no `.ts`/`.tsx` file** (D124). Radius `0` and motion `none` are real recorded values describing the current square, static interface — not placeholders. Names are prefixed `--aicaa-*`; a mistyped custom property does not fail loudly, so a test asserts every reference resolves to a defined token.
+
 ### Organization-local display
 
 Rendering of dates and timestamps in the configured Owner organization timezone (`America/Vancouver`, D034), never silently using the browser, device, or machine-local timezone (D117). **Presentation only** — D103 remains the sole authority for reminder calendar arithmetic and the 09:00 organization-local occurrence rule.
+
+**Implemented in P1.4** as `OWNER_DISPLAY_TIME_ZONE` in `apps/web/lib/presentation/datetime.ts`, a documented constant rather than a schema field or environment variable (D122). Daylight saving is delegated to `Intl.DateTimeFormat`; every rendered date-**time** carries a zone indicator. **Known gap:** `/c/{token}` still renders Recipient-local timestamps, deferred to P1.5.
 
 ---
 

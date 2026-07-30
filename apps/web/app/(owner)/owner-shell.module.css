@@ -1,0 +1,198 @@
+/*
+ * Owner application shell (P1.4). All values come from `@aicaa/ui/tokens.css` (D116).
+ *
+ * The shell is deliberately not sticky and has no drawer or hamburger: on a narrow screen a
+ * fixed header spends scarce vertical space permanently, and a drawer would require focus
+ * trapping and an Escape contract that P1.4 is explicitly not authorized to add. Two
+ * destinations wrap onto one line comfortably, so a horizontal wrapping list is enough.
+ */
+
+.shell {
+  min-height: 100vh;
+}
+
+/*
+ * Skip link. Present in the DOM as the first focusable control on every Owner route, and
+ * off-screen until focused — `display: none` would remove it from the focus order entirely,
+ * which defeats the purpose.
+ */
+.skipLink {
+  position: absolute;
+  left: var(--aicaa-space-2xs);
+  top: var(--aicaa-space-2xs);
+  z-index: 50;
+  transform: translateY(-200%);
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--aicaa-target-min);
+  padding: var(--aicaa-space-2xs) var(--aicaa-space-md);
+  border: var(--aicaa-border-width) var(--aicaa-border-style) var(--aicaa-color-accent);
+  background: var(--aicaa-color-surface);
+  color: var(--aicaa-color-ink);
+  font-family: var(--aicaa-font-sans);
+  font-size: var(--aicaa-text-md);
+  text-decoration: none;
+}
+
+.skipLink:focus {
+  transform: translateY(0);
+}
+
+.header {
+  border-bottom: var(--aicaa-border-width) var(--aicaa-border-style) var(--aicaa-color-line);
+  background: var(--aicaa-color-surface-veil);
+}
+
+/*
+ * Header rows and main share one measure and one gutter, so chrome and content align on a
+ * single edge. `env(safe-area-inset-*)` keeps the gutter clear of a notch or rounded corner
+ * in landscape; `max()` means it never shrinks below the designed gutter.
+ */
+.headerBar,
+.nav,
+.main {
+  max-width: var(--aicaa-measure-content);
+  margin-inline: auto;
+  padding-inline: max(var(--aicaa-space-xl), env(safe-area-inset-left))
+    max(var(--aicaa-space-xl), env(safe-area-inset-right));
+}
+
+.headerBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--aicaa-space-2xs) var(--aicaa-space-md);
+  padding-block: var(--aicaa-space-sm) var(--aicaa-space-2xs);
+}
+
+/*
+ * Product identity. A link, not an `<h1>`: repeating the product name as a heading on every
+ * route would give each page two competing top-level headings and tell a screen-reader user
+ * the page is about the product rather than about their Tasks.
+ */
+.product {
+  font-family: var(--aicaa-font-serif);
+  font-size: var(--aicaa-text-lg);
+  color: var(--aicaa-color-ink);
+  text-decoration: none;
+  /* Long product name must wrap rather than push the identity block off-screen. */
+  overflow-wrap: break-word;
+}
+
+.product:hover,
+.product:focus-visible {
+  text-decoration: underline;
+}
+
+.identity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--aicaa-space-2xs) var(--aicaa-space-xs);
+  font-family: var(--aicaa-font-sans);
+  font-size: var(--aicaa-text-sm);
+}
+
+.identityName {
+  color: var(--aicaa-color-muted);
+  /* Display names derive from email addresses, which can be long and unbreakable. */
+  overflow-wrap: anywhere;
+}
+
+.signOutForm {
+  margin: 0;
+}
+
+/*
+ * Sign-out is a real submit button for a real form POST. It is styled as a quiet link so it
+ * does not compete with page actions, but it stays a button so keyboard and assistive
+ * technology announce it as the state-changing control it is.
+ */
+.signOutButton {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--aicaa-target-min);
+  min-width: var(--aicaa-target-min);
+  justify-content: center;
+  padding: 0 var(--aicaa-space-2xs);
+  margin: 0;
+  border: 0;
+  background: none;
+  color: var(--aicaa-color-accent);
+  font-family: var(--aicaa-font-sans);
+  font-size: var(--aicaa-text-sm);
+  cursor: pointer;
+}
+
+.signOutButton:hover,
+.signOutButton:focus-visible {
+  text-decoration: underline;
+}
+
+.nav {
+  padding-block: 0 var(--aicaa-space-2xs);
+}
+
+.navList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--aicaa-space-lg);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.navLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--aicaa-target-min);
+  /*
+   * Transparent border reserves the space the current-page underline will occupy, so
+   * marking a destination current does not shift the row by 3px.
+   */
+  border-bottom: var(--aicaa-border-emphasis-width) var(--aicaa-border-style) transparent;
+  color: var(--aicaa-color-accent);
+  font-family: var(--aicaa-font-sans);
+  font-size: var(--aicaa-text-md);
+  text-decoration: none;
+}
+
+.navLink:hover,
+.navLink:focus-visible {
+  text-decoration: underline;
+}
+
+/*
+ * Current destination. Colour alone would be invisible to anyone who cannot distinguish it,
+ * so the state is carried by weight and a border as well, and by `aria-current="page"` in
+ * the markup.
+ */
+.navLinkCurrent {
+  color: var(--aicaa-color-ink);
+  font-weight: var(--aicaa-weight-semibold);
+  border-bottom-color: var(--aicaa-color-accent);
+}
+
+.main {
+  padding-block: var(--aicaa-space-3xl) var(--aicaa-space-5xl);
+}
+
+/* Narrow screens: reclaim vertical space that only padded an already-short viewport. */
+@media (max-width: 40rem) {
+  .main {
+    padding-block: var(--aicaa-space-xl) var(--aicaa-space-4xl);
+  }
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

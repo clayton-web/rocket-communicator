@@ -16,12 +16,16 @@ test('Task detail renders summary, empty notes state, and unassigned state truth
 
   await ownerPage.goto(`/tasks/${task.id}`);
 
-  await expect(ownerPage.getByRole('heading', { level: 1, name: 'Task' })).toBeVisible();
-  await expect(ownerPage.getByText('Status: open')).toBeVisible();
+  // P1.4: the heading is the Task's derived title, not the literal word "Task".
+  await expect(ownerPage.getByRole('heading', { level: 1, name: title })).toBeVisible();
+  // P1.4: status reads as a human label rather than the raw `open` enum value.
+  await expect(ownerPage.getByText('Open', { exact: true })).toBeVisible();
   await expect(ownerPage.getByText('Unassigned')).toBeVisible();
 
   await expect(ownerPage.getByRole('heading', { level: 2, name: 'Summary' })).toBeVisible();
-  await expect(ownerPage.getByText(title)).toBeVisible();
+  // The title now appears as both the heading and the first summary point, so scope the
+  // summary assertion to the list rather than matching the page twice.
+  await expect(ownerPage.getByRole('listitem').filter({ hasText: title }).first()).toBeVisible();
 
   // Empty state is truthful and distinct from a populated Notes list.
   await expect(ownerPage.getByRole('heading', { level: 2, name: 'Notes' })).toBeVisible();
@@ -51,7 +55,7 @@ test('Task detail renders notes, completion outcome, and current action controls
 
   await ownerPage.goto(`/tasks/${created.id}`);
 
-  await expect(ownerPage.getByText('Status: completed')).toBeVisible();
+  await expect(ownerPage.getByText('Completed', { exact: true })).toBeVisible();
 
   // Notes render with privacy-safe attribution, never a capability token.
   await expect(ownerPage.getByText(noteBody)).toBeVisible();
@@ -79,5 +83,7 @@ test('unknown Task id produces a truthful not-found state, not a blank screen', 
   const visible = await ownerPage.locator('body').innerText();
   expect(visible.trim().length).toBeGreaterThan(0);
   expect(visible).not.toContain('Tasks could not be loaded');
-  await expect(ownerPage.getByRole('heading', { level: 1, name: 'Task' })).toHaveCount(0);
+  // No Task detail rendered: neither the summary section nor the handoff panel appears.
+  await expect(ownerPage.getByRole('heading', { level: 2, name: 'Summary' })).toHaveCount(0);
+  await expect(ownerPage.getByRole('heading', { level: 2, name: 'Handoff' })).toHaveCount(0);
 });

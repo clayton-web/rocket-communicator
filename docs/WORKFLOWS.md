@@ -223,9 +223,9 @@ Record `LearningSignal`; optionally propose `WorkflowRule`. Apply only on Owner 
 
 A **structured learning signal** is a purposefully retained Owner decision with the alternatives that existed and what followed (D113). It must never be inferred from operational telemetry, page views, clicks, dwell time, or inactivity, and the **absence of a correction is not approval**. Human corrections outrank passive usage tracking. Neither **P1** nor A8 captures learning signals or creates learning tables (D110, D113). Class definitions: [GLOSSARY.md](GLOSSARY.md); AI boundary: [AI_CONSTITUTION.md](AI_CONSTITUTION.md).
 
-## 16. Owner web experience states _(planned — P1; authorized, not implemented)_
+## 16. Owner web experience states _(P1; partially implemented — P1.5 remaining)_
 
-P1 changes **no** workflow above: no new transition, permission, audit semantic, or business behaviour (D111). It governs how the workflows already implemented are **presented and observed**. Scope and criteria: [MILESTONES.md](MILESTONES.md).
+P1 changes **no** workflow above: no new transition, permission, audit semantic, or business behaviour (D111). It governs how the workflows already implemented are **presented and observed**. P1.1–P1.4 are implemented (P1.2–P1.4 pending architectural review; local evidence only); comprehensive boundary and connectivity states remain P1.5. Scope and criteria: [MILESTONES.md](MILESTONES.md).
 
 Seven truthful states apply to every current Owner and Recipient surface (D112):
 

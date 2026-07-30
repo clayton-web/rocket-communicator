@@ -26,6 +26,25 @@ const OWNER_ID = process.env.E2E_OWNER_ID ?? '00000000-0000-4000-8000-00000000e2
  */
 let hostedDomainOverride = null;
 
+/**
+ * Real Supabase Auth HTTP-operation counters (P1.4 / D119).
+ *
+ * The D119 gate is "exactly one Owner authentication call per Owner page request", and
+ * P1.4 puts the Owner shell in a layout, which renders alongside the page. Counting source
+ * call sites would prove nothing about that, so the double counts the operations the
+ * application actually performs against the Auth protocol:
+ *
+ * - `user`    — `GET /auth/v1/user`, the server-verified identity operation D119 budgets;
+ * - `token`   — `POST /auth/v1/token`, session refresh and code exchange (cookie
+ *               maintenance), counted separately so a refresh is never mistaken for an
+ *               identity verification;
+ * - `logout`  — `POST /auth/v1/logout`, server-side sign-out.
+ *
+ * This is harness-only instrumentation on a loopback test server. No counter, header, or
+ * hook is added to application code, so nothing here can reach production.
+ */
+const operations = { user: 0, token: 0, logout: 0 };
+
 const NOW_ISO = new Date().toISOString();
 
 function base64url(value) {
@@ -157,6 +176,31 @@ const server = createServer(async (request, response) => {
     return;
   }
 
+  /*
+   * Auth operation counters. GET reads them; POST resets them so a spec can measure a
+   * single page request in isolation. Same loopback-only guard as the hosted-domain
+   * control surface: the server binds 127.0.0.1, but a developer's browser could still
+   * reach it while the harness runs.
+   */
+  if (url.pathname === '/__e2e__/auth-operations') {
+    const origin = request.headers.origin;
+    if (origin !== undefined && !/^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:|$)/.test(origin)) {
+      sendJson(response, 403, { error: 'control surface is loopback-only' });
+      return;
+    }
+    if (request.method === 'POST') {
+      await readBody(request);
+      operations.user = 0;
+      operations.token = 0;
+      operations.logout = 0;
+    }
+    sendJson(response, 200, {
+      ...operations,
+      total: operations.user + operations.token + operations.logout,
+    });
+    return;
+  }
+
   // Browser OAuth entry: immediately redirect back to the application callback.
   if (url.pathname === '/auth/v1/authorize') {
     const redirectTo = url.searchParams.get('redirect_to');
@@ -173,17 +217,20 @@ const server = createServer(async (request, response) => {
 
   // Code exchange (PKCE) and refresh both yield the same local session.
   if (url.pathname === '/auth/v1/token') {
+    operations.token += 1;
     await readBody(request);
     sendJson(response, 200, session());
     return;
   }
 
   if (url.pathname === '/auth/v1/user') {
+    operations.user += 1;
     sendJson(response, 200, ownerUser());
     return;
   }
 
   if (url.pathname === '/auth/v1/logout') {
+    operations.logout += 1;
     response.writeHead(204, { 'Cache-Control': 'no-store' });
     response.end();
     return;

@@ -4,17 +4,11 @@ import { useId, useRef } from 'react';
 import type { components } from '@aicaa/contracts/schema';
 import { useTaskHandoff } from '@/lib/handoff/client/use-task-handoff';
 import { deliveryPathLabel } from '@/lib/handoff/client/delivery-copy';
+import { deliveryStatusLabel } from '@/lib/presentation/task-status';
 import { HandoffConfirmationDialog } from './handoff-confirmation-dialog';
 import styles from '../tasks.module.css';
 
 type TaskDto = components['schemas']['Task'];
-
-function summaryText(point: TaskDto['summaryPoints'][number]): string {
-  if ('value' in point && typeof point.value === 'string') {
-    return point.value;
-  }
-  return point.label;
-}
 
 function bannerClass(tone: 'info' | 'success' | 'error' | 'warning'): string {
   switch (tone) {
@@ -87,9 +81,8 @@ export function HandoffPanel({
               : 'Assignment sent.'}
             {handoff.task.assignment?.deliveryStatus ? (
               <span className={styles.statusPill}>
-                {handoff.task.assignment.deliveryStatus === 'sent'
-                  ? 'Sent'
-                  : handoff.task.assignment.deliveryStatus}
+                {deliveryStatusLabel(handoff.task.assignment.deliveryStatus) ??
+                  handoff.task.assignment.deliveryStatus}
               </span>
             ) : null}
           </p>

@@ -1,0 +1,120 @@
+/*
+ * @aicaa/ui — semantic design tokens (D116).
+ *
+ * This file is the single source of the Owner web surface's colour, type, spacing,
+ * border, radius, motion, and touch-target values. It contains tokens only: D116
+ * activates `packages/ui` as a semantic-token layer and does NOT authorize a component
+ * library, so no React, no markup, and no logic belongs here.
+ *
+ * P1.4 introduced these tokens as a NO-OP REFACTOR: every value below is byte-identical
+ * to the literal it replaced in `apps/web/app/globals.css` and
+ * `apps/web/app/tasks/tasks.module.css` at commit 34d048e7. Radius and motion are
+ * included because their current absence is itself the shipped value — the interface is
+ * square and static — and recording that makes any future change traceable rather than
+ * incidental. `apps/web/__tests__/p1-4-tokens.test.ts` pins each value, so a visual
+ * change cannot enter through token extraction.
+ *
+ * Android parity is achieved by re-implementing documented rules against these values,
+ * not by sharing code (D116). No Kotlin generation exists or is authorized in P1.
+ */
+
+:root {
+  /* Colour — surface and text */
+  --aicaa-color-ink: #1c1917;
+  --aicaa-color-muted: #57534e;
+  --aicaa-color-paper: #f5f5f4;
+  --aicaa-color-line: #d6d3d1;
+  --aicaa-color-accent: #0f766e;
+  --aicaa-color-surface: #fff;
+  --aicaa-color-canvas-top: #fafaf9;
+
+  /*
+   * Translucent white surfaces. Four distinct alphas ship today; they are recorded
+   * separately rather than collapsed, because collapsing them would be a visual change
+   * disguised as a refactor.
+   */
+  --aicaa-color-surface-veil: rgba(255, 255, 255, 0.7);
+  --aicaa-color-surface-raised: rgba(255, 255, 255, 0.72);
+  --aicaa-color-surface-card: rgba(255, 255, 255, 0.75);
+  --aicaa-color-surface-banner: rgba(255, 255, 255, 0.8);
+
+  /* Colour — semantic state accents. Meaning is always carried by text as well. */
+  --aicaa-color-positive: #15803d;
+  --aicaa-color-critical: #b91c1c;
+  --aicaa-color-caution: #b45309;
+
+  /* Colour — accent tints and focus rings, derived from --aicaa-color-accent. */
+  --aicaa-color-accent-glow: rgba(15, 118, 110, 0.08);
+  --aicaa-color-focus-ring-subtle: rgba(15, 118, 110, 0.35);
+  --aicaa-color-focus-ring: rgba(15, 118, 110, 0.55);
+
+  /* Colour — modal scrim, derived from --aicaa-color-ink. */
+  --aicaa-color-scrim: rgba(28, 25, 23, 0.45);
+
+  /* Typeface */
+  --aicaa-font-serif:
+    'Iowan Old Style', 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, serif;
+  --aicaa-font-sans: 'Segoe UI', system-ui, -apple-system, sans-serif;
+
+  /* Type scale */
+  --aicaa-text-xs: 0.8rem;
+  --aicaa-text-sm: 0.9rem;
+  --aicaa-text-md: 0.95rem;
+  --aicaa-text-lg: 1.05rem;
+  --aicaa-text-heading-sm: 1.15rem;
+  --aicaa-text-heading-md: 1.2rem;
+  --aicaa-text-heading-page: clamp(1.6rem, 4vw, 2.1rem);
+  --aicaa-text-heading-hero: clamp(1.75rem, 4vw, 2.35rem);
+
+  /* Type rhythm */
+  --aicaa-leading-tight: 1.45;
+  --aicaa-leading-normal: 1.5;
+  --aicaa-leading-relaxed: 1.55;
+  --aicaa-weight-semibold: 600;
+  --aicaa-tracking-tight: -0.02em;
+
+  /*
+   * Spacing scale. These are the values that recur across more than one rule, extracted
+   * as an ordered ladder. Single-use micro-padding inside one control (for example the
+   * status pill's 0.1rem, or a select's 0.55rem) stays a literal: a token per one-off
+   * value would add indirection without removing duplication.
+   */
+  --aicaa-space-3xs: 0.25rem;
+  --aicaa-space-2xs: 0.4rem;
+  --aicaa-space-xs: 0.65rem;
+  --aicaa-space-sm: 0.75rem;
+  --aicaa-space-md: 0.9rem;
+  --aicaa-space-lg: 1rem;
+  --aicaa-space-xl: 1.25rem;
+  --aicaa-space-2xl: 1.5rem;
+  --aicaa-space-3xl: 1.75rem;
+  --aicaa-space-4xl: 2.5rem;
+  --aicaa-space-5xl: 4rem;
+
+  /* Borders */
+  --aicaa-border-width: 1px;
+  --aicaa-border-emphasis-width: 3px;
+  --aicaa-border-style: solid;
+
+  /*
+   * Radius. The shipped interface is square everywhere; `0` is the current value, not a
+   * placeholder. Changing it is a visual decision and must be made deliberately.
+   */
+  --aicaa-radius-none: 0;
+  --aicaa-radius-control: 0;
+  --aicaa-radius-surface: 0;
+
+  /*
+   * Motion. No transition or animation exists in the shipped interface. `none` records
+   * that truthfully; because nothing animates, no `prefers-reduced-motion` handling is
+   * required and none is declared.
+   */
+  --aicaa-motion-duration-none: 0s;
+  --aicaa-motion-transition-none: none;
+
+  /* Interaction targets and measure */
+  --aicaa-target-min: 2.75rem;
+  --aicaa-measure-content: 40rem;
+  --aicaa-focus-ring-width: 2px;
+  --aicaa-focus-ring-offset: 2px;
+}

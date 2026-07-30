@@ -1,11 +1,26 @@
+/*
+ * Global element styling. Values come from `@aicaa/ui/tokens.css`, which `layout.tsx`
+ * imports first (D116). No literal colour, font, or type-scale value belongs in this file.
+ */
+
 :root {
   color-scheme: light;
-  --ink: #1c1917;
-  --muted: #57534e;
-  --paper: #f5f5f4;
-  --line: #d6d3d1;
-  --accent: #0f766e;
-  font-family: 'Iowan Old Style', 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, serif;
+  font-family: var(--aicaa-font-serif);
+
+  /*
+   * Compatibility aliases for the Recipient capability surface.
+   *
+   * `app/c/[token]/recipient-capability.module.css` consumes these short names. P1 touches
+   * `/c/{token}` last, in P1.5, because it is externally visible and security-sensitive, so
+   * P1.4 deliberately does not edit that stylesheet. Aliasing keeps the capability page
+   * rendering byte-identically while removing the literal values from this file. P1.5 should
+   * migrate that stylesheet to the `--aicaa-*` tokens directly and delete this block.
+   */
+  --ink: var(--aicaa-color-ink);
+  --muted: var(--aicaa-color-muted);
+  --paper: var(--aicaa-color-paper);
+  --line: var(--aicaa-color-line);
+  --accent: var(--aicaa-color-accent);
 }
 
 * {
@@ -17,48 +32,47 @@ body {
   margin: 0;
   min-height: 100%;
   background:
-    radial-gradient(circle at top left, rgba(15, 118, 110, 0.08), transparent 40%),
-    linear-gradient(180deg, #fafaf9 0%, var(--paper) 100%);
-  color: var(--ink);
+    radial-gradient(circle at top left, var(--aicaa-color-accent-glow), transparent 40%),
+    linear-gradient(180deg, var(--aicaa-color-canvas-top) 0%, var(--aicaa-color-paper) 100%);
+  color: var(--aicaa-color-ink);
 }
 
-main {
-  max-width: 40rem;
+/*
+ * Unshelled surfaces only. `/` and `/login` sit outside the Owner route group and have no
+ * shell of their own, so `main` carries the measure and page padding there. The Owner shell
+ * marks its own landmark with `data-owner-shell` and supplies its own container, so this
+ * rule must not reach it and add a second set of paddings.
+ */
+main:not([data-owner-shell]) {
+  max-width: var(--aicaa-measure-content);
   margin: 0 auto;
-  padding: 4rem 1.5rem;
+  padding: var(--aicaa-space-5xl) var(--aicaa-space-2xl);
 }
 
 h1 {
-  font-size: clamp(1.75rem, 4vw, 2.35rem);
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  margin: 0 0 1rem;
+  font-size: var(--aicaa-text-heading-hero);
+  font-weight: var(--aicaa-weight-semibold);
+  letter-spacing: var(--aicaa-tracking-tight);
+  margin: 0 0 var(--aicaa-space-lg);
 }
 
 p {
-  margin: 0 0 0.75rem;
-  line-height: 1.55;
-  color: var(--muted);
-  font-family:
-    'Segoe UI',
-    system-ui,
-    -apple-system,
-    sans-serif;
-  font-size: 1.05rem;
+  margin: 0 0 var(--aicaa-space-sm);
+  line-height: var(--aicaa-leading-relaxed);
+  color: var(--aicaa-color-muted);
+  font-family: var(--aicaa-font-sans);
+  font-size: var(--aicaa-text-lg);
 }
 
 .status {
   display: inline-block;
-  margin-top: 1.5rem;
-  padding: 0.65rem 0.9rem;
-  border: 1px solid var(--line);
-  border-left: 3px solid var(--accent);
-  background: rgba(255, 255, 255, 0.7);
-  color: var(--ink);
-  font-family:
-    'Segoe UI',
-    system-ui,
-    -apple-system,
-    sans-serif;
-  font-size: 0.95rem;
+  margin-top: var(--aicaa-space-2xl);
+  padding: var(--aicaa-space-xs) var(--aicaa-space-md);
+  border: var(--aicaa-border-width) var(--aicaa-border-style) var(--aicaa-color-line);
+  border-left: var(--aicaa-border-emphasis-width) var(--aicaa-border-style)
+    var(--aicaa-color-accent);
+  background: var(--aicaa-color-surface-veil);
+  color: var(--aicaa-color-ink);
+  font-family: var(--aicaa-font-sans);
+  font-size: var(--aicaa-text-md);
 }

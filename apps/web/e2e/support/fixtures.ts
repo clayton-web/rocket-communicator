@@ -56,6 +56,37 @@ export async function resetAuthDouble(): Promise<void> {
   await setAuthDoubleHostedDomain(null);
 }
 
+/**
+ * Supabase Auth HTTP operations the application actually performed (P1.4 / D119).
+ *
+ * `user` is the server-verified `GET /auth/v1/user` that D119 budgets at exactly one per
+ * Owner page request; `token` is session refresh and code exchange, counted separately so
+ * cookie maintenance is never mistaken for identity verification.
+ */
+export interface AuthOperationCounts {
+  user: number;
+  token: number;
+  logout: number;
+  total: number;
+}
+
+async function authOperations(method: 'GET' | 'POST'): Promise<AuthOperationCounts> {
+  const response = await fetch(`${E2E_AUTH_URL}/__e2e__/auth-operations`, { method });
+  if (!response.ok) {
+    throw new Error(`Auth double rejected operation-count request: ${response.status}`);
+  }
+  return (await response.json()) as AuthOperationCounts;
+}
+
+export function readAuthOperations(): Promise<AuthOperationCounts> {
+  return authOperations('GET');
+}
+
+/** Zero the counters so a single request can be measured in isolation. */
+export function resetAuthOperations(): Promise<AuthOperationCounts> {
+  return authOperations('POST');
+}
+
 export const WORKSPACE_DOMAIN = E2E_WORKSPACE_DOMAIN;
 
 function createDiagnostics(page: Page): BrowserDiagnostics {

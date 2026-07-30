@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import styles from './tasks.module.css';
 
 /**
@@ -16,10 +15,9 @@ export default function TasksError({
   reset: () => void;
 }) {
   return (
-    <div className={styles.wrap}>
-      <nav className={styles.nav} aria-label="Owner">
-        <Link href="/">Home</Link>
-      </nav>
+    // Renders inside the Owner shell, so navigation and identity survive the failure and
+    // the Owner is never stranded on a page with no way out.
+    <>
       <h1 className={styles.title}>Tasks could not be loaded</h1>
       <p className={`${styles.banner} ${styles.bannerError}`} role="alert">
         A service this page depends on did not respond. No Task was created, changed, or handed off.
@@ -38,6 +36,6 @@ export default function TasksError({
           Reference for server logs: <span className={styles.statusPill}>{error.digest}</span>
         </p>
       ) : null}
-    </div>
+    </>
   );
 }

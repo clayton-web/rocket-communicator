@@ -16,10 +16,16 @@ test('Owner pages expose one visible heading and named navigation', async ({ own
   await expect(headings).toHaveCount(1);
   await expect(headings).toBeVisible();
 
-  // Navigation has an accessible name and named links.
-  await expect(ownerPage.getByRole('navigation', { name: 'Owner' })).toBeVisible();
-  await expect(ownerPage.getByRole('link', { name: 'Home' })).toBeVisible();
-  await expect(ownerPage.getByRole('link', { name: 'Tasks' })).toBeVisible();
+  // Navigation has an accessible name and named links. P1.4 moved it into the Owner shell and
+  // replaced the per-page "Home" link with the two authorized Owner destinations.
+  const nav = ownerPage.getByRole('navigation', { name: 'Owner' });
+  await expect(nav).toBeVisible();
+  await expect(nav.getByRole('link', { name: 'Tasks' })).toBeVisible();
+  await expect(nav.getByRole('link', { name: 'Attention' })).toBeVisible();
+
+  // Landmarks the shell now guarantees on every Owner route.
+  await expect(ownerPage.getByRole('banner')).toBeVisible();
+  await expect(ownerPage.getByRole('main')).toHaveAttribute('id', 'main-content');
 });
 
 test('capability page controls have accessible names and support keyboard activation', async ({

@@ -48,7 +48,7 @@ packages/typescript-config/
 docs/
 ```
 
-`packages/ui/` is authorized as a **semantic-token layer only** (D116) and **does not exist yet**; it is created during P1.4. It is not a component library.
+`packages/ui/` is a **semantic-token layer only** (D116, D124), created in P1.4. It is a single `tokens.css` with no build step, no dependency, and no `.ts`/`.tsx` file — it is not a component library, and all React components stay in `apps/web`.
 
 Package responsibilities: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 

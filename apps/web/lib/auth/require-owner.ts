@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import { AuthConfigError } from '@/lib/auth/errors';
 import { getAuthConfig } from '@/lib/auth/config';
 import { isWorkspaceDomainPermitted, workspaceIdentityFromUser } from '@/lib/auth/domain-allowlist';
@@ -27,6 +28,29 @@ export interface AuthenticatedOwner {
 const ownerByRequest = new WeakMap<RequestDiagnosticContext, Promise<AuthenticatedOwner | null>>();
 
 /**
+ * Render-pass resolution memo (P1.4).
+ *
+ * The P1.3 memo above is keyed by the request diagnostic context, which each page creates
+ * inside its own `runWithRequestContext` call. The P1.4 Owner shell is a *layout*, and a
+ * layout renders outside the page's context, so it would miss that memo entirely and spend
+ * a second verified `getUser()` — breaking the D119 one-call-per-page-request gate.
+ *
+ * React's `cache` closes exactly that gap: its scope is one server render pass, which
+ * spans the layout and the page of a single request and nothing else. It is deliberately
+ * *not* a cache in the ordinary sense — there is no TTL, no key beyond the arguments, and
+ * no way for an entry to outlive the render that created it, so no cross-request caching
+ * is introduced. Outside a render (route handlers, the proxy, Vitest) React's `cache` is a
+ * pass-through, which is why the request-context memo above remains the deduplication
+ * mechanism there rather than being replaced by this one.
+ *
+ * Evidence: `apps/web/__tests__/p1-4-shell-auth.test.ts` for the composition and isolation
+ * properties, and `apps/web/e2e/specs/owner-shell-auth.spec.ts`, which counts real
+ * `GET /auth/v1/user` requests arriving at the Supabase Auth double while the real Next.js
+ * runtime renders layout plus page.
+ */
+const resolveOwnerForRenderPass = cache(resolveAuthenticatedOwner);
+
+/**
  * Resolve the Owner for the current request.
  *
  * Identity is always established by a server-verified `auth.getUser()` call; the cookie
@@ -35,7 +59,7 @@ const ownerByRequest = new WeakMap<RequestDiagnosticContext, Promise<Authenticat
 export async function getAuthenticatedOwner(): Promise<AuthenticatedOwner | null> {
   const requestContext = getRequestContext();
   if (!requestContext) {
-    return resolveAuthenticatedOwner();
+    return resolveOwnerForRenderPass();
   }
 
   const memoized = ownerByRequest.get(requestContext);
@@ -43,7 +67,9 @@ export async function getAuthenticatedOwner(): Promise<AuthenticatedOwner | null
     return memoized;
   }
 
-  const pending = resolveAuthenticatedOwner();
+  // Routed through the render-pass memo as well, so a page running inside a request context
+  // reuses whatever the surrounding shell layout already resolved instead of re-verifying.
+  const pending = resolveOwnerForRenderPass();
   ownerByRequest.set(requestContext, pending);
   // A failed resolution must not poison the rest of the request.
   void pending.catch(() => {

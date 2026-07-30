@@ -300,6 +300,38 @@ noted. Transport-level and artifact-sweep contracts run once, on desktop.
 
 | P1.3 addition: unanswered mutation reported as uncertain, not success or 412 | `p1-3-transport-failure.spec.ts` | desktop |
 
+### P1.4 additions
+
+| Journey                                                                              | Spec                             | Both viewports |
+| ------------------------------------------------------------------------------------ | -------------------------------- | -------------- |
+| One verified `GET /auth/v1/user` per Owner page request, measured at the Auth double | `owner-shell-auth.spec.ts`       | desktop        |
+| Sequential and concurrent Owner requests stay isolated                               | `owner-shell-auth.spec.ts`       | desktop        |
+| Capability page performs zero Owner auth work                                        | `owner-shell-auth.spec.ts`       | desktop        |
+| Sign-out revokes server-side at Supabase (`POST /auth/v1/logout` observed)           | `owner-shell-auth.spec.ts`       | desktop        |
+| Shell persists across Task list ↔ detail navigation; Tasks stays current             | `owner-shell.spec.ts`            | yes            |
+| Exactly one `<h1>` and one `<main>` on every Owner route                             | `owner-shell.spec.ts`            | yes            |
+| Skip link is first focusable and moves focus to main content                         | `owner-shell.spec.ts`            | yes            |
+| Owner display name appears in chrome without leaking Task data                       | `owner-shell.spec.ts`            | yes            |
+| Shell stays visible while a Task page is loading                                     | `owner-shell.spec.ts`            | yes            |
+| Sign-out returns the Owner to a signed-out state; `/tasks` then redirects            | `owner-shell.spec.ts`            | yes            |
+| Attention destination is truthfully empty and claims no automation                   | `owner-attention.spec.ts`        | yes            |
+| Attention destination is authenticated like every other Owner route                  | `owner-attention.spec.ts`        | yes            |
+| Vancouver date/time rendered in an **Asia/Tokyo browser**, zone indicator shown      | `owner-presentation.spec.ts`     | yes            |
+| Status and urgency render as human labels, never raw contract enums                  | `owner-presentation.spec.ts`     | yes            |
+| Long title and long note wrap with no horizontal document overflow                   | `owner-presentation.spec.ts`     | yes            |
+| No Owner route overflows the viewport horizontally                                   | `owner-shell-responsive.spec.ts` | yes            |
+| Navigation and identity wrap rather than clip; stay inside the viewport              | `owner-shell-responsive.spec.ts` | yes            |
+| Shell controls meet the 2.75rem (≈44px) touch-target minimum                         | `owner-shell-responsive.spec.ts` | yes            |
+| Viewport meta present; pinch-zoom not disabled                                       | `owner-shell-responsive.spec.ts` | yes            |
+
+`owner-shell-auth.spec.ts` measures Auth operations with **document requests** rather than
+browser navigations: a navigation also triggers `next/link` prefetches, and each prefetch
+legitimately renders the layout again, so a navigation-level count could not isolate the single
+request D119 budgets. It sets `trace`, `screenshot`, and `video` to `off` because it opens a
+capability link (§ artifact safety).
+
+No screenshot baselines were added. Evidence: [P1_4_EVIDENCE.md](P1_4_EVIDENCE.md).
+
 Experience states distinguished by browser assertions: **unauthorized**, **not found**,
 **conflict (412)**, **precondition required (428)**, **ambiguous transport outcome**, and
 **success**. The **empty** Task-list state is asserted in

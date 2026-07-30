@@ -18,7 +18,7 @@ vi.mock('@/lib/recipients', () => ({
 vi.mock('@/lib/gmail/service', () => ({
   getGmailConnection: vi.fn(),
 }));
-vi.mock('@/app/tasks/_components/handoff-panel', () => ({
+vi.mock('@/app/(owner)/tasks/_components/handoff-panel', () => ({
   HandoffPanel: () => <div data-testid="handoff-panel-stub" />,
 }));
 
@@ -27,10 +27,10 @@ import { getDb } from '@/lib/db/server';
 import { getOwnerTask, listOwnerTasks } from '@/lib/tasks';
 import { listOwnerRecipients } from '@/lib/recipients';
 import { getGmailConnection } from '@/lib/gmail/service';
-import TasksPage from '@/app/tasks/page';
-import TaskDetailPage from '@/app/tasks/[taskId]/page';
-import TasksError from '@/app/tasks/error';
-import { TaskDetail } from '@/app/tasks/_components/task-detail';
+import TasksPage from '@/app/(owner)/tasks/page';
+import TaskDetailPage from '@/app/(owner)/tasks/[taskId]/page';
+import TasksError from '@/app/(owner)/tasks/error';
+import { TaskDetail } from '@/app/(owner)/tasks/_components/task-detail';
 
 /** Shape of the production failure: Prisma could not reach the configured database host. */
 function unreachableDatabaseError(): Error {
@@ -102,7 +102,7 @@ describe('A7.8 Owner Task pages auth gate', () => {
       dueAt: null,
       waitingUntil: null,
       priority: 'normal',
-      derivedUrgency: 'normal',
+      derivedUrgency: null,
       notes: [],
       reminder: { nextReminderAt: null, reminderStage: 0, waitingPaused: false },
       retention: { deleteAfter: '2026-08-18T00:00:00.000Z', policy: 'active_task' },
@@ -115,7 +115,9 @@ describe('A7.8 Owner Task pages auth gate', () => {
     expect(requireOwnerPage).toHaveBeenCalledWith('/tasks/task_1');
     expect(listOwnerRecipients).toHaveBeenCalled();
     expect(getGmailConnection).toHaveBeenCalled();
-    expect(screen.getByRole('heading', { name: 'Task' })).toBeInTheDocument();
+    // P1.4 replaced the literal heading "Task" with the Task's derived title. This fixture has
+    // no summary points, so it exercises the deterministic identifier fallback.
+    expect(screen.getByRole('heading', { level: 1, name: 'Task task_1' })).toBeInTheDocument();
     expect(screen.getByTestId('handoff-panel-stub')).toBeInTheDocument();
   });
 
@@ -139,7 +141,7 @@ describe('A7.8 Owner Task pages auth gate', () => {
           dueAt: null,
           waitingUntil: null,
           priority: 'normal',
-          derivedUrgency: 'normal',
+          derivedUrgency: null,
           notes: [
             {
               id: 'note_1',

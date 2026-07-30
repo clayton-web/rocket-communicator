@@ -1,0 +1,14 @@
+{
+  "name": "@aicaa/ui",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Semantic design tokens for the Owner web surface (D116). Tokens only; no components.",
+  "exports": {
+    "./tokens.css": "./tokens.css"
+  },
+  "files": [
+    "tokens.css",
+    "README.md"
+  ]
+}

@@ -147,10 +147,17 @@ export const A6_3_PROCESS_ROUTE_NFT = 'app/api/v1/internal/suggestions/process/r
 /** Process route must include compiled @aicaa/ai output (repo or workspace link). */
 export const A6_3_AI_PACKAGE_MARKERS = ['packages/ai/dist/index.js', 'packages/ai/package.json'];
 
+/**
+ * NFT manifests are keyed by the route's *source* path, so the P1.4 `(owner)` route group
+ * appears here even though it contributes nothing to the public URL. `/tasks` and
+ * `/tasks/{taskId}` are unchanged for clients, and `outputFileTracingIncludes` in
+ * `next.config.ts` still matches on the route path, so the traced Prisma engine, schema, and
+ * workspace `dist` files are unaffected — only where Next.js writes the manifest changed.
+ */
 export const DB_BACKED_PAGE_ROUTE_NFTS = [
   'app/c/[token]/page.js.nft.json',
-  'app/tasks/page.js.nft.json',
-  'app/tasks/[taskId]/page.js.nft.json',
+  'app/(owner)/tasks/page.js.nft.json',
+  'app/(owner)/tasks/[taskId]/page.js.nft.json',
 ];
 
 export const DB_BACKED_ROUTE_NFTS = [...DB_BACKED_API_ROUTE_NFTS, ...DB_BACKED_PAGE_ROUTE_NFTS];

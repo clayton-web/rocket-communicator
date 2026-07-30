@@ -1,0 +1,329 @@
+/*
+ * Owner Task surface styling. Values come from `@aicaa/ui/tokens.css` (D116).
+ * The repeated sans-serif stack that previously appeared twelve times in this file is now
+ * a single token reference.
+ */
+
+/*
+ * `.wrap` and `.nav` were removed in P1.4: the Owner shell layout now owns the page
+ * container and the single Owner navigation, so every Task surface — list, detail, loading,
+ * and error — inherits one consistent measure instead of re-declaring its own.
+ */
+
+.title {
+  margin: 0 0 var(--aicaa-space-sm);
+  font-size: var(--aicaa-text-heading-page);
+  font-weight: var(--aicaa-weight-semibold);
+  letter-spacing: var(--aicaa-tracking-tight);
+}
+
+.muted {
+  margin: 0 0 var(--aicaa-space-lg);
+  color: var(--aicaa-color-muted);
+  font-family: var(--aicaa-font-sans);
+  line-height: var(--aicaa-leading-normal);
+}
+
+.list {
+  list-style: none;
+  margin: var(--aicaa-space-xl) 0 0;
+  padding: 0;
+  display: grid;
+  gap: var(--aicaa-space-xs);
+}
+
+.list a {
+  display: block;
+  padding: 0.85rem var(--aicaa-space-lg);
+  border: var(--aicaa-border-width) var(--aicaa-border-style) var(--aicaa-color-line);
+  background: var(--aicaa-color-surface-raised);
+  color: var(--aicaa-color-ink);
+  text-decoration: none;
+  font-family: var(--aicaa-font-sans);
+  min-height: var(--aicaa-target-min);
+}
+
+.list a:hover,
+.list a:focus-visible {
+  border-color: var(--aicaa-color-accent);
+  outline: var(--aicaa-focus-ring-width) var(--aicaa-border-style)
+    var(--aicaa-color-focus-ring-subtle);
+  outline-offset: var(--aicaa-focus-ring-offset);
+}
+
+.meta {
+  display: block;
+  margin-top: var(--aicaa-space-3xs);
+  color: var(--aicaa-color-muted);
+  font-size: var(--aicaa-text-sm);
+  /* Attribution lines can contain long unbroken email addresses and identifiers. */
+  overflow-wrap: anywhere;
+}
+
+/*
+ * Task list row. Titles derive from free-text summary points, so a single long unbroken token
+ * must wrap rather than widen the document and introduce horizontal scrolling on a phone.
+ */
+.itemTitle {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.itemBadges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--aicaa-space-3xs);
+  margin-top: var(--aicaa-space-3xs);
+}
+
+/* Task detail dates. A description list because each value is labelled by its term. */
+.dateList {
+  margin: 0 0 var(--aicaa-space-xl);
+  padding: 0;
+  font-family: var(--aicaa-font-sans);
+  font-size: var(--aicaa-text-md);
+}
+
+.dateRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--aicaa-space-3xs) var(--aicaa-space-2xs);
+}
+
+.dateTerm {
+  margin: 0;
+  color: var(--aicaa-color-muted);
+}
+
+.dateTerm::after {
+  content: ':';
+}
+
+.dateValue {
+  margin: 0;
+  color: var(--aicaa-color-ink);
+}
+
+.section {
+  margin-top: var(--aicaa-space-3xl);
+  padding-top: var(--aicaa-space-xl);
+  border-top: var(--aicaa-border-width) var(--aicaa-border-style) var(--aicaa-color-line);
+}
+
+.section h2 {
+  margin: 0 0 var(--aicaa-space-sm);
+  font-size: var(--aicaa-text-heading-sm);
+}
+
+.summaryList {
+  margin: 0;
+  padding-left: 1.15rem;
+  font-family: var(--aicaa-font-sans);
+  color: var(--aicaa-color-ink);
+}
+
+.summaryList li {
+  margin-bottom: var(--aicaa-space-2xs);
+  line-height: var(--aicaa-leading-tight);
+  /*
+   * Summary points are free text and routinely contain a long URL, reference number, or
+   * pasted identifier. Word wrapping alone cannot break an unbroken token, so without this a
+   * single point widens the document and the whole page scrolls sideways on a phone.
+   */
+  overflow-wrap: anywhere;
+}
+
+.notesList {
+  list-style: none;
+  margin: var(--aicaa-space-sm) 0 0;
+  padding: 0;
+  display: grid;
+  gap: var(--aicaa-space-xs);
+}
+
+.noteBody {
+  margin: 0 0 var(--aicaa-space-2xs);
+  font-family: var(--aicaa-font-sans);
+  color: var(--aicaa-color-ink);
+  line-height: var(--aicaa-leading-tight);
+  /* `pre-wrap` preserves the author's line breaks; `anywhere` breaks a long unbroken token. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.field {
+  display: grid;
+  gap: var(--aicaa-space-2xs);
+  margin: var(--aicaa-space-lg) 0;
+  font-family: var(--aicaa-font-sans);
+  /* A grid item defaults to `min-width: auto`, which lets a wide child push the track out. */
+  min-width: 0;
+}
+
+.field select {
+  min-height: var(--aicaa-target-min);
+  padding: 0.55rem 0.7rem;
+  border: var(--aicaa-border-width) var(--aicaa-border-style) var(--aicaa-color-line);
+  background: var(--aicaa-color-surface);
+  font: inherit;
+  color: var(--aicaa-color-ink);
+  /*
+   * A `select` sizes itself to its widest `option`, so one long Recipient email address was
+   * widening the whole document and scrolling every Task detail page sideways on a phone.
+   * The overflow only appeared once Recipients existed, which is why it survived until now.
+   */
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--aicaa-space-xs);
+  margin-top: var(--aicaa-space-lg);
+}
+
+.button,
+.buttonSecondary {
+  min-height: var(--aicaa-target-min);
+  min-width: var(--aicaa-target-min);
+  padding: 0.55rem var(--aicaa-space-lg);
+  border: var(--aicaa-border-width) var(--aicaa-border-style) var(--aicaa-color-accent);
+  background: var(--aicaa-color-accent);
+  color: var(--aicaa-color-surface);
+  font-family: var(--aicaa-font-sans);
+  font-size: var(--aicaa-text-md);
+  cursor: pointer;
+}
+
+.buttonSecondary {
+  background: var(--aicaa-color-surface);
+  color: var(--aicaa-color-ink);
+  border-color: var(--aicaa-color-line);
+}
+
+.button:disabled,
+.buttonSecondary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.button:focus-visible,
+.buttonSecondary:focus-visible,
+.field select:focus-visible,
+.checkboxRow input:focus-visible {
+  outline: var(--aicaa-focus-ring-width) var(--aicaa-border-style) var(--aicaa-color-focus-ring);
+  outline-offset: var(--aicaa-focus-ring-offset);
+}
+
+.banner {
+  margin: var(--aicaa-space-lg) 0;
+  padding: var(--aicaa-space-sm) var(--aicaa-space-md);
+  border: var(--aicaa-border-width) var(--aicaa-border-style) var(--aicaa-color-line);
+  border-left-width: var(--aicaa-border-emphasis-width);
+  font-family: var(--aicaa-font-sans);
+  font-size: var(--aicaa-text-md);
+  color: var(--aicaa-color-ink);
+  background: var(--aicaa-color-surface-banner);
+}
+
+.bannerSuccess {
+  border-left-color: var(--aicaa-color-positive);
+}
+
+.bannerError {
+  border-left-color: var(--aicaa-color-critical);
+}
+
+.bannerWarning {
+  border-left-color: var(--aicaa-color-caution);
+}
+
+.bannerInfo {
+  border-left-color: var(--aicaa-color-accent);
+}
+
+.card {
+  margin: var(--aicaa-space-lg) 0;
+  padding: var(--aicaa-space-md) var(--aicaa-space-lg);
+  border: var(--aicaa-border-width) var(--aicaa-border-style) var(--aicaa-color-line);
+  background: var(--aicaa-color-surface-card);
+  font-family: var(--aicaa-font-sans);
+}
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--aicaa-color-scrim);
+  display: grid;
+  place-items: end center;
+  padding: var(--aicaa-space-lg);
+  z-index: 40;
+}
+
+@media (min-width: 640px) {
+  .backdrop {
+    place-items: center;
+  }
+}
+
+.dialog {
+  width: min(100%, 28rem);
+  max-height: min(90vh, var(--aicaa-measure-content));
+  overflow: auto;
+  background: var(--aicaa-color-surface);
+  border: var(--aicaa-border-width) var(--aicaa-border-style) var(--aicaa-color-line);
+  padding: var(--aicaa-space-xl) 1.15rem 1.1rem;
+  box-shadow: 0 12px 40px rgba(28, 25, 23, 0.18);
+}
+
+.dialog h2 {
+  margin: 0 0 var(--aicaa-space-sm);
+  font-size: var(--aicaa-text-heading-md);
+}
+
+.dialog p {
+  margin: 0 0 var(--aicaa-space-xs);
+  color: var(--aicaa-color-muted);
+  font-family: var(--aicaa-font-sans);
+  font-size: var(--aicaa-text-md);
+  line-height: var(--aicaa-leading-normal);
+}
+
+.checkboxRow {
+  display: flex;
+  gap: var(--aicaa-space-xs);
+  align-items: flex-start;
+  margin: var(--aicaa-space-lg) 0;
+  font-family: var(--aicaa-font-sans);
+  color: var(--aicaa-color-ink);
+}
+
+.checkboxRow input {
+  width: 1.15rem;
+  height: 1.15rem;
+  margin-top: 0.15rem;
+  flex: 0 0 auto;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.statusPill {
+  display: inline-block;
+  margin-left: 0.35rem;
+  padding: 0.1rem 0.45rem;
+  border: var(--aicaa-border-width) var(--aicaa-border-style) var(--aicaa-color-line);
+  font-size: var(--aicaa-text-xs);
+  color: var(--aicaa-color-muted);
+}

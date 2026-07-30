@@ -2,8 +2,8 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { components } from '@aicaa/contracts/schema';
-import { HandoffPanel } from '@/app/tasks/_components/handoff-panel';
-import { HandoffConfirmationDialog } from '@/app/tasks/_components/handoff-confirmation-dialog';
+import { HandoffPanel } from '@/app/(owner)/tasks/_components/handoff-panel';
+import { HandoffConfirmationDialog } from '@/app/(owner)/tasks/_components/handoff-confirmation-dialog';
 
 type TaskDto = components['schemas']['Task'];
 
@@ -25,7 +25,7 @@ const task: TaskDto = {
   dueAt: null,
   waitingUntil: null,
   priority: 'normal',
-  derivedUrgency: 'normal',
+  derivedUrgency: null,
   notes: [],
   reminder: {
     nextReminderAt: null,

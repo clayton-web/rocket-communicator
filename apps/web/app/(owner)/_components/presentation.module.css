@@ -1,0 +1,88 @@
+/*
+ * Shared Owner presentation components (P1.4). Values from `@aicaa/ui/tokens.css` (D116).
+ */
+
+.pageHeader {
+  margin-bottom: var(--aicaa-space-xl);
+}
+
+.pageTitle {
+  margin: 0;
+  font-size: var(--aicaa-text-heading-page);
+  font-weight: var(--aicaa-weight-semibold);
+  letter-spacing: var(--aicaa-tracking-tight);
+  /*
+   * Titles derive from summary points, which are free text and can contain a long unbroken
+   * URL or reference number. Without this a single long token forces the whole document wide
+   * and produces horizontal scrolling on a phone.
+   */
+  overflow-wrap: anywhere;
+}
+
+.pageMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--aicaa-space-2xs);
+  margin-top: var(--aicaa-space-sm);
+}
+
+.pageDescription {
+  margin: var(--aicaa-space-sm) 0 0;
+  color: var(--aicaa-color-muted);
+  font-family: var(--aicaa-font-sans);
+  line-height: var(--aicaa-leading-normal);
+}
+
+/*
+ * Badge. `border-left` carries the tone so the state is still distinguishable in forced-colours
+ * or greyscale rendering, where a background tint alone would disappear.
+ */
+.badge {
+  display: inline-block;
+  padding: 0.1rem var(--aicaa-space-2xs);
+  border: var(--aicaa-border-width) var(--aicaa-border-style) var(--aicaa-color-line);
+  border-left-width: var(--aicaa-border-emphasis-width);
+  background: var(--aicaa-color-surface-banner);
+  font-family: var(--aicaa-font-sans);
+  font-size: var(--aicaa-text-xs);
+  color: var(--aicaa-color-ink);
+  white-space: nowrap;
+}
+
+.badgeNeutral {
+  border-left-color: var(--aicaa-color-line);
+}
+
+.badgePositive {
+  border-left-color: var(--aicaa-color-positive);
+}
+
+.badgeCaution {
+  border-left-color: var(--aicaa-color-caution);
+}
+
+.badgeCritical {
+  border-left-color: var(--aicaa-color-critical);
+}
+
+.empty {
+  margin: var(--aicaa-space-xl) 0;
+  padding: var(--aicaa-space-md) var(--aicaa-space-lg);
+  border: var(--aicaa-border-width) var(--aicaa-border-style) var(--aicaa-color-line);
+  background: var(--aicaa-color-surface-card);
+  font-family: var(--aicaa-font-sans);
+}
+
+.emptyMessage {
+  margin: 0;
+  color: var(--aicaa-color-ink);
+  font-family: var(--aicaa-font-sans);
+}
+
+.emptyExplanation {
+  margin: var(--aicaa-space-2xs) 0 0;
+  color: var(--aicaa-color-muted);
+  font-family: var(--aicaa-font-sans);
+  font-size: var(--aicaa-text-sm);
+  line-height: var(--aicaa-leading-normal);
+}
