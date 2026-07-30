@@ -5,10 +5,67 @@ import { fetchWithTimeout, isRequestTimeoutError } from '@/lib/http/client-timeo
 type TaskDto = components['schemas']['Task'];
 type TaskOutcomeType = components['schemas']['TaskOutcomeType'];
 
+/**
+ * Why a request did not succeed (P1.5 / D112).
+ *
+ * The distinction that matters is between a request that was never sent and one that was
+ * sent without an answer. Both leave the Recipient without a result, but only the second
+ * leaves the *server* in an unknown state, and telling someone their update "may or may not
+ * have been saved" when the browser never dispatched it invents uncertainty that does not
+ * exist — and sends them to re-read a Task that cannot have changed.
+ */
+export type RecipientMutationFailure =
+  /** The browser reported itself offline, so nothing was dispatched. */
+  | 'offline'
+  /** Dispatched, but no definitive server response arrived. The outcome is unknown. */
+  | 'ambiguous'
+  /** The server answered with a definite error status. */
+  | 'rejected';
+
 export type RecipientMutationResult =
   | { ok: true; task: TaskDto; status: number }
   | { ok: true; workRequest: components['schemas']['SubmitWorkRequestResponse']; status: 201 }
-  | { ok: false; status: number; code?: string; message: string };
+  | {
+      ok: false;
+      failure: RecipientMutationFailure;
+      status: number;
+      code?: string;
+      message: string;
+    };
+
+/**
+ * Whether the browser is reporting a definite lack of connectivity.
+ *
+ * Used in one direction only, which is the only direction it is trustworthy in. When the
+ * browser says it is offline, skipping dispatch is safe and lets the outcome be stated as a
+ * fact rather than a possibility. `navigator.onLine === true` is never treated as evidence
+ * that a request will arrive: a captive portal, a dead uplink, and a working connection all
+ * report online, so a `true` reading changes nothing and the request is simply attempted.
+ *
+ * Guarded for the absence of `navigator` so this module stays importable during server
+ * rendering, where it is never called but is evaluated.
+ */
+function knownOffline(): boolean {
+  return typeof navigator !== 'undefined' && navigator.onLine === false;
+}
+
+/**
+ * Result of a request the browser declined to send because it is offline (P1.5 / D112).
+ *
+ * States plainly that nothing was sent. That is not a guess: `fetch` was never called, so
+ * there is no request in flight and no possibility that the server applied anything. The
+ * Recipient needs a connection, not a review of Task state.
+ */
+function offlineFailure(mutation: boolean): RecipientMutationResult {
+  return {
+    ok: false,
+    failure: 'offline',
+    status: 0,
+    message: mutation
+      ? 'You appear to be offline, so this was not sent. Your details are kept here — reconnect, then confirm again.'
+      : 'You appear to be offline. Reconnect, then try again.',
+  };
+}
 
 /**
  * Result of a request that produced no server response (P1.3 / D112).
@@ -16,6 +73,11 @@ export type RecipientMutationResult =
  * `status: 0` keeps this distinct from every confirmed status — in particular it is not
  * a `412`, so the panel's stale-version recovery path is not triggered. A submission is
  * described as genuinely uncertain because the server may still have applied it.
+ *
+ * Reached only after dispatch, so it stays ambiguous regardless of what the rejection value
+ * turns out to be. Nothing here inspects the error's type or message to guess a cause: once
+ * a request has left the browser, a `TypeError`, an abort, and a dropped socket are equally
+ * uninformative about whether the server committed.
  */
 function transportFailure(error: unknown, mutation: boolean): RecipientMutationResult {
   const cause = isRequestTimeoutError(error)
@@ -23,6 +85,7 @@ function transportFailure(error: unknown, mutation: boolean): RecipientMutationR
     : 'The request could not reach the server.';
   return {
     ok: false,
+    failure: 'ambiguous',
     status: 0,
     message: mutation
       ? `${cause} Your update may or may not have been saved. Reload this page to see the latest status before trying again.`
@@ -67,6 +130,16 @@ export async function postCapabilityAction(input: {
     submit_work_request: '/work-requests',
   };
 
+  /*
+   * Checked before dispatch and never retried afterwards. Not sending is what makes
+   * "this was not sent" true, and it is also what keeps this from becoming a retry: the
+   * Recipient's next attempt is a fresh deliberate confirmation, not something the client
+   * replays when connectivity returns.
+   */
+  if (knownOffline()) {
+    return offlineFailure(true);
+  }
+
   let response: Response;
   try {
     response = await fetchWithTimeout(
@@ -91,7 +164,13 @@ export async function postCapabilityAction(input: {
 
   if (!response.ok) {
     const err = await parseError(response);
-    return { ok: false, status: response.status, code: err.code, message: err.message };
+    return {
+      ok: false,
+      failure: 'rejected',
+      status: response.status,
+      code: err.code,
+      message: err.message,
+    };
   }
 
   if (input.action === 'submit_work_request') {
@@ -109,6 +188,10 @@ export async function reloadCapabilityTask(input: {
   token: string;
   taskId: string;
 }): Promise<RecipientMutationResult> {
+  if (knownOffline()) {
+    return offlineFailure(false);
+  }
+
   let response: Response;
   try {
     response = await fetchWithTimeout(apiBase(input.token, input.taskId), {
@@ -123,7 +206,13 @@ export async function reloadCapabilityTask(input: {
 
   if (!response.ok) {
     const err = await parseError(response);
-    return { ok: false, status: response.status, code: err.code, message: err.message };
+    return {
+      ok: false,
+      failure: 'rejected',
+      status: response.status,
+      code: err.code,
+      message: err.message,
+    };
   }
 
   const task = (await response.json()) as TaskDto;

@@ -312,7 +312,14 @@ export function RecipientCapabilityPanel({
         )}
       </section>
 
-      {banner ? (
+      {/*
+       * Rendered here only while no dialog is open. The dialog carries its own copy, because
+       * this one sits underneath the modal backdrop — `elementFromPoint` at its centre returns
+       * the backdrop, not the paragraph — so a submission that failed from inside the dialog
+       * was reporting itself to a part of the page the Recipient could not read or reach.
+       * Exactly one of the two renders at a time, so the status is announced once.
+       */}
+      {banner && mode.kind !== 'confirm' ? (
         <p
           role="status"
           aria-live="polite"
@@ -327,6 +334,7 @@ export function RecipientCapabilityPanel({
           titleId={titleId}
           action={mode.action}
           submitting={submitting}
+          banner={banner}
           onCancel={() => {
             if (!submitting) {
               setMode({ kind: 'browse' });
@@ -345,12 +353,15 @@ function ConfirmationDialog({
   titleId,
   action,
   submitting,
+  banner,
   onCancel,
   onSubmit,
 }: {
   titleId: string;
   action: RecipientUiAction;
   submitting: boolean;
+  /** Outcome of the last attempt, shown inside the dialog because the dialog covers the page. */
+  banner: { tone: 'info' | 'error'; text: string } | null;
   onCancel: () => void;
   onSubmit: (body: Record<string, unknown>) => void;
 }) {
@@ -437,6 +448,22 @@ function ConfirmationDialog({
             returnNote={returnNote}
             setReturnNote={setReturnNote}
           />
+          {/*
+           * Above the buttons, so the reason the last attempt failed is read before the
+           * control that would repeat it. The dialog stays open and the fields keep their
+           * values, which is what lets an offline or unconfirmed attempt be reconsidered
+           * without retyping — and, for an unconfirmed one, without the client deciding on
+           * the Recipient's behalf that sending it again is safe.
+           */}
+          {banner ? (
+            <p
+              role="status"
+              aria-live="polite"
+              className={`${styles.alert} ${banner.tone === 'error' ? styles.alertError : ''}`}
+            >
+              {banner.text}
+            </p>
+          ) : null}
           <div className={styles.dialogActions}>
             <button type="button" onClick={onCancel} disabled={submitting}>
               Cancel
