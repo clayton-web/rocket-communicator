@@ -1,12 +1,13 @@
 # P1.4 evidence — Owner shell, constrained presentation, organization-timezone display, attention destination
 
 **Status:** P1.4 Owner shell, constrained presentation foundation, organization-timezone
-display, and the Owner attention / operational-status destination — **implemented, pending
-architectural review; local evidence only.**
+display, and the Owner attention / operational-status destination — **complete and
+production-validated.**
 
-P1.4 is **not** complete. P1 is **not** complete. **D119 and D120 remain open.** P1.5 is not
-started. Every measurement below comes from the local P1.2 harness, a disposable local
-Postgres, and a local Supabase Auth double. **No deployed-runtime evidence exists.**
+P1.4 is **complete**. P1 overall remains **open**. **D119 and D120 remain open.** P1.5 is
+not started. Local evidence below remains the exact Auth HTTP-count proof; [§13 Production
+validation and closure](#13-production-validation-and-closure) records the production
+deployment and Owner-shell evidence that closed the slice.
 
 Authorizing decisions: D111 (P1 scope), D112 (truthful experience states), D116 (presentation
 foundation), D117 (organization-timezone display), D118 (attention destination), D119
@@ -458,12 +459,179 @@ work. No reduced-motion block was added, since no motion exists to guard.
 
 ## 12. Remaining gaps
 
-- **No deployed-runtime shell or auth proof.** All evidence is local.
-- No comprehensive P1.5 accessibility closure.
-- No global error boundary, not-found, or connectivity work.
 - Recipient capability timestamps still use their existing presentation path
-  (`toLocaleString`), and the `summaryText` duplication remains there.
-- No non-Gmail Owner mutation control.
-- No Task-note truncation metadata (would require an OpenAPI change).
-- The attention destination contains no A8 operational data; A8 is not started.
-- Local browser and performance evidence only; no production or preview target was used.
+  (`toLocaleString`), so Recipient-local presentation remains outside P1.4.
+- Recipient capability presentation retains the final title-summary duplication and the
+  legacy CSS aliases in `globals.css` (capability stylesheet untouched; P1.5).
+- Precise note truncation disclosure requires a future contract field; note-bound wording
+  states only what was shown.
+- Production had no unassigned actionable Task, so the Recipient selector overflow fix was
+  not exercised with live Recipient options (CSS and local browser evidence only).
+- Production had no due date, derived urgency, or failed delivery data, so those positive
+  rendering paths remain locally proven rather than production-proven.
+- Unauthenticated `/tasks` briefly renders identity-independent Owner chrome before its
+  loading-boundary redirect completes (see [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md) and the
+  P1.5 input in [MILESTONES.md](MILESTONES.md)); not a P1.4 closure blocker.
+- Sign-out soft-error hardening remains later work.
+- Owner-authentication duration may under-report when layout resolution starts first,
+  although the event **count** is correct.
+- Comprehensive accessibility, global error/not-found, and connectivity work remain P1.5.
+- One transient sub-resource 404 during production validation did not reproduce and requires
+  no action unless it recurs.
+- One isolated A7.4 MIME timeout remains a pre-existing load flake under heavy local test
+  load, not a P1.4 defect.
+
+---
+
+## 13. Production validation and closure
+
+**Closure decision:** Close P1.4.
+
+Validated against production after the automatic deployment of commit
+`a38c85741fbfd3055cbf3a5a4b325205823feab6` (`feat(web): add P1.4 owner application shell`).
+No manual deployment, retry, rollback, promotion, or tag was performed for this closeout.
+
+### Deployment identity
+
+| Field                                          | Value                                                                         |
+| ---------------------------------------------- | ----------------------------------------------------------------------------- |
+| Deployment ID                                  | `dpl_F5zjNcc4zwiwbr25CSdMGA3zDy8c`                                            |
+| Project                                        | `rocket-communicator-web`                                                     |
+| Environment                                    | `production`                                                                  |
+| Source branch                                  | `main`                                                                        |
+| Source commit                                  | `a38c85741fbfd3055cbf3a5a4b325205823feab6`                                    |
+| Immutable deployment URL                       | `https://rocket-communicator-3lqazi9ua-claytons-projects-37065b04.vercel.app` |
+| Stable production URL                          | `https://rocket-communicator-web.vercel.app`                                  |
+| Created                                        | 2026-07-30 08:43:13 PDT                                                       |
+| Building                                       | 2026-07-30 08:43:15 PDT                                                       |
+| Ready                                          | 2026-07-30 08:44:07 PDT                                                       |
+| Build duration                                 | 54 seconds                                                                    |
+| Deployment state                               | `READY`                                                                       |
+| Production alias                               | assigned and current                                                          |
+| Retry / rollback / replacement / manual deploy | none                                                                          |
+
+The immutable URL sits behind Vercel deployment protection; application validation used the
+stable production alias.
+
+### Authentication evidence — distinguish local and production proofs
+
+**Local exact Auth HTTP proof** (unchanged; still authoritative for the HTTP count):
+`apps/web/e2e/specs/owner-shell-auth.spec.ts` counts real `GET /auth/v1/user` requests at the
+Supabase Auth double while Next.js renders layout plus page. That remains the exact Auth HTTP
+count evidence.
+
+**Production operation-event proof** (this validation): privacy-safe `operation_timing`
+diagnostics. Production logs exposed **operation events**, not raw Auth HTTP counts. Do not
+read the table below as an exact Auth HTTP count.
+
+| Route             | Document requests | `owner_authentication` events per request |
+| ----------------- | ----------------- | ----------------------------------------- |
+| `/tasks`          | 5                 | exactly 1                                 |
+| `/tasks/[taskId]` | 4                 | exactly 1                                 |
+
+Additional production observations:
+
+- `/api/v1/tasks`: zero `owner_authentication` events (API route uses its own operation
+  instrumentation).
+- `/c/[token]`: three invalid synthetic capability-page requests, each with **zero** Owner
+  authentication events.
+- **Zero** requests emitted duplicate `owner_authentication` events.
+- The shell added no second authentication operation and no database query.
+- No operational failures or timeouts appeared during the validation window.
+- **`/attention` was not present in the captured production log window**, so its exact
+  production event count remains a **sampling gap**, not a defect. `/attention` shares the
+  same `(owner)` layout and `requireOwnerPage` path as the measured routes.
+
+### Owner shell
+
+Production confirmed: one `<header>`; one `<nav aria-label="Owner">`; one
+`<main id="main-content">`; one page-owned `<h1>` per route; first-focusable skip link;
+unchanged product identity; Owner display name shown; navigation exactly Tasks, Attention,
+and Sign out; active route uses `aria-current="page"` plus a non-colour treatment; shell
+persists through Task list/detail navigation; no duplicate shell or navigation; zero
+horizontal overflow at desktop and Pixel 7 sizes; touch targets ≥ 44px; pinch zoom enabled.
+
+### Sign-out
+
+Production confirmed: native `POST /auth/sign-out`; HTTP 303 to `/login?signed_out=1`;
+server-side session invalidated; subsequent `GET /api/v1/session` returned 401; subsequent
+`/tasks` gated to login; `GET /auth/sign-out` returned 405; no open redirect; no
+business-data mutation.
+
+### Attention
+
+Production copy (truthful empty destination):
+
+> There is nothing to show here.
+>
+> This destination is where Tasks needing your attention and operational status will appear.
+> Neither is built yet, so this page is empty by design rather than because something failed.
+>
+> This page does not monitor anything, hold a queue, count anything, or track a schedule, and
+> nothing on it updates on its own. The Tasks page remains the complete and current list of
+> your Tasks.
+
+Confirmed: no queue, count, reminder, schedule, operational status, A8 data,
+invisible-automation implication, or database read.
+
+### Timezone
+
+| Item                         | Value                          |
+| ---------------------------- | ------------------------------ |
+| Tested instant               | `2026-07-28T18:30:45Z`         |
+| Expected Vancouver rendering | `Jul 28, 2026, 11:30 a.m. PDT` |
+| Production rendering         | `Jul 28, 2026, 11:30 a.m. PDT` |
+
+Confirmed: correct Vancouver calendar date and PDT offset; identical rendering under an
+emulated `Asia/Tokyo` browser timezone; no raw ISO timestamp; no hydration mismatch.
+Recipient capability timestamps remain outside P1.4 and continue using Recipient-local
+presentation.
+
+### Task presentation
+
+Production contained seven Tasks (3 completed, 3 open, 1 dismissed; 6 assigned, 1
+unassigned; 3 sent deliveries; no due dates; no derived urgency; no failed delivery).
+
+Confirmed: rendered list matched API count and ordering; human-readable status labels;
+truthful assignment labels; no raw status enum; no filter, grouping, sorting, or count
+control; no due-soon/overdue or delivery-failure label because no DTO supported one; Task
+detail `<h1>` used a derived title rather than literal `Task`; Summary / Completion / Notes /
+Handoff hierarchy intact; inspected Task returned two notes and correctly omitted the
+100-note notice; no raw delivery enum; no business-data mutation.
+
+### Responsive / accessibility smoke and regression
+
+Desktop and Pixel 7: zero horizontal overflow; skip link first-focusable and targeting
+`#main-content`; active navigation distinguishable without colour alone; viewport meta leaves
+pinch zoom available. Unauthenticated Owner API gates remained healthy; `/tasks` and
+`/tasks/[taskId]` authenticate before protected data disclosure; `/attention` gates correctly;
+capability pages remain outside Owner chrome and fail closed on invalid synthetic tokens with
+zero Owner authentication; product name unchanged; no A4–A7 regression observed. Gmail,
+polling, suggestions, approvals, dismissals, and handoff mutations were intentionally
+untouched.
+
+### Tag status
+
+No tag was created for this closeout.
+
+`v0.7.0-p1.4-complete` is **rejected** as convention-inconsistent: existing tags are
+milestone-level (`v0.5.0-a5-complete`, `v0.6.0-a6-complete`, `v0.7.0-a7-complete`), and that
+name reuses A7’s `0.7.0` while introducing slice-level tagging without precedent.
+
+Tagging is deferred to a separately authorized decision between:
+
+1. **Preferred:** tag only when all of P1 closes, with a convention-compatible milestone tag
+   such as `v0.8.0-p1-complete`.
+2. **Alternative, requiring explicit authorization:** create the first slice-level tag
+   `v0.8.0-p1.4-complete`.
+
+### Closure status after this evidence
+
+| Item       | Status                                                                         |
+| ---------- | ------------------------------------------------------------------------------ |
+| P1.4       | **Complete**                                                                   |
+| P1 overall | **Open**                                                                       |
+| D119       | **Open** (P1-wide closure still depends on P1.5 and final P1 closure evidence) |
+| D120       | **Open**                                                                       |
+| P1.5       | **Not started**                                                                |
+| A8 / A9    | Untouched                                                                      |

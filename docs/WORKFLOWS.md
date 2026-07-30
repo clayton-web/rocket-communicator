@@ -225,7 +225,7 @@ A **structured learning signal** is a purposefully retained Owner decision with 
 
 ## 16. Owner web experience states _(P1; partially implemented — P1.5 remaining)_
 
-P1 changes **no** workflow above: no new transition, permission, audit semantic, or business behaviour (D111). It governs how the workflows already implemented are **presented and observed**. P1.1–P1.4 are implemented (P1.2–P1.4 pending architectural review; local evidence only); comprehensive boundary and connectivity states remain P1.5. Scope and criteria: [MILESTONES.md](MILESTONES.md).
+P1 changes **no** workflow above: no new transition, permission, audit semantic, or business behaviour (D111). It governs how the workflows already implemented are **presented and observed**. P1.1–P1.3 are implemented (P1.2–P1.3 pending architectural review; local evidence only); **P1.4 is complete and production-validated**; comprehensive boundary and connectivity states remain P1.5. Scope and criteria: [MILESTONES.md](MILESTONES.md).
 
 Seven truthful states apply to every current Owner and Recipient surface (D112):
 

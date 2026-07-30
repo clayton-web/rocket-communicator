@@ -258,7 +258,7 @@ The requirement that the core Task lifecycle remains fully operational without A
 
 ## Owner web experience (P1)
 
-P1 terms. Scope and authority: D111–D126; slices and criteria: [MILESTONES.md](MILESTONES.md). **P1.1 observability, P1.2 browser harness, P1.3 request/render reliability, and P1.4 shell and presentation are implemented** (P1.2–P1.4 pending architectural review, local evidence only). Boundary completion, accessibility closure, connectivity feedback, and production validation remain **P1.5**.
+P1 terms. Scope and authority: D111–D126; slices and criteria: [MILESTONES.md](MILESTONES.md). **P1.1 observability, P1.2 browser harness, and P1.3 request/render reliability are implemented** (P1.2–P1.3 pending architectural review, local evidence only). **P1.4 shell and presentation are complete and production-validated.** Boundary completion, accessibility closure, connectivity feedback, and P1.1 baseline production validation remain **P1.5**.
 
 ### Owner Application Shell
 

@@ -89,32 +89,33 @@ Gates for D111–D126. Record **expected behaviour and required proof**; no spec
 
 ### Owner shell and presentation (P1.4; D121–D126)
 
-- [ ] Route group `(owner)` changes **no public URL**; `/`, `/login`, `/auth/**`, and `/c/{token}` remain outside Owner chrome; proxy pathname matching unchanged (D111)
-- [ ] `/` is **not** globally redirected to `/tasks`, and keeps its authenticated and unauthenticated behaviour
-- [ ] Build-output paths moved with the route group — **NFT manifest paths and any tooling that reads them were updated**, and Prisma engine tracing still resolves for both Task routes
-- [ ] Exactly **one verified `getUser()` per Owner page request** across layout **plus** page, measured at the real Auth HTTP layer — **not** by counting source call sites (D119)
-- [ ] Render-pass memoization introduces **no cross-request cache**: sequential and concurrent request counts scale with request count
-- [ ] Shell emits **no second `owner_authentication` timing event**, so the P1.3 duplicate-auth diagnostic stays meaningful
-- [ ] Shell adds **zero database queries** and **no client fetch**; no layout-induced sequential DB waterfall
-- [ ] Product name is **not** an `<h1>`; each page retains exactly **one page-owned `<h1>`**
-- [ ] Navigation is **only** Tasks, Attention, and Sign out — no Recipients, Gmail settings, suggestions, reminders, administration, or health entry, and no empty or future destination (D089)
-- [ ] Active navigation uses `aria-current="page"` **plus** a non-colour-only treatment; `/tasks/{taskId}` keeps Tasks current
-- [ ] Chrome persists across loading and error boundaries; neither declares its own container or navigation
-- [ ] Sign-out is **POST only** with no `GET` handler, revokes **server-side** at Supabase, redirects **303**, and is not reachable by `next/link` prefetch (D123)
-- [ ] Sign-out required **no OpenAPI or generated-client change** (D123)
-- [ ] `/attention` is truthfully empty: no query, no queue, no count, no schedule, no monitoring claim, and no A8 operational data (D118, D121)
-- [ ] Owner display timezone is a **documented constant**, not an environment variable or schema field; an invalid zone **fails loudly** rather than falling back to machine-local time (D122)
-- [ ] Every rendered date-**time** carries a zone indicator; Owner timestamps are formatted **server-side** so no hydration mismatch is possible
-- [ ] Timezone proven under `TZ=UTC`, `TZ=Asia/Tokyo`, **and** a non-Vancouver **browser** timezone, including both DST boundaries (D117)
-- [ ] Task presentation is **visual only** over existing DTO fields: no filter, section, grouping, sorting change, count, attention queue, new state, or new rule; **list order unchanged** (D126)
-- [ ] Status/urgency mappings are **exhaustive over the contract enum**, so a new contract value fails the build rather than rendering unlabelled
-- [ ] `due_soon`/`overdue` presented as **due-date facts**, never as reminder automation (D089, D103, D126)
-- [ ] Note-bound wording states what **was shown** and does not claim more notes exist; no truncation metadata added (D126)
-- [ ] Long titles, notes, summary points, emails, and identifiers wrap — proven by asserting **zero horizontal document overflow**, not by screenshot
-- [ ] `packages/ui` contains **no `.ts`/`.tsx`/`.js` file** and no React component; token values pinned equal to their pre-refactor literals (D124)
-- [ ] No `server-only` module, Prisma client, or observability import reached a client component or the client bundle
-- [ ] Task detail is server-rendered and A7 **handoff behaviour is unaffected** by removing `'use client'`
-- [ ] No P1.4 audit script or e2e tooling leaked into the production bundle
+- [x] Route group `(owner)` changes **no public URL**; `/`, `/login`, `/auth/**`, and `/c/{token}` remain outside Owner chrome; proxy pathname matching unchanged (D111)
+- [x] `/` is **not** globally redirected to `/tasks`, and keeps its authenticated and unauthenticated behaviour
+- [x] Build-output paths moved with the route group — **NFT manifest paths and any tooling that reads them were updated**, and Prisma engine tracing still resolves for both Task routes
+- [x] Exactly **one verified `getUser()` per Owner page request** across layout **plus** page, measured at the real Auth HTTP layer — **not** by counting source call sites (D119)
+- [x] Render-pass memoization introduces **no cross-request cache**: sequential and concurrent request counts scale with request count
+- [x] Shell emits **no second `owner_authentication` timing event**, so the P1.3 duplicate-auth diagnostic stays meaningful
+- [x] Shell adds **zero database queries** and **no client fetch**; no layout-induced sequential DB waterfall
+- [x] Product name is **not** an `<h1>`; each page retains exactly **one page-owned `<h1>`**
+- [x] Navigation is **only** Tasks, Attention, and Sign out — no Recipients, Gmail settings, suggestions, reminders, administration, or health entry, and no empty or future destination (D089)
+- [x] Active navigation uses `aria-current="page"` **plus** a non-colour-only treatment; `/tasks/{taskId}` keeps Tasks current
+- [x] Chrome persists across loading and error boundaries; neither declares its own container or navigation
+- [x] Sign-out is **POST only** with no `GET` handler, revokes **server-side** at Supabase, redirects **303**, and is not reachable by `next/link` prefetch (D123)
+- [x] Sign-out required **no OpenAPI or generated-client change** (D123)
+- [x] `/attention` is truthfully empty: no query, no queue, no count, no schedule, no monitoring claim, and no A8 operational data (D118, D121)
+- [x] Owner display timezone is a **documented constant**, not an environment variable or schema field; an invalid zone **fails loudly** rather than falling back to machine-local time (D122)
+- [x] Every rendered date-**time** carries a zone indicator; Owner timestamps are formatted **server-side** so no hydration mismatch is possible
+- [x] Timezone proven under `TZ=UTC`, `TZ=Asia/Tokyo`, **and** a non-Vancouver **browser** timezone, including both DST boundaries (D117)
+- [x] Task presentation is **visual only** over existing DTO fields: no filter, section, grouping, sorting change, count, attention queue, new state, or new rule; **list order unchanged** (D126)
+- [x] Status/urgency mappings are **exhaustive over the contract enum**, so a new contract value fails the build rather than rendering unlabelled
+- [x] `due_soon`/`overdue` presented as **due-date facts**, never as reminder automation (D089, D103, D126)
+- [x] Note-bound wording states what **was shown** and does not claim more notes exist; no truncation metadata added (D126)
+- [x] Long titles, notes, summary points, emails, and identifiers wrap — proven by asserting **zero horizontal document overflow**, not by screenshot
+- [x] `packages/ui` contains **no `.ts`/`.tsx`/`.js` file** and no React component; token values pinned equal to their pre-refactor literals (D124)
+- [x] No `server-only` module, Prisma client, or observability import reached a client component or the client bundle
+- [x] Task detail is server-rendered and A7 **handoff behaviour is unaffected** by removing `'use client'`
+- [x] No P1.4 audit script or e2e tooling leaked into the production bundle
+- [x] Production validation passed on commit `a38c857` / deployment `dpl_F5zjNcc4zwiwbr25CSdMGA3zDy8c` ([P1_4_EVIDENCE.md](P1_4_EVIDENCE.md) §13)
 
 ## Documentation
 

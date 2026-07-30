@@ -204,11 +204,13 @@ Operator notes:
 - Handoff idempotency is durable. A repeated same-key call replays the single attempt; it does not send a second message.
 - Recipients are currently managed through the A7.6 Owner Recipient endpoints; there is no Recipient management UI yet (A7 deferred backlog).
 
-**A8.0 documentation Decision Lock** recorded (D095–D101) and partly superseded. **A8.1 documentation Decision Lock** recorded (**D102–D110**): A8 is a **due-date-driven** reminder model. Do not implement the Follow-up Engine or Event Notification Engine until A8 implementation is authorized. **P1.0 documentation Decision Lock** recorded (**D111–D120**): the Owner web experience foundation is scoped; **P1.1 and P1.2 are implemented**; P1.3–P1.5 are authorized and not started. Roadmap: **A7 → A8 → A9** (no early separate A9.0), with **P1** sequenced before the remaining A8 implementation slices.
+**A8.0 documentation Decision Lock** recorded (D095–D101) and partly superseded. **A8.1 documentation Decision Lock** recorded (**D102–D110**): A8 is a **due-date-driven** reminder model. Do not implement the Follow-up Engine or Event Notification Engine until A8 implementation is authorized. **P1.0 documentation Decision Lock** recorded (**D111–D120**): the Owner web experience foundation is scoped; **P1.1 through P1.4 are implemented**; **P1.4 is production-validated**; P1.5 remains; **P1 remains open**. Roadmap: **A7 → A8 → A9** (no early separate A9.0), with **P1** sequenced before the remaining A8 implementation slices.
 
 ### Owner web experience foundation operations (P1)
 
-**P1.1 observability and the P1.2 browser harness are implemented.** Later P1 slices (shell, UX boundaries) are not. P1.1 is **not** production-validated against the baseline — that comparison is P1.5 (D119).
+**P1.1 through P1.4 are implemented and production-validated for the P1.4 shell and presentation slice.** P1.5 remains (boundary completion, accessibility closure, connectivity feedback, and production validation against the P1.1 baseline). **P1 remains open.** P1.1 baseline comparison against production remains **P1.5** (D119).
+
+Production currently serves commit `a38c85741fbfd3055cbf3a5a4b325205823feab6` via the automatic Vercel production deployment `dpl_F5zjNcc4zwiwbr25CSdMGA3zDy8c` (Ready; stable alias `https://rocket-communicator-web.vercel.app`). No manual deployment action was required for P1.4. Evidence: [P1_4_EVIDENCE.md](P1_4_EVIDENCE.md) §13.
 
 **No new environment variable was introduced by P1.1.** The existing `ENABLE_DB_RUNTIME_DIAGNOSTICS` remains an **incident-only** gated DB probe (disabled in Production by default). Always-on operational diagnostics use the application-owned seam in `apps/web/lib/observability/` and emit privacy-safe JSON on standard output (`operation_timing`, `operational_failure`).
 
