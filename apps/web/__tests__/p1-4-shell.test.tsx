@@ -12,7 +12,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
  */
 
 vi.mock('@/lib/owner/shell-context', () => ({
-  loadOwnerShellIdentity: vi.fn(async () => ({ displayName: 'Owner Example' })),
+  ownerShellIdentity: vi.fn(() => ({ displayName: 'Owner Example' })),
+}));
+
+/*
+ * The layout gates the request before it renders chrome (P1.5). These suites are about what
+ * the chrome looks like once that gate has passed, so the gate resolves an Owner here and
+ * `p1-5-owner-path-header.test.ts` measures the gate itself.
+ */
+const requestHeaders = new Headers();
+vi.mock('next/headers', () => ({
+  headers: async () => requestHeaders,
+}));
+vi.mock('@/lib/owner/require-owner-page', () => ({
+  requireOwnerPage: vi.fn(async () => ({ session: { displayName: 'Owner Example' } })),
 }));
 
 let pathname = '/tasks';
@@ -21,7 +34,7 @@ vi.mock('next/navigation', () => ({
 }));
 
 import OwnerLayout from '@/app/(owner)/layout';
-import { loadOwnerShellIdentity } from '@/lib/owner/shell-context';
+import { ownerShellIdentity } from '@/lib/owner/shell-context';
 
 const ownerGroup = join(__dirname, '../app/(owner)');
 
@@ -44,7 +57,7 @@ async function renderShell(currentPath = '/tasks') {
 
 describe('Owner shell landmarks and headings', () => {
   beforeEach(() => {
-    vi.mocked(loadOwnerShellIdentity).mockResolvedValue({ displayName: 'Owner Example' });
+    vi.mocked(ownerShellIdentity).mockReturnValue({ displayName: 'Owner Example' });
   });
 
   it('renders one banner, one named navigation, and one main landmark', async () => {
@@ -86,7 +99,7 @@ describe('Owner shell landmarks and headings', () => {
 
 describe('Owner shell navigation', () => {
   beforeEach(() => {
-    vi.mocked(loadOwnerShellIdentity).mockResolvedValue({ displayName: 'Owner Example' });
+    vi.mocked(ownerShellIdentity).mockReturnValue({ displayName: 'Owner Example' });
   });
 
   it('offers exactly the three authorized destinations and nothing speculative', async () => {
@@ -142,7 +155,7 @@ describe('Owner shell navigation', () => {
 
 describe('Owner shell identity and sign-out', () => {
   beforeEach(() => {
-    vi.mocked(loadOwnerShellIdentity).mockResolvedValue({ displayName: 'Owner Example' });
+    vi.mocked(ownerShellIdentity).mockReturnValue({ displayName: 'Owner Example' });
   });
 
   it('shows who is signed in', async () => {
@@ -162,14 +175,15 @@ describe('Owner shell identity and sign-out', () => {
     expect(container.querySelector('a[href="/auth/sign-out"]')).toBeNull();
   });
 
-  it('offers no sign-out when no session resolved, rather than implying one exists', async () => {
-    vi.mocked(loadOwnerShellIdentity).mockResolvedValue({ displayName: null });
+  it('offers no sign-out when no display name resolved, rather than implying one exists', async () => {
+    vi.mocked(ownerShellIdentity).mockReturnValue({ displayName: null });
 
     const { container } = await renderShell();
 
     expect(container.querySelector('form')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Sign out' })).not.toBeInTheDocument();
-    // Chrome still renders: the page's own gate is what redirects.
+    // Navigation still renders: the gate above already admitted this request, so the Owner
+    // is signed in and must not be stranded without a way to move between destinations.
     expect(screen.getByRole('navigation', { name: 'Owner' })).toBeInTheDocument();
   });
 

@@ -1,6 +1,9 @@
 import type { ReactNode } from 'react';
+import { headers } from 'next/headers';
 import Link from 'next/link';
-import { loadOwnerShellIdentity } from '@/lib/owner/shell-context';
+import { OWNER_PATH_HEADER } from '@/lib/owner/owner-path-header';
+import { requireOwnerPage } from '@/lib/owner/require-owner-page';
+import { ownerShellIdentity } from '@/lib/owner/shell-context';
 import { OwnerIdentity } from './_components/owner-identity';
 import { OwnerNav } from './_components/owner-nav';
 import styles from './owner-shell.module.css';
@@ -24,9 +27,25 @@ import styles from './owner-shell.module.css';
  * memo in `lib/auth/require-owner.ts`; see that file and `e2e/specs/owner-shell-auth.spec.ts`
  * for the measured evidence. The shell performs no database work and owns no `<h1>`: the
  * product name is a link, so each page keeps exactly one page-level heading.
+ *
+ * The gate lives here rather than in each page (P1.5) because a page-level redirect only
+ * runs after this layout has already returned chrome, which painted a signed-out Owner shell
+ * for the length of the redirect. Gating above the chrome means an unauthenticated request
+ * produces a redirect and nothing else. The page-level `requireOwnerPage()` calls stay
+ * exactly as they were: they are the gate that actually protects data, and this one is an
+ * additional gate that protects the *appearance* of the application.
  */
 export default async function OwnerLayout({ children }: { children: ReactNode }) {
-  const { displayName } = await loadOwnerShellIdentity();
+  /*
+   * A layout is not told which URL it is rendering, so `proxy.ts` derives the requested Owner
+   * pathname from the URL it handles and forwards it here. The value is routing context, not
+   * identity: it decides only where a rejected visitor is sent back to, and `requireOwnerPage`
+   * still puts it through `resolveSafeNextPath` before it can become a redirect target. An
+   * absent header — any route the proxy did not authorize — falls back to `/tasks`.
+   */
+  const requestedPath = (await headers()).get(OWNER_PATH_HEADER);
+  const owner = await requireOwnerPage(requestedPath ?? '/tasks');
+  const { displayName } = ownerShellIdentity(owner);
 
   return (
     <div className={styles.shell}>

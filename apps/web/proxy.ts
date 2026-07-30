@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { AuthConfigError } from '@/lib/auth/errors';
+import { OWNER_PATH_HEADER, ownerDocumentPath } from '@/lib/owner/owner-path-header';
 import { createProxyClient } from '@/lib/supabase/proxy';
 
 /** Recipient capability page surface — path-token authorization only. */
@@ -27,24 +28,41 @@ export function isRecipientCapabilityPath(pathname: string): boolean {
   return pathname.startsWith(CAPABILITY_PAGE_PREFIX) || pathname.startsWith(CAPABILITY_API_PREFIX);
 }
 
+/** Downstream headers with any client-supplied value of the internal header removed. */
+function withoutInternalHeader(request: NextRequest): Headers {
+  const headers = new Headers(request.headers);
+  headers.delete(OWNER_PATH_HEADER);
+  return headers;
+}
+
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Recipient capability pages use path-token authorization only.
   // Skip Owner session refresh so opening /c/[token] never creates or requires a session.
   if (pathname.startsWith(CAPABILITY_PAGE_PREFIX)) {
-    return withCapabilityPageHeaders(NextResponse.next({ request }));
+    return withCapabilityPageHeaders(
+      NextResponse.next({ request: { headers: withoutInternalHeader(request) } }),
+    );
   }
 
   // Recipient capability APIs likewise ignore Owner cookies (D049, D050, D059).
   // They set their own response headers, so nothing is added or removed here.
   if (pathname.startsWith(CAPABILITY_API_PREFIX)) {
-    return NextResponse.next({ request });
+    return NextResponse.next({ request: { headers: withoutInternalHeader(request) } });
   }
+
+  /*
+   * Derived solely from the URL this proxy is handling. A caller-supplied value is always
+   * discarded, including on paths that are not Owner documents, where `value` stays null and
+   * the header is deleted without being set. Deriving rather than forwarding is what makes
+   * the value trustworthy downstream; it is still validated again before use.
+   */
+  const internalHeader = { name: OWNER_PATH_HEADER, value: ownerDocumentPath(pathname) };
 
   let client: ReturnType<typeof createProxyClient>;
   try {
-    client = createProxyClient(request);
+    client = createProxyClient(request, internalHeader);
   } catch (error) {
     if (error instanceof AuthConfigError) {
       return NextResponse.json(

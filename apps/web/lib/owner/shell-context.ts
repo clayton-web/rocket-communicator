@@ -1,5 +1,5 @@
 import 'server-only';
-import { getAuthenticatedOwner } from '@/lib/auth/require-owner';
+import type { AuthenticatedOwner } from '@/lib/auth/require-owner';
 
 /**
  * Owner identity for the application shell (P1.4).
@@ -15,20 +15,19 @@ export interface OwnerShellIdentity {
 }
 
 /**
- * Resolve the shell's view of the Owner.
+ * Narrow an already-resolved Owner down to what the shell may render.
+ *
+ * Takes the Owner rather than resolving one (P1.5). The shell layout now gates the request
+ * itself, so it already holds the authenticated Owner by the time it renders chrome, and
+ * resolving again here — even through the render-pass memo, which would return the same
+ * promise — would state in code that the shell is an independent identity consumer when it
+ * is not. Passing the value in makes the single resolution visible at the call site.
  *
  * Performs no database work and emits no timing event. The absence of a timing event is
  * intentional: P1.1 diagnostics treat `owner_authentication` as one event per Owner page
  * request, and emitting a second one here would make the shell look like duplicate
  * authentication in exactly the diagnostic that P1.3 used to prove it had been eliminated.
- *
- * This never redirects. An expired session mid-navigation must be handled by the page's
- * `requireOwnerPage`, which knows the return path and can send the Owner back to where they
- * were; a redirect from the shell would lose that and could fight the page's own redirect.
- * The shell simply renders chrome without an identity, and the page's gate decides.
  */
-export async function loadOwnerShellIdentity(): Promise<OwnerShellIdentity> {
-  const owner = await getAuthenticatedOwner();
-
+export function ownerShellIdentity(owner: AuthenticatedOwner | null): OwnerShellIdentity {
   return { displayName: owner?.session.displayName ?? null };
 }
