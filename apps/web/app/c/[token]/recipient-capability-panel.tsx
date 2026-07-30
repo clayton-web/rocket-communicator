@@ -67,6 +67,17 @@ function optionalInstantLabel(
 }
 
 /**
+ * Interactive nodes a keyboard can reach, in document order.
+ *
+ * Disabled controls are excluded rather than filtered afterwards, because a disabled button
+ * that stayed in this list would become a Tab stop that does nothing — and while a
+ * submission is pending both dialog buttons are disabled, which is exactly when a stray stop
+ * is most confusing.
+ */
+const FOCUSABLE_SELECTOR =
+  'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
+
+/**
  * Eyebrow label above a summary point.
  *
  * Trimmed so it can be compared against `summaryPointText`, which trims: an untrimmed label
@@ -190,7 +201,9 @@ export function RecipientCapabilityPanel({
   if (mode.kind === 'returned') {
     return (
       <main className={styles.page}>
-        <h1>Returned to owner</h1>
+        {/* Programmatically focusable so a dialog closing into this view has somewhere
+            meaningful to send focus when the trigger it came from no longer exists. */}
+        <h1 tabIndex={-1}>Returned to owner</h1>
         <p className={styles.lede}>
           Thanks. This assignment was returned to the owner. This link will no longer work.
         </p>
@@ -232,7 +245,9 @@ export function RecipientCapabilityPanel({
 
   return (
     <main className={styles.page}>
-      <h1>Assigned task</h1>
+      {/* See the returned view: the fallback focus destination when a closing dialog's
+          trigger has been removed by the update it performed. */}
+      <h1 tabIndex={-1}>Assigned task</h1>
       <p className={styles.lede}>
         Review the details below, then confirm before submitting any update.
       </p>
@@ -373,6 +388,91 @@ function ConfirmationDialog({
   const [completeNote, setCompleteNote] = useState('');
   const [returnNote, setReturnNote] = useState('');
   const headingId = `${titleId}-dialog`;
+  const descriptionId = `${titleId}-dialog-desc`;
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  /*
+   * Opening focus and restoration (P1.5 / D119), following the Owner handoff dialog rather
+   * than inventing a second convention.
+   *
+   * Measured before this existed: focus stayed on the trigger behind the backdrop, so a
+   * keyboard user pressing Tab walked through the page's own action buttons while a modal
+   * was open, and Cancel dropped focus to `<body>`.
+   */
+  useEffect(() => {
+    const trigger = document.activeElement as HTMLElement | null;
+
+    /*
+     * The first focusable node, which is the field when the action collects one and Cancel
+     * when it does not: `DialogFields` renders before the buttons and Cancel renders before
+     * Confirm. So a destructive confirmation is never what the keyboard lands on, without
+     * needing a per-action rule that could fall out of step with the markup.
+     */
+    dialogRef.current?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR)?.focus();
+
+    return () => {
+      /*
+       * `return_task_to_owner` replaces the entire panel on success, so by the time this
+       * runs the trigger may be detached. Calling `focus()` on a removed node silently
+       * sends focus to `<body>`, stranding a keyboard user at the top of a page with no
+       * indication anything changed, so fall back to the heading of whichever view is now
+       * showing.
+       */
+      if (trigger?.isConnected) {
+        trigger.focus();
+        return;
+      }
+      document.querySelector<HTMLElement>('main h1')?.focus();
+    };
+  }, []);
+
+  /* Escape and Tab containment while the dialog is open. */
+  useEffect(() => {
+    function onKeyDown(event: globalThis.KeyboardEvent) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        /*
+         * Swallowed rather than obeyed while a request is in flight. Closing would hide a
+         * submission whose outcome nobody knows yet, leaving the Recipient believing they
+         * cancelled something that may still be applied.
+         */
+        if (!submitting) {
+          onCancel();
+        }
+        return;
+      }
+
+      const root = dialogRef.current;
+      if (event.key !== 'Tab' || !root) {
+        return;
+      }
+
+      const nodes = [...root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)];
+      if (nodes.length === 0) {
+        return;
+      }
+      const first = nodes[0]!;
+      const last = nodes[nodes.length - 1]!;
+
+      // Recovers containment if focus is somehow already outside, rather than only wrapping
+      // at the two ends — otherwise one stray focus leaks the whole page back into Tab order.
+      if (!root.contains(document.activeElement)) {
+        event.preventDefault();
+        first.focus();
+        return;
+      }
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [onCancel, submitting]);
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -427,9 +527,20 @@ function ConfirmationDialog({
 
   return (
     <div className={styles.backdrop} role="presentation">
-      <div className={styles.dialog} role="dialog" aria-modal="true" aria-labelledby={headingId}>
+      <div
+        ref={dialogRef}
+        className={styles.dialog}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={headingId}
+        aria-describedby={descriptionId}
+      >
         <h2 id={headingId}>{ACTION_LABELS[action]}</h2>
-        <DialogCopy action={action} />
+        {/* Named and described by visible copy: the heading says which action, this says what
+            confirming it will do. Neither carries an identifier. */}
+        <div id={descriptionId}>
+          <DialogCopy action={action} />
+        </div>
         <form onSubmit={handleSubmit}>
           <DialogFields
             action={action}
