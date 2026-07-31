@@ -401,6 +401,15 @@ Recorded truthfully rather than claimed as coverage.
    is excluded from P1.2. Consequently the **ambiguous-retry branch that replays an original
    `Idempotency-Key`** is not exercised at browser level; it remains covered by the existing A7
    integration tests. The confirmed-412 recovery branch _is_ exercised here.
+
+   > **Narrowed in P1.5.** The Gmail exclusion above is unchanged, but it no longer implies the
+   > handoff **confirmation** journey is uncovered. P1.5 added
+   > `apps/web/e2e/specs/p1-5-handoff-confirmation-journey.spec.ts`, which drives the rendered
+   > confirmation dialog and stubs only the outbound handoff mutation at the network boundary.
+   > What remains uncovered at browser level is Gmail **delivery** itself — and the
+   > ambiguous-retry branch named above — not the Owner-facing confirmation
+   > ([P1_5_EVIDENCE.md](P1_5_EVIDENCE.md) §11).
+
 3. **The transient loading state has no browser-level evidence, for a structural reason rather
    than by omission.** P1.3 added route loading boundaries for `/tasks` and `/tasks/{taskId}`, but
    this harness runs `next dev`, and **Next.js disables prefetching in development**. The client
@@ -544,6 +553,11 @@ claimed, and WebKit is **unexecuted** rather than passing or failing.
 > **Status update (P1 closeout).** The two statements above about _this harness_ remain accurate.
 > The two P1-wide claims have since been overtaken: **D119 is now satisfied** and **P1 is
 > complete**. P1.5 added the automated accessibility gate and completed production validation
-> ([P1_5_EVIDENCE.md](P1_5_EVIDENCE.md)). Handoff-confirmation journey coverage is still absent
-> from this harness, which is recorded as a non-blocking known limitation in
-> [MILESTONES.md](MILESTONES.md).
+> ([P1_5_EVIDENCE.md](P1_5_EVIDENCE.md)).
+>
+> **Handoff-confirmation coverage was subsequently added**, in the D119 closure remediation, as
+> `apps/web/e2e/specs/p1-5-handoff-confirmation-journey.spec.ts`. An earlier revision of this
+> note said that coverage was still absent and simultaneously called D119 satisfied; that
+> contradiction is what the first closure audit caught, and it was resolved by adding the
+> coverage rather than by softening the claim ([P1_5_EVIDENCE.md](P1_5_EVIDENCE.md) §11). Gmail
+> **delivery** remains outside this harness by policy.

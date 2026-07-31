@@ -12,6 +12,13 @@ That limitation is **not** a defect and **not** a failed validation.
 Authorizing decisions: D111 (P1 scope), D112 (truthful experience states), D114 (capability
 telemetry prohibition), D119 (boundary, accessibility, and verification rules).
 
+**D119 closure remediation.** The first closure audit returned **NOT READY**: D119 was
+described as satisfied while two D119-derived acceptance criteria were still unchecked. Both
+were then closed on their merits rather than reworded —
+[§11](#11-handoff-confirmation-browser-journey-d119-browser-verification) (handoff-confirmation
+browser journey) and [§12](#12-full-pnpm-verify) (full `pnpm verify` green). P1 acceptance now
+stands at **18 of 18**.
+
 ---
 
 ## 1. What P1.5 implemented
@@ -275,22 +282,102 @@ All non-blocking. None is a P1 closure blocker.
 | **Unused `--paper` alias** — declared in `globals.css` with zero consumers repo-wide. The other four aliases were removed in `8588c5d`; `--paper` awaits separate authorization.                           | Non-blocking debt                               |
 | **Overpromising token-test title** — `p1-5-capability-tokens.spec.ts` titles a test "the unavailable link and loading boundary use the same tokens" but exercises only the unavailable link.               | Non-blocking debt — naming, not a coverage hole |
 | **Two moderate `page-has-heading-one` advisories** on the loading boundaries, one per browser project. Correct behaviour for a skeleton and below the D119 gate, which is set at zero serious or critical. | Non-blocking advisory                           |
-| **Java unavailable, so `pnpm verify` cannot run in full** — `contracts:generate` and the Android Gradle gates cannot execute on this machine.                                                              | Non-blocking, scoped to contract verification   |
 
 The loading-boundary advisories are expected: a loading skeleton legitimately has no `<h1>`.
-The Java limitation is environmental and pre-existing; it reproduces with all P1.5 changes
-stashed, and no contract source, generated contract file, or Android file was modified by P1.
+
+**Resolved, no longer carried forward.** An earlier revision of this table listed
+"Java unavailable, so `pnpm verify` cannot run in full" as a standing advisory. That
+limitation was environmental, not a repository defect, and it was **resolved** during the D119
+closure remediation by installing a local JDK 17 — see [§12](#12-full-pnpm-verify). It is
+recorded here as history so the change in status is visible rather than silently dropped.
 
 ---
 
 ## 10. Closure status after this evidence
 
-| Item                          | Status                                                                                                          |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| P1.5                          | **Complete**                                                                                                    |
-| P1 overall                    | **Complete** — implemented, deployed, production-validated                                                      |
-| Production Recipient workflow | **Evidence limitation** ([§6](#6-production-evidence-limitation--recipient-capability-workflow)) — not a defect |
-| D119                          | **Met** — 28-scan local gate at 0 serious / 0 critical; production 0 at all impacts                             |
-| D120                          | **Open** — unchanged; must be resolved before any product rename                                                |
-| Release tag                   | **Not created** — deferred to a separately authorized decision                                                  |
-| A8 / A9                       | **Untouched** — A8 remains the next milestone                                                                   |
+| Item                          | Status                                                                                                                                                                                                                                                                               |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| P1.5                          | **Complete**                                                                                                                                                                                                                                                                         |
+| P1 overall                    | **Complete** — implemented, deployed, production-validated                                                                                                                                                                                                                           |
+| Production Recipient workflow | **Evidence limitation** ([§6](#6-production-evidence-limitation--recipient-capability-workflow)) — not a defect                                                                                                                                                                      |
+| D119                          | **Met in full** — accessibility gate ([§3](#3-production-validation--successfully-validated)), browser-verification gate ([§11](#11-handoff-confirmation-browser-journey-d119-browser-verification)), and the `pnpm verify` negative closure criterion ([§12](#12-full-pnpm-verify)) |
+| D120                          | **Open** — unchanged; must be resolved before any product rename                                                                                                                                                                                                                     |
+| Release tag                   | **Not created** — deferred to a separately authorized decision                                                                                                                                                                                                                       |
+| A8 / A9                       | **Untouched** — A8 remains the next milestone                                                                                                                                                                                                                                        |
+
+---
+
+## 11. Handoff-confirmation browser journey (D119 browser verification)
+
+**Why this section exists.** The first P1 closeout audit returned **NOT READY**. D119 requires a
+browser test layer covering the critical Owner journeys, and handoff confirmation was the one
+journey never covered. Declaring D119 satisfied while that gap stood was a contradiction, so
+the gap was closed rather than reworded.
+
+**What was actually missing.** Not the confirmation UI, which the accessibility gate already
+opened, but the _journey_: what gets submitted, what comes back, and what the Owner is told.
+The obstacle was that a completed handoff performs a real Gmail send, which
+[P1_2_BROWSER_HARNESS.md](P1_2_BROWSER_HARNESS.md) excludes by policy.
+
+**How it was closed without Gmail.** The handoff action turned out never to depend on a Gmail
+connection: `canShowHandoffAction` requires only an unassigned, non-terminal Task with a
+version and at least one Recipient. The whole confirmation journey is therefore reachable with
+ordinary seeded fixtures, and only the single outbound mutation
+`POST /api/v1/tasks/{taskId}/handoff` needs a deterministic response — supplied by Playwright
+route interception, the harness's established technique.
+
+**Test:** `apps/web/e2e/specs/p1-5-handoff-confirmation-journey.spec.ts` — 5 tests × 2 browser
+projects = **10 passing**, inside the existing separate `pnpm --filter @aicaa/web e2e` job that
+D119 requires, never inside `pnpm verify`.
+
+| Test                                               | What it proves                                                                                                                                                                                                                                                                                                    |
+| -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Confirmation identifies the action, cancel is safe | Dialog names the action and the exact Recipient, states the secure-action-link consequence, states reminders are **not** scheduled (D089), keeps the Owner shell mounted, passes an axe scan, keeps Confirm disabled until acknowledged, and on Cancel submits nothing and leaves the Task unassigned server-side |
+| Escape dismisses without submitting                | Keyboard dismissal is equally non-mutating                                                                                                                                                                                                                                                                        |
+| Confirming submits the acknowledged request        | Exactly one `POST`, carrying the application's own `If-Match` version and an `Idempotency-Key`, with body `{recipientId, acknowledgement: 'handoff_confirmed_v1'}`; success state names the chosen Recipient                                                                                                      |
+| Failure reports truthfully                         | A 503 `HANDOFF_DELIVERY_FAILED` shows the real failure message, offers retry, and shows **no** success text anywhere; the Task stays unassigned                                                                                                                                                                   |
+| Pending cannot be submitted twice                  | While in flight the control is disabled and `aria-busy`; a synthetic click and an Enter keypress still produce exactly one request                                                                                                                                                                                |
+
+**What this deliberately does not claim.** It does **not** test Gmail delivery, forwarding,
+attachment handling, or that any message was accepted or received. The harness's Gmail
+exclusion is unchanged. This is coverage of the **Owner-facing confirmation and request
+boundary** — what is shown, what is submitted, and what is shown back. Gmail integration
+remains covered by its own integration tests and by A7 production evidence.
+
+No application code was changed to make this test pass.
+
+---
+
+## 12. Full `pnpm verify`
+
+D119 lists "`pnpm verify` green" among its negative closure criteria. It had never been run to
+completion, because `verify` chains `contracts:generate` and four Android Gradle steps and no
+Java runtime existed on the development machine. That was an environmental gap, but an unrun
+gate cannot be reported as a passing one.
+
+**Java version, from repository evidence — not guessed.** `.github/workflows/ci.yml` pins
+`actions/setup-java@v4` with `distribution: temurin` and `java-version: '17'`, matching
+`apps/android/app/build.gradle.kts` and `apps/android/api-contract/build.gradle.kts`
+(`VERSION_17`, `jvmTarget "17"`).
+
+**Runtime provided:** Homebrew `openjdk@17`, reporting
+`openjdk version "17.0.20" 2026-07-21`. It is keg-only, so it was selected for the run through
+`JAVA_HOME` alone. Nothing was linked into the system, no shell profile was edited, and no
+repository file records a machine-specific path.
+
+**Result:** the full, unmodified command exited **0**.
+
+```
+pnpm verify   →   exit 0
+```
+
+All twelve stages ran, in order, none skipped, substituted, or weakened: `format:check`,
+`lint`, `contracts:validate`, `contracts:generate`, `contracts:check-drift`, `test`,
+`build:web`, `build:domain`, `android:ktlint`, `android:test`, `android:api-contract`,
+`android:assemble`. Four Gradle builds reported `BUILD SUCCESSFUL`; the unit suites reported
+**104 test files / 1,480 tests passed**.
+
+**Drift check.** `contracts:generate` regenerated the TypeScript and Kotlin clients and
+`contracts:check-drift` passed. The working tree afterwards contained only the new e2e spec —
+**no** generated contract file, schema, migration, or Android file differed. This is
+independent confirmation that P1 changed no contract or generated client.

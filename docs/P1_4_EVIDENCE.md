@@ -685,11 +685,11 @@ Status **as recorded at P1.4 closure** (historical; see the row below it for cur
 
 **Current state at P1 closeout** (supersedes the table above):
 
-| Item       | Status now                                                       |
-| ---------- | ---------------------------------------------------------------- |
-| P1.4       | **Complete** — unchanged                                         |
-| P1 overall | **Complete** — implemented, deployed, production-validated       |
-| D119       | **Met** ([P1_5_EVIDENCE.md](P1_5_EVIDENCE.md))                   |
-| D120       | **Open** — unchanged                                             |
-| P1.5       | **Complete**, with one documented production evidence limitation |
-| A8 / A9    | Untouched — A8 remains the next milestone                        |
+| Item       | Status now                                                          |
+| ---------- | ------------------------------------------------------------------- |
+| P1.4       | **Complete** — unchanged                                            |
+| P1 overall | **Complete** — implemented, deployed, production-validated          |
+| D119       | **Met in full** ([P1_5_EVIDENCE.md](P1_5_EVIDENCE.md) §3, §11, §12) |
+| D120       | **Open** — unchanged                                                |
+| P1.5       | **Complete**, with one documented production evidence limitation    |
+| A8 / A9    | Untouched — A8 remains the next milestone                           |

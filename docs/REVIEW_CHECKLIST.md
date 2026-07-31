@@ -127,6 +127,9 @@ Gates for D111–D126. Record **expected behaviour and required proof**; no spec
 - [x] Production diagnostics show **exactly one** `owner_authentication` span per Owner document request and **zero** on capability routes; no raw `/c/{token}` path in any application diagnostic (D114, D119)
 - [x] Production validation passed on commit `8588c5d` / deployment `dpl_7vmnL71Lck7JLeftgsJkYVJ4uw82` ([P1_5_EVIDENCE.md](P1_5_EVIDENCE.md))
 - [x] **Evidence limitation recorded, not hidden** — the valid Recipient capability workflow is unvalidated in production because no safe synthetic-capability path exists; classified as an intentional production-safety limitation, **not** a defect ([P1_5_EVIDENCE.md](P1_5_EVIDENCE.md) §6)
+- [x] **Handoff-confirmation critical journey covered at browser level** in the separate e2e job — identification, cancellation, Escape, confirmed submission, truthful failure, and duplicate-submission prevention; Gmail **delivery** deliberately still not browser-tested (D119) ([P1_5_EVIDENCE.md](P1_5_EVIDENCE.md) §11)
+- [x] **Full `pnpm verify` green** — all twelve stages ran unmodified with local JDK 17, `contracts:check-drift` clean, confirming no contract or generated-client change (D119) ([P1_5_EVIDENCE.md](P1_5_EVIDENCE.md) §12)
+- [x] **All 18 P1 acceptance criteria met** — the two that were unchecked at the first closeout attempt were closed on their merits, not reworded ([MILESTONES.md](MILESTONES.md))
 
 ## Documentation
 
