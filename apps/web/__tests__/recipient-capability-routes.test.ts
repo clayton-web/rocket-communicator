@@ -13,6 +13,7 @@ import {
   type Recipient,
 } from '@aicaa/domain';
 import {
+  findReminderScheduleByTaskId,
   getCapabilityById,
   getTaskById,
   listAuditEventsForTask,
@@ -23,6 +24,7 @@ import { createTestDatabase, type TestDatabase } from '@aicaa/db/testing';
 import { clearDbTestRuntime, installDbTestRuntime } from './helpers/db-test-runtime';
 import { issueCapabilityForTask, revokeCapabilityForOwner } from '@/lib/capability';
 import { startOwnerTask } from '@/lib/tasks';
+import { setOwnerTaskReminder } from '@/lib/reminders/service';
 import { seedAssignedTaskViaService } from './helpers/seed-assigned-task';
 
 vi.mock('@/lib/auth/require-owner', () => ({
@@ -136,6 +138,10 @@ describe('Recipient capability HTTP routes (Phase 4E)', () => {
     await db.prisma.taskNote.deleteMany();
     await db.prisma.taskAssignment.deleteMany();
     await db.prisma.taskSuggestion.deleteMany();
+    // Reminder rows reference the Task, so they must go before it. Needed since A8 lifecycle wiring
+    // gave capability transitions reminder side effects.
+    await db.prisma.reminderDeliveryAttempt.deleteMany();
+    await db.prisma.taskReminderSchedule.deleteMany();
     await db.prisma.task.deleteMany();
     await db.prisma.recipient.deleteMany();
   });
@@ -503,6 +509,115 @@ describe('Recipient capability HTTP routes (Phase 4E)', () => {
       );
       expect(conflict.status).toBe(409);
       expect(await conflict.json()).toMatchObject({ error: { code: 'DOMAIN_CONFLICT' } });
+    });
+
+    /**
+     * A Recipient-driven lifecycle transition moves reminder state, attributed to the capability
+     * (A8 lifecycle wiring, D107, D110).
+     *
+     * The Recipient can enter Waiting, resume, and complete, and each must reconcile the reminder
+     * schedule in the same transaction as the status. The attribution assertion is the point: D110
+     * forbids recording something a Recipient caused as though the Owner had done it, and the reminder
+     * event is a second row where that mistake would be easy to make.
+     */
+    it('suspends, resumes, and stops reminders through capability lifecycle actions', async () => {
+      const {
+        created,
+        token,
+        version: issuedVersion,
+      } = await seedAssignedIssued('task_cap_reminder');
+      let version = issuedVersion;
+
+      // The Owner sets the due date; only the Owner may configure reminders.
+      await setOwnerTaskReminder({
+        db: db.prisma,
+        owner,
+        taskId: created.task.id,
+        dueLocalDate: '2026-08-10',
+        now: '2026-07-13T18:00:00.000Z',
+        expectedReminderVersion: 0,
+      });
+      expect((await findReminderScheduleByTaskId(db.prisma, org, created.task.id))?.status).toBe(
+        'active',
+      );
+
+      const waiting = await markWaiting(
+        jsonRequest(
+          `http://localhost/api/v1/capabilities/${token}/tasks/${created.task.id}/waiting`,
+          'POST',
+          {
+            waitingUntil: '2026-07-20T00:00:00.000Z',
+            reason: 'hold',
+            confirmation: 'confirmed',
+          },
+          { 'if-match': etag(created.task.id, version) },
+        ),
+        params(token, created.task.id),
+      );
+      expect(waiting.status).toBe(200);
+      version += 1;
+
+      const suspended = await findReminderScheduleByTaskId(db.prisma, org, created.task.id);
+      expect(suspended?.status).toBe('suspended_waiting');
+      expect(suspended?.nextOverdueOccurrenceAt).toBeNull();
+
+      const resumed = await resume(
+        jsonRequest(
+          `http://localhost/api/v1/capabilities/${token}/tasks/${created.task.id}/resume`,
+          'POST',
+          { confirmation: 'confirmed' },
+          { 'if-match': etag(created.task.id, version) },
+        ),
+        params(token, created.task.id),
+      );
+      expect(resumed.status).toBe(200);
+      version += 1;
+
+      const active = await findReminderScheduleByTaskId(db.prisma, org, created.task.id);
+      expect(active?.status).toBe('active');
+      // Generation is unchanged across the round trip: Waiting is a pause, not a rescheduling.
+      expect(active?.generation).toBe(1);
+
+      const done = await complete(
+        jsonRequest(
+          `http://localhost/api/v1/capabilities/${token}/tasks/${created.task.id}/complete`,
+          'POST',
+          { outcomeType: 'completed', confirmation: 'confirmed' },
+          { 'if-match': etag(created.task.id, version) },
+        ),
+        params(token, created.task.id),
+      );
+      expect(done.status).toBe(200);
+
+      const stopped = await findReminderScheduleByTaskId(db.prisma, org, created.task.id);
+      expect(stopped?.status).toBe('stopped');
+      expect(stopped?.stopReason).toBe('task_completed');
+      expect(stopped?.nextOverdueOccurrenceAt).toBeNull();
+
+      const events = await listAuditEventsForTask(db.prisma, org, created.task.id);
+      const derived = events.filter(
+        (event) =>
+          event.action === 'reminder.schedule.suspended' ||
+          event.action === 'reminder.schedule.resumed' ||
+          event.action === 'reminder.schedule.stopped',
+      );
+      expect(derived.map((event) => event.action)).toEqual([
+        'reminder.schedule.suspended',
+        'reminder.schedule.resumed',
+        'reminder.schedule.stopped',
+      ]);
+      for (const event of derived) {
+        expect(event.actorKind).toBe('capability');
+        expect(event.capabilityId).toBeTruthy();
+        expect(event.ownerId).toBeUndefined();
+      }
+      // The Owner's own establishment stays attributed to the Owner, so the two are distinguishable.
+      expect(
+        events.find((event) => event.action === 'reminder.schedule.established')?.actorKind,
+      ).toBe('owner');
+      // The causing lifecycle action is named, so the history says why reminder state moved.
+      expect(derived[0]?.note).toContain('cause=mark_task_waiting');
+      expect(derived[2]?.note).toContain('cause=complete_task');
     });
 
     it('persists a completion note on the Task outcome for Owner retrieval', async () => {

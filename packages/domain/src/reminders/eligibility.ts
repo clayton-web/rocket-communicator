@@ -58,6 +58,55 @@ export function decideReminderScheduling(status: TaskStatus): ReminderScheduling
 }
 
 /**
+ * What a Task's *current* status requires an existing schedule to look like.
+ *
+ * The mirror image of {@link ReminderSchedulingDisposition}. That type answers "may this Owner
+ * establish or change a schedule now?"; this one answers "given the Task just moved to this status,
+ * what state must its schedule already be in?" — the question the lifecycle wiring asks.
+ *
+ * Both are derived from the same switch, deliberately, so a Task status can never be schedulable one
+ * way and reconciled another.
+ */
+export type ReminderLifecycleIntent =
+  /** Reminders should be running: resume a Waiting suspension, otherwise leave the schedule alone. */
+  | { readonly kind: 'ensure_active' }
+  /** Waiting suspends reminder scheduling (D107): suspend a live schedule, otherwise leave it. */
+  | { readonly kind: 'ensure_suspended_for_waiting' }
+  /** Terminal: stop reminders permanently (D107), recording which terminal state stopped them. */
+  | { readonly kind: 'ensure_stopped'; readonly reason: ReminderLifecycleStopReason };
+
+export type ReminderLifecycleStopReason = 'task_completed' | 'task_dismissed';
+
+/**
+ * Decide what a Task's status requires of its schedule (D107).
+ *
+ * `open` and `in_progress` both mean "reminders should run", which is why resuming from Waiting does
+ * not need to know which of the two the Task returned to: `resumeTask` restores
+ * `priorActionableStatus`, and either answer maps to the same reminder intent.
+ *
+ * The fallback is a suspension rather than a stop. A status this policy has not been taught is a
+ * reason to make nothing claimable, but not a reason to claim a Task was completed or dismissed —
+ * a stop reason is a factual assertion about why reminders ended, and guessing it would put a
+ * falsehood in the audit trail. Suspension is the only disposition that is both safe and truthful
+ * about an unknown status. Unreachable today: the switch is exhaustive over `TaskStatus`.
+ */
+export function decideReminderLifecycleIntent(status: TaskStatus): ReminderLifecycleIntent {
+  switch (status) {
+    case 'open':
+    case 'in_progress':
+      return { kind: 'ensure_active' };
+    case 'waiting':
+      return { kind: 'ensure_suspended_for_waiting' };
+    case 'completed':
+      return { kind: 'ensure_stopped', reason: 'task_completed' };
+    case 'dismissed':
+      return { kind: 'ensure_stopped', reason: 'task_dismissed' };
+    default:
+      return { kind: 'ensure_suspended_for_waiting' };
+  }
+}
+
+/**
  * Whether reminders may be *read* for a Task. Always true, including for terminal Tasks.
  *
  * Reading history is not scheduling. A completed Task's reminder record is exactly what an Owner

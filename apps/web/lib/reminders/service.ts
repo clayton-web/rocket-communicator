@@ -81,7 +81,7 @@ export interface SetOwnerReminderCommand extends OwnerReminderCommand {
  * establishment — protected in the database by a unique index rather than a version — still refuses
  * a caller who thinks no schedule exists when one does.
  */
-function assertExpectedReminderVersion(observed: number, expected: number | undefined): void {
+function assertExpectedReminderVersion(observed: number, expected: number | undefined): number {
   if (expected === undefined) {
     throw taskServiceError(
       'PRECONDITION_REQUIRED',
@@ -94,6 +94,9 @@ function assertExpectedReminderVersion(observed: number, expected: number | unde
       'The reminder resource has changed since the provided ETag.',
     );
   }
+  // Returned so a caller can pass the *caller's* version into the transaction's compare-and-set
+  // rather than the version it happened to observe, keeping the preflight advisory.
+  return expected;
 }
 
 /**
@@ -293,9 +296,11 @@ export async function setOwnerTaskReminder(
       command.expectedReminderVersion,
     );
 
-    // Immaterial repeats are answered before the eligibility gate. A no-op writes nothing, so
-    // refusing it on a completed Task would turn "confirm this date" into an error for a request
-    // that asks the server to do nothing at all.
+    // Immaterial repeats on a *live* schedule are answered before the eligibility gate: a no-op
+    // writes nothing, so refusing "confirm this date" would be an error for a request that asks the
+    // server to do nothing. Since A8 lifecycle wiring this reaches only actionable and Waiting Tasks,
+    // because a terminal Task's schedule is always already stopped and falls through to the gate —
+    // which is what closes the A8.3b re-audit's L2 observation about terminal no-ops answering 200.
     if (existing && existing.status !== 'stopped') {
       if (!isDueDateChangeMaterial(existing.dueLocalDate, dueLocalDate)) {
         const canonical = await readCanonicalDueLocalDate(
@@ -409,11 +414,27 @@ export async function setOwnerTaskReminder(
  * Idempotent when there is nothing left to remove: no due date and no live schedule means the
  * request already holds, so the current state is returned without a write or an audit event. An
  * audit trail should record removals that happened, not requests that asked for a state already
- * reached.
+ * reached. That decision belongs to the transaction, under the Task lock — see below.
  *
  * Allowed for every Task status, including completed and dismissed. Removal can only ever reduce
  * reminder activity, so refusing it for a terminal Task would strand an active schedule with no way
  * to switch it off — the opposite of what D107 wants.
+ *
+ * ## The precondition is the transaction's, not this function's (A8.3b re-audit H1)
+ *
+ * The read below is a preflight only, kept so a caller with an obviously stale or missing token gets
+ * a clean 412 or 428 without a write attempt. It cannot decide anything, because by the time the
+ * transaction runs it may already be stale — and the re-audit reproduced exactly that: this service
+ * observed no live schedule, so it told persistence to clear the due date with no precondition, and a
+ * concurrent reactivation left an active schedule behind a `NULL` due date and a removal event.
+ *
+ * The caller's `If-Match` version is therefore what is passed down, not anything this function
+ * observed, and the transaction re-reads and classifies the schedule under the Task lock. **Including
+ * whether there is anything to remove at all**: this function used to answer that from its own two
+ * reads, which are not one snapshot, so under contention it could pair a due date already cleared by
+ * a winning removal with a schedule version from before that removal and answer 200 with a stale
+ * ETag. The audit note is built from authoritative in-transaction state rather than from the
+ * preflight, which is why it is a callback.
  */
 export async function removeOwnerTaskReminder(
   command: OwnerReminderCommand,
@@ -423,51 +444,41 @@ export async function removeOwnerTaskReminder(
 
   try {
     const runtime = await loadDbRuntime();
-    const [existing, canonical] = await Promise.all([
-      findSchedule(command.db, owner.organizationId, task.id),
-      readCanonicalDueLocalDate(command.db, owner.organizationId, task.id),
-    ]);
-    assertExpectedReminderVersion(
+    const existing = await findSchedule(command.db, owner.organizationId, task.id);
+    const expectedReminderVersion = assertExpectedReminderVersion(
       currentReminderVersion(existing),
       command.expectedReminderVersion,
     );
-
-    const scheduleIsLive = existing !== null && existing.status !== 'stopped';
-    if (canonical === null && !scheduleIsLive) {
-      return {
-        state: existing ? toTaskReminderState(existing, null) : noDueDateState(task.id),
-        changed: false,
-      };
-    }
 
     const result = await runtime.persistOwnerReminderDueDateRemoval({
       db: command.db,
       organizationId: owner.organizationId,
       taskId: task.id,
-      scheduleId: scheduleIsLive ? existing.id : null,
       stoppedAt: command.now,
-      expectedReminderVersion: scheduleIsLive ? existing.reminderVersion : undefined,
-      audit: buildOwnerAudit({
-        id: newEntityId('audit'),
-        owner,
-        action: REMINDER_AUDIT_ACTIONS.removed,
-        taskId: task.id,
-        taskStatus: task.status,
-        resourceVersion: existing ? existing.reminderVersion + 1 : undefined,
-        note: reminderAuditNote({
-          dueLocalDate: canonical ?? existing?.dueLocalDate,
-          generation: existing?.generation,
-          stopReason: scheduleIsLive ? 'due_date_removed' : undefined,
-          state: scheduleIsLive ? 'stopped' : 'no_due_date',
+      expectedReminderVersion,
+      audit: (outcome) =>
+        buildOwnerAudit({
+          id: newEntityId('audit'),
+          owner,
+          action: REMINDER_AUDIT_ACTIONS.removed,
+          taskId: task.id,
+          taskStatus: task.status,
+          resourceVersion: outcome.stoppedSchedule?.reminderVersion,
+          note: reminderAuditNote({
+            dueLocalDate: outcome.priorDueLocalDate ?? outcome.priorSchedule?.dueLocalDate,
+            generation: outcome.priorSchedule?.generation,
+            priorState: outcome.priorSchedule?.status,
+            stopReason: outcome.stoppedSchedule ? 'due_date_removed' : undefined,
+            state: outcome.stoppedSchedule ? 'stopped' : 'no_due_date',
+          }),
+          now: command.now as UtcInstant,
+          requestId: command.requestId,
         }),
-        now: command.now as UtcInstant,
-        requestId: command.requestId,
-      }),
     });
 
     return {
       state: result.schedule ? toTaskReminderState(result.schedule, null) : noDueDateState(task.id),
-      changed: true,
+      changed: result.changed,
     };
   } catch (error) {
     mapDomainOrPersistenceError(error);

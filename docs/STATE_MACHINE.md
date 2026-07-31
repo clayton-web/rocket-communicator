@@ -56,7 +56,7 @@ That formatter is **presentation infrastructure only** and must not be used as, 
 
 **Optional** and, when present, the **authoritative deterministic scheduling input** for reminders (D102). It is an Owner-**organization-local calendar date**; the Owner selects **no** due time (D103). AI may recommend a due date; only explicit Owner selection has effect (D027, D102).
 
-Reminders derived from it: one advance reminder at 09:00 organization-local on the day **before** the due date (D105), then one reminder at 09:00 organization-local on **each** calendar day after it while the Task remains incomplete and eligible, bounded by the ceiling in D106. Authoritative rules: [WORKFLOWS.md](WORKFLOWS.md) §10a. **Not operational** — the scheduling logic (A8.2), persistence schema (A8.3a), and Owner reminder APIs (A8.3b) exist, so a due date can now reach a schedule, but nothing schedules or sends.
+Reminders derived from it: one advance reminder at 09:00 organization-local on the day **before** the due date (D105), then one reminder at 09:00 organization-local on **each** calendar day after it while the Task remains incomplete and eligible, bounded by the ceiling in D106. Authoritative rules: [WORKFLOWS.md](WORKFLOWS.md) §10a. **Nothing sends** — the scheduling logic (A8.2), persistence schema (A8.3a), Owner reminder APIs (A8.3b), and lifecycle wiring (A8) exist, so a due date reaches a schedule and Task status now moves that schedule correctly, but no worker scans, claims, or delivers. Delivery remains gated on A8.4a passing audit.
 
 **Semantic direction (D109; persisted by A8.3a, contracted for the Owner reminder surface by A8.3b):** the authoritative representation is a local calendar date, stored as `tasks.due_local_date` since A8.3a (D128) and exposed as `dueLocalDate` on `/api/v1/tasks/{taskId}/reminder` since A8.3b. The instant-typed `dueAt` on the Task remains for contract compatibility, is unchanged, and drives no reminder — the local date is never reconstructed from it. Existing historical due-date data does **not** activate reminders: `due_local_date` was not backfilled, so an explicit Owner save through the reminder route is required, and re-saving a date onto a stopped schedule is treated as that explicit reactivation.
 
@@ -72,7 +72,7 @@ Setting a due date and _scheduling reminders from it_ are separable, and the Tas
 | `completed`   | Refused — `409 DOMAIN_CONFLICT`, nothing written or audited | Unchanged                              | Yes   | Yes      |
 | `dismissed`   | Refused — `409 DOMAIN_CONFLICT`, nothing written or audited | Unchanged                              | Yes   | Yes      |
 
-A **Waiting** Task accepts a due-date change because the Owner is planning, not activating: generation follows the ordinary materiality rules, but the schedule is created or re-generated directly in `suspended_waiting` with its next-occurrence fields cleared, so no occurrence is ever claimable while the Task is paused and no backlog accrues. Nothing resumes it automatically in this remediation — resume is part of the deferred lifecycle wiring.
+A **Waiting** Task accepts a due-date change because the Owner is planning, not activating: generation follows the ordinary materiality rules, but the schedule is created or re-generated directly in `suspended_waiting` with its next-occurrence fields cleared, so no occurrence is ever claimable while the Task is paused and no backlog accrues. Since the A8 lifecycle wiring, leaving Waiting resumes such a schedule by the rules below.
 
 A **completed or dismissed** Task refuses establishment, material change, and reactivation alike: D107 stops reminders on completion and dismissal, and re-establishing one would contradict that within a single request. No reopening behaviour is implied — whether and how a terminal Task may return to an actionable status is undecided, and this gate deliberately does not decide it.
 
@@ -80,11 +80,38 @@ A **completed or dismissed** Task refuses establishment, material change, and re
 
 A status the policy has no decision for fails **closed**: scheduling is refused and the unresolved state is surfaced rather than defaulted to active. The enum currently holds exactly the five statuses above.
 
+The gate is evaluated **twice**: once against the status the request read, and again against the Task row **under the transaction's lock**. Only the second is authoritative. A `PUT` whose Task became terminal or Waiting mid-flight is refused with `409 DOMAIN_CONFLICT` rather than committing a schedule its current status forbids, which is what keeps a dismissal from racing a reactivation into an active schedule on a dismissed Task.
+
 ### Waiting and resume
 
 Entering `waiting` stores `priorActionableStatus` (`open` or `in_progress`). `resume` restores that status.
 
 **Reminder interaction (D097, D107):** Waiting **suspends** reminders and is the **only** pause mechanism—no separate pause control exists. Do not preserve partial elapsed timers. On resume, compute the **next future** 09:00 organization-local occurrence from the due date, with **no backlog**. Because occurrences are anchored to a calendar date rather than an elapsed interval, no elapsed-time accounting is needed; the Phase 1 / Phase 2 restart mechanics in D097 no longer apply.
+
+#### Lifecycle wiring: how a status transition moves the schedule (implemented, A8)
+
+Reminder state is **not** a route-level side effect. Every authoritative Task status transition — Owner and Recipient capability alike — runs through one persistence transaction, and that transaction reconciles the reminder schedule **before it commits**. There is no second transaction and no window in which a committed status disagrees with the schedule, which is what makes "a terminal Task never holds a claimable occurrence" an invariant rather than an eventual property.
+
+What a status _requires_ of an existing schedule is derived from the same domain policy as the table above (`decideReminderLifecycleIntent`), so a status cannot be schedulable one way and reconciled another.
+
+| Transition                   | Effect on an `active` schedule                 | On a `suspended_waiting` schedule      | On a `stopped` schedule                  | With no schedule |
+| ---------------------------- | ---------------------------------------------- | -------------------------------------- | ---------------------------------------- | ---------------- |
+| Entering `waiting`           | → `suspended_waiting`, next occurrence cleared | Unchanged (idempotent)                 | Unchanged — never revived or re-labelled | Nothing          |
+| Leaving `waiting` (`resume`) | Unchanged (idempotent)                         | → `active`, next occurrence recomputed | Unchanged                                | Nothing          |
+| `completed`                  | → `stopped`, reason `task_completed`           | → `stopped`, reason `task_completed`   | Unchanged — original reason preserved    | Nothing          |
+| `dismissed`                  | → `stopped`, reason `task_dismissed`           | → `stopped`, reason `task_dismissed`   | Unchanged — original reason preserved    | Nothing          |
+
+**Suspension** clears the claimable next occurrence and preserves generation, advance disposition, and the delivered-overdue count. It is idempotent, and it never converts a `stopped` schedule into `suspended_waiting` — a schedule stopped because the due date was removed or the Task was completed has ended, and re-labelling it as merely paused would misrepresent history and make it eligible for a later resume.
+
+**Resume** applies only to a schedule suspended _because of_ Waiting. It preserves generation — a Waiting round trip is not a new Owner decision, so it opens no new generation and does not reset the D106 ceiling — and preserves the delivered-overdue count. The next occurrence is computed **strictly after the resume instant**, so occurrences that would have fallen during Waiting are not replayed and nothing is sent merely because time passed. The Task due date is untouched. If the preserved delivered count has already reached the D106 ceiling, resume records the schedule as requiring Owner attention instead of manufacturing a fresh occurrence — waiting is not a way to earn more reminders. Any stale claim state is cleared as part of the resume so no worker lease survives the pause.
+
+**Terminal stops** clear all claimable next-occurrence fields, record a stop reason that distinguishes completion from dismissal from due-date removal, preserve generation and every delivery attempt, and **do not delete the schedule row** — the history of what was sent must outlive the Task becoming terminal.
+
+#### Reopen and restore (decided, A8)
+
+The status enum admits no reopen transition today: `completed` and `dismissed` are terminal in the state machine, no route or capability action moves a terminal Task to a nonterminal status, and there is no undo or restore path. Terminal → `waiting` is likewise unreachable. The only implemented "un-pause" is `waiting` → `priorActionableStatus` via `resume`, which the table above covers.
+
+The decision, recorded now so that adding a reopen path later cannot quietly resurrect reminders: **reopening or restoring a Task does not reactivate a terminally stopped reminder schedule.** The Owner must explicitly re-save the due date through the reminder route, which is already the established meaning of a save onto a stopped schedule (D109). An existing due date may remain visible, but no claimable schedule appears without an Owner decision. This follows the direction of D109 — reminders resume only on explicit Owner action, never implicitly — and avoids the failure where a Task reopened months later immediately delivers an overdue backlog for a date long past.
 
 ### Reminder Schedule scope and delivery eligibility
 
@@ -92,7 +119,7 @@ See [GLOSSARY.md](GLOSSARY.md) (**Active Assignment**, **Reminder Schedule**).
 
 A Reminder Schedule is **Task-scoped**: at most one per Task, it survives reassignment, and it never sends a backlog of missed occurrences (D104). This supersedes the Assignment-scoped rule in D096.
 
-**Schedule stops** when the Task is `completed` or `dismissed`, when the due date is removed, or when the overdue ceiling is reached (D106, D107).
+**Schedule stops** when the Task is `completed` or `dismissed`, when the due date is removed, or when the overdue ceiling is reached (D106, D107). The stop reason distinguishes these causes rather than overloading one value, so the history says _why_ reminders ended; a schedule already stopped keeps its original reason.
 
 **Schedule is suspended** by Waiting, and by a permanent delivery failure for the affected assignment (D107).
 

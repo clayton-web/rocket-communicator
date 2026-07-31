@@ -463,6 +463,40 @@ export async function stopReminderSchedule(
   throw domainConflict(`Reminder schedule ${input.scheduleId} could not be stopped.`);
 }
 
+/**
+ * Compare-and-set the reminder version alone, leaving schedule state untouched.
+ *
+ * For the Owner change that alters reminder configuration without altering the schedule row's state:
+ * clearing `tasks.due_local_date` when the schedule is already stopped. The real PostgreSQL suite
+ * showed why the version must still move. That removal committed a material change and a
+ * `reminder.due_date.removed` event while leaving the version where it was, so a second Owner holding
+ * the *same* token still satisfied their precondition afterwards and reactivated on top of it. Two
+ * incompatible requests both won from one observed state, which is the lost update the version exists
+ * to prevent.
+ *
+ * The update is itself the precondition: a caller whose version has moved matches no row and is
+ * refused, so this is a genuine compare-and-set rather than a read followed by a hopeful write.
+ */
+export async function bumpReminderVersionForOwnerChange(
+  db: Client,
+  input: { organizationId: string; scheduleId: string; expectedReminderVersion: number },
+): Promise<PersistedReminderSchedule> {
+  const updated = await db.taskReminderSchedule.updateMany({
+    where: {
+      id: input.scheduleId,
+      organizationId: input.organizationId,
+      reminderVersion: input.expectedReminderVersion,
+    },
+    data: { reminderVersion: { increment: 1 } },
+  });
+  if (updated.count !== 1) {
+    throw optimisticConcurrency(
+      `Reminder schedule ${input.scheduleId} changed since reminder version ${input.expectedReminderVersion}.`,
+    );
+  }
+  return requireScheduleById(db, input.organizationId, input.scheduleId);
+}
+
 /** Record the next future overdue occurrence the caller computed with the A8.2 domain. */
 export async function setNextOverdueOccurrence(
   db: Client,

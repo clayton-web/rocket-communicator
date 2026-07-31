@@ -7,7 +7,7 @@ import {
   type PersistedReminderDeliveryAttempt,
   type PersistedReminderSchedule,
 } from '../mappers/reminder-mappers.js';
-import { requireTaskScope } from '../repositories/reminder-scope-guard.js';
+import { lockTaskScopeForReminderMutation } from '../repositories/reminder-scope-guard.js';
 import {
   createReminderSchedule,
   incrementOverdueDeliveredCount,
@@ -33,6 +33,15 @@ import type { ReminderSkipReason } from '../mappers/reminder-mappers.js';
  *
  * No delivery happens here. Nothing in this module sends email, calls Gmail, or contacts any
  * provider: it records what a future A8.4 worker will have done.
+ *
+ * ## Universal lock order (A8.3b re-audit M1)
+ *
+ * Every transaction here that touches both a Task and a schedule now runs in the same order as the
+ * Owner and lifecycle transactions: lock the Task row, then read or write the schedule, then write
+ * the Task, then audit. Establishment originally wrote schedule-before-Task with no lock while
+ * removal wrote Task-before-schedule, and real PostgreSQL deadlocked the pair. Holding the Task lock
+ * for the whole transaction is also what lets the removal precondition trust its own re-read: no
+ * schedule can become live behind a caller that holds this lock.
  */
 
 export interface EstablishReminderScheduleInput {
@@ -72,8 +81,16 @@ export async function persistEstablishedReminderSchedule(
   input: EstablishReminderScheduleInput,
 ): Promise<EstablishReminderScheduleResult> {
   return input.db.$transaction(async (tx) => {
-    // `createReminderSchedule` has already resolved the Task and refused a caller claiming the
-    // wrong organization, so the Task is known to exist and to be writable in this scope.
+    // Task row lock first, then schedule, then Task (A8.3b re-audit M1). This transaction used to
+    // write the schedule before the Task and take no lock, while `persistDueDateRemoval` wrote the
+    // Task first — the exact cycle PostgreSQL reported as `deadlock detected` in the A8.3b audit.
+    // The order is now identical across every reminder mutation, so no pair of them can deadlock.
+    await lockTaskScopeForReminderMutation(
+      tx,
+      input.schedule.organizationId,
+      input.schedule.taskId,
+    );
+
     const schedule = await createReminderSchedule(tx, input.schedule);
 
     await tx.task.update({
@@ -267,17 +284,21 @@ export async function persistDueDateRemoval(input: {
   readonly stoppedAt: string;
 }): Promise<PersistedReminderSchedule> {
   return input.db.$transaction(async (tx) => {
-    const scope = await requireTaskScope(tx, input.organizationId, input.taskId);
-    await tx.task.update({
-      where: { id: scope.taskId },
-      data: { dueLocalDate: null },
-    });
-    return stopReminderSchedule(tx, {
-      organizationId: input.organizationId,
+    // Lock, then schedule, then Task (A8.3b re-audit M1). The write order is reversed from the
+    // original: this transaction wrote the Task first while establishment wrote the schedule first,
+    // which is what made the two deadlock against each other on real PostgreSQL.
+    const scope = await lockTaskScopeForReminderMutation(tx, input.organizationId, input.taskId);
+    const stopped = await stopReminderSchedule(tx, {
+      organizationId: scope.organizationId,
       scheduleId: input.scheduleId,
       reason: 'due_date_removed',
       stoppedAt: input.stoppedAt,
     });
+    await tx.task.update({
+      where: { id: scope.taskId },
+      data: { dueLocalDate: null },
+    });
+    return stopped;
   });
 }
 
@@ -307,7 +328,14 @@ export async function persistCanonicalDueLocalDate(input: {
   readonly taskId: string;
   readonly dueLocalDate: LocalDate;
 }): Promise<void> {
-  const scope = await requireTaskScope(input.db, input.organizationId, input.taskId);
+  // Takes the Task lock even though it writes only the Task, so that a caller composing it with a
+  // schedule write cannot accidentally invert the universal order (A8.3b re-audit M1). Re-locking a
+  // row this transaction already holds is a no-op.
+  const scope = await lockTaskScopeForReminderMutation(
+    input.db,
+    input.organizationId,
+    input.taskId,
+  );
   const dueLocalDate = toStorableLocalDate(input.dueLocalDate, 'dueLocalDate');
   await input.db.task.update({
     where: { id: scope.taskId },

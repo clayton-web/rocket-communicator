@@ -12,6 +12,11 @@ import {
   getTaskById,
 } from '../repositories/task-repository.js';
 import type { AuditEventRecord } from '../mappers/domain-mappers.js';
+import {
+  buildReminderLifecycleAudit,
+  reconcileReminderScheduleForTaskStatus,
+  type ReminderLifecycleEffect,
+} from './a8-lifecycle-reminder-effects.js';
 
 type Client = DbClient | DbTransaction;
 
@@ -100,6 +105,24 @@ export async function persistReturnToOwner(input: {
  * Atomic capability action: task transition (+ optional note) + required audit.
  * When the Task becomes completed/dismissed, automatically applies D082 excerpt retention
  * via TaskSuggestion.approvedTaskId → sourceCommunicationEventId (no caller wiring required).
+ *
+ * ## Reminder lifecycle wiring (A8, D107)
+ *
+ * This is also where a Task's reminder schedule is brought into agreement with its new status. Every
+ * authoritative status transition in the system — Owner start, waiting, resume, complete, dismiss, and
+ * the Recipient capability waiting, resume, and complete — converges on this function, so wiring it
+ * here covers all of them and cannot be forgotten by a caller.
+ *
+ * It is wired here rather than in the route services for the reason the A8.3b audit gave: the
+ * reminder transition has to commit with the status, not after it. A completion whose reminder stop
+ * lived in a second transaction could commit a terminal Task still holding a claimable occurrence,
+ * which is exactly the state a worker must never be able to find.
+ *
+ * The reconciler is called unconditionally rather than only for the statuses that matter. It closes a
+ * gap between Task status and schedule state or does nothing, so callers that leave the status alone —
+ * adding a note, requesting clarification — pay one indexed read and change nothing. That is worth
+ * the read: it makes "the schedule agrees with the Task status" true after *every* Task write instead
+ * of true only where someone remembered to ask.
  */
 export async function persistCapabilityAction(input: {
   db: DbClient;
@@ -108,7 +131,17 @@ export async function persistCapabilityAction(input: {
   task: Task;
   note?: TaskNote;
   audit: CreateAuditEventInput;
-}): Promise<{ task: Task; audit: AuditEventRecord; excerptUpdated: boolean }> {
+  /**
+   * The instant to record on a derived reminder transition. Defaults to the causing audit event's
+   * `recordedAt`, so the lifecycle event and the reminder event it caused agree on when it happened.
+   */
+  reminderTransitionAt?: string;
+}): Promise<{
+  task: Task;
+  audit: AuditEventRecord;
+  excerptUpdated: boolean;
+  reminderEffect: ReminderLifecycleEffect | null;
+}> {
   return input.db.$transaction(async (tx) => {
     await applyTaskUpdateWithExpectedVersion(
       tx,
@@ -126,9 +159,29 @@ export async function persistCapabilityAction(input: {
       input.task,
     );
 
+    const recordedAt = input.reminderTransitionAt ?? input.audit.recordedAt;
+    const reminderEffect = await reconcileReminderScheduleForTaskStatus(tx, {
+      organizationId: input.organizationId,
+      taskId: input.task.id,
+      taskStatus: input.task.status,
+      now: recordedAt,
+    });
+
+    // The causing event first, so commit order in `audit_events` matches causal order.
     const audit = await createAuditEvent(tx, input.audit);
+    if (reminderEffect !== null) {
+      await createAuditEvent(
+        tx,
+        buildReminderLifecycleAudit(
+          { ...input.audit, correlationId: input.audit.correlationId ?? null },
+          reminderEffect,
+          recordedAt,
+        ),
+      );
+    }
+
     const task = await getTaskById(tx, input.organizationId, input.task.id);
-    return { task, audit, excerptUpdated };
+    return { task, audit, excerptUpdated, reminderEffect };
   });
 }
 
@@ -138,7 +191,7 @@ export async function persistCapabilityAction(input: {
  */
 export async function persistOwnerTaskMutation(
   input: Parameters<typeof persistCapabilityAction>[0],
-): Promise<{ task: Task; audit: AuditEventRecord; excerptUpdated: boolean }> {
+): Promise<Awaited<ReturnType<typeof persistCapabilityAction>>> {
   return persistCapabilityAction(input);
 }
 

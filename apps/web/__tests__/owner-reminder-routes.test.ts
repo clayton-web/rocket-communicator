@@ -51,6 +51,7 @@ import { POST as completeTask } from '@/app/api/v1/tasks/[taskId]/complete/route
 import { POST as dismissTask } from '@/app/api/v1/tasks/[taskId]/dismiss/route';
 import { POST as startTask } from '@/app/api/v1/tasks/[taskId]/start/route';
 import { POST as waitTask } from '@/app/api/v1/tasks/[taskId]/waiting/route';
+import { POST as resumeTask } from '@/app/api/v1/tasks/[taskId]/resume/route';
 
 const org = 'org_reminder_api';
 const otherOrg = 'org_reminder_other';
@@ -192,6 +193,18 @@ const toCompleted = (taskId: string, etag: string) =>
   taskAction(completeTask, taskId, 'complete', etag, { outcomeType: 'completed' });
 const toDismissed = (taskId: string, etag: string) =>
   taskAction(dismissTask, taskId, 'dismiss', etag, { reason: 'not needed' });
+/**
+ * Leave Waiting, optionally at a later instant.
+ *
+ * `at` advances the fake clock so the resume genuinely happens after the waiting period, which is the
+ * only way to test that resume computes forward instead of replaying elapsed mornings.
+ */
+const toResumed = (taskId: string, etag: string, at?: string) => {
+  if (at) {
+    vi.setSystemTime(new Date(at));
+  }
+  return taskAction(resumeTask, taskId, 'resume', etag, {});
+};
 
 async function reminderAudits(taskId: string) {
   const events = await listAuditEventsForTask(db.prisma, org, taskId);
@@ -740,21 +753,26 @@ describe('A8.3b Owner reminder routes: task-state eligibility', () => {
     expect(await getTaskDueLocalDate(db.prisma, org, task.id)).toBeNull();
   });
 
-  it('refuses a material change on a dismissed task and leaves the schedule live', async () => {
+  it('refuses a material change on a dismissed task, whose schedule dismissal already stopped', async () => {
     const task = await seedTask();
     await establish(task.id, '2026-04-01');
-    const token = await reminderEtag(task.id);
     await toDismissed(task.id, task.etag);
 
-    const { response } = await establish(task.id, '2026-05-20', token);
+    // A8 lifecycle wiring: the token is re-read *after* dismissal, because dismissal stopped the
+    // schedule and moved the reminder version. Presenting the pre-dismissal token would fail the
+    // precondition first and never reach the eligibility gate, which is a weaker assertion — this
+    // proves the gate itself refuses a terminal Task even when the caller is perfectly current.
+    const { response } = await establish(task.id, '2026-05-20', await reminderEtag(task.id));
 
     expect(response.status).toBe(409);
     const schedule = await findReminderScheduleByTaskId(db.prisma, org, task.id);
     expect(schedule?.dueLocalDate).toBe('2026-04-01');
     expect(schedule?.generation).toBe(1);
+    expect(schedule?.status).toBe('stopped');
+    expect(schedule?.stopReason).toBe('task_dismissed');
   });
 
-  it('allows removal on a completed task and stops the schedule', async () => {
+  it('allows removal on a completed task, preserving the truthful completion stop reason', async () => {
     const task = await seedTask();
     await establish(task.id, '2026-04-01');
     await toCompleted(task.id, task.etag);
@@ -763,7 +781,10 @@ describe('A8.3b Owner reminder routes: task-state eligibility', () => {
 
     expect(response.status).toBe(200);
     expect(body.state).toBe('stopped');
-    expect(body.stopReason).toBe('due_date_removed');
+    // Not `due_date_removed`: completion is what stopped these reminders, and the later removal of
+    // the date does not get to overwrite why they ended. Before lifecycle wiring the schedule was
+    // still active here and the removal stopped it, so this reason changed with the wiring.
+    expect(body.stopReason).toBe('task_completed');
     expect(await getTaskDueLocalDate(db.prisma, org, task.id)).toBeNull();
   });
 
@@ -780,16 +801,42 @@ describe('A8.3b Owner reminder routes: task-state eligibility', () => {
     expect(second.body).toEqual(first.body);
   });
 
-  it('allows an immaterial repeat on a completed task, since it writes nothing', async () => {
+  it('refuses a stale immaterial repeat on a completed task, because completion moved the version', async () => {
     const task = await seedTask();
     const established = await establish(task.id, '2026-04-01');
     await toCompleted(task.id, task.etag);
 
-    const { response, body } = await establish(task.id, '2026-04-01', established.body.etag);
+    const { response } = await establish(task.id, '2026-04-01', established.body.etag);
 
-    expect(response.status).toBe(200);
-    expect(body.generation).toBe(1);
-    expect(await reminderAudits(task.id)).toHaveLength(1);
+    // This closes the A8.3b re-audit's L2 observation without a special case. That audit noted an
+    // immaterial repeat on a terminal Task returned 200, which read oddly next to the 409 a material
+    // change got. Lifecycle wiring makes it moot: completion stopped the schedule and bumped the
+    // reminder version, so a token minted before completion is genuinely stale and 412 is the honest
+    // answer. There is no longer a reachable state in which a terminal Task holds a live schedule
+    // that an Owner has a current token for.
+    expect(response.status).toBe(412);
+    // The two events are the establishment and the stop completion derived from it. The refused
+    // request added nothing: a loser writes no history.
+    expect((await reminderAudits(task.id)).map((event) => event.action)).toEqual([
+      'reminder.schedule.established',
+      'reminder.schedule.stopped',
+    ]);
+  });
+
+  it('refuses an immaterial repeat on a completed task even with a current token', async () => {
+    const task = await seedTask();
+    await establish(task.id, '2026-04-01');
+    await toCompleted(task.id, task.etag);
+
+    const { response, body } = await establish(task.id, '2026-04-01', await reminderEtag(task.id));
+
+    // With a current token the eligibility gate is what answers, and it refuses: re-establishing a
+    // schedule on a completed Task would contradict the stop D107 just performed.
+    expect(response.status).toBe(409);
+    expect(body.error.code).toBe('DOMAIN_CONFLICT');
+    const schedule = await findReminderScheduleByTaskId(db.prisma, org, task.id);
+    expect(schedule?.status).toBe('stopped');
+    expect(schedule?.generation).toBe(1);
   });
 });
 
@@ -1256,7 +1303,7 @@ describe('A8.3b Owner reminder routes: audit events', () => {
       'reminder.due_date.removed',
     ]);
     expect(audits[1]?.note).toBe(
-      'dueLocalDate=2026-04-01 generation=1 stopReason=due_date_removed state=stopped',
+      'dueLocalDate=2026-04-01 generation=1 priorState=active stopReason=due_date_removed state=stopped',
     );
     expect(audits[1]?.resourceVersion).toBe(2);
   });
@@ -1300,9 +1347,20 @@ describe('A8.3b Owner reminder routes: audit events', () => {
     await establish(task.id, '2026-04-01');
     await remove(task.id);
     await establish(task.id, '2026-06-01');
+    // Include the lifecycle-derived events, whose notes are built in `packages/db` rather than by the
+    // reminder service and so would otherwise escape this check entirely.
+    const waiting = await toWaiting(task.id, task.etag);
+    const resumed = await toResumed(task.id, waiting);
+    await toCompleted(task.id, resumed);
 
-    for (const event of await reminderAudits(task.id)) {
-      expect(event.note ?? '').toMatch(/^[A-Za-z]+=[A-Za-z0-9_-]+(?: [A-Za-z]+=[A-Za-z0-9_-]+)*$/);
+    const audits = await reminderAudits(task.id);
+    expect(audits.length).toBeGreaterThan(4);
+    for (const event of audits) {
+      // Every note is `key=value` pairs of scheduling facts. Values allow the punctuation an ISO
+      // instant and a local date need, and nothing that could carry a sentence.
+      expect(event.note ?? '').toMatch(
+        /^[A-Za-z_]+=[A-Za-z0-9_:.-]+(?: [A-Za-z_]+=[A-Za-z0-9_:.-]+)*$/,
+      );
       expect(event.note ?? '').not.toContain('Do work');
       expect(event.note ?? '').not.toContain('claim');
     }
@@ -1325,8 +1383,8 @@ describe('A8.3b Owner reminder routes: audit events', () => {
   });
 });
 
-describe('A8.3b Owner reminder routes: task lifecycle boundary', () => {
-  it('does not stop reminders when a task completes, because lifecycle wiring is deferred', async () => {
+describe('A8 Owner reminder routes: task lifecycle wiring', () => {
+  it('stops reminders when a task completes', async () => {
     const task = await seedTask();
     await establish(task.id, '2026-04-01');
     const current = await findReminderScheduleByTaskId(db.prisma, org, task.id);
@@ -1334,25 +1392,118 @@ describe('A8.3b Owner reminder routes: task lifecycle boundary', () => {
 
     await toCompleted(task.id, task.etag);
 
-    // Documents the A8.3b boundary rather than endorsing it: D107 requires completion to stop
-    // reminders, and that coupling is deferred to the A8.4a lifecycle gate. The eligibility rule now
-    // prevents a completed Task from *acquiring* an active schedule, but it cannot retroactively stop
-    // one established while the Task was open. Nothing sends in this slice, so there is no delivery
-    // consequence yet — and no worker may ship until this is closed.
+    // The inversion of the A8.3b deferred-boundary test, which asserted this schedule stayed active
+    // because nothing reacted to the Task moving. D107 requires completion to stop reminders, and it
+    // now does, in the same transaction that commits the status.
     const after = await findReminderScheduleByTaskId(db.prisma, org, task.id);
-    expect(after?.status).toBe('active');
+    expect(after?.status).toBe('stopped');
+    expect(after?.stopReason).toBe('task_completed');
+    expect(after?.nextOverdueOccurrenceAt).toBeNull();
+    expect(after?.generation).toBe(1);
   });
 
-  it('does not suspend an existing active schedule when a task enters Waiting', async () => {
+  it('stops reminders when a task is dismissed, with a reason distinct from completion', async () => {
     const task = await seedTask();
     await establish(task.id, '2026-04-01');
 
+    await toDismissed(task.id, task.etag);
+
+    const after = await findReminderScheduleByTaskId(db.prisma, org, task.id);
+    expect(after?.status).toBe('stopped');
+    expect(after?.stopReason).toBe('task_dismissed');
+    expect(after?.nextOverdueOccurrenceAt).toBeNull();
+  });
+
+  it('suspends an existing active schedule when a task enters Waiting', async () => {
+    const task = await seedTask();
+    await establish(task.id, '2026-04-01');
+    const before = await findReminderScheduleByTaskId(db.prisma, org, task.id);
+
     await toWaiting(task.id, task.etag);
 
-    // Same boundary as above. The Owner's *next* material change would produce a suspended
-    // generation, but entering Waiting does not itself suspend — that is the deferred wiring.
+    const after = await findReminderScheduleByTaskId(db.prisma, org, task.id);
+    expect(after?.status).toBe('suspended_waiting');
+    // No claimable occurrence survives the suspension, and the generation is untouched: entering
+    // Waiting is a pause, not a new scheduling decision (D107).
+    expect(after?.nextOverdueOccurrenceAt).toBeNull();
+    expect(after?.generation).toBe(before?.generation);
+  });
+
+  it('preserves the task due date and generation across a waiting round trip', async () => {
+    const task = await seedTask();
+    await establish(task.id, '2026-04-01');
+    const waiting = await toWaiting(task.id, task.etag);
+
+    await toResumed(task.id, waiting);
+
     const after = await findReminderScheduleByTaskId(db.prisma, org, task.id);
     expect(after?.status).toBe('active');
+    expect(after?.generation).toBe(1);
+    expect(after?.dueLocalDate).toBe('2026-04-01');
+    // The Owner never asked for a new schedule, so the Task's canonical due date must survive both
+    // halves of the round trip untouched.
+    expect(await getTaskDueLocalDate(db.prisma, org, task.id)).toBe('2026-04-01');
+  });
+
+  it('resumes to a strictly future occurrence without replaying the waiting period', async () => {
+    const task = await seedTask();
+    await establish(task.id, '2026-04-01');
+    const waiting = await toWaiting(task.id, task.etag);
+
+    // Resume long after every overdue morning between the due date and now has elapsed. A backlog
+    // implementation would arm one of them, or arm many; D107 requires exactly one, in the future.
+    const resumeAt = '2026-09-15T18:00:00.000Z';
+    await toResumed(task.id, waiting, resumeAt);
+
+    const after = await findReminderScheduleByTaskId(db.prisma, org, task.id);
+    expect(after?.status).toBe('active');
+    expect(new Date(after!.nextOverdueOccurrenceAt!).getTime()).toBeGreaterThan(
+      new Date(resumeAt).getTime(),
+    );
+    // Nothing is due at the resume instant merely because time passed while the Task waited.
+    expect(after?.nextOverdueOccurrenceLocalDate).not.toBe('2026-04-02');
+    expect(after?.overdueDeliveredCount).toBe(0);
+  });
+
+  it('does not revive a terminally stopped schedule when the task leaves Waiting', async () => {
+    const task = await seedTask();
+    await establish(task.id, '2026-04-01');
+    const waiting = await toWaiting(task.id, task.etag);
+    // Remove the due date while the Task waits, which stops the schedule for its own reason.
+    await remove(task.id);
+
+    await toResumed(task.id, waiting);
+
+    // Resume reactivates only a Waiting suspension. Reactivating a stopped schedule is an explicit
+    // Owner act (D109), and leaving Waiting is not that act.
+    const after = await findReminderScheduleByTaskId(db.prisma, org, task.id);
+    expect(after?.status).toBe('stopped');
+    expect(after?.stopReason).toBe('due_date_removed');
+    expect(after?.nextOverdueOccurrenceAt).toBeNull();
+  });
+
+  it('does not convert a terminally stopped schedule into a waiting suspension', async () => {
+    const task = await seedTask();
+    await establish(task.id, '2026-04-01');
+    await remove(task.id);
+
+    await toWaiting(task.id, task.etag);
+
+    const after = await findReminderScheduleByTaskId(db.prisma, org, task.id);
+    expect(after?.status).toBe('stopped');
+    expect(after?.stopReason).toBe('due_date_removed');
+  });
+
+  it('leaves a task with no schedule alone through every lifecycle transition', async () => {
+    const task = await seedTask();
+
+    const waiting = await toWaiting(task.id, task.etag);
+    const resumed = await toResumed(task.id, waiting);
+    await toCompleted(task.id, resumed);
+
+    // The reconciler must be a no-op rather than an error for the overwhelmingly common case of a
+    // Task that never had a reminder, and must not invent a schedule row to stop.
+    expect(await findReminderScheduleByTaskId(db.prisma, org, task.id)).toBeNull();
   });
 
   it('suspends on the next material change once the task is Waiting', async () => {

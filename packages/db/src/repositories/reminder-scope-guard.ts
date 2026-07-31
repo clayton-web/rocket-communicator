@@ -28,6 +28,16 @@ export interface AuthoritativeTaskScope {
   readonly organizationId: string;
 }
 
+/**
+ * A locked Task's scope together with the lifecycle state that decides what its schedule may be.
+ *
+ * The status is read *with* the lock rather than by a separate query on purpose: a status read before
+ * the lock is only a guess about what the Task will be when the write lands.
+ */
+export interface LockedTaskScope extends AuthoritativeTaskScope {
+  readonly status: string;
+}
+
 /** A Reminder Schedule's real owning organization and Task, resolved from the schedule row. */
 export interface AuthoritativeScheduleScope {
   readonly scheduleId: string;
@@ -81,16 +91,21 @@ export async function requireTaskScope(
  * This is a single-row `FOR UPDATE`, not a table lock, and it is scoped to the Task the caller is
  * already authorized for. `FOR UPDATE` cannot be expressed through the Prisma query API, hence the
  * raw statement; the identifier is bound as a parameter, never interpolated.
+ *
+ * The Task's `status` comes back with the lock so callers can re-check lifecycle eligibility against
+ * authoritative state (A8 lifecycle wiring). The real PostgreSQL suite showed why that matters: an
+ * Owner `PUT` that had read an `open` Task raced a dismissal, and because it re-checked nothing, it
+ * reactivated a schedule on a Task that was terminal by the time the write committed.
  */
 export async function lockTaskScopeForReminderMutation(
   db: Client,
   organizationId: string,
   taskId: string,
-): Promise<AuthoritativeTaskScope> {
+): Promise<LockedTaskScope> {
   // Selected by identifier alone, like `requireTaskScope`, so a cross-organization caller is
   // refused explicitly rather than blocked by an empty result it cannot interpret.
-  const rows = await db.$queryRaw<Array<{ id: string; organization_id: string }>>`
-    SELECT id, organization_id
+  const rows = await db.$queryRaw<Array<{ id: string; organization_id: string; status: string }>>`
+    SELECT id, organization_id, status
     FROM tasks
     WHERE id = ${taskId}
     FOR UPDATE
@@ -102,7 +117,7 @@ export async function lockTaskScopeForReminderMutation(
   if (row.organization_id !== organizationId) {
     throw organizationMismatch('Task organizationId must match the persistence scope.');
   }
-  return { taskId: row.id, organizationId: row.organization_id };
+  return { taskId: row.id, organizationId: row.organization_id, status: row.status };
 }
 
 /**

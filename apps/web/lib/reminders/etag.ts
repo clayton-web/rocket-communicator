@@ -1,5 +1,5 @@
 import { formatETag } from '@aicaa/domain';
-import type { PersistedReminderSchedule } from '@aicaa/db';
+import { NO_SCHEDULE_REMINDER_VERSION, type PersistedReminderSchedule } from '@aicaa/db';
 
 /**
  * The reminder resource's concurrency token (A8.3b audit F5).
@@ -20,19 +20,32 @@ import type { PersistedReminderSchedule } from '@aicaa/db';
  * The version is never a request field and never appears in a response body on its own. It is
  * readable only as the opaque token, so a client cannot construct a token for a state it has not
  * observed.
+ *
+ * ## What the token covers: configuration and lifecycle, not delivery progress (A8.3b re-audit L1)
+ *
+ * `reminder_version` tracks **Owner-controlled reminder configuration and lifecycle state**. It is a
+ * mutation precondition, and deliberately not a validator for the whole GET representation.
+ *
+ * The re-audit observed the gap: `nextOverdueOccurrence` and `overdueDeliveredCount` appear in the
+ * representation but do not bump the version, so a client holding a current ETag could be reading a
+ * stale value for either. The decision is to keep it that way and make the contract say so, rather
+ * than to widen the version.
+ *
+ * Widening it is the option that looks safer and is not. Those two fields are the ones a future A8.4
+ * worker owns: it advances the occurrence and counts deliveries on its own schedule, with no Owner
+ * involved. If either bumped the version, every delivery would invalidate every outstanding Owner
+ * ETag, so an Owner editing a due date would race the worker and lose — a `412` caused by nothing the
+ * Owner did and nothing they can see, on a resource whose configuration had not changed at all. The
+ * cost would be real and recurring; the benefit would be cache validation the API does not offer,
+ * because every reminder response is already `no-store` and there is no cache to validate.
+ *
+ * So the division is by ownership: the version moves when the Owner's own decisions move — a
+ * generation opening, a reactivation, a suspension, a resume, a stop — and stays put while the worker
+ * records progress against a configuration nobody changed. `API_CONTRACT.md` states this scope, and it
+ * is why worker occurrence and count updates must never increment the version.
  */
 
-/**
- * The version reported when no schedule row exists — whether the Task has no due date at all, or
- * carries one with no schedule behind it.
- *
- * Both are pre-establishment states, and the only mutation either permits is establishment, which is
- * guarded by the unique index on `task_id` rather than by a version: two concurrent establishments
- * cannot both create a row no matter what token they present. Version `0` is therefore a stable,
- * honest token for "nothing to overwrite yet", and a schedule's first version is `1`, so the two can
- * never be confused.
- */
-export const NO_SCHEDULE_REMINDER_VERSION = 0;
+export { NO_SCHEDULE_REMINDER_VERSION };
 
 /** Format the strong ETag for a Task's reminder resource. */
 export function reminderETag(taskId: string, reminderVersion: number): string {

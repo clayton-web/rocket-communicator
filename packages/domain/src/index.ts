@@ -212,11 +212,14 @@ export {
   type ReminderOccurrenceOutcome,
 } from './reminders/schedule-policy.js';
 export {
+  decideReminderLifecycleIntent,
   decideReminderScheduling,
   mayReadReminderState,
   mayRemoveReminderDueDate,
   taskStatusAllowsActiveReminders,
   taskStatusStopsReminders,
+  type ReminderLifecycleIntent,
+  type ReminderLifecycleStopReason,
   type ReminderSchedulingDisposition,
   type ReminderSchedulingRefusal,
 } from './reminders/eligibility.js';

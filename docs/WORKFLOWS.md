@@ -79,7 +79,7 @@ Meaningful Recipient outcomes feed the **Event Notification Engine** in A8 (D099
 
 ## 9. Waiting _(implemented — A4; Follow-up Engine interaction A8)_
 
-Waiting (Owner or Recipient capability): suspends Follow-up eligibility until waiting ends (D097). Waiting is the **only** pause mechanism (D101, D107)—no separate pause control exists. On resume, the next **future** 09:00 organization-local occurrence is computed with **no backlog** (D107, §10a). Waiting does not change retention clocks. **Snooze is not an A8 Follow-up control** (D101). Reminder sends remain A8 and unimplemented.
+Waiting (Owner or Recipient capability): suspends Follow-up eligibility until waiting ends (D097). Waiting is the **only** pause mechanism (D101, D107)—no separate pause control exists. On resume, the next **future** 09:00 organization-local occurrence is computed with **no backlog** (D107, §10a); since the A8 lifecycle wiring, both the suspension and the resume happen in the same transaction that commits the Task status, for the Owner and Recipient capability paths alike. Waiting does not change retention clocks. **Snooze is not an A8 Follow-up control** (D101). Reminder sends remain A8 and unimplemented.
 
 ## 10. Follow-up Engine and Event Notification Engine _(planned — A8; product law locked A8.0)_
 
@@ -87,9 +87,9 @@ Authoritative A8 product rules (D095–D101). Do not duplicate this specificatio
 
 ### 10a. Follow-up Engine (due-date-driven, Task-scoped)
 
-**Nothing in this section is operational.** The scheduling logic (A8.2), the persistence schema (A8.3a), and the Owner reminder APIs (A8.3b) exist, so a due date and a schedule can now be recorded — but no reminder has ever been scheduled for execution or sent: there is no worker, scheduler, cron job, delivery path, or UI, and the A8.3a migration is not applied in Production. This section is product law that implementation must satisfy.
+**Nothing in this section sends.** The scheduling logic (A8.2), the persistence schema (A8.3a), the Owner reminder APIs (A8.3b), and the Task-lifecycle wiring exist, so a due date and a schedule are recorded and the schedule now follows the Task's status — but no reminder has ever been scheduled for execution or sent: there is no worker, scheduler, cron job, delivery path, or UI, and the A8.3a migration is not applied in Production. This section is product law that implementation must satisfy.
 
-**Two parts of D107 are enforced; the rest is gated.** Since the A8.3b audit remediation, a Task's status decides whether a due date may carry _active_ scheduling: a completed or dismissed Task refuses a reminder outright, and a Waiting Task's schedule is created directly in `suspended_waiting` with no claimable occurrence ([STATE_MACHINE.md](STATE_MACHINE.md) §Due date). That governs schedules being **acquired**. Reacting to a **transition** — suspending on entering Waiting, resuming from the next future occurrence on leaving it, stopping on completion or dismissal — is still not wired, so a schedule established while a Task was open stays `active` after that Task completes. Nothing sends, so nothing is mis-delivered today, and no worker may scan or claim until that wiring lands ([MILESTONES.md](MILESTONES.md) deferred lifecycle gate).
+**D107's lifecycle rules are enforced.** A Task's status decides whether a due date may carry _active_ scheduling — a completed or dismissed Task refuses a reminder outright, and a Waiting Task's schedule is created directly in `suspended_waiting` with no claimable occurrence ([STATE_MACHINE.md](STATE_MACHINE.md) §Due date) — and, since the A8 lifecycle wiring, a status **transition** moves an existing schedule in the same transaction that commits the status: entering Waiting suspends, leaving Waiting resumes from the next occurrence strictly after the resume instant with no backlog and no new generation, and completion or dismissal stops with a truthful reason. A terminal or Waiting Task therefore cannot hold a claimable occurrence at any committed point. What remains gated is **delivery**: no worker may scan, claim, or send until that slice is authorized and passes audit.
 
 **Purpose:** follow through on **delegated** communication work using the Owner-selected Task due date, so communications reach conclusion. Authorized by the narrow constitutional exception in D102: an explicitly selected Task due date may drive deterministic follow-through on delegated work. This is **not** calendar management, not a general-purpose reminder application, and not an escalation ladder.
 
@@ -146,9 +146,9 @@ Authoritative A8 product rules (D095–D101). Do not duplicate this specificatio
 
 | Condition                  | Effect                                                                                          |
 | -------------------------- | ----------------------------------------------------------------------------------------------- |
-| Task completed             | **Stops** future reminders                                                                      |
-| Task dismissed             | **Stops** future reminders                                                                      |
-| Waiting                    | **Suspends** reminders — the **only** pause mechanism (D097, D101)                              |
+| Task completed             | **Stops** future reminders, reason `task_completed`; history preserved, row not deleted         |
+| Task dismissed             | **Stops** future reminders, reason `task_dismissed`; history preserved, row not deleted         |
+| Waiting                    | **Suspends** reminders — the **only** pause mechanism (D097, D101); generation preserved        |
 | Resume                     | Computes the **next future** 09:00 local occurrence; **no backlog**, no elapsed-time accounting |
 | Due date removed           | **Stops** the schedule                                                                          |
 | Reassignment               | Schedule **preserved** (Task-scoped); **no backlog** sent                                       |
@@ -156,7 +156,9 @@ Authoritative A8 product rules (D095–D101). Do not duplicate this specificatio
 | Permanent delivery failure | **Suspends** further sends for that assignment; raises Owner attention (§10b)                   |
 | Overdue ceiling reached    | **Stops** Recipient reminders; `requiresOwnerAttention`; Owner notified; no automatic restart   |
 
-No separate pause, snooze, delay, or alternate-cadence control is introduced (D101, D107). `completed` and `dismissed` remain terminal; A8 introduces **no** reopening behaviour.
+No separate pause, snooze, delay, or alternate-cadence control is introduced (D101, D107). `completed` and `dismissed` remain terminal; A8 introduces **no** reopening behaviour. Should a reopen path ever be added, it does **not** reactivate a terminally stopped schedule — an explicit Owner re-save is required (D109; decided in [STATE_MACHINE.md](STATE_MACHINE.md)), so a Task reopened long after its due date cannot immediately deliver a backlog for a date already past.
+
+Every one of these transitions is applied in the **same transaction** that commits the Task status, so no committed state pairs a terminal or Waiting Task with a claimable occurrence.
 
 #### Attribution, audience, and history (D107, D109)
 

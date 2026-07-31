@@ -19,8 +19,11 @@ import {
   createReminderSchedule,
   createTask,
   findReminderScheduleByTaskId,
+  getTaskDueLocalDate,
   isSerializationFailure,
   openNextReminderGeneration,
+  persistOwnerReminderDueDateRemoval,
+  persistOwnerReminderEstablishment,
   resumeReminderScheduleFromWaiting,
   stopReminderSchedule,
   suspendReminderScheduleForWaiting,
@@ -132,6 +135,22 @@ describe('A8.3b reminder concurrency token (PGlite)', () => {
   });
 
   let sequence = 0;
+
+  /** Whether a refused transaction left its audit event behind. It must not: a loser writes nothing. */
+  async function countAuditEvents(prisma: TestDatabase['prisma'], id: string): Promise<number> {
+    return prisma.auditEvent.count({ where: { id } });
+  }
+
+  /**
+   * Set the Task's canonical due date, which `createReminderSchedule` alone does not.
+   *
+   * The removal tests need the H1 shape specifically: a live Task due date sitting behind a schedule
+   * that is no longer live, so a caller can observe "nothing to stop" and still be about to clear
+   * something real.
+   */
+  async function setTaskDueLocalDate(taskId: string, dueLocalDate: string): Promise<void> {
+    await db.prisma.task.update({ where: { id: taskId }, data: { dueLocalDate } });
+  }
 
   async function seed(dueLocalDate: LocalDate = parseLocalDate('2026-08-10')) {
     sequence += 1;
@@ -395,6 +414,275 @@ describe('A8.3b reminder concurrency token (PGlite)', () => {
 
       expect(stopped.status).toBe('stopped');
       expect(stopped.stopReason).toBe('task_completed');
+    });
+  });
+
+  /**
+   * The removal transaction's contract (A8.3b re-audit H1).
+   *
+   * The re-audit found that when the caller's pre-lock read saw no *live* schedule, the removal ran
+   * with no precondition at all: it cleared `tasks.due_local_date` and wrote the removal event without
+   * checking anything. These assert the replacement contract — every branch proves which state it was
+   * asked to remove, and a caller that cannot is refused before it writes.
+   */
+  describe('removal precondition in every branch (H1)', () => {
+    const removalAudit = (id: string) => () => ({
+      id,
+      organizationId: org,
+      actorKind: 'owner' as const,
+      ownerId: 'owner_token',
+      taskId: 'ignored',
+      action: 'reminder.due_date.removed',
+      outcome: 'succeeded' as const,
+      recordedAt: at,
+    });
+
+    it('refuses a removal whose token predates a stop of an otherwise-live schedule', async () => {
+      const seeded = await seed();
+      await createReminderSchedule(db.prisma, seeded.input);
+      await setTaskDueLocalDate(seeded.taskId, '2026-08-10');
+      // Version moves to 2 without the caller noticing — the state a lifecycle stop or a future
+      // worker ceiling-stop leaves behind, with the Task due date still set.
+      await stopReminderSchedule(db.prisma, {
+        organizationId: org,
+        scheduleId: seeded.scheduleId,
+        reason: 'overdue_ceiling_reached',
+        stoppedAt: at,
+      });
+
+      const code = await rejectionCode(() =>
+        persistOwnerReminderDueDateRemoval({
+          db: db.prisma,
+          organizationId: org,
+          taskId: seeded.taskId,
+          stoppedAt: at,
+          expectedReminderVersion: 1,
+          audit: removalAudit('audit_h1_stale'),
+        }),
+      );
+
+      // The old contract could not fail here: the caller observed a non-live schedule, so it passed
+      // no precondition and the due date was cleared regardless.
+      expect(code).toBe('OPTIMISTIC_CONCURRENCY');
+      expect(await getTaskDueLocalDate(db.prisma, org, seeded.taskId)).toBe('2026-08-10');
+      expect(await countAuditEvents(db.prisma, 'audit_h1_stale')).toBe(0);
+    });
+
+    it('refuses a removal that assumes absence when a schedule exists', async () => {
+      const seeded = await seed();
+      await createReminderSchedule(db.prisma, seeded.input);
+
+      const code = await rejectionCode(() =>
+        persistOwnerReminderDueDateRemoval({
+          db: db.prisma,
+          organizationId: org,
+          taskId: seeded.taskId,
+          stoppedAt: at,
+          // The token for "there was nothing here". Absence is asserted under the lock, not assumed.
+          expectedReminderVersion: 0,
+          audit: removalAudit('audit_h1_absent'),
+        }),
+      );
+
+      expect(code).toBe('OPTIMISTIC_CONCURRENCY');
+      const schedule = await findReminderScheduleByTaskId(db.prisma, org, seeded.taskId);
+      expect(schedule?.status).toBe('active');
+      expect(await countAuditEvents(db.prisma, 'audit_h1_absent')).toBe(0);
+    });
+
+    it('moves the reminder version when it clears a due date behind a stopped schedule', async () => {
+      const seeded = await seed();
+      await createReminderSchedule(db.prisma, seeded.input);
+      await setTaskDueLocalDate(seeded.taskId, '2026-08-10');
+      const stopped = await stopReminderSchedule(db.prisma, {
+        organizationId: org,
+        scheduleId: seeded.scheduleId,
+        reason: 'overdue_ceiling_reached',
+        stoppedAt: at,
+      });
+
+      const result = await persistOwnerReminderDueDateRemoval({
+        db: db.prisma,
+        organizationId: org,
+        taskId: seeded.taskId,
+        stoppedAt: at,
+        expectedReminderVersion: stopped.reminderVersion,
+        audit: removalAudit('audit_h1_bump'),
+      });
+
+      // This branch stops nothing, but it does change Owner-controlled configuration, so the version
+      // must move. Without it a second Owner holding the same token still passed their precondition
+      // and reactivated on top — two incompatible writes from one observed state.
+      expect(result.schedule?.reminderVersion).toBe(stopped.reminderVersion + 1);
+      expect(result.schedule?.status).toBe('stopped');
+      // The reason is not overwritten: reminders ended at the ceiling, not because a date was removed.
+      expect(result.schedule?.stopReason).toBe('overdue_ceiling_reached');
+      expect(await getTaskDueLocalDate(db.prisma, org, seeded.taskId)).toBeNull();
+    });
+
+    it('reports a truthful no-op when there is genuinely nothing to remove', async () => {
+      const seeded = await seed();
+      await createReminderSchedule(db.prisma, seeded.input);
+      const stopped = await stopReminderSchedule(db.prisma, {
+        organizationId: org,
+        scheduleId: seeded.scheduleId,
+        reason: 'due_date_removed',
+        stoppedAt: at,
+      });
+      // No due date and a stopped schedule: the request already holds.
+
+      const result = await persistOwnerReminderDueDateRemoval({
+        db: db.prisma,
+        organizationId: org,
+        taskId: seeded.taskId,
+        stoppedAt: at,
+        expectedReminderVersion: stopped.reminderVersion,
+        audit: removalAudit('audit_h1_noop'),
+      });
+
+      expect(result.changed).toBe(false);
+      // Nothing written: no version bump, and no event claiming a removal that did not happen.
+      expect(result.schedule?.reminderVersion).toBe(stopped.reminderVersion);
+      expect(result.audit).toBeNull();
+      expect(await countAuditEvents(db.prisma, 'audit_h1_noop')).toBe(0);
+    });
+
+    it('refuses a stale no-op rather than answering with a pre-mutation version', async () => {
+      const seeded = await seed();
+      await createReminderSchedule(db.prisma, seeded.input);
+      await stopReminderSchedule(db.prisma, {
+        organizationId: org,
+        scheduleId: seeded.scheduleId,
+        reason: 'due_date_removed',
+        stoppedAt: at,
+      });
+
+      // A caller holding version 1 while the schedule has moved to 2. It reaches the "nothing to
+      // remove" state, so the temptation is to answer 200 — but its token describes state it never
+      // saw, and the real PostgreSQL burst showed two removals both answering 200 this way, one of
+      // them returning an ETag that had already been superseded.
+      const code = await rejectionCode(() =>
+        persistOwnerReminderDueDateRemoval({
+          db: db.prisma,
+          organizationId: org,
+          taskId: seeded.taskId,
+          stoppedAt: at,
+          expectedReminderVersion: 1,
+          audit: removalAudit('audit_h1_stale_noop'),
+        }),
+      );
+
+      expect(code).toBe('OPTIMISTIC_CONCURRENCY');
+      expect(await countAuditEvents(db.prisma, 'audit_h1_stale_noop')).toBe(0);
+    });
+
+    it('builds the audit event from state read under the lock', async () => {
+      const seeded = await seed();
+      await createReminderSchedule(db.prisma, seeded.input);
+      await setTaskDueLocalDate(seeded.taskId, '2026-08-10');
+      let observed: { priorStatus?: string; priorDueLocalDate?: string | null } = {};
+
+      await persistOwnerReminderDueDateRemoval({
+        db: db.prisma,
+        organizationId: org,
+        taskId: seeded.taskId,
+        stoppedAt: at,
+        expectedReminderVersion: 1,
+        audit: (outcome) => {
+          observed = {
+            priorStatus: outcome.priorSchedule?.status,
+            priorDueLocalDate: outcome.priorDueLocalDate,
+          };
+          return removalAudit('audit_h1_note')();
+        },
+      });
+
+      // The caller cannot describe what it removed from its own pre-lock read, so the transaction
+      // hands it the authoritative state instead.
+      expect(observed.priorStatus).toBe('active');
+      expect(observed.priorDueLocalDate).toBe('2026-08-10');
+    });
+  });
+
+  /**
+   * Owner scheduling re-checked against the locked Task (A8 lifecycle wiring).
+   *
+   * The route service gates on Task status, but from a read taken before the lock. The real
+   * PostgreSQL suite showed a `PUT` that had read an `open` Task racing a dismissal and reactivating a
+   * schedule on a Task that was terminal by the time it committed.
+   */
+  describe('task eligibility re-checked under the lock', () => {
+    const establishAudit = {
+      id: 'audit_lock_eligibility',
+      organizationId: org,
+      actorKind: 'owner' as const,
+      ownerId: 'owner_token',
+      action: 'reminder.schedule.established',
+      outcome: 'succeeded' as const,
+      recordedAt: at,
+    };
+
+    it('refuses establishment when the task became terminal after the caller read it', async () => {
+      const seeded = await seed();
+      await db.prisma.task.update({
+        where: { id: seeded.taskId },
+        data: { status: 'dismissed' },
+      });
+
+      const code = await rejectionCode(() =>
+        persistOwnerReminderEstablishment({
+          db: db.prisma,
+          // The caller still believes the Task is actionable, which is what a stale read looks like.
+          schedule: { ...seeded.input, status: 'active' },
+          audit: establishAudit,
+        }),
+      );
+
+      expect(code).toBe('DOMAIN_CONFLICT');
+      expect(await findReminderScheduleByTaskId(db.prisma, org, seeded.taskId)).toBeNull();
+      expect(await countAuditEvents(db.prisma, 'audit_lock_eligibility')).toBe(0);
+    });
+
+    it('refuses establishment when the task became Waiting, rather than silently suspending', async () => {
+      const seeded = await seed();
+      await db.prisma.task.update({
+        where: { id: seeded.taskId },
+        data: { status: 'waiting' },
+      });
+
+      const code = await rejectionCode(() =>
+        persistOwnerReminderEstablishment({
+          db: db.prisma,
+          schedule: { ...seeded.input, status: 'active' },
+          audit: establishAudit,
+        }),
+      );
+
+      // An Owner who asked for an active schedule on an actionable Task did not ask for a suspended
+      // one, and quietly substituting it would commit a decision they never made.
+      expect(code).toBe('DOMAIN_CONFLICT');
+      expect(await findReminderScheduleByTaskId(db.prisma, org, seeded.taskId)).toBeNull();
+    });
+
+    it('allows establishment when the caller and the locked task agree', async () => {
+      const seeded = await seed();
+      await db.prisma.task.update({
+        where: { id: seeded.taskId },
+        data: { status: 'waiting' },
+      });
+
+      const result = await persistOwnerReminderEstablishment({
+        db: db.prisma,
+        schedule: {
+          ...seeded.input,
+          status: 'suspended_waiting',
+          suspendedAt: at,
+          nextOverdueOccurrence: null,
+        },
+        audit: establishAudit,
+      });
+
+      expect(result.schedule.status).toBe('suspended_waiting');
     });
   });
 

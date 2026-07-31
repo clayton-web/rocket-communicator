@@ -128,6 +128,8 @@ export {
 export {
   mapReminderSchedule,
   mapReminderDeliveryAttempt,
+  isLiveReminderSchedule,
+  NO_SCHEDULE_REMINDER_VERSION,
   toReminderOccurrenceOutcome,
   toStorableLocalDate,
   toStorableLocalDateOrNull,
@@ -287,6 +289,18 @@ export {
   persistOwnerReminderGenerationChange,
   persistOwnerReminderDueDateRemoval,
   type OwnerReminderMutationResult,
+  type OwnerReminderRemovalOutcome,
   type OwnerReminderRemovalResult,
   type SkippedAdvanceAttemptInput,
 } from './transactions/a8b-owner-reminder-transactions.js';
+
+// A8 lifecycle wiring: reminder schedule state reconciled inside the Task status transaction (D107).
+// Reconciles and clears claimable state only — no scan, claim, or delivery path.
+export {
+  buildReminderLifecycleAudit,
+  reconcileReminderScheduleForTaskStatus,
+  REMINDER_LIFECYCLE_AUDIT_ACTIONS,
+  type ReconcileReminderScheduleInput,
+  type ReminderLifecycleEffect,
+  type ReminderLifecycleTransition,
+} from './transactions/a8-lifecycle-reminder-effects.js';

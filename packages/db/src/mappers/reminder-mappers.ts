@@ -107,6 +107,31 @@ function brandLocalDate(value: string): LocalDate {
 }
 
 /**
+ * The reminder version reported when no schedule row exists (A8.3b audit F5).
+ *
+ * A schedule's first version is `1`, so `0` cannot be confused with any real state. It is the token a
+ * caller must present to assert "there was nothing here", which the removal transaction verifies
+ * under the Task lock rather than assuming (A8.3b re-audit H1). Defined here, beside
+ * `PersistedReminderSchedule`, because both the persistence layer and the API's ETag need the same
+ * constant and neither may own a private copy.
+ */
+export const NO_SCHEDULE_REMINDER_VERSION = 0;
+
+/**
+ * Whether a schedule can still produce reminder activity.
+ *
+ * `active` and `suspended_waiting` are both live: a suspension is a pause that resume can undo
+ * (D107), so it is still the Owner's current schedule. Only `stopped` is finished. Written as one
+ * predicate because "is this live?" is asked by the removal precondition, the lifecycle reconciler,
+ * and the API projection, and three inlined status comparisons would eventually disagree.
+ */
+export function isLiveReminderSchedule<T extends Pick<PersistedReminderSchedule, 'status'>>(
+  schedule: T | null | undefined,
+): schedule is T & { readonly status: Exclude<ReminderScheduleStatus, 'stopped'> } {
+  return schedule !== null && schedule !== undefined && schedule.status !== 'stopped';
+}
+
+/**
  * Validate a local date on the way *into* the database (A8.3a audit F9).
  *
  * The audit found validation was asymmetric: `2026-02-30` satisfied the column CHECK, was written

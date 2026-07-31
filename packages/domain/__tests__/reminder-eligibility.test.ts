@@ -8,6 +8,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
+  decideReminderLifecycleIntent,
   decideReminderScheduling,
   formatETag,
   mayReadReminderState,
@@ -80,6 +81,68 @@ describe('decideReminderScheduling', () => {
         taskStatusAllowsActiveReminders(status),
       );
     }
+  });
+});
+
+/**
+ * A8 lifecycle wiring: what a Task's *current* status requires of an existing schedule (D107).
+ *
+ * The mirror of `decideReminderScheduling`, derived from the same statuses so a Task can never be
+ * schedulable one way and reconciled another.
+ */
+describe('decideReminderLifecycleIntent', () => {
+  it('requires reminders to be running for an actionable task', () => {
+    expect(decideReminderLifecycleIntent('open')).toEqual({ kind: 'ensure_active' });
+    expect(decideReminderLifecycleIntent('in_progress')).toEqual({ kind: 'ensure_active' });
+  });
+
+  it('requires a waiting task to hold a suspended schedule', () => {
+    expect(decideReminderLifecycleIntent('waiting')).toEqual({
+      kind: 'ensure_suspended_for_waiting',
+    });
+  });
+
+  it('distinguishes completion from dismissal in the stop reason', () => {
+    // Overloading one reason would leave the history unable to say why reminders ended, which is the
+    // same failure the A8.3b audit found in the reminder audit actions.
+    expect(decideReminderLifecycleIntent('completed')).toEqual({
+      kind: 'ensure_stopped',
+      reason: 'task_completed',
+    });
+    expect(decideReminderLifecycleIntent('dismissed')).toEqual({
+      kind: 'ensure_stopped',
+      reason: 'task_dismissed',
+    });
+  });
+
+  it('decides every task status', () => {
+    for (const status of ALL_STATUSES) {
+      expect(decideReminderLifecycleIntent(status).kind).toBeTruthy();
+    }
+  });
+
+  it('agrees with decideReminderScheduling about which statuses may hold a live schedule', () => {
+    for (const status of ALL_STATUSES) {
+      const intent = decideReminderLifecycleIntent(status);
+      const scheduling = decideReminderScheduling(status);
+      // The two are different questions with the same answer about liveness: a status that refuses new
+      // scheduling must also require an existing schedule to stop, and vice versa.
+      expect(intent.kind === 'ensure_stopped').toBe(scheduling.kind === 'refused');
+      if (scheduling.kind === 'schedule_suspended') {
+        expect(intent.kind).toBe('ensure_suspended_for_waiting');
+      }
+      if (scheduling.kind === 'schedule_active') {
+        expect(intent.kind).toBe('ensure_active');
+      }
+    }
+  });
+
+  it('falls back to suspension rather than inventing a terminal stop reason', () => {
+    // Unreachable through the type, but the runtime fallback must make nothing claimable without
+    // asserting a Task was completed or dismissed when it was neither.
+    expect(decideReminderLifecycleIntent('archived' as TaskStatus)).toEqual({
+      kind: 'ensure_suspended_for_waiting',
+    });
   });
 });
 
