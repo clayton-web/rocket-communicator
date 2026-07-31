@@ -1,15 +1,22 @@
 import type { LocalDate } from '@aicaa/domain';
 import type { DbClient, DbTransaction } from '../client/create-prisma-client.js';
 import { Prisma } from '../generated/client/index.js';
-import { domainConflict, notFound, uniqueViolation } from '../errors/persistence-errors.js';
+import {
+  domainConflict,
+  notFound,
+  uniqueViolation,
+  type PersistenceError,
+} from '../errors/persistence-errors.js';
 import { fromIso } from '../mappers/domain-mappers.js';
 import {
   mapReminderDeliveryAttempt,
+  toStorableLocalDate,
   type PersistedReminderDeliveryAttempt,
   type ReminderDeliveryOutcome,
   type ReminderOccurrenceKind,
   type ReminderSkipReason,
 } from '../mappers/reminder-mappers.js';
+import { requireScheduleScope } from './reminder-scope-guard.js';
 
 /**
  * Reminder delivery attempt persistence (A8.3a; D100, D106, D109).
@@ -33,11 +40,15 @@ type Client = DbClient | DbTransaction;
 /** Outcomes that terminate an occurrence. `claimed` is excluded: a lease is not a result. */
 export type TerminalReminderDeliveryOutcome = Exclude<ReminderDeliveryOutcome, 'claimed'>;
 
+/**
+ * There is deliberately no `taskId`: an attempt belongs to whichever Task its schedule belongs to,
+ * so it is derived rather than supplied and cannot be pointed at a Task in another organization
+ * (A8.3a audit F3).
+ */
 export interface ClaimReminderOccurrenceInput {
   readonly id: string;
   readonly organizationId: string;
   readonly scheduleId: string;
-  readonly taskId: string;
   readonly generation: number;
   readonly occurrenceKind: ReminderOccurrenceKind;
   readonly occurrenceLocalDate: LocalDate;
@@ -63,11 +74,11 @@ export interface RecordTerminalOutcomeInput {
   readonly failureCode?: string | null;
 }
 
+/** As with a claim, the Task is derived from the schedule rather than supplied by the caller. */
 export interface RecordSkippedOccurrenceInput {
   readonly id: string;
   readonly organizationId: string;
   readonly scheduleId: string;
-  readonly taskId: string;
   readonly generation: number;
   readonly occurrenceKind: ReminderOccurrenceKind;
   readonly occurrenceLocalDate: LocalDate;
@@ -111,27 +122,60 @@ async function findByOccurrenceIdentity(
 }
 
 /**
+ * Explain a unique violation that was *not* the occurrence identity (A8.3a audit F16).
+ *
+ * Reporting every collision as "occurrence identity is already taken" sent a reader looking for a
+ * duplicate scheduler invocation when the real cause was a reused attempt id — a caller bug with an
+ * entirely different fix. Callers check the occurrence identity first because that is the collision
+ * expected in normal operation; anything left over is classified from what the database actually
+ * holds rather than guessed from the constraint that happened to fire.
+ */
+async function classifyAttemptWriteCollision(
+  db: Client,
+  attemptId: string,
+): Promise<PersistenceError> {
+  const clash = await db.reminderDeliveryAttempt.findUnique({
+    where: { id: attemptId },
+    select: { id: true },
+  });
+  if (clash) {
+    return uniqueViolation(
+      `Reminder delivery attempt id ${attemptId} is already used by a different occurrence.`,
+    );
+  }
+  return uniqueViolation(
+    `Reminder delivery attempt ${attemptId} violated a unique constraint that is neither its id nor its occurrence identity.`,
+  );
+}
+
+/**
  * Claim one occurrence for processing, creating its attempt row.
  *
  * The insert is attempted first and the collision is caught, rather than checking for an existing
  * row and then inserting. Under overlapping scheduler invocations — which D106 explicitly
  * anticipates — a check-then-insert has a window in which both callers see nothing and both
  * proceed. Here the unique index decides, and the loser is told it did not claim.
+ *
+ * The preceding scope read authorizes the write and supplies the Task; it deliberately does not
+ * check whether the occurrence is already claimed, so the unique index remains the only arbiter.
  */
 export async function claimReminderOccurrence(
   db: Client,
   input: ClaimReminderOccurrenceInput,
 ): Promise<ClaimReminderOccurrenceResult> {
+  const scope = await requireScheduleScope(db, input.organizationId, input.scheduleId);
+  const occurrenceLocalDate = toStorableLocalDate(input.occurrenceLocalDate, 'occurrenceLocalDate');
+
   try {
     const row = await db.reminderDeliveryAttempt.create({
       data: {
         id: input.id,
-        organizationId: input.organizationId,
-        scheduleId: input.scheduleId,
-        taskId: input.taskId,
+        organizationId: scope.organizationId,
+        scheduleId: scope.scheduleId,
+        taskId: scope.taskId,
         generation: input.generation,
         occurrenceKind: input.occurrenceKind,
-        occurrenceLocalDate: input.occurrenceLocalDate,
+        occurrenceLocalDate,
         occurrenceAt: fromIso(input.occurrenceAt)!,
         outcome: 'claimed',
         claimedBy: input.claimedBy,
@@ -141,11 +185,11 @@ export async function claimReminderOccurrence(
     return { claimed: true, attempt: mapReminderDeliveryAttempt(row) };
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-      const existing = await findByOccurrenceIdentity(db, input);
+      const existing = await findByOccurrenceIdentity(db, { ...input, occurrenceLocalDate });
       if (existing) {
         return { claimed: false, attempt: existing };
       }
-      throw uniqueViolation('Reminder occurrence identity is already taken.');
+      throw await classifyAttemptWriteCollision(db, input.id);
     }
     throw error;
   }
@@ -205,21 +249,29 @@ export async function recordReminderDeliveryOutcome(
  * Used for `advance_window_elapsed` at establishment — the decision D105 requires to be made once
  * and persisted — and for occurrences skipped because there is no active assignment or the Task is
  * no longer eligible. A skip is written terminal in one insert because there is nothing to claim.
+ *
+ * A collision returns idempotently only when the stored row is *the same skip*. Previously any
+ * existing row was returned, so recording a skip against an occurrence that had already succeeded,
+ * failed, or was still claimed reported success and handed back a row describing something else
+ * entirely — an untruthful history, which is exactly what D100 and D107 forbid (A8.3a audit F16).
  */
 export async function recordSkippedReminderOccurrence(
   db: Client,
   input: RecordSkippedOccurrenceInput,
 ): Promise<PersistedReminderDeliveryAttempt> {
+  const scope = await requireScheduleScope(db, input.organizationId, input.scheduleId);
+  const occurrenceLocalDate = toStorableLocalDate(input.occurrenceLocalDate, 'occurrenceLocalDate');
+
   try {
     const row = await db.reminderDeliveryAttempt.create({
       data: {
         id: input.id,
-        organizationId: input.organizationId,
-        scheduleId: input.scheduleId,
-        taskId: input.taskId,
+        organizationId: scope.organizationId,
+        scheduleId: scope.scheduleId,
+        taskId: scope.taskId,
         generation: input.generation,
         occurrenceKind: input.occurrenceKind,
-        occurrenceLocalDate: input.occurrenceLocalDate,
+        occurrenceLocalDate,
         occurrenceAt: fromIso(input.occurrenceAt)!,
         outcome: 'skipped',
         skipReason: input.skipReason,
@@ -229,11 +281,18 @@ export async function recordSkippedReminderOccurrence(
     return mapReminderDeliveryAttempt(row);
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-      const existing = await findByOccurrenceIdentity(db, input);
-      if (existing) {
+      const existing = await findByOccurrenceIdentity(db, { ...input, occurrenceLocalDate });
+      if (!existing) {
+        throw await classifyAttemptWriteCollision(db, input.id);
+      }
+      if (existing.outcome === 'skipped' && existing.skipReason === input.skipReason) {
         return existing;
       }
-      throw uniqueViolation('Reminder occurrence identity is already taken.');
+      throw domainConflict(
+        `Reminder occurrence ${input.occurrenceKind} on ${occurrenceLocalDate} is already recorded ` +
+          `as ${existing.outcome}${existing.skipReason === null ? '' : ` (${existing.skipReason})`} ` +
+          `and cannot be recorded as skipped (${input.skipReason}).`,
+      );
     }
     throw error;
   }

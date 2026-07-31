@@ -128,6 +128,8 @@ export {
   mapReminderSchedule,
   mapReminderDeliveryAttempt,
   toReminderOccurrenceOutcome,
+  toStorableLocalDate,
+  toStorableLocalDateOrNull,
   type PersistedReminderSchedule,
   type PersistedReminderDeliveryAttempt,
   type ReminderAdvanceDisposition,
@@ -157,6 +159,12 @@ export {
   type ListSchedulesDueForProcessingInput,
   type ReminderOccurrenceInput,
 } from './repositories/reminder-schedule-repository.js';
+export {
+  requireTaskScope,
+  requireScheduleScope,
+  type AuthoritativeTaskScope,
+  type AuthoritativeScheduleScope,
+} from './repositories/reminder-scope-guard.js';
 export {
   claimReminderOccurrence,
   recordReminderDeliveryOutcome,

@@ -11,9 +11,12 @@ import {
 import { fromIso } from '../mappers/domain-mappers.js';
 import {
   mapReminderSchedule,
+  toStorableLocalDate,
+  toStorableLocalDateOrNull,
   type PersistedReminderSchedule,
   type ReminderScheduleStopReason,
 } from '../mappers/reminder-mappers.js';
+import { requireTaskScope } from './reminder-scope-guard.js';
 
 /**
  * Task Reminder Schedule persistence (A8.3a; D104–D107, D109).
@@ -28,6 +31,10 @@ import {
  * Transitions use conditional `updateMany` (compare-and-set) rather than read-then-write. Two
  * overlapping scheduler invocations are expected — D106 requires at most one delivery per local
  * calendar day even then — so a lost update here would be a duplicate reminder to a real Recipient.
+ *
+ * Writes that name a Task resolve the owning organization from the Task row rather than trusting
+ * the caller's `organizationId` (see `reminder-scope-guard.ts`), and every local date is parsed by
+ * the A8.2 domain before it reaches Prisma — the column CHECK proves shape, not that the day exists.
  */
 
 type Client = DbClient | DbTransaction;
@@ -108,25 +115,39 @@ async function requireScheduleById(
  *
  * A second schedule for the same Task is rejected by a unique index rather than by a prior read,
  * so two concurrent establishments cannot both succeed and double every future reminder.
+ *
+ * The stored `organization_id` is the Task's, not the caller's: the schedule and the Task it
+ * reminds about cannot be made to disagree about who owns them.
  */
 export async function createReminderSchedule(
   db: Client,
   input: CreateReminderScheduleInput,
 ): Promise<PersistedReminderSchedule> {
+  const scope = await requireTaskScope(db, input.organizationId, input.taskId);
+  const dueLocalDate = toStorableLocalDate(input.dueLocalDate, 'dueLocalDate');
+  const advanceOccurrenceLocalDate = toStorableLocalDate(
+    input.advanceOccurrence.occurrenceLocalDate,
+    'advanceOccurrence.occurrenceLocalDate',
+  );
+  const nextOverdueOccurrenceLocalDate = toStorableLocalDateOrNull(
+    input.nextOverdueOccurrence?.occurrenceLocalDate,
+    'nextOverdueOccurrence.occurrenceLocalDate',
+  );
+
   try {
     const row = await db.taskReminderSchedule.create({
       data: {
         id: input.id,
-        organizationId: input.organizationId,
-        taskId: input.taskId,
-        dueLocalDate: input.dueLocalDate,
+        organizationId: scope.organizationId,
+        taskId: scope.taskId,
+        dueLocalDate,
         schedulingTimeZone: input.schedulingTimeZone,
         generation: 1,
         status: 'active',
         advanceDisposition: input.advanceDisposition,
-        advanceOccurrenceLocalDate: input.advanceOccurrence.occurrenceLocalDate,
+        advanceOccurrenceLocalDate,
         advanceOccurrenceAt: fromIso(input.advanceOccurrence.occurrenceAt)!,
-        nextOverdueOccurrenceLocalDate: input.nextOverdueOccurrence?.occurrenceLocalDate ?? null,
+        nextOverdueOccurrenceLocalDate,
         nextOverdueOccurrenceAt: fromIso(input.nextOverdueOccurrence?.occurrenceAt ?? null),
         overdueDeliveredCount: 0,
         establishedAt: fromIso(input.establishedAt)!,
@@ -173,7 +194,18 @@ export async function openNextReminderGeneration(
   db: Client,
   input: OpenNextReminderGenerationInput,
 ): Promise<PersistedReminderSchedule> {
-  const existing = await findReminderScheduleByTaskId(db, input.organizationId, input.taskId);
+  const scope = await requireTaskScope(db, input.organizationId, input.taskId);
+  const dueLocalDate = toStorableLocalDate(input.dueLocalDate, 'dueLocalDate');
+  const advanceOccurrenceLocalDate = toStorableLocalDate(
+    input.advanceOccurrence.occurrenceLocalDate,
+    'advanceOccurrence.occurrenceLocalDate',
+  );
+  const nextOverdueOccurrenceLocalDate = toStorableLocalDateOrNull(
+    input.nextOverdueOccurrence?.occurrenceLocalDate,
+    'nextOverdueOccurrence.occurrenceLocalDate',
+  );
+
+  const existing = await findReminderScheduleByTaskId(db, scope.organizationId, scope.taskId);
   if (!existing) {
     throw notFound(`Task ${input.taskId} has no Reminder Schedule to supersede.`);
   }
@@ -181,12 +213,12 @@ export async function openNextReminderGeneration(
   const updated = await db.taskReminderSchedule.updateMany({
     where: {
       id: existing.id,
-      organizationId: input.organizationId,
+      organizationId: scope.organizationId,
       generation: input.expectedGeneration,
     },
     data: {
       generation: input.expectedGeneration + 1,
-      dueLocalDate: input.dueLocalDate,
+      dueLocalDate,
       schedulingTimeZone: input.schedulingTimeZone,
       status: 'active',
       stopReason: null,
@@ -194,9 +226,9 @@ export async function openNextReminderGeneration(
       suspendedAt: null,
       requiresOwnerAttention: false,
       advanceDisposition: input.advanceDisposition,
-      advanceOccurrenceLocalDate: input.advanceOccurrence.occurrenceLocalDate,
+      advanceOccurrenceLocalDate,
       advanceOccurrenceAt: fromIso(input.advanceOccurrence.occurrenceAt)!,
-      nextOverdueOccurrenceLocalDate: input.nextOverdueOccurrence?.occurrenceLocalDate ?? null,
+      nextOverdueOccurrenceLocalDate,
       nextOverdueOccurrenceAt: fromIso(input.nextOverdueOccurrence?.occurrenceAt ?? null),
       overdueDeliveredCount: 0,
       claimedBy: null,
@@ -211,7 +243,7 @@ export async function openNextReminderGeneration(
       `Reminder schedule ${existing.id} is no longer at generation ${input.expectedGeneration}.`,
     );
   }
-  return requireScheduleById(db, input.organizationId, existing.id);
+  return requireScheduleById(db, scope.organizationId, existing.id);
 }
 
 /**
@@ -261,6 +293,11 @@ export async function resumeReminderScheduleFromWaiting(
     nextOverdueOccurrence: ReminderOccurrenceInput | null;
   },
 ): Promise<PersistedReminderSchedule> {
+  const nextOverdueOccurrenceLocalDate = toStorableLocalDateOrNull(
+    input.nextOverdueOccurrence?.occurrenceLocalDate,
+    'nextOverdueOccurrence.occurrenceLocalDate',
+  );
+
   const updated = await db.taskReminderSchedule.updateMany({
     where: {
       id: input.scheduleId,
@@ -270,7 +307,7 @@ export async function resumeReminderScheduleFromWaiting(
     data: {
       status: 'active',
       suspendedAt: null,
-      nextOverdueOccurrenceLocalDate: input.nextOverdueOccurrence?.occurrenceLocalDate ?? null,
+      nextOverdueOccurrenceLocalDate,
       nextOverdueOccurrenceAt: fromIso(input.nextOverdueOccurrence?.occurrenceAt ?? null),
     },
   });
@@ -340,6 +377,11 @@ export async function setNextOverdueOccurrence(
     nextOverdueOccurrence: ReminderOccurrenceInput | null;
   },
 ): Promise<PersistedReminderSchedule> {
+  const nextOverdueOccurrenceLocalDate = toStorableLocalDateOrNull(
+    input.nextOverdueOccurrence?.occurrenceLocalDate,
+    'nextOverdueOccurrence.occurrenceLocalDate',
+  );
+
   const updated = await db.taskReminderSchedule.updateMany({
     where: {
       id: input.scheduleId,
@@ -348,7 +390,7 @@ export async function setNextOverdueOccurrence(
       status: 'active',
     },
     data: {
-      nextOverdueOccurrenceLocalDate: input.nextOverdueOccurrence?.occurrenceLocalDate ?? null,
+      nextOverdueOccurrenceLocalDate,
       nextOverdueOccurrenceAt: fromIso(input.nextOverdueOccurrence?.occurrenceAt ?? null),
     },
   });
@@ -382,7 +424,7 @@ export async function markReminderScheduleRequiresOwnerAttention(
  * than relying on the constraint to fire.
  *
  * The number itself is not policy: whether the ceiling has been reached is decided by the domain
- * `hasReachedOverdueDeliveryCeiling` over the returned count.
+ * `hasReachedOverdueDeliveryCeiling` over the recorded delivery attempts, not over this column.
  */
 export async function incrementOverdueDeliveredCount(
   db: Client,

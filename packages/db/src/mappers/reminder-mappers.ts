@@ -1,5 +1,6 @@
 import type { LocalDate, ReminderOccurrenceOutcome } from '@aicaa/domain';
 import { parseLocalDate } from '../../../domain/dist/index.js';
+import { persistenceValidation } from '../errors/persistence-errors.js';
 import type {
   ReminderAdvanceDisposition,
   ReminderDeliveryAttempt as PrismaReminderDeliveryAttempt,
@@ -19,8 +20,10 @@ import { toIso } from './domain-mappers.js';
  * specifier: `packages/db/__tests__/a7-domain-import-convention.test.ts` forbids bare runtime
  * `@aicaa/domain` imports because the traced serverless layout cannot resolve them.
  *
- * Only `parseLocalDate` is imported, and only to *validate and brand* stored text. No scheduling
- * function is called here: mapping a row must never decide when a reminder fires (D103).
+ * Only `parseLocalDate` is imported, and only to *validate and brand* local-date text on the way
+ * into and out of the database. No scheduling function is called here: mapping a row must never
+ * decide when a reminder fires (D103), and the calendar rules themselves are never restated —
+ * `packages/db` asks the A8.2 parser rather than knowing what a leap year is.
  */
 
 export type {
@@ -95,6 +98,35 @@ export interface PersistedReminderDeliveryAttempt {
  */
 function brandLocalDate(value: string): LocalDate {
   return parseLocalDate(value);
+}
+
+/**
+ * Validate a local date on the way *into* the database (A8.3a audit F9).
+ *
+ * The audit found validation was asymmetric: `2026-02-30` satisfied the column CHECK, was written
+ * happily, and then threw on every subsequent read — leaving a row that could only be repaired with
+ * raw SQL. The `LocalDate` brand is erased at compile time, so a single `as LocalDate` cast or a
+ * JavaScript caller was enough to reach that state.
+ *
+ * Every reminder write boundary now parses before it stores, so an impossible date is refused at
+ * the point it is supplied rather than discovered when someone tries to read it back. The rejection
+ * is re-thrown as a `PersistenceError` because callers of `packages/db` handle that taxonomy;
+ * `field` names the input so the caller learns which argument was wrong.
+ */
+export function toStorableLocalDate(value: string, field: string): LocalDate {
+  try {
+    return parseLocalDate(value);
+  } catch (error) {
+    throw persistenceValidation(`${field}: ${(error as Error).message}`);
+  }
+}
+
+/** Same as `toStorableLocalDate`, but passes a genuinely absent value through. */
+export function toStorableLocalDateOrNull(
+  value: string | null | undefined,
+  field: string,
+): LocalDate | null {
+  return value === null || value === undefined ? null : toStorableLocalDate(value, field);
 }
 
 export function mapReminderSchedule(row: PrismaTaskReminderSchedule): PersistedReminderSchedule {

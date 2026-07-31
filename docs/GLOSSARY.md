@@ -116,11 +116,11 @@ Recipient or Owner suspension of actionable work until `waiting_until`. **Waitin
 
 Optional Owner-selected **organization-local calendar date** on a Task. When present it is the **authoritative deterministic scheduling input** for reminders (D102) — this supersedes D098, which treated it as informational only. The Owner selects **no** due time; reminder occurrences are fixed at 09:00 organization-local (D103). AI may recommend a due date; only an explicit Owner selection has effect (D027, D102).
 
-**`dueAt`** is the existing instant-typed field carrying this value in the current contract and schema. Under D109 the authoritative representation is a local **calendar date**, and `dueAt` is retained temporarily for contract compatibility; the field-level migration is **not implemented** and exact names are not locked.
+**`dueAt`** is the existing instant-typed field carrying this value in the current contract and schema. Under D109 the authoritative representation is a local **calendar date**, persisted since A8.3a as `tasks.due_local_date` (D128) and never backfilled from `dueAt`. `dueAt` is retained temporarily for contract compatibility and remains the only form any API exposes; the **contract**-level migration is **not implemented** and contract field names are not locked.
 
 ### Reminder Schedule
 
-The **Task-scoped** scheduling state derived from a Task's due date: at most one per Task, surviving reassignment, carrying the current **generation**, status, advance-occurrence disposition, next overdue occurrence, per-generation overdue delivered count, and `requiresOwnerAttention` (D104, D109). Supersedes the Assignment-scoped Follow-up Schedule (D096). **Not implemented.**
+The **Task-scoped** scheduling state derived from a Task's due date: at most one per Task, surviving reassignment, carrying the current **generation**, status, advance-occurrence disposition, next overdue occurrence, per-generation overdue delivered count, and `requiresOwnerAttention` (D104, D109). Supersedes the Assignment-scoped Follow-up Schedule (D096). **Persisted but not operational:** the `task_reminder_schedules` table exists as of A8.3a (D128); nothing creates, advances, or acts on a schedule.
 
 ### Reminder occurrence
 

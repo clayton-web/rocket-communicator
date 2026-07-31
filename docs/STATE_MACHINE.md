@@ -56,9 +56,9 @@ That formatter is **presentation infrastructure only** and must not be used as, 
 
 **Optional** and, when present, the **authoritative deterministic scheduling input** for reminders (D102). It is an Owner-**organization-local calendar date**; the Owner selects **no** due time (D103). AI may recommend a due date; only explicit Owner selection has effect (D027, D102).
 
-Reminders derived from it: one advance reminder at 09:00 organization-local on the day **before** the due date (D105), then one reminder at 09:00 organization-local on **each** calendar day after it while the Task remains incomplete and eligible, bounded by the ceiling in D106. Authoritative rules: [WORKFLOWS.md](WORKFLOWS.md) §10a. **Not implemented** — A8 has not started.
+Reminders derived from it: one advance reminder at 09:00 organization-local on the day **before** the due date (D105), then one reminder at 09:00 organization-local on **each** calendar day after it while the Task remains incomplete and eligible, bounded by the ceiling in D106. Authoritative rules: [WORKFLOWS.md](WORKFLOWS.md) §10a. **Not operational** — the scheduling logic (A8.2) and persistence schema (A8.3a) exist, but nothing schedules or sends, and no due date reaches them.
 
-**Semantic direction (not yet implemented, D109):** the authoritative representation is a local calendar date; the existing instant-typed `dueAt` field is retained temporarily for contract compatibility. Existing historical due-date data must **not** automatically activate reminders; explicit Owner opt-in or re-save is required after implementation.
+**Semantic direction (D109; persisted by A8.3a, not yet contracted):** the authoritative representation is a local calendar date, stored as `tasks.due_local_date` since A8.3a (D128); the existing instant-typed `dueAt` field is retained temporarily for contract compatibility and is still the only one any API exposes. Existing historical due-date data must **not** automatically activate reminders; explicit Owner opt-in or re-save is required after implementation.
 
 ### Waiting and resume
 

@@ -59,12 +59,18 @@ Migration: `20260731040000_a8_reminder_persistence` (additive, forward-only, den
 - **`TaskReminderSchedule` (`task_reminder_schedules`):** the durable scheduling state of one Task — canonical due date, IANA timezone snapshot, generation, status, stop reason, advance disposition, next overdue occurrence, per-generation overdue delivered count, `requires_owner_attention`, and claim-lease columns. **At most one per Task** via unique `task_id` (D104); the schedule is Task-scoped and survives reassignment, so a second row would silently double every reminder.
 - **`ReminderDeliveryAttempt` (`reminder_delivery_attempts`):** append-only, one row per processed occurrence, with outcome, truthful skip reason, and a short normalized failure code. Rows are superseded, never deleted or rewritten (D107, D109).
 - **`tasks.due_local_date`:** the canonical organization-local due **calendar date**. `due_at` is retained for contract compatibility and is not the scheduling authority. The column was added nullable and **deliberately not backfilled** — D109 forbids historical due dates from activating reminders.
-- **Idempotency (D109):** **server-derived, no caller-supplied key.** Identity is the occurrence itself: unique `(schedule_id, generation, occurrence_kind, occurrence_local_date)` via `reminder_delivery_attempts_occurrence_identity_key`. Overlapping scheduler invocations collide on an index they cannot forge instead of racing through a check-then-insert window.
+- **Idempotency (D109):** **server-derived, no caller-supplied key.** Identity is the occurrence itself: unique `(schedule_id, generation, occurrence_kind, occurrence_local_date)` via `reminder_delivery_attempts_occurrence_identity_key`. Overlapping scheduler invocations collide on the index instead of racing through a check-then-insert window. The index prevents duplication, not fabrication: the occurrence fields are arguments, so a future API must derive them rather than let a client choose them.
 - **One delivery per local calendar day (D106):** partial unique `(schedule_id, occurrence_local_date)` WHERE `outcome = 'success'` — `reminder_delivery_attempts_one_success_per_local_day_idx`. Deliberately **not** generation-scoped: a material due-date change must not license a second send on a morning already delivered. A skipped or failed occurrence does not consume the day.
 
 ### Local dates are text, not `DATE`
 
 Stored as canonical `VARCHAR(10)`. A Postgres `DATE` column surfaces through Prisma as a `DateTime`, which would reintroduce the instant-versus-calendar-date confusion D103 exists to remove. A column CHECK enforces canonical `YYYY-MM-DD` shape and month/day range; full Gregorian validity (leap years, month lengths) is enforced one layer up by the domain `parseLocalDate`, because Postgres requires CHECK expressions to be IMMUTABLE and the text-to-date cast is not.
+
+Validation runs in **both directions**. Every write parses before it stores and every read parses before it brands, so a value like `2026-02-30` — which satisfies the CHECK — is refused at the write rather than accepted and then found unreadable. The `LocalDate` brand is erased at build time, so the runtime parse is the only real guard.
+
+### Organization coherence
+
+`organization_id` and `task_id` are independent columns with independent foreign keys, so the database will accept a schedule declaring one organization while pointing at a Task owned by another. Reminder writes therefore resolve the owning organization from the referenced Task or schedule and refuse a caller that claims a different one (`ORGANIZATION_MISMATCH`); a delivery attempt's Task is derived from its schedule rather than supplied. See `reminder-scope-guard.ts`. This is application enforcement — the stronger fix is a composite foreign key to `tasks(id, organization_id)`, which needs its own migration.
 
 ### Constraints that carry product law
 

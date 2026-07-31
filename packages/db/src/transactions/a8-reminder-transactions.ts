@@ -3,9 +3,11 @@ import { hasReachedOverdueDeliveryCeiling } from '../../../domain/dist/index.js'
 import type { DbClient, DbTransaction } from '../client/create-prisma-client.js';
 import {
   toReminderOccurrenceOutcome,
+  toStorableLocalDate,
   type PersistedReminderDeliveryAttempt,
   type PersistedReminderSchedule,
 } from '../mappers/reminder-mappers.js';
+import { requireTaskScope } from '../repositories/reminder-scope-guard.js';
 import {
   createReminderSchedule,
   incrementOverdueDeliveredCount,
@@ -70,11 +72,13 @@ export async function persistEstablishedReminderSchedule(
   input: EstablishReminderScheduleInput,
 ): Promise<EstablishReminderScheduleResult> {
   return input.db.$transaction(async (tx) => {
+    // `createReminderSchedule` has already resolved the Task and refused a caller claiming the
+    // wrong organization, so the Task is known to exist and to be writable in this scope.
     const schedule = await createReminderSchedule(tx, input.schedule);
 
-    await tx.task.updateMany({
-      where: { id: input.schedule.taskId, organizationId: input.schedule.organizationId },
-      data: { dueLocalDate: input.schedule.dueLocalDate },
+    await tx.task.update({
+      where: { id: schedule.taskId },
+      data: { dueLocalDate: schedule.dueLocalDate },
     });
 
     if (!input.skippedAdvanceAttempt) {
@@ -85,7 +89,6 @@ export async function persistEstablishedReminderSchedule(
       id: input.skippedAdvanceAttempt.id,
       organizationId: schedule.organizationId,
       scheduleId: schedule.id,
-      taskId: schedule.taskId,
       generation: schedule.generation,
       occurrenceKind: 'advance',
       occurrenceLocalDate: schedule.advanceOccurrenceLocalDate,
@@ -264,8 +267,9 @@ export async function persistDueDateRemoval(input: {
   readonly stoppedAt: string;
 }): Promise<PersistedReminderSchedule> {
   return input.db.$transaction(async (tx) => {
-    await tx.task.updateMany({
-      where: { id: input.taskId, organizationId: input.organizationId },
+    const scope = await requireTaskScope(tx, input.organizationId, input.taskId);
+    await tx.task.update({
+      where: { id: scope.taskId },
       data: { dueLocalDate: null },
     });
     return stopReminderSchedule(tx, {
@@ -303,8 +307,10 @@ export async function persistCanonicalDueLocalDate(input: {
   readonly taskId: string;
   readonly dueLocalDate: LocalDate;
 }): Promise<void> {
-  await input.db.task.updateMany({
-    where: { id: input.taskId, organizationId: input.organizationId },
-    data: { dueLocalDate: input.dueLocalDate },
+  const scope = await requireTaskScope(input.db, input.organizationId, input.taskId);
+  const dueLocalDate = toStorableLocalDate(input.dueLocalDate, 'dueLocalDate');
+  await input.db.task.update({
+    where: { id: scope.taskId },
+    data: { dueLocalDate },
   });
 }

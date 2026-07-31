@@ -21,6 +21,7 @@ const srcRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..',
 const REMINDER_PERSISTENCE_MODULES = [
   'repositories/reminder-schedule-repository.ts',
   'repositories/reminder-delivery-attempt-repository.ts',
+  'repositories/reminder-scope-guard.ts',
   'transactions/a8-reminder-transactions.ts',
   'mappers/reminder-mappers.ts',
 ];

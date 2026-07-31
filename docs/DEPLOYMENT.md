@@ -206,7 +206,7 @@ Operator notes:
 - Handoff idempotency is durable. A repeated same-key call replays the single attempt; it does not send a second message.
 - Recipients are currently managed through the A7.6 Owner Recipient endpoints; there is no Recipient management UI yet (A7 deferred backlog).
 
-**A8.0 documentation Decision Lock** recorded (D095–D101) and partly superseded. **A8.1 documentation Decision Lock** recorded (**D102–D110**): A8 is a **due-date-driven** reminder model. Do not implement the Follow-up Engine or Event Notification Engine until A8 implementation is authorized. **P1.0 documentation Decision Lock** recorded (**D111–D120**): the Owner web experience foundation is scoped; **P1.1 through P1.5 are implemented**; **P1 is COMPLETE** — implemented, deployed, and production-validated with one documented evidence limitation ([P1_5_EVIDENCE.md](P1_5_EVIDENCE.md)). Roadmap: **A7 → A8 → A9** (no early separate A9.0); **P1** was sequenced before the remaining A8 implementation slices and is now closed. **A8 is the next milestone and is not started.**
+**A8.0 documentation Decision Lock** recorded (D095–D101) and partly superseded. **A8.1 documentation Decision Lock** recorded (**D102–D110**): A8 is a **due-date-driven** reminder model. Do not implement any further part of the Follow-up Engine or Event Notification Engine until the specific slice is authorized. **P1.0 documentation Decision Lock** recorded (**D111–D120**): the Owner web experience foundation is scoped; **P1.1 through P1.5 are implemented**; **P1 is COMPLETE** — implemented, deployed, and production-validated with one documented evidence limitation ([P1_5_EVIDENCE.md](P1_5_EVIDENCE.md)). Roadmap: **A7 → A8 → A9** (no early separate A9.0); **P1** was sequenced before the remaining A8 implementation slices and is now closed. **A8 is the current milestone: A8.1, A8.2, and A8.3a are complete; A8.3b onward are not started.** Nothing in A8 is operational in Production — the A8.3a migration is **not applied**, and no reminder API, worker, scheduler, cron job, delivery path, or UI exists.
 
 ### Owner web experience foundation operations (P1)
 
@@ -232,9 +232,9 @@ Production currently serves commit `8588c5d260176b24c8ecf6fb16e026c5c6034359` vi
 
 **Browser verification runs as a separate job (D119)** rather than inside `pnpm verify` — **P1.2 is implemented, pending review**: `pnpm --filter @aicaa/web e2e`. It targets a **controlled local environment only** (disposable local Postgres plus a local Supabase Auth double) and refuses any non-loopback database. It is never run against production, and it produces **no** preview or production evidence. It has been executed on **macOS only** and is **not part of any CI workflow**; running it elsewhere needs PostgreSQL binaries on `PATH` plus a Chromium install step. Stop the disposable cluster with `pnpm --filter @aicaa/web e2e:db:stop` when finished. Prerequisites, commands, coverage, and known gaps: [P1_2_BROWSER_HARNESS.md](P1_2_BROWSER_HARNESS.md).
 
-### Reminder engine operations (A8 — not implemented)
+### Reminder engine operations (A8 — not operational)
 
-**Nothing in this subsection exists yet.** No reminder scheduler job, endpoint, feature flag, environment variable, or database table has been created. This records the approved enablement gate so it cannot be missed later; it is not a runbook for existing infrastructure.
+**Nothing in this subsection is operational.** No reminder scheduler job, endpoint, feature flag, or environment variable has been created, and no reminder has ever been sent. The A8.3a persistence tables (`task_reminder_schedules`, `reminder_delivery_attempts`, and `tasks.due_local_date`) **exist in the repository migration but are not applied in Production** — see the migration history above. This records the approved enablement gate so it cannot be missed later; it is not a runbook for existing infrastructure.
 
 **Production-enablement dependency and closure gate (D108).** Scheduler and delivery code **may** be developed and merged behind a **disabled** production feature flag before the Event Notification Engine is finished. However:
 
@@ -262,6 +262,7 @@ For operator sanity checks (read-only), use Supabase SQL editor or `psql` agains
 
 - `recipients`, `tasks`, `task_assignments`, `task_capabilities`, `audit_events`, `task_suggestions`
 - `handoff_attempts` (A7; authoritative delivery lifecycle per D092), `task_notes`
+- After the A8.3a migration is applied: `task_reminder_schedules`, `reminder_delivery_attempts`. Until then these tables do not exist in Production and a count against them will error.
 
 Compare counts before/after E2E or deploy; do not paste row contents containing PII into tickets.
 

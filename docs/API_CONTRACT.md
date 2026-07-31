@@ -4,7 +4,7 @@
 
 Related: [STATE_MACHINE.md](STATE_MACHINE.md) · [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md) · [DECISIONS.md](DECISIONS.md) (D007, D044–D047, D045, D059, D065–D101) · [GLOSSARY.md](GLOSSARY.md) · [MILESTONES.md](MILESTONES.md) · [DEPLOYMENT.md](DEPLOYMENT.md)
 
-**A8 product law** (due-date-driven Follow-up Engine / Event Notification Engine, **D102–D110**, superseding parts of D095–D101) is documentation-locked. **No A8 contract, route, schema, or generated client is implemented.** OpenAPI still contains historical reminder/snooze stubs—see **Future A8 contract alignment inventory** below. Do **not** treat those stubs as A8 product law.
+**A8 product law** (due-date-driven Follow-up Engine / Event Notification Engine, **D102–D110**, superseding parts of D095–D101) is documentation-locked. **No A8 contract, route, or generated client is implemented.** The A8.3a database schema exists (D128) and is deliberately unreachable over HTTP; contracting it is A8.3b. OpenAPI still contains historical reminder/snooze stubs—see **Future A8 contract alignment inventory** below. Do **not** treat those stubs as A8 product law.
 
 **P1 makes no contract change (D111, D119).** The P1.0 lock (D111–D120) adds no path, DTO, enum, error code, header, or generated client, and does **not** authorize the OpenAPI reminder-debt cleanup below. Two consequences for P1 implementers:
 
@@ -338,7 +338,7 @@ Summary points: OpenAPI `TaskSummaryPoint` discriminated union; max 20 per resou
 
 ## Future A8 contract alignment inventory
 
-**Neither A8.0 nor the A8.1 documentation lock modified OpenAPI.** Product law is **D102–D110** (superseding parts of D095–D101) and [WORKFLOWS.md](WORKFLOWS.md) §10a. No route, schema, generated client, or field below is implemented; dispositions describe the approved **direction** for a later contract stage and must not be read as shipped.
+**Neither A8.0 nor the A8.1 documentation lock modified OpenAPI.** Product law is **D102–D110** (superseding parts of D095–D101) and [WORKFLOWS.md](WORKFLOWS.md) §10a. No route, generated client, or contract field below is implemented; dispositions describe the approved **direction** for a later contract stage and must not be read as shipped. The **database** schema behind them exists as of A8.3a (D128), but nothing exposes it.
 
 **Contract semantics to preserve when this is contracted (D103, D109):**
 
@@ -346,7 +346,7 @@ Summary points: OpenAPI `TaskSummaryPoint` discriminated union; max 20 per resou
 - A **reminder occurrence** is **09:00 in the configured organization timezone** on a local calendar date.
 - **Absolute occurrence timestamps** are used for execution and audit, derived from the local date plus the fixed local time — never the reverse.
 - There is **no** fixed-millisecond daily recurrence in the contract; recurrence is expressed as successive local calendar days.
-- The authoritative representation is the local calendar date, with the existing instant-typed `dueAt` retained temporarily for compatibility. Exact field and table names are **not** locked here.
+- The authoritative representation is the local calendar date, with the existing instant-typed `dueAt` retained temporarily for compatibility. Exact **contract** field names are **not** locked here; the **database** column and table names were locked by D128 (`tasks.due_local_date`, `task_reminder_schedules`, `reminder_delivery_attempts`).
 - **Existing historical due-date data must not automatically activate reminders.** Explicit Owner opt-in or re-save is required after implementation.
 
 The following existing contract/domain shapes are **debt** relative to that law and must be aligned at the appropriate contract stage—not treated as current product authority:
