@@ -173,6 +173,45 @@ export {
   isReminderEligible,
 } from './reminders/calculators.js';
 
+export {
+  REMINDER_SCHEDULING_TIME_ZONE,
+  REMINDER_LOCAL_HOUR,
+  REMINDER_LOCAL_MINUTE,
+  OVERDUE_SUCCESSFUL_DELIVERY_CEILING,
+} from './reminders/constants.js';
+export {
+  isLocalDate,
+  parseLocalDate,
+  localDateFromParts,
+  localDateParts,
+  addLocalDays,
+  compareLocalDates,
+  MIN_LOCAL_DATE_YEAR,
+  MAX_LOCAL_DATE_YEAR,
+  type LocalDate,
+  type LocalDateParts,
+} from './reminders/local-date.js';
+export {
+  resolveLocalWallClock,
+  localDateOfInstant,
+  type LocalWallClockInput,
+  type LocalWallClockResolution,
+  type LocalWallClockResolutionKind,
+} from './reminders/occurrence.js';
+export {
+  hasReminderSchedule,
+  decideAdvanceReminder,
+  selectNextOverdueOccurrence,
+  isDueDateChangeMaterial,
+  countSuccessfulOverdueDeliveries,
+  hasReachedOverdueDeliveryCeiling,
+  type AdvanceReminderDisposition,
+  type AdvanceReminderEstablishmentInput,
+  type NextOverdueOccurrenceInput,
+  type ReminderOccurrence,
+  type ReminderOccurrenceOutcome,
+} from './reminders/schedule-policy.js';
+
 export { validateSummaryPoints } from './validation/summary-points.js';
 
 export {
