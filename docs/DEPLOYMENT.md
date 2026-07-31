@@ -99,6 +99,8 @@ A6 suggestion persistence migration: `packages/db/prisma/migrations/202607171800
 
 A7 handoff migrations: `packages/db/prisma/migrations/20260718210000_a7_handoff_persistence/` and `packages/db/prisma/migrations/20260718223000_a7_handoff_concurrency_hardening/` (**applied and verified in production** as part of closed A7).
 
+A8.3a reminder persistence migration: `packages/db/prisma/migrations/20260731040000_a8_reminder_persistence/` (**not yet applied in production**). Additive and forward-only: it creates `task_reminder_schedules` and `reminder_delivery_attempts`, adds the nullable `tasks.due_local_date`, and enables deny-by-default RLS on both new tables. It changes no existing column and performs **no backfill** — `due_local_date` stays null on every historical Task so that existing due-date data cannot activate reminders (D109). Applying it enables nothing on its own: A8.3a ships persistence with no scheduler, worker, cron, route, or delivery path, so the migration is inert until a later, separately authorized slice.
+
 **Apply to production** (with production `DATABASE_URL` configured for the target):
 
 ```bash

@@ -1,6 +1,6 @@
 # @aicaa/db
 
-Server-side Prisma persistence for A4–A7.3 (D062, D006, D086–D094). Domain rules live in `@aicaa/domain`; this package stores and retrieves records.
+Server-side Prisma persistence for A4–A7.3 and the A8.3a reminder foundation (D062, D006, D086–D094, D128). Domain rules live in `@aicaa/domain`; this package stores and retrieves records.
 
 Operations: [../../docs/DEPLOYMENT.md](../../docs/DEPLOYMENT.md)
 
@@ -51,3 +51,36 @@ A task may have many `TaskAssignment` rows over time. Cleared rows stay persiste
 - **Roadmap boundary (historical, as written during A7.3/A7.4):** **A7.4 = Gmail OAuth send-scope preparation + transport/MIME utilities only.** The application orchestration that wires pending → Gmail call → accepted/failed persistence **shipped in A7.5**, and **A7 is now closed and production-operational** (tag `v0.7.0-a7-complete`). Reconciliation/worker handling of stale pending attempts remains deferred and ships only when explicitly authorized ([MILESTONES.md](../../docs/MILESTONES.md) A7 deferred backlog).
 - **Concurrency tests:** Vitest + PGlite (`a7-handoff-concurrency-hardening.test.ts`) and web `capability-issue-handoff-gate.test.ts`. PGlite is single-process; races use concurrent Prisma transactions. Conditional UPDATE row-counts and `FOR UPDATE` are the portable proof; a separate multi-connection Postgres suite is not required for A7.3.
 - **Does not** send Gmail mail or implement HTTP handlers.
+
+## A8.3a reminder persistence
+
+Migration: `20260731040000_a8_reminder_persistence` (additive, forward-only, deny-by-default RLS on both new tables).
+
+- **`TaskReminderSchedule` (`task_reminder_schedules`):** the durable scheduling state of one Task — canonical due date, IANA timezone snapshot, generation, status, stop reason, advance disposition, next overdue occurrence, per-generation overdue delivered count, `requires_owner_attention`, and claim-lease columns. **At most one per Task** via unique `task_id` (D104); the schedule is Task-scoped and survives reassignment, so a second row would silently double every reminder.
+- **`ReminderDeliveryAttempt` (`reminder_delivery_attempts`):** append-only, one row per processed occurrence, with outcome, truthful skip reason, and a short normalized failure code. Rows are superseded, never deleted or rewritten (D107, D109).
+- **`tasks.due_local_date`:** the canonical organization-local due **calendar date**. `due_at` is retained for contract compatibility and is not the scheduling authority. The column was added nullable and **deliberately not backfilled** — D109 forbids historical due dates from activating reminders.
+- **Idempotency (D109):** **server-derived, no caller-supplied key.** Identity is the occurrence itself: unique `(schedule_id, generation, occurrence_kind, occurrence_local_date)` via `reminder_delivery_attempts_occurrence_identity_key`. Overlapping scheduler invocations collide on an index they cannot forge instead of racing through a check-then-insert window.
+- **One delivery per local calendar day (D106):** partial unique `(schedule_id, occurrence_local_date)` WHERE `outcome = 'success'` — `reminder_delivery_attempts_one_success_per_local_day_idx`. Deliberately **not** generation-scoped: a material due-date change must not license a second send on a morning already delivered. A skipped or failed occurrence does not consume the day.
+
+### Local dates are text, not `DATE`
+
+Stored as canonical `VARCHAR(10)`. A Postgres `DATE` column surfaces through Prisma as a `DateTime`, which would reintroduce the instant-versus-calendar-date confusion D103 exists to remove. A column CHECK enforces canonical `YYYY-MM-DD` shape and month/day range; full Gregorian validity (leap years, month lengths) is enforced one layer up by the domain `parseLocalDate`, because Postgres requires CHECK expressions to be IMMUTABLE and the text-to-date cast is not.
+
+### Constraints that carry product law
+
+| Constraint                                                | Rule it enforces                                                               |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `task_reminder_schedules_overdue_delivered_count_bounded` | The D106 ceiling of 14 successful overdue deliveries per generation (backstop) |
+| `task_reminder_schedules_stopped_has_no_next_occurrence`  | A stopped schedule cannot reappear in a worker's due-scan                      |
+| `task_reminder_schedules_stop_reason_matches_status`      | A stopped schedule always records **why**                                      |
+| `task_reminder_schedules_claim_fields_coherent`           | A half-written lease cannot look like a free schedule                          |
+| `reminder_delivery_attempts_skip_reason_matches_outcome`  | A skip always carries a truthful reason (D105, D107)                           |
+| `reminder_delivery_attempts_failure_code_only_on_failure` | A success cannot carry a failure code, so ceiling counting reads unambiguously |
+
+A test asserts the SQL ceiling bound equals the domain `OVERDUE_SUCCESSFUL_DELIVERY_CEILING`, so the two cannot drift apart.
+
+### Persistence stores facts; the domain computes them
+
+Repositories take the current instant and every occurrence as **arguments**. Nothing here derives "tomorrow", "overdue", an advance date, a 09:00 local instant, or any daylight-saving behaviour — D103 places that arithmetic exclusively in `packages/domain/src/reminders/`. `a8-reminder-persistence-boundary.test.ts` fails the build if a reminder persistence module reads a clock, resolves a timezone, performs day arithmetic, or restates the ceiling.
+
+**Not implemented by A8.3a:** no worker, scheduler, cron, delivery, Gmail, Event Notification, HTTP route, contract, feature flag, or UI. The claim-lease columns and worker indexes exist so A8.4 adds no migration.

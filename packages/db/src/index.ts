@@ -122,6 +122,55 @@ export {
   type CreateAuditEventInput,
 } from './repositories/audit-repository.js';
 
+// A8.3a reminder persistence foundation. Storage only: no worker, scheduler, cron, delivery, or
+// route is implemented in this slice. Scheduling decisions come from @aicaa/domain (D103).
+export {
+  mapReminderSchedule,
+  mapReminderDeliveryAttempt,
+  toReminderOccurrenceOutcome,
+  type PersistedReminderSchedule,
+  type PersistedReminderDeliveryAttempt,
+  type ReminderAdvanceDisposition,
+  type ReminderDeliveryOutcome,
+  type ReminderOccurrenceKind,
+  type ReminderScheduleStatus,
+  type ReminderScheduleStopReason,
+  type ReminderSkipReason,
+} from './mappers/reminder-mappers.js';
+export {
+  createReminderSchedule,
+  findReminderScheduleByTaskId,
+  getReminderScheduleById,
+  openNextReminderGeneration,
+  suspendReminderScheduleForWaiting,
+  resumeReminderScheduleFromWaiting,
+  stopReminderSchedule,
+  setNextOverdueOccurrence,
+  markReminderScheduleRequiresOwnerAttention,
+  incrementOverdueDeliveredCount,
+  claimReminderScheduleForProcessing,
+  releaseReminderScheduleClaim,
+  listReminderSchedulesDueForProcessing,
+  type CreateReminderScheduleInput,
+  type OpenNextReminderGenerationInput,
+  type ClaimReminderScheduleInput,
+  type ListSchedulesDueForProcessingInput,
+  type ReminderOccurrenceInput,
+} from './repositories/reminder-schedule-repository.js';
+export {
+  claimReminderOccurrence,
+  recordReminderDeliveryOutcome,
+  recordSkippedReminderOccurrence,
+  listReminderDeliveryAttemptsForTask,
+  listReminderDeliveryAttemptsForGeneration,
+  countSuccessfulOverdueDeliveriesForGeneration,
+  type ClaimReminderOccurrenceInput,
+  type ClaimReminderOccurrenceResult,
+  type RecordTerminalOutcomeInput,
+  type RecordSkippedOccurrenceInput,
+  type TerminalReminderDeliveryOutcome,
+} from './repositories/reminder-delivery-attempt-repository.js';
+
 export {
   getCommunicationAccountByOrganization,
   getCommunicationAccountById,
@@ -207,3 +256,17 @@ export {
   type BeginInitialHandoffInput,
   type BeginInitialHandoffResult,
 } from './transactions/a7-handoff-transactions.js';
+
+export {
+  persistEstablishedReminderSchedule,
+  persistSuccessfulOverdueDelivery,
+  persistNonDeliveryOutcome,
+  persistDueDateRemoval,
+  persistCanonicalDueLocalDate,
+  getTaskDueLocalDate,
+  type EstablishReminderScheduleInput,
+  type EstablishReminderScheduleResult,
+  type RecordOverdueDeliveryInput,
+  type RecordOverdueDeliveryResult,
+  type RecordNonDeliveryOutcomeInput,
+} from './transactions/a8-reminder-transactions.js';

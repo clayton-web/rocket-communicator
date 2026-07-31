@@ -65,7 +65,13 @@ describe('A4 Prisma schema contracts', () => {
   });
 
   it('allows assignment history with one active assignment via partial unique index', () => {
-    expect(schema).not.toMatch(/taskId\s+String\s+@unique/);
+    // Scoped to the TaskAssignment model: other models legitimately hold a unique task_id — a Task
+    // has at most one Reminder Schedule (D104) while it accumulates assignment history.
+    const assignmentBlock = schema.match(
+      /model TaskAssignment \{[\s\S]*?@@map\("task_assignments"\)/,
+    )?.[0];
+    expect(assignmentBlock).toBeDefined();
+    expect(assignmentBlock).not.toMatch(/taskId\s+String\s+@unique/);
     expect(a4Migration).not.toContain('task_assignments_task_id_key');
     expect(a4Migration).toContain('task_assignments_task_id_idx');
     expect(a4Migration).toContain('task_assignments_one_active_per_task_idx');
@@ -239,5 +245,120 @@ describe('A6 suggestion Prisma schema contracts', () => {
     expect(a6Migration).not.toMatch(
       /temporary_communication_excerpts[\s\S]*purge_at.*DROP NOT NULL/i,
     );
+  });
+});
+
+describe('A8.3a reminder persistence schema contracts', () => {
+  const a8Migration = readFileSync(
+    path.join(root, 'prisma/migrations/20260731040000_a8_reminder_persistence/migration.sql'),
+    'utf8',
+  );
+
+  it('defines the two durable reminder concepts required by D109', () => {
+    expect(schema).toContain('model TaskReminderSchedule');
+    expect(schema).toContain('model ReminderDeliveryAttempt');
+    expect(a8Migration).toContain('CREATE TABLE "task_reminder_schedules"');
+    expect(a8Migration).toContain('CREATE TABLE "reminder_delivery_attempts"');
+  });
+
+  it('defines the reminder enums', () => {
+    for (const name of [
+      'ReminderScheduleStatus',
+      'ReminderScheduleStopReason',
+      'ReminderAdvanceDisposition',
+      'ReminderOccurrenceKind',
+      'ReminderDeliveryOutcome',
+      'ReminderSkipReason',
+    ]) {
+      expect(schema).toContain(`enum ${name}`);
+      expect(a8Migration).toContain(`CREATE TYPE "${name}"`);
+    }
+  });
+
+  it('stores local dates as text, never as DATE or DateTime (D103)', () => {
+    const scheduleBlock = schema.match(
+      /model TaskReminderSchedule \{[\s\S]*?@@map\("task_reminder_schedules"\)/,
+    )?.[0];
+    expect(scheduleBlock).toBeDefined();
+    // A DATE column surfaces as a Prisma DateTime, which is the instant-vs-calendar-date confusion
+    // D103 exists to remove.
+    expect(scheduleBlock).toMatch(/dueLocalDate\s+String/);
+    expect(scheduleBlock).toMatch(/advanceOccurrenceLocalDate\s+String/);
+    expect(scheduleBlock).not.toMatch(/LocalDate\s+DateTime/);
+    expect(a8Migration).toContain('"due_local_date" VARCHAR(10)');
+    expect(a8Migration).not.toMatch(/"due_local_date"\s+DATE\b/);
+  });
+
+  it('adds tasks.due_local_date without backfilling historical due dates (D109)', () => {
+    expect(schema).toMatch(/dueLocalDate\s+String\?\s+@map\("due_local_date"\)/);
+    expect(a8Migration).toContain('ALTER TABLE "tasks" ADD COLUMN "due_local_date" VARCHAR(10)');
+    // A backfill from due_at would silently activate reminders on every historical Task.
+    expect(a8Migration).not.toMatch(/UPDATE "tasks"[\s\S]*due_local_date/);
+  });
+
+  it('enforces one Reminder Schedule per Task (D104)', () => {
+    expect(schema).toMatch(/taskId\s+String\s+@unique\s+@map\("task_id"\)/);
+    expect(a8Migration).toContain('task_reminder_schedules_task_id_key');
+  });
+
+  it('enforces server-derived occurrence idempotency in the database, not application code (D109)', () => {
+    expect(schema).toContain(
+      '@@unique([scheduleId, generation, occurrenceKind, occurrenceLocalDate])',
+    );
+    expect(a8Migration).toContain('reminder_delivery_attempts_occurrence_identity_key');
+    // There is deliberately no caller-supplied idempotency key to forge.
+    const attemptBlock = schema.match(
+      /model ReminderDeliveryAttempt \{[\s\S]*?@@map\("reminder_delivery_attempts"\)/,
+    )?.[0];
+    expect(attemptBlock).not.toMatch(/idempotencyKey/);
+  });
+
+  it('enforces at most one successful delivery per local calendar day (D106)', () => {
+    expect(a8Migration).toContain('reminder_delivery_attempts_one_success_per_local_day_idx');
+    expect(a8Migration).toMatch(/WHERE\s+"outcome"\s*=\s*'success'/);
+  });
+
+  it('bounds the per-generation overdue count and keeps generations monotonic (D104, D106)', () => {
+    expect(a8Migration).toContain('task_reminder_schedules_overdue_delivered_count_bounded');
+    expect(a8Migration).toContain('task_reminder_schedules_generation_positive');
+  });
+
+  it('indexes the lookups a future worker needs', () => {
+    expect(a8Migration).toContain('task_reminder_schedules_org_status_next_overdue_idx');
+    expect(a8Migration).toContain('task_reminder_schedules_claim_expires_at_idx');
+    expect(a8Migration).toContain('reminder_delivery_attempts_schedule_generation_outcome_idx');
+  });
+
+  it('stores no capability token, capability URL, or message content (D109, D114)', () => {
+    // Field declarations only. The doc comments deliberately discuss what must never be stored, and
+    // matching prose would make the guard fail for saying the right thing.
+    const fieldsOnly = [
+      schema.match(/model TaskReminderSchedule \{[\s\S]*?@@map\("task_reminder_schedules"\)/)?.[0],
+      schema.match(
+        /model ReminderDeliveryAttempt \{[\s\S]*?@@map\("reminder_delivery_attempts"\)/,
+      )?.[0],
+    ]
+      .join('\n')
+      .replace(/^\s*\/\/\/.*$/gm, '');
+    expect(fieldsOnly).not.toMatch(/token|capabilityUrl|capability_url|body|subject|rawMime/i);
+
+    const migrationStatements = a8Migration.replace(/^\s*--.*$/gm, '');
+    expect(migrationStatements).not.toMatch(/token|capability_url|message_body|subject/i);
+  });
+
+  it('enables deny-by-default RLS on both reminder tables', () => {
+    expect(a8Migration).toContain(
+      'ALTER TABLE "task_reminder_schedules" ENABLE ROW LEVEL SECURITY',
+    );
+    expect(a8Migration).toContain(
+      'ALTER TABLE "reminder_delivery_attempts" ENABLE ROW LEVEL SECURITY',
+    );
+  });
+
+  it('introduces no second pause control alongside Waiting (D097, D107)', () => {
+    const statusBlock = schema.match(/enum ReminderScheduleStatus \{[\s\S]*?\}/)?.[0];
+    expect(statusBlock).toBeDefined();
+    expect(statusBlock).toContain('suspended_waiting');
+    expect(statusBlock).not.toMatch(/\bpaused\b|\bsnoozed\b|\bdelayed\b/);
   });
 });

@@ -44,6 +44,11 @@ model Task {
   summaryPoints         Json          @map("summary_points")
   sourceReference       Json?         @map("source_reference")
   dueAt                 DateTime?     @map("due_at") @db.Timestamptz(3)
+  /// Authoritative organization-local due **calendar date**, canonical `YYYY-MM-DD` (D103, D109).
+  /// `dueAt` is retained for contract compatibility and is *not* the scheduling authority.
+  /// Deliberately **not backfilled** from `dueAt`: D109 forbids historical due dates activating
+  /// reminders, so existing Tasks keep this null until an Owner explicitly saves a due date.
+  dueLocalDate          String?       @map("due_local_date") @db.VarChar(10)
   waitingUntil          DateTime?     @map("waiting_until") @db.Timestamptz(3)
   priority              TaskPriority?
   outcome               Json?
@@ -57,6 +62,8 @@ model Task {
   notes                  TaskNote[]
   capabilities           TaskCapability[]
   handoffAttempts        HandoffAttempt[]
+  reminderSchedule       TaskReminderSchedule?
+  reminderAttempts       ReminderDeliveryAttempt[]
   suggestionsMerged      TaskSuggestion[] @relation("MergedIntoTask")
   /// Suggestion that created this Task via Owner approve (D080/D082). At most one.
   approvedFromSuggestion TaskSuggestion?  @relation("ApprovedTask")
@@ -433,6 +440,139 @@ model GmailOAuthState {
   @@map("gmail_oauth_states")
 }
 
+/// Task Reminder Schedule — the durable scheduling *state* of one Task (A8.3a; D104, D109).
+///
+/// **Task-scoped, at most one per Task** (D104): the schedule survives reassignment, so it is not
+/// bound to an Assignment. `taskId` is unique for that reason.
+///
+/// **This table stores facts; it never computes them.** Every occurrence column is written from a
+/// value the caller computed with the A8.2 domain (`decideAdvanceReminder`,
+/// `selectNextOverdueOccurrence`). No repository, trigger, default, or generated column in this
+/// package derives "tomorrow", "overdue", or a 09:00 local instant — D103 places that arithmetic
+/// exclusively in `packages/domain/src/reminders/`.
+///
+/// Local dates are stored as canonical `YYYY-MM-DD` **text**, not `DATE`, deliberately: Prisma
+/// surfaces a `DATE` column as a `DateTime`, which would reintroduce the instant-vs-calendar-date
+/// confusion D103 exists to remove. Migration SQL adds a format CHECK; full Gregorian validity
+/// (leap years, month lengths) is enforced by the domain `parseLocalDate` at the boundary.
+model TaskReminderSchedule {
+  id             String @id @db.VarChar(64)
+  organizationId String @map("organization_id") @db.VarChar(64)
+  /// One schedule per Task (D104). Unique, not just indexed.
+  taskId         String @unique @map("task_id") @db.VarChar(64)
+
+  /// The organization-local calendar date this generation was established for (D103, D109).
+  /// A generation snapshot, not a live mirror of `Task.dueLocalDate`: materiality is decided by
+  /// comparing the two with the domain `isDueDateChangeMaterial`.
+  dueLocalDate       String @map("due_local_date") @db.VarChar(10)
+  /// IANA zone snapshot used to resolve this generation's occurrences (D103, D109). Persisted so a
+  /// later constant change cannot silently reinterpret occurrences already scheduled and audited.
+  schedulingTimeZone String @map("scheduling_time_zone") @db.VarChar(64)
+
+  /// Monotonically increasing per Task; a material due-date change opens the next one (D104).
+  generation Int                        @default(1)
+  status     ReminderScheduleStatus     @default(active)
+  stopReason ReminderScheduleStopReason? @map("stop_reason")
+  stoppedAt  DateTime?                  @map("stopped_at") @db.Timestamptz(3)
+  /// When Waiting suspended this schedule (D107). Cleared on resume.
+  suspendedAt DateTime?                 @map("suspended_at") @db.Timestamptz(3)
+  /// Raised when the overdue ceiling is reached or a permanent failure occurs (D106, D108).
+  requiresOwnerAttention Boolean        @default(false) @map("requires_owner_attention")
+
+  /// Decided once at establishment and never reclassified (D105). The occurrence itself is always
+  /// stored — even when skipped — so the Owner surface can say which morning was missed.
+  advanceDisposition         ReminderAdvanceDisposition @map("advance_disposition")
+  advanceOccurrenceLocalDate String                     @map("advance_occurrence_local_date") @db.VarChar(10)
+  advanceOccurrenceAt        DateTime                   @map("advance_occurrence_at") @db.Timestamptz(3)
+
+  /// The single next future overdue occurrence — never a backlog (D105, D106). Null when the
+  /// schedule is stopped or suspended.
+  nextOverdueOccurrenceLocalDate String?   @map("next_overdue_occurrence_local_date") @db.VarChar(10)
+  nextOverdueOccurrenceAt        DateTime? @map("next_overdue_occurrence_at") @db.Timestamptz(3)
+
+  /// Successful overdue deliveries **in this generation only** (D106). Bounded at 14 by a CHECK
+  /// constraint in migration SQL; resets to zero when a new generation opens.
+  overdueDeliveredCount Int @default(0) @map("overdue_delivered_count")
+
+  /// Claim lease for a future A8.4 worker. Present now so the worker slice adds no migration, and
+  /// so overlapping scheduler invocations can be made safe by CAS rather than by application luck.
+  /// All three columns are null together or set together (CHECK in migration SQL).
+  claimedBy      String?   @map("claimed_by") @db.VarChar(64)
+  claimedAt      DateTime? @map("claimed_at") @db.Timestamptz(3)
+  claimExpiresAt DateTime? @map("claim_expires_at") @db.Timestamptz(3)
+
+  /// When the current generation was established — the instant the advance decision was made
+  /// against (D105).
+  establishedAt DateTime @map("established_at") @db.Timestamptz(3)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  task     Task                      @relation(fields: [taskId], references: [id], onDelete: Restrict)
+  attempts ReminderDeliveryAttempt[]
+
+  @@index([organizationId, status, nextOverdueOccurrenceAt])
+  @@index([organizationId, status, advanceOccurrenceAt])
+  @@index([organizationId, requiresOwnerAttention])
+  @@index([claimExpiresAt])
+  @@map("task_reminder_schedules")
+}
+
+/// One processed reminder occurrence (A8.3a; D100, D106, D109).
+///
+/// **Append-only history.** Rows are superseded, never deleted or rewritten (D107, D109): a new
+/// generation adds rows, it does not remove the previous generation's.
+///
+/// **Idempotency is server-derived and enforced by the database, not by application code** (D109).
+/// There is deliberately no caller-supplied idempotency key: identity *is*
+/// `(scheduleId, generation, occurrenceKind, occurrenceLocalDate)`, so a duplicate or overlapping
+/// scheduler invocation collides on a unique index it cannot forge. A second partial unique index
+/// in migration SQL additionally enforces D106's "at most one delivery per local calendar day" over
+/// successful rows.
+///
+/// **No capability token, capability URL, message body, or recipient content is stored here**
+/// (D109, D114). `failureCode` is a short normalized code only.
+model ReminderDeliveryAttempt {
+  id             String @id @db.VarChar(64)
+  organizationId String @map("organization_id") @db.VarChar(64)
+  scheduleId     String @map("schedule_id") @db.VarChar(64)
+  /// Denormalized for Task-scoped history reads without a join (mirrors HandoffAttempt).
+  taskId         String @map("task_id") @db.VarChar(64)
+
+  /// Generation identity — part of the idempotency tuple (D104, D109).
+  generation           Int
+  occurrenceKind       ReminderOccurrenceKind @map("occurrence_kind")
+  /// The organization-local calendar day this occurrence belongs to. Encoded in the idempotency
+  /// identity exactly as D109 requires.
+  occurrenceLocalDate  String                 @map("occurrence_local_date") @db.VarChar(10)
+  /// The resolved 09:00-local instant, computed by the A8.2 domain and stored for audit.
+  occurrenceAt         DateTime               @map("occurrence_at") @db.Timestamptz(3)
+
+  outcome    ReminderDeliveryOutcome
+  skipReason ReminderSkipReason?     @map("skip_reason")
+  /// Short normalized failure code. Never a provider body, recipient address, or capability value.
+  failureCode String?                @map("failure_code") @db.VarChar(64)
+
+  /// Retry bookkeeping for a future worker; a retry reuses the row rather than forging a new
+  /// identity, which is what keeps the per-day guarantee intact.
+  attemptCount Int       @default(1) @map("attempt_count")
+  claimedAt    DateTime? @map("claimed_at") @db.Timestamptz(3)
+  claimedBy    String?   @map("claimed_by") @db.VarChar(64)
+  /// When the outcome became terminal.
+  completedAt  DateTime? @map("completed_at") @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  schedule TaskReminderSchedule @relation(fields: [scheduleId], references: [id], onDelete: Restrict)
+  task     Task                 @relation(fields: [taskId], references: [id], onDelete: Restrict)
+
+  @@unique([scheduleId, generation, occurrenceKind, occurrenceLocalDate])
+  @@index([organizationId, taskId, occurrenceAt])
+  @@index([scheduleId, generation, outcome])
+  @@index([organizationId, outcome, occurrenceAt])
+  @@map("reminder_delivery_attempts")
+}
+
 enum TaskStatus {
   open
   in_progress
@@ -565,4 +705,61 @@ enum SuggestionProcessingStatus {
   suggestion_created
   failed_retryable
   failed_permanent
+}
+
+/// Lifecycle of a Task Reminder Schedule (A8.3a; D104, D106, D107).
+/// `suspended_waiting` exists because Waiting is the *only* suspension mechanism (D107, D097):
+/// there is deliberately no `paused` or `snoozed` value to represent a second pause control.
+enum ReminderScheduleStatus {
+  active
+  suspended_waiting
+  stopped
+}
+
+/// Why a schedule stopped (D106, D107). Recorded rather than inferred, so the Owner-visible
+/// reason and the audit trail cannot disagree. A stopped schedule never restarts automatically.
+enum ReminderScheduleStopReason {
+  task_completed
+  task_dismissed
+  due_date_removed
+  overdue_ceiling_reached
+  permanent_delivery_failure
+}
+
+/// The advance-reminder decision for one generation, made **once at establishment** and then
+/// immutable (D105). A later scheduler run must never reclassify it, which is why it is stored
+/// rather than recomputed from the current clock.
+enum ReminderAdvanceDisposition {
+  scheduled
+  skipped_window_elapsed
+}
+
+/// Which occurrence a delivery attempt belongs to. Mirrors the A8.2 domain
+/// `ReminderOccurrenceOutcome['occurrence']` union exactly so persisted rows feed
+/// `countSuccessfulOverdueDeliveries` without translation.
+enum ReminderOccurrenceKind {
+  advance
+  overdue
+}
+
+/// Outcome of one processed occurrence. Mirrors the A8.2 domain
+/// `ReminderOccurrenceOutcome['outcome']` union exactly (D100 permits lifecycle outcomes without
+/// locking names). `claimed` is a *lease*, not a delivery: D106 requires that claims, failures,
+/// ambiguity, and skips never count toward the overdue ceiling.
+enum ReminderDeliveryOutcome {
+  claimed
+  success
+  retryable_failure
+  permanent_failure
+  ambiguous
+  skipped
+}
+
+/// Truthful skip reasons (D105, D107). `advance_window_elapsed` is product law: an advance
+/// occurrence already in the past at establishment is recorded as skipped, never sent late.
+enum ReminderSkipReason {
+  advance_window_elapsed
+  no_active_assignment
+  task_not_eligible
+  schedule_superseded
 }
