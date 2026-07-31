@@ -137,6 +137,99 @@ describe('contracts package', () => {
     expect(bundled.components?.securitySchemes?.InternalCronBearer).toBeDefined();
   });
 
+  it('exposes the A8.3b Owner reminder surface without worker internals', () => {
+    execSync('pnpm bundle', { cwd: root, stdio: 'pipe' });
+    const bundled = parseYaml(readFileSync(path.join(root, 'dist/openapi.bundled.yaml'), 'utf8'));
+    const schemas = bundled.components?.schemas ?? {};
+
+    const reminderPath = bundled.paths?.['/api/v1/tasks/{taskId}/reminder'];
+    expect(reminderPath?.get?.operationId).toBe('getTaskReminder');
+    expect(reminderPath?.put?.operationId).toBe('setTaskReminder');
+    expect(reminderPath?.delete?.operationId).toBe('removeTaskReminder');
+
+    // Reads need no precondition; both mutations run under the existing Task If-Match concurrency
+    // required for Owner due-date mutation (D045, D104).
+    const parameterNames = (operation: { parameters?: { $ref?: string }[] } | undefined) =>
+      (operation?.parameters ?? []).map((parameter) => parameter.$ref ?? '');
+    expect(parameterNames(reminderPath?.get).join()).not.toMatch(/IfMatch/);
+    for (const operation of [reminderPath?.put, reminderPath?.delete]) {
+      expect(parameterNames(operation).join()).toMatch(/IfMatch/);
+      expect(Object.keys(operation?.responses ?? {})).toEqual(
+        expect.arrayContaining(['412', '428']),
+      );
+    }
+
+    // The only Owner-selectable input is the local due date. A reminder-time, preset-interval,
+    // recurrence, or timezone field would each contradict D102/D103.
+    const requestProperties = Object.keys(
+      (schemas.SetTaskReminderRequest as { properties?: Record<string, unknown> })?.properties ??
+        {},
+    );
+    expect(requestProperties).toEqual(['dueLocalDate']);
+    expect(
+      (schemas.SetTaskReminderRequest as { additionalProperties?: boolean }).additionalProperties,
+    ).toBe(false);
+
+    // Worker coordination state must never reach the Owner contract.
+    const stateProperties = Object.keys(
+      (schemas.TaskReminderState as { properties?: Record<string, unknown> })?.properties ?? {},
+    );
+    for (const forbidden of [
+      'claimedBy',
+      'claimedAt',
+      'claimExpiresAt',
+      'scheduleId',
+      'attempts',
+      'providerMessageId',
+      'failureReason',
+    ]) {
+      expect(stateProperties).not.toContain(forbidden);
+    }
+    expect(stateProperties).toEqual(
+      expect.arrayContaining([
+        'taskId',
+        'dueLocalDate',
+        'schedulingTimeZone',
+        'state',
+        'generation',
+        'advance',
+        'nextOverdueOccurrence',
+        'overdueDeliveredCount',
+        'requiresOwnerAttention',
+        'stopReason',
+      ]),
+    );
+
+    expect((schemas.TaskReminderScheduleState as { enum?: string[] }).enum).toEqual([
+      'no_due_date',
+      'not_scheduled',
+      'active',
+      'suspended_waiting',
+      'stopped',
+    ]);
+    expect((schemas.TaskReminderStopReason as { enum?: string[] }).enum).toContain(
+      'due_date_removed',
+    );
+    expect((schemas.TaskReminderAdvanceDisposition as { enum?: string[] }).enum).toEqual([
+      'scheduled',
+      'skipped_window_elapsed',
+    ]);
+
+    // Local calendar dates stay canonical text, never instants (D103, D109).
+    const occurrenceProperties = (
+      schemas.TaskReminderOccurrence as {
+        properties?: Record<string, { format?: string; pattern?: string }>;
+      }
+    ).properties;
+    expect(occurrenceProperties?.localDate?.pattern).toBe('^\\d{4}-\\d{2}-\\d{2}$');
+    expect(occurrenceProperties?.localDate?.format).toBeUndefined();
+    expect(occurrenceProperties?.at?.format).toBe('date-time');
+
+    // A8.3b is the API only: no reminder worker, processing, or attempt-history surface.
+    expect(bundled.paths?.['/api/v1/internal/reminders/process']).toBeUndefined();
+    expect(bundled.paths?.['/api/v1/tasks/{taskId}/reminder/attempts']).toBeUndefined();
+  });
+
   it('has no stale generated Kotlin artifacts outside the generator manifest', () => {
     execSync('node scripts/cleanup-kotlin-orphans.mjs --check', { cwd: root, stdio: 'pipe' });
     const kotlinDocs = path.join(root, 'generated/kotlin/docs');

@@ -68,6 +68,7 @@ docs/ReturnTaskToOwnerRequest.md
 docs/RiskSummaryPoint.md
 docs/Sensitivity.md
 docs/Session.md
+docs/SetTaskReminderRequest.md
 docs/SnoozeTaskRequest.md
 docs/SourceReference.md
 docs/SourceSpanRef.md
@@ -84,6 +85,12 @@ docs/TaskNote.md
 docs/TaskOutcome.md
 docs/TaskOutcomeType.md
 docs/TaskPriority.md
+docs/TaskReminderAdvance.md
+docs/TaskReminderAdvanceDisposition.md
+docs/TaskReminderOccurrence.md
+docs/TaskReminderScheduleState.md
+docs/TaskReminderState.md
+docs/TaskReminderStopReason.md
 docs/TaskStatus.md
 docs/TaskSuggestion.md
 docs/TaskSuggestionStatus.md
@@ -162,6 +169,7 @@ src/main/kotlin/com/aicommunication/assistant/contracts/models/ReturnTaskToOwner
 src/main/kotlin/com/aicommunication/assistant/contracts/models/RiskSummaryPoint.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/Sensitivity.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/Session.kt
+src/main/kotlin/com/aicommunication/assistant/contracts/models/SetTaskReminderRequest.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/SnoozeTaskRequest.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/SourceReference.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/SourceSpanRef.kt
@@ -178,6 +186,12 @@ src/main/kotlin/com/aicommunication/assistant/contracts/models/TaskNote.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/TaskOutcome.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/TaskOutcomeType.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/TaskPriority.kt
+src/main/kotlin/com/aicommunication/assistant/contracts/models/TaskReminderAdvance.kt
+src/main/kotlin/com/aicommunication/assistant/contracts/models/TaskReminderAdvanceDisposition.kt
+src/main/kotlin/com/aicommunication/assistant/contracts/models/TaskReminderOccurrence.kt
+src/main/kotlin/com/aicommunication/assistant/contracts/models/TaskReminderScheduleState.kt
+src/main/kotlin/com/aicommunication/assistant/contracts/models/TaskReminderState.kt
+src/main/kotlin/com/aicommunication/assistant/contracts/models/TaskReminderStopReason.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/TaskStatus.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/TaskSuggestion.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/TaskSuggestionStatus.kt

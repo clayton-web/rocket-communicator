@@ -78,6 +78,11 @@ export type TracedRuntimeModule = {
   handoffInProgress: typeof TracedRuntimeBindings.handoffInProgress;
   persistOwnerTaskMutation: typeof TracedRuntimeBindings.persistOwnerTaskMutation;
   persistReturnToOwner: typeof TracedRuntimeBindings.persistReturnToOwner;
+  findReminderScheduleByTaskId: typeof TracedRuntimeBindings.findReminderScheduleByTaskId;
+  getTaskDueLocalDate: typeof TracedRuntimeBindings.getTaskDueLocalDate;
+  persistOwnerReminderEstablishment: typeof TracedRuntimeBindings.persistOwnerReminderEstablishment;
+  persistOwnerReminderGenerationChange: typeof TracedRuntimeBindings.persistOwnerReminderGenerationChange;
+  persistOwnerReminderDueDateRemoval: typeof TracedRuntimeBindings.persistOwnerReminderDueDateRemoval;
   findCapabilityByTokenHash: typeof TracedRuntimeBindings.findCapabilityByTokenHash;
   createCapability: typeof TracedRuntimeBindings.createCapability;
   findActiveCapabilitiesForAssignment: typeof TracedRuntimeBindings.findActiveCapabilitiesForAssignment;
@@ -155,6 +160,11 @@ export async function loadTracedRuntimeModule(): Promise<TracedRuntimeModule> {
     handoffInProgress: tracedRuntime.handoffInProgress,
     persistOwnerTaskMutation: tracedRuntime.persistOwnerTaskMutation,
     persistReturnToOwner: tracedRuntime.persistReturnToOwner,
+    findReminderScheduleByTaskId: tracedRuntime.findReminderScheduleByTaskId,
+    getTaskDueLocalDate: tracedRuntime.getTaskDueLocalDate,
+    persistOwnerReminderEstablishment: tracedRuntime.persistOwnerReminderEstablishment,
+    persistOwnerReminderGenerationChange: tracedRuntime.persistOwnerReminderGenerationChange,
+    persistOwnerReminderDueDateRemoval: tracedRuntime.persistOwnerReminderDueDateRemoval,
     findCapabilityByTokenHash: tracedRuntime.findCapabilityByTokenHash,
     createCapability: tracedRuntime.createCapability,
     findActiveCapabilitiesForAssignment: tracedRuntime.findActiveCapabilitiesForAssignment,

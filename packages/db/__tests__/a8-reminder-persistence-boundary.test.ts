@@ -23,6 +23,7 @@ const REMINDER_PERSISTENCE_MODULES = [
   'repositories/reminder-delivery-attempt-repository.ts',
   'repositories/reminder-scope-guard.ts',
   'transactions/a8-reminder-transactions.ts',
+  'transactions/a8b-owner-reminder-transactions.ts',
   'mappers/reminder-mappers.ts',
 ];
 

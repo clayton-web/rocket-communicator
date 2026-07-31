@@ -181,3 +181,29 @@ export {
   type BeginInitialHandoffInput,
   type BeginInitialHandoffResult,
 } from './transactions/a7-handoff-transactions.js';
+
+// A8.3b Owner reminder API surface. Only what the Owner routes call: the read path and the three
+// audited units of work. Worker primitives (claim, lease, delivery outcome, due-scan) are
+// deliberately absent from the traced runtime — nothing in the deployed application may claim or
+// send a reminder in this slice.
+export {
+  findReminderScheduleByTaskId,
+  type CreateReminderScheduleInput,
+  type OpenNextReminderGenerationInput,
+  type ReminderOccurrenceInput,
+} from './repositories/reminder-schedule-repository.js';
+export { getTaskDueLocalDate } from './transactions/a8-reminder-transactions.js';
+export {
+  persistOwnerReminderEstablishment,
+  persistOwnerReminderGenerationChange,
+  persistOwnerReminderDueDateRemoval,
+  type OwnerReminderMutationResult,
+  type OwnerReminderRemovalResult,
+  type SkippedAdvanceAttemptInput,
+} from './transactions/a8b-owner-reminder-transactions.js';
+export type {
+  PersistedReminderSchedule,
+  ReminderAdvanceDisposition,
+  ReminderScheduleStatus,
+  ReminderScheduleStopReason,
+} from './mappers/reminder-mappers.js';

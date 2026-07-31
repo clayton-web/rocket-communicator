@@ -278,3 +278,14 @@ export {
   type RecordOverdueDeliveryResult,
   type RecordNonDeliveryOutcomeInput,
 } from './transactions/a8-reminder-transactions.js';
+
+// A8.3b Owner-facing reminder units of work: the A8.3a primitives plus an audit event in the same
+// transaction. Still storage only — no worker, scheduler, cron, or delivery path.
+export {
+  persistOwnerReminderEstablishment,
+  persistOwnerReminderGenerationChange,
+  persistOwnerReminderDueDateRemoval,
+  type OwnerReminderMutationResult,
+  type OwnerReminderRemovalResult,
+  type SkippedAdvanceAttemptInput,
+} from './transactions/a8b-owner-reminder-transactions.js';

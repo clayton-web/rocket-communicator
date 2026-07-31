@@ -1,0 +1,157 @@
+components:
+  schemas:
+    TaskReminderScheduleState:
+      type: string
+      description: |
+        Truthful reminder state for a Task (D104, D107). Distinguishes "the Owner never chose a due
+        date" from "a due date exists but nothing is scheduled", because those need different Owner
+        actions and a single boolean would hide that.
+      enum:
+        - no_due_date
+        - not_scheduled
+        - active
+        - suspended_waiting
+        - stopped
+
+    TaskReminderStopReason:
+      type: string
+      description: Why reminders stopped. Recorded when the schedule stops, never inferred later (D106, D107).
+      enum:
+        - task_completed
+        - task_dismissed
+        - due_date_removed
+        - overdue_ceiling_reached
+        - permanent_delivery_failure
+
+    TaskReminderAdvanceDisposition:
+      type: string
+      description: |
+        The advance-reminder decision for the current generation, made once when the schedule was
+        established and then immutable (D105). `skipped_window_elapsed` means the day before the due
+        date had already passed when the Owner chose the date.
+      enum:
+        - scheduled
+        - skipped_window_elapsed
+
+    TaskReminderOccurrence:
+      type: object
+      description: |
+        One reminder occurrence. `localDate` is the organization-local calendar day and is
+        authoritative; `at` is the absolute instant that day's 09:00 organization-local resolves to,
+        supplied for display and ordering only (D103).
+      required:
+        - localDate
+        - at
+      additionalProperties: false
+      properties:
+        localDate:
+          type: string
+          pattern: '^\d{4}-\d{2}-\d{2}$'
+          description: Canonical organization-local calendar date.
+        at:
+          type: string
+          format: date-time
+
+    TaskReminderAdvance:
+      type: object
+      description: The single advance reminder for the current generation (D105).
+      required:
+        - disposition
+      additionalProperties: false
+      properties:
+        disposition:
+          $ref: '#/components/schemas/TaskReminderAdvanceDisposition'
+        occurrence:
+          description: |
+            The advance occurrence. Present for both dispositions: a skipped advance still has the
+            morning it would have used, and the Owner surface must be able to say which one.
+          oneOf:
+            - $ref: '#/components/schemas/TaskReminderOccurrence'
+            - type: 'null'
+
+    TaskReminderState:
+      type: object
+      description: |
+        Owner-facing reminder state for one Task (D104, D106, D107). Read-only projection of the
+        Task Reminder Schedule. Deliberately excludes worker internals — claim leases, worker
+        identifiers, delivery-attempt rows, provider message identifiers, and raw failure detail are
+        not part of this contract.
+      required:
+        - taskId
+        - state
+        - requiresOwnerAttention
+      additionalProperties: false
+      properties:
+        taskId:
+          type: string
+          maxLength: 64
+        dueLocalDate:
+          description: |
+            The canonical Owner-selected organization-local due date. Null when the Owner has not
+            chosen one. This is authoritative for reminders; the instant-typed `Task.dueAt` is not
+            (D102, D109).
+          oneOf:
+            - type: string
+              pattern: '^\d{4}-\d{2}-\d{2}$'
+            - type: 'null'
+        schedulingTimeZone:
+          description: |
+            The IANA timezone the current generation's occurrences were resolved in, snapshotted at
+            establishment. Server-derived; the Owner does not choose it (D034, D103).
+          oneOf:
+            - type: string
+            - type: 'null'
+        state:
+          description: |
+            Authoritative for whether reminders will be sent. `advance` and `nextOverdueOccurrence`
+            describe the current generation's recorded decisions; when `state` is `stopped` those
+            are history and nothing further will be delivered.
+          $ref: '#/components/schemas/TaskReminderScheduleState'
+        generation:
+          description: |
+            Which schedule generation is current. Increments when the Owner materially changes the
+            due date; an unchanged re-save does not increment it (D104).
+          oneOf:
+            - type: integer
+              minimum: 1
+            - type: 'null'
+        advance:
+          oneOf:
+            - $ref: '#/components/schemas/TaskReminderAdvance'
+            - type: 'null'
+        nextOverdueOccurrence:
+          description: The next overdue reminder occurrence owed, or null when none is (D106).
+          oneOf:
+            - $ref: '#/components/schemas/TaskReminderOccurrence'
+            - type: 'null'
+        overdueDeliveredCount:
+          description: |
+            Successful overdue deliveries in the current generation, counted toward the D106 ceiling.
+            Zero until a delivery path exists.
+          oneOf:
+            - type: integer
+              minimum: 0
+            - type: 'null'
+        requiresOwnerAttention:
+          type: boolean
+          description: Whether the schedule needs an Owner decision, for example after the overdue ceiling (D106, D108).
+        stopReason:
+          oneOf:
+            - $ref: '#/components/schemas/TaskReminderStopReason'
+            - type: 'null'
+
+    SetTaskReminderRequest:
+      type: object
+      description: |
+        The only Owner-selectable reminder input is the due date. There is no reminder-time field —
+        occurrences are fixed at 09:00 organization-local (D103) — no preset interval (D102), no
+        recurrence, and no timezone field. Occurrence dates, instants, generation, status, counts,
+        and stop reasons are all server-derived and must never be accepted from a client.
+      required:
+        - dueLocalDate
+      additionalProperties: false
+      properties:
+        dueLocalDate:
+          type: string
+          pattern: '^\d{4}-\d{2}-\d{2}$'
+          description: Owner-selected organization-local calendar date. No time component (D103).

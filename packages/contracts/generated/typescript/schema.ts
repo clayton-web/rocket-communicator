@@ -406,6 +406,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tasks/{taskId}/reminder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read reminder state for a task (Owner only)
+         * @description Read-only Task Reminder Schedule state (D104, D106, D107). Returns worker-free state: no
+         *     claim lease, worker identifier, delivery-attempt row, provider message identifier, or raw
+         *     failure detail appears in the response.
+         *
+         *     A8.3b implements the API only. Nothing schedules, claims, sends, or retries a reminder, so
+         *     `overdueDeliveredCount` is always 0 and `state` is never `suspended_waiting` yet.
+         *
+         */
+        get: operations["getTaskReminder"];
+        /**
+         * Establish or change the task due date and its reminder schedule (Owner only)
+         * @description Sets the canonical organization-local due date and establishes or re-generates the Task
+         *     Reminder Schedule (D102, D104, D105). Uses `If-Match` Task concurrency.
+         *
+         *     Idempotent: re-sending the same effective due date against a live schedule returns the
+         *     current state unchanged and does **not** open a generation. A material due-date change opens
+         *     the next generation and preserves all prior delivery history. Re-setting a date on a stopped
+         *     schedule opens a new generation, because a stopped schedule is not the same effective
+         *     schedule (D109 requires explicit Owner re-save to reactivate).
+         *
+         *     Every occurrence in the response is computed by the reminder domain. The request cannot
+         *     carry an organization, generation, occurrence, status, count, or stop reason.
+         *
+         */
+        put: operations["setTaskReminder"];
+        post?: never;
+        /**
+         * Remove the task due date and stop its reminders (Owner only)
+         * @description Clears the canonical due date and stops the schedule with reason `due_date_removed` (D107).
+         *     Delivery history is preserved — no reminder row is deleted — and no future occurrence
+         *     remains. Idempotent: removing an already-removed due date returns the current state and
+         *     emits no audit event.
+         *
+         */
+        delete: operations["removeTaskReminder"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tasks/{taskId}/snooze": {
         parameters: {
             query?: never;
@@ -1273,6 +1322,90 @@ export interface components {
              */
             nextReminderAt: string;
             reason?: string;
+        };
+        /** @description The only Owner-selectable reminder input is the due date. There is no reminder-time field —
+         *     occurrences are fixed at 09:00 organization-local (D103) — no preset interval (D102), no
+         *     recurrence, and no timezone field. Occurrence dates, instants, generation, status, counts,
+         *     and stop reasons are all server-derived and must never be accepted from a client.
+         *      */
+        SetTaskReminderRequest: {
+            /** @description Owner-selected organization-local calendar date. No time component (D103). */
+            dueLocalDate: string;
+        };
+        /** @description Owner-facing reminder state for one Task (D104, D106, D107). Read-only projection of the
+         *     Task Reminder Schedule. Deliberately excludes worker internals — claim leases, worker
+         *     identifiers, delivery-attempt rows, provider message identifiers, and raw failure detail are
+         *     not part of this contract.
+         *      */
+        TaskReminderState: {
+            taskId: string;
+            /** @description The canonical Owner-selected organization-local due date. Null when the Owner has not
+             *     chosen one. This is authoritative for reminders; the instant-typed `Task.dueAt` is not
+             *     (D102, D109).
+             *      */
+            dueLocalDate?: string | null;
+            /** @description The IANA timezone the current generation's occurrences were resolved in, snapshotted at
+             *     establishment. Server-derived; the Owner does not choose it (D034, D103).
+             *      */
+            schedulingTimeZone?: string | null;
+            /** @description Authoritative for whether reminders will be sent. `advance` and `nextOverdueOccurrence`
+             *     describe the current generation's recorded decisions; when `state` is `stopped` those
+             *     are history and nothing further will be delivered.
+             *      */
+            state: components["schemas"]["TaskReminderScheduleState"];
+            /** @description Which schedule generation is current. Increments when the Owner materially changes the
+             *     due date; an unchanged re-save does not increment it (D104).
+             *      */
+            generation?: number | null;
+            advance?: components["schemas"]["TaskReminderAdvance"] | null;
+            /** @description The next overdue reminder occurrence owed, or null when none is (D106). */
+            nextOverdueOccurrence?: components["schemas"]["TaskReminderOccurrence"] | null;
+            /** @description Successful overdue deliveries in the current generation, counted toward the D106 ceiling.
+             *     Zero until a delivery path exists.
+             *      */
+            overdueDeliveredCount?: number | null;
+            /** @description Whether the schedule needs an Owner decision, for example after the overdue ceiling (D106, D108). */
+            requiresOwnerAttention: boolean;
+            stopReason?: components["schemas"]["TaskReminderStopReason"] | null;
+        };
+        /**
+         * @description Truthful reminder state for a Task (D104, D107). Distinguishes "the Owner never chose a due
+         *     date" from "a due date exists but nothing is scheduled", because those need different Owner
+         *     actions and a single boolean would hide that.
+         *
+         * @enum {string}
+         */
+        TaskReminderScheduleState: "no_due_date" | "not_scheduled" | "active" | "suspended_waiting" | "stopped";
+        /**
+         * @description Why reminders stopped. Recorded when the schedule stops, never inferred later (D106, D107).
+         * @enum {string}
+         */
+        TaskReminderStopReason: "task_completed" | "task_dismissed" | "due_date_removed" | "overdue_ceiling_reached" | "permanent_delivery_failure";
+        /** @description The single advance reminder for the current generation (D105). */
+        TaskReminderAdvance: {
+            disposition: components["schemas"]["TaskReminderAdvanceDisposition"];
+            /** @description The advance occurrence. Present for both dispositions: a skipped advance still has the
+             *     morning it would have used, and the Owner surface must be able to say which one.
+             *      */
+            occurrence?: components["schemas"]["TaskReminderOccurrence"] | null;
+        };
+        /**
+         * @description The advance-reminder decision for the current generation, made once when the schedule was
+         *     established and then immutable (D105). `skipped_window_elapsed` means the day before the due
+         *     date had already passed when the Owner chose the date.
+         *
+         * @enum {string}
+         */
+        TaskReminderAdvanceDisposition: "scheduled" | "skipped_window_elapsed";
+        /** @description One reminder occurrence. `localDate` is the organization-local calendar day and is
+         *     authoritative; `at` is the absolute instant that day's 09:00 organization-local resolves to,
+         *     supplied for display and ordering only (D103).
+         *      */
+        TaskReminderOccurrence: {
+            /** @description Canonical organization-local calendar date. */
+            localDate: string;
+            /** Format: date-time */
+            at: string;
         };
         DismissTaskRequest: {
             reason?: string;
@@ -2491,6 +2624,100 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            412: components["responses"]["PreconditionFailed"];
+            428: components["responses"]["PreconditionRequired"];
+        };
+    };
+    getTaskReminder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taskId: components["parameters"]["TaskId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Reminder state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskReminderState"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setTaskReminder: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Strong ETag from the current resource version.
+                 * @example "task-01JXYZ-v3"
+                 */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                taskId: components["parameters"]["TaskId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetTaskReminderRequest"];
+            };
+        };
+        responses: {
+            /** @description Reminder state after establishment or change */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskReminderState"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            428: components["responses"]["PreconditionRequired"];
+        };
+    };
+    removeTaskReminder: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Strong ETag from the current resource version.
+                 * @example "task-01JXYZ-v3"
+                 */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                taskId: components["parameters"]["TaskId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Reminder state after removal */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskReminderState"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
             412: components["responses"]["PreconditionFailed"];
             428: components["responses"]["PreconditionRequired"];

@@ -16,6 +16,9 @@
  *   POST /api/v1/tasks/{taskId}/return-to-owner → "route: return-to-owner"
  *   POST /api/v1/tasks/{taskId}/clarification-requests → "route: clarification-requests"
  *
+ * The A8.3b reminder surface (GET/PUT/DELETE /api/v1/tasks/{taskId}/reminder) is covered in
+ * owner-reminder-routes.test.ts, which needs reminder schema fixtures this file does not.
+ *
  * OpenAPI: only getTask 200 declares HTTP ETag. createTask / mutations declare
  * Task body (with body `etag`) but no HTTP ETag header.
  */

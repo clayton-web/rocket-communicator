@@ -84,6 +84,8 @@ paths:
     $ref: './paths/tasks.yaml#/paths/~1api~1v1~1tasks~1{taskId}~1complete'
   /api/v1/tasks/{taskId}/notes:
     $ref: './paths/tasks.yaml#/paths/~1api~1v1~1tasks~1{taskId}~1notes'
+  /api/v1/tasks/{taskId}/reminder:
+    $ref: './paths/tasks.yaml#/paths/~1api~1v1~1tasks~1{taskId}~1reminder'
   /api/v1/tasks/{taskId}/snooze:
     $ref: './paths/tasks.yaml#/paths/~1api~1v1~1tasks~1{taskId}~1snooze'
   /api/v1/tasks/{taskId}/dismiss:
@@ -204,6 +206,20 @@ components:
       $ref: './components/schemas/task.yaml#/components/schemas/RequestClarificationRequest'
     SnoozeTaskRequest:
       $ref: './components/schemas/task.yaml#/components/schemas/SnoozeTaskRequest'
+    SetTaskReminderRequest:
+      $ref: './components/schemas/reminder-schedule.yaml#/components/schemas/SetTaskReminderRequest'
+    TaskReminderState:
+      $ref: './components/schemas/reminder-schedule.yaml#/components/schemas/TaskReminderState'
+    TaskReminderScheduleState:
+      $ref: './components/schemas/reminder-schedule.yaml#/components/schemas/TaskReminderScheduleState'
+    TaskReminderStopReason:
+      $ref: './components/schemas/reminder-schedule.yaml#/components/schemas/TaskReminderStopReason'
+    TaskReminderAdvance:
+      $ref: './components/schemas/reminder-schedule.yaml#/components/schemas/TaskReminderAdvance'
+    TaskReminderAdvanceDisposition:
+      $ref: './components/schemas/reminder-schedule.yaml#/components/schemas/TaskReminderAdvanceDisposition'
+    TaskReminderOccurrence:
+      $ref: './components/schemas/reminder-schedule.yaml#/components/schemas/TaskReminderOccurrence'
     DismissTaskRequest:
       $ref: './components/schemas/task.yaml#/components/schemas/DismissTaskRequest'
     IssueTaskCapabilityRequest:
