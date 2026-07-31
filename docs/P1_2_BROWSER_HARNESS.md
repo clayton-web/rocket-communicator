@@ -437,10 +437,13 @@ Recorded truthfully rather than claimed as coverage.
    empty-scope environment is the right way to add browser-level evidence.
 
 5. **No automated accessibility rule engine.** P1.2 verifies basic properties only; adding an axe
-   dependency was deliberately avoided as unauthorized scope. Full accessibility verification is P1.5.
+   dependency was deliberately avoided as unauthorized scope. — **Delivered in P1.5:**
+   `@axe-core/playwright` was added as a test-only dev dependency and the D119 gate now runs 28
+   scans at 0 serious / 0 critical ([P1_5_EVIDENCE.md](P1_5_EVIDENCE.md) §3).
 6. **Evidence is local only, on macOS, and outside CI.** Nothing in this harness produces preview or
-   production evidence, and no CI job runs it. Production validation against the P1.1 baseline remains
-   P1.5 (D119).
+   production evidence, and no CI job runs it. — **Production validation against the P1.1 baseline
+   was completed in P1.5** (D119), separately from this harness
+   ([P1_5_EVIDENCE.md](P1_5_EVIDENCE.md) §3).
 7. **Capability response `Cache-Control` cannot be proven in local development.** See findings below.
    The invariant is proven where it is constructed, by `apps/web/__tests__/proxy.test.ts`.
 
@@ -485,7 +488,8 @@ Observed while capturing evidence. **Not fixed here** — P1.2 must not implemen
    so notes and completion are reachable only via the API. The representative Owner mutation is
    therefore driven through the authenticated HTTP surface and verified in the UI. Relevant to P1.4.
 5. **No loading state on any route.** Navigation shows the previous view until the server responds.
-   **Addressed in P1.3** for `/tasks` and `/tasks/{taskId}`; `/c/{token}` remains deferred to P1.5.
+   **Addressed in P1.3** for `/tasks` and `/tasks/{taskId}`; `/c/{token}` was **delivered in P1.5**
+   (commit `d0fea4a`).
 6. **No `data-testid` anywhere**, and none was added. Roles, labels, and headings were sufficient —
    worth preserving in P1.5.
 7. **Duplicate Owner authentication per page request** remains observable in timing diagnostics
@@ -535,5 +539,11 @@ Counts include the one desktop-only case P1.3 added (`p1-3-transport-failure.spe
 original P1.2 figures were 56 / 49 / 7.
 
 Evidence is **local, macOS, Chromium-only, and outside CI**. No preview or production evidence is
-claimed, WebKit is **unexecuted** rather than passing or failing, D119 is **not** satisfied in full,
-and broader P1 remains open.
+claimed, and WebKit is **unexecuted** rather than passing or failing.
+
+> **Status update (P1 closeout).** The two statements above about _this harness_ remain accurate.
+> The two P1-wide claims have since been overtaken: **D119 is now satisfied** and **P1 is
+> complete**. P1.5 added the automated accessibility gate and completed production validation
+> ([P1_5_EVIDENCE.md](P1_5_EVIDENCE.md)). Handoff-confirmation journey coverage is still absent
+> from this harness, which is recorded as a non-blocking known limitation in
+> [MILESTONES.md](MILESTONES.md).

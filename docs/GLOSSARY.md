@@ -290,7 +290,7 @@ A named design value (colour, type scale, spacing, radius, motion) held in the t
 
 Rendering of dates and timestamps in the configured Owner organization timezone (`America/Vancouver`, D034), never silently using the browser, device, or machine-local timezone (D117). **Presentation only** — D103 remains the sole authority for reminder calendar arithmetic and the 09:00 organization-local occurrence rule.
 
-**Implemented in P1.4** as `OWNER_DISPLAY_TIME_ZONE` in `apps/web/lib/presentation/datetime.ts`, a documented constant rather than a schema field or environment variable (D122). Daylight saving is delegated to `Intl.DateTimeFormat`; every rendered date-**time** carries a zone indicator. **Known gap:** `/c/{token}` still renders Recipient-local timestamps, deferred to P1.5.
+**Implemented in P1.4** as `OWNER_DISPLAY_TIME_ZONE` in `apps/web/lib/presentation/datetime.ts`, a documented constant rather than a schema field or environment variable (D122). Daylight saving is delegated to `Intl.DateTimeFormat`; every rendered date-**time** carries a zone indicator. **Closed in P1.5:** `/c/{token}` previously rendered Recipient-local timestamps via `toLocaleString()`; it now uses the same deterministic organization-timezone presentation ([P1_5_EVIDENCE.md](P1_5_EVIDENCE.md) §1).
 
 ---
 

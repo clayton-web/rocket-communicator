@@ -4,10 +4,19 @@
 display, and the Owner attention / operational-status destination — **complete and
 production-validated.**
 
-P1.4 is **complete**. P1 overall remains **open**. **D119 and D120 remain open.** P1.5 is
-not started. Local evidence below remains the exact Auth HTTP-count proof; [§13 Production
-validation and closure](#13-production-validation-and-closure) records the production
-deployment and Owner-shell evidence that closed the slice.
+P1.4 is **complete**. Local evidence below remains the exact Auth HTTP-count proof; [§13
+Production validation and closure](#13-production-validation-and-closure) records the
+production deployment and Owner-shell evidence that closed the slice.
+
+> **Historical document — superseded in part by P1.5.**
+> This report is preserved as an accurate record of what P1.4 delivered and observed on
+> 2026-07-30 against deployment `dpl_F5zjNcc4zwiwbr25CSdMGA3zDy8c` (commit `a38c8574`). Its
+> statements are **historically accurate for P1.4 and are not rewritten.**
+> Since then, **P1.5 shipped and P1 closed**: P1 overall is now **complete**, D119 is
+> **met**, and several items this report lists as deferred or open were delivered by P1.5.
+> D120 remains open. Where a statement below has been overtaken, an inline note points to
+> [P1_5_EVIDENCE.md](P1_5_EVIDENCE.md). Read this document as _P1.4 as it stood_, not as
+> current state.
 
 Authorizing decisions: D111 (P1 scope), D112 (truthful experience states), D116 (presentation
 foundation), D117 (organization-timezone display), D118 (attention destination), D119
@@ -38,6 +47,21 @@ behaviour. It is **not** redirected to `/tasks`; `/tasks → 200` for an unauthe
 is an A7 closure baseline that a global redirect would break.
 
 Proven by `apps/web/__tests__/p1-4-route-structure.test.ts`.
+
+> **Reconciliation note (added at P1 closeout).** The sentence above is retained as written
+> because it records P1.4's own reasoning, but two points prevent it being read as current
+> behaviour:
+>
+> 1. **The baseline it protects is `/`, not `/tasks`.** What must keep serving unauthenticated
+>    visitors — and must not be redirected to `/tasks` — is `/`. That remains true today.
+> 2. **P1.5 deliberately changed `/tasks`.** At P1.4, unauthenticated `/tasks` returned 200
+>    and painted identity-independent Owner chrome before its loading-boundary redirect
+>    completed (recorded as a gap in [§12](#12-remaining-gaps)). P1.5 moved the Owner gate
+>    above the shell, so an unauthenticated request now returns a true **307** to
+>    `/login?next=%2Ftasks` and nothing else.
+>
+> No A4–A7 gate was weakened: `/tasks` always required authentication, and it now refuses
+> earlier rather than later. Current behaviour: [P1_5_EVIDENCE.md](P1_5_EVIDENCE.md) §5.
 
 ### One consequence worth recording
 
@@ -388,7 +412,12 @@ and the token definitions are present in the production CSS chunk.
 `--muted`, `--paper`, `--line`, `--accent`). Rather than edit that stylesheet — `/c/{token}` is
 touched last, in P1.5 — `globals.css` keeps the five names as documented aliases pointing at
 the new tokens. The capability page therefore renders byte-identically and was not touched.
-P1.5 should migrate it and delete the alias block.
+P1.5 should migrate it and delete the alias block. — **Done in P1.5** (commit `8588c5d`): the
+capability stylesheet now consumes the canonical `--aicaa-*` tokens directly, and four of the
+five aliases (`--ink`, `--muted`, `--line`, `--accent`) were deleted from `globals.css`. The
+migration was proven presentation-neutral by computed-style comparison. **`--paper` remains
+declared** with zero consumers repo-wide and awaits separate authorization — a non-blocking
+advisory ([P1_5_EVIDENCE.md](P1_5_EVIDENCE.md) §9).
 
 ---
 
@@ -455,14 +484,25 @@ and `userScalable` are left at their defaults so pinch-zoom keeps working.
 Escape-key dialog redesign, a global accessibility audit, and error-boundary accessibility
 work. No reduced-motion block was added, since no motion exists to guard.
 
+> **Delivered in P1.5.** `@axe-core/playwright` was added as a test-only dev dependency and the
+> D119 gate runs 28 local scans at 0 serious / 0 critical; Recipient dialog focus trapping,
+> Escape handling, focus restoration, and status announcements landed in `85ad4d1`; production
+> scanning returned 0 findings at every impact level ([P1_5_EVIDENCE.md](P1_5_EVIDENCE.md) §3).
+
 ---
 
 ## 12. Remaining gaps
 
 - Recipient capability timestamps still use their existing presentation path
-  (`toLocaleString`), so Recipient-local presentation remains outside P1.4.
+  (`toLocaleString`), so Recipient-local presentation remains outside P1.4. — **Closed by
+  P1.5** (`ffe3858`): Recipient timestamps now use deterministic organization-timezone
+  rendering.
 - Recipient capability presentation retains the final title-summary duplication and the
-  legacy CSS aliases in `globals.css` (capability stylesheet untouched; P1.5).
+  legacy CSS aliases in `globals.css` (capability stylesheet untouched; P1.5). — **Closed by
+  P1.5**: duplication removed via the shared `summaryPointText` formatting (`9701f47`); four
+  of the five legacy aliases removed in favour of canonical `--aicaa-*` tokens (`8588c5d`).
+  The unused `--paper` alias remains declared with zero consumers and awaits separate
+  authorization — a non-blocking advisory.
 - Precise note truncation disclosure requires a future contract field; note-bound wording
   states only what was shown.
 - Production had no unassigned actionable Task, so the Recipient selector overflow fix was
@@ -471,11 +511,16 @@ work. No reduced-motion block was added, since no motion exists to guard.
   rendering paths remain locally proven rather than production-proven.
 - Unauthenticated `/tasks` briefly renders identity-independent Owner chrome before its
   loading-boundary redirect completes (see [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md) and the
-  P1.5 input in [MILESTONES.md](MILESTONES.md)); not a P1.4 closure blocker.
+  P1.5 input in [MILESTONES.md](MILESTONES.md)); not a P1.4 closure blocker. — **Closed by
+  P1.5** (`dd44624`): the Owner gate moved above the shell, so the request now returns a true
+  307 with the deep link preserved and no chrome painted. Production-confirmed.
 - Sign-out soft-error hardening remains later work.
 - Owner-authentication duration may under-report when layout resolution starts first,
   although the event **count** is correct.
-- Comprehensive accessibility, global error/not-found, and connectivity work remain P1.5.
+- Comprehensive accessibility, global error/not-found, and connectivity work remain P1.5. —
+  **Closed by P1.5**: application boundaries including the global error fallback and styled
+  not-found (`6aaa054`), lost-connectivity feedback (`0ec068b`), dialog keyboard and focus
+  behaviour (`85ad4d1`), and the automated D119 accessibility gate (`2ee23f1`).
 - One transient sub-resource 404 during production validation did not reproduce and requires
   no action unless it recurs.
 - One isolated A7.4 MIME timeout remains a pre-existing load flake under heavy local test
@@ -627,7 +672,9 @@ Tagging is deferred to a separately authorized decision between:
 
 ### Closure status after this evidence
 
-| Item       | Status                                                                         |
+Status **as recorded at P1.4 closure** (historical; see the row below it for current state):
+
+| Item       | Status at P1.4 closure                                                         |
 | ---------- | ------------------------------------------------------------------------------ |
 | P1.4       | **Complete**                                                                   |
 | P1 overall | **Open**                                                                       |
@@ -635,3 +682,14 @@ Tagging is deferred to a separately authorized decision between:
 | D120       | **Open**                                                                       |
 | P1.5       | **Not started**                                                                |
 | A8 / A9    | Untouched                                                                      |
+
+**Current state at P1 closeout** (supersedes the table above):
+
+| Item       | Status now                                                       |
+| ---------- | ---------------------------------------------------------------- |
+| P1.4       | **Complete** — unchanged                                         |
+| P1 overall | **Complete** — implemented, deployed, production-validated       |
+| D119       | **Met** ([P1_5_EVIDENCE.md](P1_5_EVIDENCE.md))                   |
+| D120       | **Open** — unchanged                                             |
+| P1.5       | **Complete**, with one documented production evidence limitation |
+| A8 / A9    | Untouched — A8 remains the next milestone                        |

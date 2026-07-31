@@ -117,6 +117,17 @@ Gates for D111–D126. Record **expected behaviour and required proof**; no spec
 - [x] No P1.4 audit script or e2e tooling leaked into the production bundle
 - [x] Production validation passed on commit `a38c857` / deployment `dpl_F5zjNcc4zwiwbr25CSdMGA3zDy8c` ([P1_4_EVIDENCE.md](P1_4_EVIDENCE.md) §13)
 
+### P1 closure (P1.5; D112, D114, D119)
+
+- [x] Application boundaries complete — global error fallback, segment error coverage, styled not-found, and the `/c/{token}` loading boundary
+- [x] Unauthenticated Owner routes return a true **307** with the deep link preserved and **no** Owner chrome painted first (resolves OPEN #23)
+- [x] Recipient presentation corrected — no title/summary duplication, deterministic organization-timezone timestamps, canonical `--aicaa-*` tokens
+- [x] Recipient confirmation dialogs have keyboard, focus-containment, Escape, focus-restoration, and status-announcement behaviour (D119)
+- [x] Automated accessibility gate met — **28 local scans, 0 serious, 0 critical**, no rule disabled; production scans 0 findings at every impact level (D119)
+- [x] Production diagnostics show **exactly one** `owner_authentication` span per Owner document request and **zero** on capability routes; no raw `/c/{token}` path in any application diagnostic (D114, D119)
+- [x] Production validation passed on commit `8588c5d` / deployment `dpl_7vmnL71Lck7JLeftgsJkYVJ4uw82` ([P1_5_EVIDENCE.md](P1_5_EVIDENCE.md))
+- [x] **Evidence limitation recorded, not hidden** — the valid Recipient capability workflow is unvalidated in production because no safe synthetic-capability path exists; classified as an intentional production-safety limitation, **not** a defect ([P1_5_EVIDENCE.md](P1_5_EVIDENCE.md) §6)
+
 ## Documentation
 
 - [ ] Docs updated **before** or as part of completion (Engineering Rule #1)
