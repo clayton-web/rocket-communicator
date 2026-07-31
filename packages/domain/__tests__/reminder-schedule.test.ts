@@ -3,6 +3,7 @@ import {
   compareLocalDates,
   countSuccessfulOverdueDeliveries,
   decideAdvanceReminder,
+  hasAdvanceOccurrenceElapsed,
   hasReachedOverdueDeliveryCeiling,
   hasReminderSchedule,
   isDueDateChangeMaterial,
@@ -144,6 +145,50 @@ describe('advance reminder disposition (D105)', () => {
     };
 
     expect(decideAdvanceReminder(input)).toEqual(decideAdvanceReminder(input));
+  });
+});
+
+/**
+ * The boundary a Waiting resume asks about (A8 lifecycle audit H-2).
+ *
+ * `decideAdvanceReminder` answers "should this generation have an advance reminder at all"; this
+ * answers "can the advance occurrence it already scheduled still be sent". Both must draw the line in
+ * the same place, or a Task suspended and resumed at exactly 09:00 on its advance morning would be
+ * treated differently from one established at that instant.
+ */
+describe('advance occurrence elapse boundary (D105, D107)', () => {
+  const advanceAt = '2026-07-30T16:00:00.000Z' as const;
+
+  it('reports an occurrence strictly in the future as not elapsed', () => {
+    expect(hasAdvanceOccurrenceElapsed(advanceAt, '2026-07-30T15:59:59.999Z')).toBe(false);
+  });
+
+  it('reports an occurrence exactly at the reference instant as elapsed', () => {
+    // `<=`, matching `decideAdvanceReminder`, which schedules only when the occurrence is strictly
+    // after its reference instant. Anything not strictly ahead is already too late to send.
+    expect(hasAdvanceOccurrenceElapsed(advanceAt, advanceAt)).toBe(true);
+  });
+
+  it('reports an occurrence one millisecond past as elapsed', () => {
+    expect(hasAdvanceOccurrenceElapsed(advanceAt, '2026-07-30T16:00:00.001Z')).toBe(true);
+  });
+
+  it('agrees with the establishment decision at the same instant', () => {
+    // The generation the establishment decision refuses to schedule is exactly the one this predicate
+    // calls elapsed, so the two cannot drift apart.
+    const dueLocalDate = localDate('2026-07-31');
+    const scheduled = decideAdvanceReminder({
+      dueLocalDate,
+      establishedAt: '2026-07-30T15:59:59.999Z',
+    });
+    expect(scheduled.kind).toBe('scheduled');
+    expect(hasAdvanceOccurrenceElapsed(scheduled.occurrenceAt, '2026-07-30T15:59:59.999Z')).toBe(
+      false,
+    );
+
+    const skipped = decideAdvanceReminder({ dueLocalDate, establishedAt: advanceAt });
+    expect(skipped.kind).toBe('skipped');
+    expect(hasAdvanceOccurrenceElapsed(skipped.occurrenceAt, advanceAt)).toBe(true);
   });
 });
 

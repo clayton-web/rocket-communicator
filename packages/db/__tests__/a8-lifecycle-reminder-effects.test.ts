@@ -22,6 +22,7 @@ import {
   createTask,
   findReminderScheduleByTaskId,
   reconcileReminderScheduleForTaskStatus,
+  recordSkippedReminderOccurrence,
   stopReminderSchedule,
   suspendReminderScheduleForWaiting,
   upsertRecipient,
@@ -300,6 +301,344 @@ describe('A8 lifecycle reminder reconciliation (PGlite)', () => {
       const seeded = await seed();
 
       expect(await reconcile(seeded.taskId, 'open')).toBeNull();
+    });
+  });
+
+  /**
+   * The advance occurrence a Waiting period spanned (A8 lifecycle audit H-2).
+   *
+   * The rule: a Task that stays Waiting through its scheduled advance morning loses that advance
+   * reminder permanently for the current generation. It is never replayed on resume, and the row stops
+   * claiming it is pending — while the occurrence's own local date and instant survive, so the history
+   * can still say which morning was missed.
+   *
+   * Before this, suspension preserved `advance_disposition = 'scheduled'` (correct — a short Waiting
+   * period must not cost the Owner their advance reminder) and resume never revisited it, so a Task
+   * that waited past its advance morning came back **active** carrying a scheduled advance occurrence
+   * whose instant was already in the past. The audit reproduced exactly that state on real PostgreSQL.
+   *
+   * The boundary is `<=`: resuming at exactly the advance instant is too late, matching a generation
+   * established at exactly 09:00 on the advance morning, which gets no advance reminder either.
+   */
+  describe('advance occurrence spanned by waiting', () => {
+    /**
+     * A Waiting-suspended schedule whose advance occurrence is known precisely.
+     *
+     * The advance instant is read back from the row rather than recomputed here, so the boundary tests
+     * compare against the instant the domain actually resolved through `America/Vancouver` rather than
+     * against a second guess at it.
+     */
+    async function seedSuspendedWithAdvance(dueLocalDate: string, establishedAt: string) {
+      sequence += 1;
+      const taskId = `task_adv_${sequence}`;
+      const scheduleId = `sched_${taskId}`;
+      const due = parseLocalDate(dueLocalDate);
+      await upsertRecipient(db.prisma, {
+        organizationId: org,
+        recipient: recipientFixture(`rcp_${taskId}`),
+      });
+      const task = taskFixture(taskId, 'waiting');
+      await createTask(db.prisma, org, task, task.assignment);
+      await db.prisma.task.update({ where: { id: taskId }, data: { dueLocalDate: due } });
+
+      const advance = decideAdvanceReminder({ dueLocalDate: due, establishedAt });
+      const nextOverdue = selectNextOverdueOccurrence({ dueLocalDate: due, now: establishedAt });
+      await createReminderSchedule(db.prisma, {
+        id: scheduleId,
+        organizationId: org,
+        taskId,
+        dueLocalDate: due,
+        schedulingTimeZone: zone,
+        establishedAt,
+        advanceDisposition: advance.kind === 'skipped' ? 'skipped_window_elapsed' : 'scheduled',
+        advanceOccurrence: {
+          occurrenceLocalDate: advance.occurrenceLocalDate,
+          occurrenceAt: advance.occurrenceAt,
+        },
+        nextOverdueOccurrence: {
+          occurrenceLocalDate: nextOverdue.occurrenceLocalDate,
+          occurrenceAt: nextOverdue.occurrenceAt,
+        },
+      });
+      await suspendReminderScheduleForWaiting(db.prisma, {
+        organizationId: org,
+        scheduleId,
+        suspendedAt: establishedAt,
+      });
+
+      const suspended = await findReminderScheduleByTaskId(db.prisma, org, taskId);
+      return {
+        taskId,
+        scheduleId,
+        dueLocalDate: due,
+        advanceOccurrenceAt: suspended!.advanceOccurrenceAt,
+        advanceOccurrenceLocalDate: suspended!.advanceOccurrenceLocalDate,
+      };
+    }
+
+    /** A due date far enough out that the advance occurrence is genuinely scheduled. */
+    const FUTURE_DUE = '2026-08-10';
+    const ESTABLISHED = '2026-08-01T12:00:00.000Z';
+
+    function shift(instant: string, ms: number): string {
+      return new Date(new Date(instant).getTime() + ms).toISOString();
+    }
+
+    it('keeps a scheduled advance occurrence that is still in the future', async () => {
+      const seeded = await seedSuspendedWithAdvance(FUTURE_DUE, ESTABLISHED);
+
+      const effect = await reconcile(
+        seeded.taskId,
+        'open',
+        shift(seeded.advanceOccurrenceAt, -1000),
+      );
+
+      // A Task that waits an hour and resumes before its advance morning must still get that
+      // reminder, so resume leaves the disposition alone and arms the schedule as it was.
+      expect(effect?.schedule.advanceDisposition).toBe('scheduled');
+      expect(effect?.schedule.advanceOccurrenceAt).toBe(seeded.advanceOccurrenceAt);
+      expect(effect?.skippedAdvanceOccurrenceLocalDate).toBeNull();
+      expect(effect?.schedule.status).toBe('active');
+    });
+
+    it('skips the advance occurrence when resume lands exactly on its instant', async () => {
+      const seeded = await seedSuspendedWithAdvance(FUTURE_DUE, ESTABLISHED);
+
+      const effect = await reconcile(seeded.taskId, 'open', seeded.advanceOccurrenceAt);
+
+      // `<=`, not `<`: an advance reminder is never sent late, and 09:00 exactly is already too late,
+      // exactly as it is for a generation established at that instant.
+      expect(effect?.schedule.advanceDisposition).toBe('skipped_waiting_elapsed');
+      expect(effect?.skippedAdvanceOccurrenceLocalDate).toBe(seeded.advanceOccurrenceLocalDate);
+    });
+
+    it('skips the advance occurrence one millisecond after its instant', async () => {
+      const seeded = await seedSuspendedWithAdvance(FUTURE_DUE, ESTABLISHED);
+
+      const effect = await reconcile(seeded.taskId, 'open', shift(seeded.advanceOccurrenceAt, 1));
+
+      expect(effect?.schedule.advanceDisposition).toBe('skipped_waiting_elapsed');
+    });
+
+    it('preserves the original advance local date and instant when it skips', async () => {
+      const seeded = await seedSuspendedWithAdvance(FUTURE_DUE, ESTABLISHED);
+
+      const effect = await reconcile(seeded.taskId, 'open', '2026-11-20T18:00:00.000Z');
+
+      // History, not scheduling state: the Owner surface must still be able to say *which* morning
+      // Waiting covered, so only the disposition moves.
+      expect(effect?.schedule.advanceOccurrenceLocalDate).toBe(seeded.advanceOccurrenceLocalDate);
+      expect(effect?.schedule.advanceOccurrenceAt).toBe(seeded.advanceOccurrenceAt);
+      expect(effect?.schedule.advanceDisposition).toBe('skipped_waiting_elapsed');
+    });
+
+    it('never classifies a waiting-spanned occurrence as advance_window_elapsed', async () => {
+      const seeded = await seedSuspendedWithAdvance(FUTURE_DUE, ESTABLISHED);
+
+      const effect = await reconcile(seeded.taskId, 'open', '2026-08-20T18:00:00.000Z');
+
+      // The two reasons answer different questions — "the Owner set the date too late" versus "the
+      // Recipient's Waiting period covered the reminder" — and collapsing them loses the answer.
+      expect(effect?.schedule.advanceDisposition).not.toBe('skipped_window_elapsed');
+      expect(effect?.schedule.advanceDisposition).toBe('skipped_waiting_elapsed');
+    });
+
+    it('leaves an advance occurrence already skipped at establishment alone', async () => {
+      // Established the day the Task was already due, so the advance morning had passed before the
+      // schedule existed (D105).
+      const seeded = await seedSuspendedWithAdvance('2026-08-01', ESTABLISHED);
+      const before = await findReminderScheduleByTaskId(db.prisma, org, seeded.taskId);
+      expect(before?.advanceDisposition).toBe('skipped_window_elapsed');
+
+      const effect = await reconcile(seeded.taskId, 'open', '2026-08-20T18:00:00.000Z');
+
+      // There is nothing pending to skip, and the establishment-time reason is the truthful one.
+      expect(effect?.schedule.advanceDisposition).toBe('skipped_window_elapsed');
+      expect(effect?.skippedAdvanceOccurrenceLocalDate).toBeNull();
+    });
+
+    it('leaves an advance occurrence with a recorded attempt alone', async () => {
+      const seeded = await seedSuspendedWithAdvance(FUTURE_DUE, ESTABLISHED);
+      // What a future worker would leave behind once it has processed the advance occurrence. No
+      // worker exists yet; the guard exists so that when one does, resume cannot rewrite its record.
+      await recordSkippedReminderOccurrence(db.prisma, {
+        id: `rda_${seeded.taskId}`,
+        organizationId: org,
+        scheduleId: seeded.scheduleId,
+        generation: 1,
+        occurrenceKind: 'advance',
+        occurrenceLocalDate: parseLocalDate(seeded.advanceOccurrenceLocalDate),
+        occurrenceAt: seeded.advanceOccurrenceAt,
+        skipReason: 'no_active_assignment',
+        recordedAt: ESTABLISHED,
+      });
+
+      const effect = await reconcile(seeded.taskId, 'open', '2026-11-20T18:00:00.000Z');
+
+      // Relabelling the disposition behind an existing attempt row would make the schedule and the
+      // attempt history disagree about what happened to the same occurrence.
+      expect(effect?.schedule.advanceDisposition).toBe('scheduled');
+      expect(effect?.skippedAdvanceOccurrenceLocalDate).toBeNull();
+    });
+
+    it('preserves generation and overdue count while skipping the advance', async () => {
+      const seeded = await seedSuspendedWithAdvance(FUTURE_DUE, ESTABLISHED);
+      await db.prisma.taskReminderSchedule.update({
+        where: { id: seeded.scheduleId },
+        data: { overdueDeliveredCount: 2 },
+      });
+
+      const effect = await reconcile(seeded.taskId, 'open', '2026-11-20T18:00:00.000Z');
+
+      expect(effect?.schedule.generation).toBe(1);
+      expect(effect?.schedule.overdueDeliveredCount).toBe(2);
+    });
+
+    it('arms only a strictly future overdue occurrence and no advance backlog', async () => {
+      const seeded = await seedSuspendedWithAdvance(FUTURE_DUE, ESTABLISHED);
+      const resumeAt = '2026-11-20T18:00:00.000Z';
+
+      const effect = await reconcile(seeded.taskId, 'open', resumeAt);
+
+      expect(new Date(effect!.schedule.nextOverdueOccurrenceAt!).getTime()).toBeGreaterThan(
+        new Date(resumeAt).getTime(),
+      );
+      // The skipped advance is not re-armed as an occurrence, and no attempt row is invented for it:
+      // nothing was sent, so nothing is recorded as sent (or as failed).
+      expect(
+        await db.prisma.reminderDeliveryAttempt.count({
+          where: { organizationId: org, scheduleId: seeded.scheduleId },
+        }),
+      ).toBe(0);
+    });
+
+    it('is idempotent across repeated resumes', async () => {
+      const seeded = await seedSuspendedWithAdvance(FUTURE_DUE, ESTABLISHED);
+      const first = await reconcile(seeded.taskId, 'open', '2026-11-20T18:00:00.000Z');
+
+      const second = await reconcile(seeded.taskId, 'open', '2026-11-21T18:00:00.000Z');
+
+      // The schedule is already active, so there is no gap to close: no event, no version movement,
+      // and no second chance to reinterpret the advance disposition.
+      expect(second).toBeNull();
+      const schedule = await findReminderScheduleByTaskId(db.prisma, org, seeded.taskId);
+      expect(schedule?.reminderVersion).toBe(first?.schedule.reminderVersion);
+      expect(schedule?.advanceDisposition).toBe('skipped_waiting_elapsed');
+    });
+
+    it('skips across the spring DST transition without fixed-day arithmetic', async () => {
+      // Advance morning is 2027-03-13, the day before the due date; 2027-03-14 is the spring-forward
+      // day in America/Vancouver, so the resume window spans a 23-hour local day.
+      const seeded = await seedSuspendedWithAdvance('2027-03-14', '2027-03-01T12:00:00.000Z');
+
+      const effect = await reconcile(seeded.taskId, 'open', '2027-03-16T17:00:00.000Z');
+
+      expect(effect?.schedule.advanceDisposition).toBe('skipped_waiting_elapsed');
+      expect(effect?.schedule.advanceOccurrenceLocalDate).toBe('2027-03-13');
+      // The armed occurrence is still 09:00 local on a real calendar day, resolved through the zone
+      // rather than by adding 24-hour blocks.
+      expect(effect?.schedule.nextOverdueOccurrenceAt).toBe('2027-03-17T16:00:00.000Z');
+    });
+
+    it('skips across the fall DST transition without fixed-day arithmetic', async () => {
+      // 2026-11-01 is the fall-back day in America/Vancouver, so the local day is 25 hours long.
+      const seeded = await seedSuspendedWithAdvance('2026-11-01', '2026-10-20T12:00:00.000Z');
+
+      const effect = await reconcile(seeded.taskId, 'open', '2026-11-03T18:00:00.000Z');
+
+      expect(effect?.schedule.advanceDisposition).toBe('skipped_waiting_elapsed');
+      expect(effect?.schedule.advanceOccurrenceLocalDate).toBe('2026-10-31');
+      // 09:00 PST, an hour later in UTC than the same wall clock before the transition.
+      expect(effect?.schedule.nextOverdueOccurrenceAt).toBe('2026-11-04T17:00:00.000Z');
+    });
+
+    it('records the advance skip in the derived resume audit note', async () => {
+      const seeded = await seedSuspendedWithAdvance(FUTURE_DUE, ESTABLISHED);
+      const effect = await reconcile(seeded.taskId, 'open', '2026-11-20T18:00:00.000Z');
+
+      const audit = buildReminderLifecycleAudit(
+        {
+          id: 'audit_resume_adv',
+          organizationId: org,
+          actorKind: 'capability',
+          capabilityId: 'cap_resume',
+          action: 'task.resumed',
+        },
+        effect!,
+        '2026-11-20T18:00:00.000Z',
+      );
+
+      expect(audit.action).toBe('reminder.schedule.resumed');
+      expect(audit.note).toContain('advance_disposition=skipped_waiting_elapsed');
+      expect(audit.note).toContain(
+        `advance_occurrence_local_date=${seeded.advanceOccurrenceLocalDate}`,
+      );
+      expect(audit.note).toContain('advance_skip_reason=waiting_spanned_occurrence');
+      // The initiating actor is preserved, and nothing claims a send happened.
+      expect(audit.actorKind).toBe('capability');
+      expect(audit.capabilityId).toBe('cap_resume');
+      expect(audit.outcome).toBe('succeeded');
+      expect(audit.note).not.toContain('sent');
+    });
+
+    it('says nothing about the advance when the occurrence is still pending', async () => {
+      const seeded = await seedSuspendedWithAdvance(FUTURE_DUE, ESTABLISHED);
+      const resumeAt = shift(seeded.advanceOccurrenceAt, -1000);
+      const effect = await reconcile(seeded.taskId, 'open', resumeAt);
+
+      const audit = buildReminderLifecycleAudit(
+        {
+          id: 'audit_resume_pending',
+          organizationId: org,
+          actorKind: 'owner',
+          ownerId: 'owner_lifecycle',
+          action: 'task.resumed',
+        },
+        effect!,
+        resumeAt,
+      );
+
+      expect(audit.note).not.toContain('advance_disposition');
+      expect(audit.note).not.toContain('advance_skip_reason');
+    });
+
+    /**
+     * The invariant a future due-scan depends on, asserted against the database rather than the API.
+     *
+     * No schedule that became active *through a resume after Waiting* may hold a `scheduled` advance
+     * occurrence whose instant has already passed. This is the query the audit ran to prove the defect
+     * was reachable, and it is why the decision lives in persisted state: the worker must not have to
+     * invent the product rule.
+     *
+     * Scoped to the schedules this test resumed, and that scope is the point rather than a convenience.
+     * An active schedule whose advance instant is merely in the past is not by itself wrong — a worker
+     * that has not yet reached a pending occurrence leaves exactly that row, and this suite's other
+     * fixtures are full of them. What must never exist is the row a *resume* left behind, because a
+     * resume has already decided the occurrence is unsendable and must say so.
+     */
+    it('leaves no resumed schedule holding an elapsed scheduled advance occurrence', async () => {
+      const resumeAt = '2026-11-20T18:00:00.000Z';
+      const resumedScheduleIds: string[] = [];
+      for (const dueLocalDate of ['2026-08-10', '2026-08-01', '2026-09-15']) {
+        const seeded = await seedSuspendedWithAdvance(dueLocalDate, ESTABLISHED);
+        await reconcile(seeded.taskId, 'open', resumeAt);
+        resumedScheduleIds.push(seeded.scheduleId);
+      }
+
+      const idPlaceholders = resumedScheduleIds.map((_, index) => `$${index + 3}`).join(', ');
+      const offenders = await db.prisma.$queryRawUnsafe<Array<{ id: string }>>(
+        `SELECT id FROM task_reminder_schedules
+         WHERE organization_id = $1
+           AND status = 'active'
+           AND advance_disposition = 'scheduled'
+           AND advance_occurrence_at <= $2::timestamptz
+           AND id IN (${idPlaceholders})`,
+        org,
+        resumeAt,
+        ...resumedScheduleIds,
+      );
+
+      expect(offenders).toEqual([]);
     });
   });
 

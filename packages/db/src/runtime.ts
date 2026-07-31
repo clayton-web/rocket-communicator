@@ -199,6 +199,7 @@ export {
   persistOwnerReminderDueDateRemoval,
   type OwnerReminderMutationResult,
   type OwnerReminderRemovalResult,
+  type OwnerReminderSaveResult,
   type SkippedAdvanceAttemptInput,
 } from './transactions/a8b-owner-reminder-transactions.js';
 export type {

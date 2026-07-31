@@ -2,7 +2,6 @@ import {
   REMINDER_SCHEDULING_TIME_ZONE,
   decideAdvanceReminder,
   decideReminderScheduling,
-  isDueDateChangeMaterial,
   parseLocalDate,
   selectNextOverdueOccurrence,
   type AdvanceReminderDisposition,
@@ -34,10 +33,10 @@ import {
  *
  * This module is the only place the reminder API decides anything, and it decides nothing about
  * reminder law. Every calendar and scheduling question is answered by the A8.2 domain
- * (`parseLocalDate`, `decideAdvanceReminder`, `selectNextOverdueOccurrence`,
- * `isDueDateChangeMaterial`) and every write goes through an A8.3a-backed transaction. What lives
- * here is orchestration: authorize, ask the domain, hand the answer to persistence, project the
- * result.
+ * (`parseLocalDate`, `decideAdvanceReminder`, `selectNextOverdueOccurrence`) and every write goes
+ * through an A8.3a-backed transaction — including the question of whether a save changes anything,
+ * which the transaction answers with `isDueDateChangeMaterial` under the Task lock. What lives here
+ * is orchestration: authorize, ask the domain, hand the answer to persistence, project the result.
  *
  * No scheduling, claiming, sending, retrying, or delivering happens in A8.3b. A schedule row is
  * created and kept truthful; nothing consumes it yet.
@@ -280,6 +279,16 @@ export interface SetOwnerReminderResult {
  * Whether the resulting generation is live or suspended is not this function's decision — a Waiting
  * Task's schedule is born suspended (D107), and a completed or dismissed Task cannot acquire one at
  * all. See `requireSchedulableTask`.
+ *
+ * ## The immaterial-repeat decision belongs to the transaction (A8 lifecycle audit H-1)
+ *
+ * The second case above used to be decided here, from a schedule read and a canonical-due-date read
+ * taken before any lock. Those are two snapshots, and under contention they could be paired into a
+ * `200` describing an active schedule with a `NULL` due date and a stale ETag — a representation that
+ * never existed. The read below is now advisory only: it routes between establishment and generation
+ * change and produces a clean preflight `412`/`428`, but the authoritative decision — including
+ * whether anything needs to change at all — is made by `persistOwnerReminderGenerationChange` under
+ * the Task lock, from one snapshot, after the version precondition.
  */
 export async function setOwnerTaskReminder(
   command: SetOwnerReminderCommand,
@@ -291,26 +300,10 @@ export async function setOwnerTaskReminder(
   try {
     const runtime = await loadDbRuntime();
     const existing = await findSchedule(command.db, owner.organizationId, task.id);
-    assertExpectedReminderVersion(
+    const expectedReminderVersion = assertExpectedReminderVersion(
       currentReminderVersion(existing),
       command.expectedReminderVersion,
     );
-
-    // Immaterial repeats on a *live* schedule are answered before the eligibility gate: a no-op
-    // writes nothing, so refusing "confirm this date" would be an error for a request that asks the
-    // server to do nothing. Since A8 lifecycle wiring this reaches only actionable and Waiting Tasks,
-    // because a terminal Task's schedule is always already stopped and falls through to the gate —
-    // which is what closes the A8.3b re-audit's L2 observation about terminal no-ops answering 200.
-    if (existing && existing.status !== 'stopped') {
-      if (!isDueDateChangeMaterial(existing.dueLocalDate, dueLocalDate)) {
-        const canonical = await readCanonicalDueLocalDate(
-          command.db,
-          owner.organizationId,
-          task.id,
-        );
-        return { state: toTaskReminderState(existing, canonical), changed: false };
-      }
-    }
 
     const targetStatus = requireSchedulableTask(task);
     const suspended = targetStatus === 'suspended_waiting';
@@ -361,14 +354,13 @@ export async function setOwnerTaskReminder(
       };
     }
 
-    const reactivating = existing.status === 'stopped';
     const result = await runtime.persistOwnerReminderGenerationChange({
       db: command.db,
       generation: {
         organizationId: owner.organizationId,
         taskId: task.id,
         expectedGeneration: existing.generation,
-        expectedReminderVersion: existing.reminderVersion,
+        expectedReminderVersion,
         dueLocalDate,
         schedulingTimeZone: REMINDER_SCHEDULING_TIME_ZONE,
         establishedAt: command.now,
@@ -380,28 +372,34 @@ export async function setOwnerTaskReminder(
         suspendedAt: suspended ? command.now : undefined,
       },
       skippedAdvanceAttempt: skipped,
-      audit: buildOwnerAudit({
-        id: newEntityId('audit'),
-        owner,
-        action: reactivating ? REMINDER_AUDIT_ACTIONS.reactivated : REMINDER_AUDIT_ACTIONS.changed,
-        taskId: task.id,
-        taskStatus: task.status,
-        resourceVersion: existing.reminderVersion + 1,
-        note: reminderAuditNote({
-          priorDueLocalDate: existing.dueLocalDate,
-          dueLocalDate,
-          priorGeneration: existing.generation,
-          generation: existing.generation + 1,
-          priorStopReason: reactivating ? existing.stopReason : undefined,
-          state: targetStatus,
+      audit: (outcome) =>
+        buildOwnerAudit({
+          id: newEntityId('audit'),
+          owner,
+          action: outcome.reactivating
+            ? REMINDER_AUDIT_ACTIONS.reactivated
+            : REMINDER_AUDIT_ACTIONS.changed,
+          taskId: task.id,
+          taskStatus: task.status,
+          resourceVersion: outcome.schedule.reminderVersion,
+          note: reminderAuditNote({
+            priorDueLocalDate: outcome.priorSchedule.dueLocalDate,
+            dueLocalDate: outcome.schedule.dueLocalDate,
+            priorGeneration: outcome.priorSchedule.generation,
+            generation: outcome.schedule.generation,
+            priorStopReason: outcome.reactivating ? outcome.priorSchedule.stopReason : undefined,
+            state: outcome.schedule.status,
+          }),
+          now: command.now as UtcInstant,
+          requestId: command.requestId,
         }),
-        now: command.now as UtcInstant,
-        requestId: command.requestId,
-      }),
     });
+    // Projected from the schedule alone. For a material change the transaction wrote both the
+    // schedule and the canonical due date; for a no-op it proved the two already agree. Either way
+    // this is one snapshot, which is the property the audit found missing.
     return {
       state: toTaskReminderState(result.schedule, result.schedule.dueLocalDate),
-      changed: true,
+      changed: result.changed,
     };
   } catch (error) {
     mapDomainOrPersistenceError(error);

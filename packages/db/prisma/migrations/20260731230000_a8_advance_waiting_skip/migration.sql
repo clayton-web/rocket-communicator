@@ -1,0 +1,23 @@
+-- A8 lifecycle audit H-2: the advance occurrence a Waiting suspension spanned.
+--
+-- The lifecycle audit proved a reachable untruthful state. A Task suspended for Waiting keeps its
+-- `advance_disposition = 'scheduled'` and its `advance_occurrence_at`, because suspension preserves
+-- the generation's history rather than rewriting it. Resume then armed only the next *overdue*
+-- occurrence and left the advance disposition alone -- so a Task that waited past its advance morning
+-- came back active while still claiming a scheduled advance occurrence whose instant had already
+-- passed. Nothing could act on it yet, but the row asserted a reminder was pending that must never be
+-- sent, and the first A8.4a due-scan would have had to invent the product rule to know that.
+--
+-- The rule is now decided (D105, D107): an advance occurrence the Task was suspended through is
+-- permanently skipped for that generation and never replayed as backlog. This value records it.
+--
+-- Deliberately not 'skipped_window_elapsed', which means something else and must stay distinguishable:
+-- that value says the advance morning had *already passed when the Owner chose the date*, so no
+-- advance reminder was ever scheduled. This one says the advance reminder was validly scheduled and
+-- the Task was Waiting when it came due. Collapsing them would leave the history unable to answer
+-- whether the Owner set a date too late or the Recipient's Waiting period covered the reminder.
+--
+-- Additive only: adding an enum value rewrites no row and invalidates no existing value, and every
+-- row written before this migration keeps the disposition it already had. Nothing sets the new value
+-- except the Waiting-resume path.
+ALTER TYPE "ReminderAdvanceDisposition" ADD VALUE IF NOT EXISTS 'skipped_waiting_elapsed';

@@ -291,6 +291,8 @@ export {
   type OwnerReminderMutationResult,
   type OwnerReminderRemovalOutcome,
   type OwnerReminderRemovalResult,
+  type OwnerReminderSaveOutcome,
+  type OwnerReminderSaveResult,
   type SkippedAdvanceAttemptInput,
 } from './transactions/a8b-owner-reminder-transactions.js';
 

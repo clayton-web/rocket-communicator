@@ -19,7 +19,7 @@ Owner approval is required to create Tasks, Assignments, forwards, and Next-acti
 
 ## Implemented and planned workflow map
 
-Workflow §1 (A5 events + A6 suggestions) and §7 / §12 (approve / merge) are **production-operational**. Workflow §2 (Recipient handoff) is **production-operational** as of A7 close: both delivery paths, Recipient capability completion, and Owner-visible notes are production-verified. Reassignment and explicit re-forward within §2 remain deferred ([MILESTONES.md](MILESTONES.md) A7 deferred backlog). §10 Follow-up Engine and Event Notification Engine are **A8** and **not operational**: the due-date-driven reminder model is documentation-locked in **A8.1 (D102–D110)**, its scheduling logic exists (**A8.2**), its persistence schema exists (**A8.3a**), and the Owner can now configure a due date and schedule over HTTP (**A8.3b**) — but nothing schedules or sends, and the migration is not applied in Production. Each remaining slice awaits its own authorization. §14–§15 and Android capture remain later milestones. §16 Owner web experience states is **P1**, documentation-locked in **P1.0 (D111–D120)** and not implemented; it changes no workflow behaviour and governs presentation and observation only. Sections below retain target behaviour; milestone labels note when each ships.
+Workflow §1 (A5 events + A6 suggestions) and §7 / §12 (approve / merge) are **production-operational**. Workflow §2 (Recipient handoff) is **production-operational** as of A7 close: both delivery paths, Recipient capability completion, and Owner-visible notes are production-verified. Reassignment and explicit re-forward within §2 remain deferred ([MILESTONES.md](MILESTONES.md) A7 deferred backlog). §10 Follow-up Engine and Event Notification Engine are **A8** and **not operational**: the due-date-driven reminder model is documentation-locked in **A8.1 (D102–D110)**, its scheduling logic exists (**A8.2**), its persistence schema exists (**A8.3a**), the Owner can now configure a due date and schedule over HTTP (**A8.3b**), and Task lifecycle transitions now suspend, resume, and stop a schedule in the Task's own transaction — but nothing **scans, claims, or sends**, and the migrations are not applied in Production. Each remaining slice awaits its own authorization. §14–§15 and Android capture remain later milestones. §16 Owner web experience states is **P1**, documentation-locked in **P1.0 (D111–D120)** and not implemented; it changes no workflow behaviour and governs presentation and observation only. Sections below retain target behaviour; milestone labels note when each ships.
 
 ---
 
@@ -116,11 +116,12 @@ Authoritative A8 product rules (D095–D101). Do not duplicate this specificatio
 
 1. Exactly **one** system-generated advance reminder, at 09:00 organization-local on the calendar day **immediately before** the due date.
 2. If that instant is already past when the schedule is established, record the occurrence as **skipped** with reason **`advance_window_elapsed`**.
-3. The skip decision is made **once, at schedule establishment, and persisted**. A later scheduler run must never retroactively reclassify a legitimately scheduled occurrence.
-4. A schedule established **before** 09:00 on the day before the due date may still send that morning.
-5. **No** immediate or retroactive advance reminder is ever sent.
-6. A Task created **on** its due date gets no advance reminder.
-7. A Task created with a due date **already in the past** gets **no backlog**: schedule only the next future 09:00 overdue occurrence, and record the omitted interval once as a truthful audit entry — never as sends.
+3. The skip decision is made **once, at schedule establishment, and persisted**. A later scheduler run must never retroactively reclassify a legitimately scheduled occurrence from the clock.
+4. **Exactly one later event may change it: a Waiting period that spanned the occurrence.** If the Task is still Waiting when the advance instant arrives, resume records the occurrence as **skipped** with a Waiting-specific reason (`skipped_waiting_elapsed`) rather than sending it late — a suspended reminder is not a deferred one (D107). This is not the scheduler reclassifying from the clock; it is the no-backlog rule applied to the advance occurrence, decided by the lifecycle transition that ends the pause. The occurrence's own local date and instant are preserved as history, and the reason stays distinct from `advance_window_elapsed` so the audit trail can say whether the Owner chose the date too late or Waiting covered the reminder. An advance occurrence already delivered, or already skipped at establishment, keeps its existing reason.
+5. A schedule established **before** 09:00 on the day before the due date may still send that morning.
+6. **No** immediate or retroactive advance reminder is ever sent.
+7. A Task created **on** its due date gets no advance reminder.
+8. A Task created with a due date **already in the past** gets **no backlog**: schedule only the next future 09:00 overdue occurrence, and record the omitted interval once as a truthful audit entry — never as sends.
 
 #### Overdue follow-up (D106)
 

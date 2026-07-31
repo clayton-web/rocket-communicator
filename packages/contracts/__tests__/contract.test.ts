@@ -210,9 +210,13 @@ describe('contracts package', () => {
     expect((schemas.TaskReminderStopReason as { enum?: string[] }).enum).toContain(
       'due_date_removed',
     );
+    // `skipped_waiting_elapsed` is deliberately distinct from `skipped_window_elapsed`: one says the
+    // Owner chose the date too late, the other that a Waiting period covered the advance morning
+    // (A8 lifecycle audit H-2). Collapsing them would leave a client unable to say which happened.
     expect((schemas.TaskReminderAdvanceDisposition as { enum?: string[] }).enum).toEqual([
       'scheduled',
       'skipped_window_elapsed',
+      'skipped_waiting_elapsed',
     ]);
 
     // Local calendar dates stay canonical text, never instants (D103, D109).

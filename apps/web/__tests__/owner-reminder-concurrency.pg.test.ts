@@ -134,9 +134,16 @@ describeMaybe('A8.3b Owner reminder concurrency (real PostgreSQL)', () => {
     await prisma?.$disconnect();
   });
 
-  beforeEach(async () => {
-    // Real clocks, real connections: nothing here is faked, because the point is to reproduce what
-    // the server actually does under contention.
+  /**
+   * Remove this organization's rows, dependants first.
+   *
+   * Deliberately not wrapped in a `catch`. A round used to end with
+   * `prisma.task.deleteMany(...).catch(() => undefined)`, which could never have succeeded — the
+   * schedule and audit rows reference the Task, so PostgreSQL refuses the delete — and the swallowed
+   * rejection meant a suite that believed it was isolating rounds silently was not. Ordering the
+   * deletes makes it work, and letting it throw means the next such mistake is visible.
+   */
+  async function resetOrganizationData() {
     await prisma.reminderDeliveryAttempt.deleteMany({ where: { organizationId: org } });
     await prisma.taskReminderSchedule.deleteMany({ where: { organizationId: org } });
     await prisma.auditEvent.deleteMany({ where: { organizationId: org } });
@@ -146,6 +153,12 @@ describeMaybe('A8.3b Owner reminder concurrency (real PostgreSQL)', () => {
     await prisma.taskSuggestion.deleteMany({ where: { organizationId: org } });
     await prisma.task.deleteMany({ where: { organizationId: org } });
     await prisma.recipient.deleteMany({ where: { organizationId: org } });
+  }
+
+  beforeEach(async () => {
+    // Real clocks, real connections: nothing here is faked, because the point is to reproduce what
+    // the server actually does under contention.
+    await resetOrganizationData();
   });
 
   async function seedTask(): Promise<string> {
@@ -188,6 +201,72 @@ describeMaybe('A8.3b Owner reminder concurrency (real PostgreSQL)', () => {
     return { status: response.status, body: await response.json() };
   }
 
+  async function currentTaskEtag(taskId: string): Promise<string> {
+    const task = await prisma.task.findFirstOrThrow({
+      where: { organizationId: org, id: taskId },
+      select: { version: true },
+    });
+    return formatETag('task', taskId, task.version);
+  }
+
+  /** A lifecycle route call, settled to a plain outcome so it can be raced against a reminder call. */
+  async function lifecycle(
+    handler: (
+      request: Request,
+      context: { params: Promise<{ taskId: string }> },
+    ) => Promise<Response>,
+    taskId: string,
+    path: string,
+    body: unknown,
+  ): Promise<Outcome> {
+    const taskEtag = await currentTaskEtag(taskId);
+    const response = await handler(
+      new Request(`http://localhost/api/v1/tasks/${taskId}/${path}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'if-match': taskEtag },
+        body: JSON.stringify(body),
+      }),
+      params(taskId),
+    );
+    return settle(response);
+  }
+
+  /**
+   * A representation must describe a state that could exist, whatever raced (A8 lifecycle audit H-1).
+   *
+   * Checked for *every* success, mutating or not. The audit's H-1 finding was a `200` reporting an
+   * `active` schedule with a `NULL` due date and a live future occurrence — a pairing no committed
+   * database state can hold, assembled by a service that read the schedule and the due date in
+   * separate snapshots. A response that is internally impossible is a defect whichever transaction
+   * produced it, so it is asserted before anything about winners and losers.
+   *
+   * A `stopped` schedule beside a null due date is *not* incoherent: that is exactly what due-date
+   * removal leaves behind, and the schedule keeps its generation's snapshot of the date it had been
+   * scheduling against. What must never appear is a schedule still armed — `active` or
+   * `suspended_waiting` — with no canonical due date behind it.
+   */
+  function assertRepresentationIsCoherent(body: Record<string, unknown>, label: string) {
+    const state = String(body.state);
+    if (body.dueLocalDate === null) {
+      expect(
+        ['no_due_date', 'stopped'],
+        `${label}: ${state} state behind a null due date`,
+      ).toContain(state);
+    }
+    if (state === 'no_due_date' || state === 'not_scheduled') {
+      expect(body.generation ?? null, `${label}: ${state} state carries a generation`).toBeNull();
+    }
+    if (state === 'no_due_date') {
+      expect(body.dueLocalDate ?? null, `${label}: no_due_date state with a due date`).toBeNull();
+    }
+    if (state !== 'active') {
+      expect(
+        body.nextOverdueOccurrence ?? null,
+        `${label}: ${state} state holds a claimable occurrence`,
+      ).toBeNull();
+    }
+  }
+
   /**
    * The invariants every interleaving must satisfy, whatever order the two requests land in.
    *
@@ -196,16 +275,27 @@ describeMaybe('A8.3b Owner reminder concurrency (real PostgreSQL)', () => {
    * request that was a no-op returns the token it was given. So:
    *
    * - a winner that mutated must describe the state that actually survived;
-   * - a winner that mutated nothing may only report the state it observed.
+   * - a winner that mutated nothing must describe, exactly, the state it was given.
    *
    * That admits the honest case where a `DELETE` against an already-stopped schedule succeeds without
    * writing while a concurrent reactivation does the real work, and still forbids the failure the
    * audit found — two requests both claiming to have changed the same row in incompatible ways.
+   *
+   * ## Non-mutating successes are checked too (A8 lifecycle audit H-1)
+   *
+   * This helper used to compare only the mutators, exempting any success whose ETag equalled the
+   * token it was given. That exemption is why H-1 survived a suite designed to catch exactly it: the
+   * immaterial-repeat `PUT` returned the *prior* token beside a representation that had never existed,
+   * so it was classified as a harmless no-op and never compared to anything. A no-op is now held to
+   * the strictest available standard — it must reproduce the whole prior representation field for
+   * field, which is a state that demonstrably existed transactionally, because this test read it out
+   * of the database before the race began. Every success is additionally checked for internal
+   * coherence, so an impossible pairing fails even where no snapshot is available to compare against.
    */
   async function assertRaceIsSafe(
     taskId: string,
     outcomes: readonly Outcome[],
-    priorToken: string,
+    prior: Record<string, unknown>,
     options: { outOfBandVersionBumps?: number } = {},
   ) {
     const statuses = outcomes.map((outcome) => outcome.status);
@@ -223,16 +313,20 @@ describeMaybe('A8.3b Owner reminder concurrency (real PostgreSQL)', () => {
     }
 
     const final = await readState(taskId);
-    const mutators = winners.filter((winner) => winner.body.etag !== priorToken);
+    const mutators = winners.filter((winner) => winner.body.etag !== prior.etag);
 
     // At most one request may have mutated the row.
     expect(mutators.length, `mutators ${mutators.length}`).toBeLessThanOrEqual(1);
 
-    for (const winner of mutators) {
-      expect(winner.body.etag).toBe(final.etag);
-      expect(winner.body.state).toBe(final.state);
-      expect(winner.body.dueLocalDate).toBe(final.dueLocalDate);
-      expect(winner.body.generation).toBe(final.generation);
+    for (const [index, winner] of winners.entries()) {
+      assertRepresentationIsCoherent(winner.body, `winner ${index}`);
+      const nonMutating = winner.body.etag === prior.etag;
+      expect(
+        winner.body,
+        nonMutating
+          ? `non-mutating winner ${index} does not reproduce the state it observed`
+          : `mutating winner ${index} does not describe the state that survived`,
+      ).toEqual(nonMutating ? prior : final);
     }
 
     const reminderEvents = await readReminderEvents(taskId);
@@ -357,25 +451,31 @@ describeMaybe('A8.3b Owner reminder concurrency (real PostgreSQL)', () => {
     for (let round = 0; round < ROUNDS; round += 1) {
       const taskId = await seedTask();
       await put(taskId, '2026-04-01', (await readState(taskId)).etag);
-      const token = (await readState(taskId)).etag;
+      // The whole prior representation, not just its token: every non-mutating success must reproduce
+      // this exact state, which is a state that demonstrably existed (A8 lifecycle audit H-1).
+      const prior = await readState(taskId);
+      const token = prior.etag;
 
       const outcomes = await Promise.all([
         put(taskId, '2026-05-20', token).then(settle),
         put(taskId, '2026-06-30', token).then(settle),
       ]);
 
-      const { final } = await assertRaceIsSafe(taskId, outcomes, token);
+      const { final } = await assertRaceIsSafe(taskId, outcomes, prior);
       // Exactly one generation opened: the loser did not also advance it.
       expect(final.generation).toBe(2);
       expect(['2026-05-20', '2026-06-30']).toContain(final.dueLocalDate);
-      await prisma.task.deleteMany({ where: { organizationId: org } }).catch(() => undefined);
+      await resetOrganizationData();
     }
   });
 
   it('survives establishment versus establishment', async () => {
     for (let round = 0; round < ROUNDS; round += 1) {
       const taskId = await seedTask();
-      const token = (await readState(taskId)).etag;
+      // The whole prior representation, not just its token: every non-mutating success must reproduce
+      // this exact state, which is a state that demonstrably existed (A8 lifecycle audit H-1).
+      const prior = await readState(taskId);
+      const token = prior.etag;
 
       const outcomes = await Promise.all([
         put(taskId, '2026-05-20', token).then(settle),
@@ -383,7 +483,7 @@ describeMaybe('A8.3b Owner reminder concurrency (real PostgreSQL)', () => {
       ]);
 
       // The unique index on `task_id` is what makes this safe: only one row can exist (D104).
-      const { final } = await assertRaceIsSafe(taskId, outcomes, token);
+      const { final } = await assertRaceIsSafe(taskId, outcomes, prior);
       expect(final.generation).toBe(1);
       const schedules = await prisma.taskReminderSchedule.findMany({
         where: { organizationId: org, taskId },
@@ -396,14 +496,17 @@ describeMaybe('A8.3b Owner reminder concurrency (real PostgreSQL)', () => {
     for (let round = 0; round < ROUNDS; round += 1) {
       const taskId = await seedTask();
       await put(taskId, '2026-04-01', (await readState(taskId)).etag);
-      const token = (await readState(taskId)).etag;
+      // The whole prior representation, not just its token: every non-mutating success must reproduce
+      // this exact state, which is a state that demonstrably existed (A8 lifecycle audit H-1).
+      const prior = await readState(taskId);
+      const token = prior.etag;
 
       const outcomes = await Promise.all([
         put(taskId, '2026-05-20', token).then(settle),
         del(taskId, token).then(settle),
       ]);
 
-      await assertRaceIsSafe(taskId, outcomes, token);
+      await assertRaceIsSafe(taskId, outcomes, prior);
     }
   });
 
@@ -411,14 +514,17 @@ describeMaybe('A8.3b Owner reminder concurrency (real PostgreSQL)', () => {
     for (let round = 0; round < ROUNDS; round += 1) {
       const taskId = await seedTask();
       await put(taskId, '2026-04-01', (await readState(taskId)).etag);
-      const token = (await readState(taskId)).etag;
+      // The whole prior representation, not just its token: every non-mutating success must reproduce
+      // this exact state, which is a state that demonstrably existed (A8 lifecycle audit H-1).
+      const prior = await readState(taskId);
+      const token = prior.etag;
 
       const outcomes = await Promise.all([
         del(taskId, token).then(settle),
         put(taskId, '2026-05-20', token).then(settle),
       ]);
 
-      await assertRaceIsSafe(taskId, outcomes, token);
+      await assertRaceIsSafe(taskId, outcomes, prior);
     }
   });
 
@@ -426,7 +532,10 @@ describeMaybe('A8.3b Owner reminder concurrency (real PostgreSQL)', () => {
     for (let round = 0; round < ROUNDS; round += 1) {
       const taskId = await seedTask();
       await put(taskId, '2026-04-01', (await readState(taskId)).etag);
-      const token = (await readState(taskId)).etag;
+      // The whole prior representation, not just its token: every non-mutating success must reproduce
+      // this exact state, which is a state that demonstrably existed (A8 lifecycle audit H-1).
+      const prior = await readState(taskId);
+      const token = prior.etag;
 
       const outcomes = await Promise.all([
         del(taskId, token).then(settle),
@@ -435,7 +544,7 @@ describeMaybe('A8.3b Owner reminder concurrency (real PostgreSQL)', () => {
 
       // Both ask for the same end state, so two successes would be honest — but only one removal may
       // be recorded, because only one actually stopped anything.
-      const { final, reminderEvents, mutators } = await assertRaceIsSafe(taskId, outcomes, token);
+      const { final, reminderEvents, mutators } = await assertRaceIsSafe(taskId, outcomes, prior);
       expect(final.state).toBe('stopped');
       expect(mutators).toHaveLength(1);
       expect(
@@ -449,7 +558,10 @@ describeMaybe('A8.3b Owner reminder concurrency (real PostgreSQL)', () => {
       const taskId = await seedTask();
       await put(taskId, '2026-04-01', (await readState(taskId)).etag);
       await del(taskId, (await readState(taskId)).etag);
-      const token = (await readState(taskId)).etag;
+      // The whole prior representation, not just its token: every non-mutating success must reproduce
+      // this exact state, which is a state that demonstrably existed (A8 lifecycle audit H-1).
+      const prior = await readState(taskId);
+      const token = prior.etag;
 
       const outcomes = await Promise.all([
         put(taskId, '2026-04-01', token).then(settle),
@@ -460,7 +572,7 @@ describeMaybe('A8.3b Owner reminder concurrency (real PostgreSQL)', () => {
       // nothing, so it may legitimately succeed alongside the reactivation. What must not happen is
       // a reactivation that a removal then silently cancels, or a `reminder.due_date.removed` event
       // recorded behind a surviving active schedule.
-      const { final } = await assertRaceIsSafe(taskId, outcomes, token);
+      const { final } = await assertRaceIsSafe(taskId, outcomes, prior);
       expect(['active', 'stopped']).toContain(final.state);
     }
   });
@@ -494,7 +606,10 @@ describeMaybe('A8.3b Owner reminder concurrency (real PostgreSQL)', () => {
     for (let round = 0; round < ROUNDS; round += 1) {
       const taskId = await seedTask();
       await stageStoppedScheduleWithLiveDueDate(taskId);
-      const token = (await readState(taskId)).etag;
+      // The whole prior representation, not just its token: every non-mutating success must reproduce
+      // this exact state, which is a state that demonstrably existed (A8 lifecycle audit H-1).
+      const prior = await readState(taskId);
+      const token = prior.etag;
 
       const outcomes = await Promise.all([
         del(taskId, token).then(settle),
@@ -502,7 +617,7 @@ describeMaybe('A8.3b Owner reminder concurrency (real PostgreSQL)', () => {
       ]);
 
       // The staging stop bumped the version without an event, since it bypassed the audit layer.
-      await assertRaceIsSafe(taskId, outcomes, token, { outOfBandVersionBumps: 1 });
+      await assertRaceIsSafe(taskId, outcomes, prior, { outOfBandVersionBumps: 1 });
       // Exactly one may commit: the two intents are incompatible, unlike the already-removed case
       // where a no-op DELETE can honestly succeed beside a reactivation.
       expect(outcomes.filter((outcome) => outcome.status === 200)).toHaveLength(1);
@@ -513,14 +628,17 @@ describeMaybe('A8.3b Owner reminder concurrency (real PostgreSQL)', () => {
     for (let round = 0; round < ROUNDS; round += 1) {
       const taskId = await seedTask();
       await stageStoppedScheduleWithLiveDueDate(taskId);
-      const token = (await readState(taskId)).etag;
+      // The whole prior representation, not just its token: every non-mutating success must reproduce
+      // this exact state, which is a state that demonstrably existed (A8 lifecycle audit H-1).
+      const prior = await readState(taskId);
+      const token = prior.etag;
 
       const outcomes = await Promise.all([
         put(taskId, '2026-05-20', token).then(settle),
         del(taskId, token).then(settle),
       ]);
 
-      await assertRaceIsSafe(taskId, outcomes, token, { outOfBandVersionBumps: 1 });
+      await assertRaceIsSafe(taskId, outcomes, prior, { outOfBandVersionBumps: 1 });
       expect(outcomes.filter((outcome) => outcome.status === 200)).toHaveLength(1);
     }
   });
@@ -529,7 +647,10 @@ describeMaybe('A8.3b Owner reminder concurrency (real PostgreSQL)', () => {
     for (let round = 0; round < ROUNDS; round += 1) {
       const taskId = await seedTask();
       await stageStoppedScheduleWithLiveDueDate(taskId);
-      const token = (await readState(taskId)).etag;
+      // The whole prior representation, not just its token: every non-mutating success must reproduce
+      // this exact state, which is a state that demonstrably existed (A8 lifecycle audit H-1).
+      const prior = await readState(taskId);
+      const token = prior.etag;
 
       // A wider burst from the same stale token, so the interleaving is not a single fixed pairing.
       const outcomes = await Promise.all([
@@ -539,22 +660,146 @@ describeMaybe('A8.3b Owner reminder concurrency (real PostgreSQL)', () => {
         put(taskId, '2026-06-30', token).then(settle),
       ]);
 
-      expect(outcomes.map((outcome) => outcome.status)).not.toContain(500);
       // Exactly one, including the two removals. Both used to be able to answer 200 — the winner
       // truthfully, and a loser whose torn pre-lock read looked like "already removed" while its
       // token was stale, handing back a superseded ETag.
       expect(outcomes.filter((outcome) => outcome.status === 200)).toHaveLength(1);
-      await assertScheduleInvariants(taskId);
-      await assertAuditTrailIsConsistent(taskId, await readReminderEvents(taskId), {
-        outOfBandVersionBumps: 1,
-      });
+      await assertRaceIsSafe(taskId, outcomes, prior, { outOfBandVersionBumps: 1 });
     }
   });
+
+  /**
+   * The immaterial-repeat `PUT` the lifecycle audit reproduced (A8 lifecycle audit H-1).
+   *
+   * Re-saving the date a live schedule already carries must write nothing, and that is not the bug.
+   * The bug was *where* it was decided: the route service compared the requested date to a schedule it
+   * had read, then read the canonical due date in a second statement, and returned a representation
+   * built from both. Under contention those are two different snapshots, and the audit got back a `200`
+   * describing an `active` schedule with a `NULL` due date, a live future occurrence, and an ETag for a
+   * version that had already been superseded — a state that had never existed at any instant.
+   *
+   * Nothing was corrupted, because a no-op writes nothing, which is exactly why the earlier suite
+   * missed it: the helper treated any success returning the prior token as a harmless no-op and
+   * compared it to nothing. It is compared now, and to the strictest thing available — the whole prior
+   * representation, read out of the database before the race started.
+   *
+   * Both arrival orders are staged, and both admit two honest successes: a no-op `PUT` writes nothing,
+   * so a concurrent removal or completion may legitimately commit beside it. What must not happen is
+   * the no-op reporting anything other than the state it was given.
+   *
+   * The two pairings fail differently, and only the removal one produces the audit's exact artefact.
+   * Removal clears `tasks.due_local_date`, so the pre-fix torn read paired a live schedule with a
+   * `NULL` due date — visibly impossible, and these tests were run against the pre-fix branch to
+   * confirm they reject it. A completion stop *preserves* the due date, so the same torn read produces
+   * a representation that is merely stale rather than impossible; what those cases prove is that no
+   * `500` or deadlock escapes, that the no-op writes nothing at all, and that a completed Task never
+   * keeps a claimable occurrence however the two transactions interleave.
+   */
+  async function seedLiveSchedule(dueLocalDate: string) {
+    const taskId = await seedTask();
+    await put(taskId, dueLocalDate, (await readState(taskId)).etag);
+    const prior = await readState(taskId);
+    expect(prior.state).toBe('active');
+    expect(prior.dueLocalDate).toBe(dueLocalDate);
+    return { taskId, prior, token: prior.etag as string };
+  }
+
+  it('answers an immaterial PUT racing a DELETE with a state that existed (H-1 regression)', async () => {
+    for (let round = 0; round < ROUNDS; round += 1) {
+      const { taskId, prior, token } = await seedLiveSchedule('2026-04-01');
+
+      const outcomes = await Promise.all([
+        put(taskId, '2026-04-01', token).then(settle),
+        del(taskId, token).then(settle),
+      ]);
+
+      const { mutators } = await assertRaceIsSafe(taskId, outcomes, prior);
+      // The no-op cannot be the mutator, so at most the removal wrote anything.
+      expect(mutators.length).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('answers an immaterial PUT racing a DELETE, opposite arrival order (H-1 regression)', async () => {
+    for (let round = 0; round < ROUNDS; round += 1) {
+      const { taskId, prior, token } = await seedLiveSchedule('2026-04-01');
+
+      const outcomes = await Promise.all([
+        del(taskId, token).then(settle),
+        put(taskId, '2026-04-01', token).then(settle),
+      ]);
+
+      await assertRaceIsSafe(taskId, outcomes, prior);
+    }
+  });
+
+  it('answers an immaterial PUT racing a completion stop with a state that existed (H-1 regression)', async () => {
+    for (let round = 0; round < ROUNDS; round += 1) {
+      const { taskId, prior, token } = await seedLiveSchedule('2026-04-01');
+
+      const [putOutcome, completionOutcome] = await Promise.all([
+        put(taskId, '2026-04-01', token).then(settle),
+        lifecycle(completeTask, taskId, 'complete', { outcomeType: 'completed' }),
+      ]);
+
+      await assertImmaterialPutVersusCompletionIsSafe(taskId, putOutcome, completionOutcome, prior);
+    }
+  });
+
+  it('answers an immaterial PUT racing a completion stop, opposite arrival order (H-1 regression)', async () => {
+    for (let round = 0; round < ROUNDS; round += 1) {
+      const { taskId, prior, token } = await seedLiveSchedule('2026-04-01');
+
+      const [completionOutcome, putOutcome] = await Promise.all([
+        lifecycle(completeTask, taskId, 'complete', { outcomeType: 'completed' }),
+        put(taskId, '2026-04-01', token).then(settle),
+      ]);
+
+      await assertImmaterialPutVersusCompletionIsSafe(taskId, putOutcome, completionOutcome, prior);
+    }
+  });
+
+  /**
+   * The completion pairing's assertions, which differ from the removal pairing's in two ways.
+   *
+   * The two outcomes are named rather than scanned, because a losing `PUT` answers with an error
+   * envelope that no shape test can tell apart from anything else, and the completion route answers
+   * with a *Task* representation that must not be compared against reminder state at all.
+   *
+   * The load-bearing assertion is the audit-trail one. It holds `reminder_version` equal to the number
+   * of reminder events, so a `PUT` that reported itself a no-op while bumping the version or writing an
+   * event fails here even though its response would have looked perfectly reasonable.
+   */
+  async function assertImmaterialPutVersusCompletionIsSafe(
+    taskId: string,
+    putOutcome: Outcome,
+    completionOutcome: Outcome,
+    prior: Record<string, unknown>,
+  ) {
+    expect([putOutcome.status, completionOutcome.status]).not.toContain(500);
+
+    if (putOutcome.status === 200) {
+      assertRepresentationIsCoherent(putOutcome.body, 'immaterial PUT versus completion');
+      expect(putOutcome.body, 'immaterial PUT reported a state it never observed').toEqual(prior);
+    } else {
+      expect([409, 412], `immaterial PUT status ${putOutcome.status}`).toContain(putOutcome.status);
+    }
+    if (completionOutcome.status !== 200) {
+      expect([409, 412]).toContain(completionOutcome.status);
+    }
+
+    // The completion is unconditional on the reminder side, so whichever order they land in the Task
+    // ends terminal with a stopped schedule.
+    const schedule = await findReminderScheduleByTaskId(prisma, org, taskId);
+    expect(schedule?.status, 'completed task left with a live schedule').toBe('stopped');
+    await assertScheduleInvariants(taskId);
+    await assertAuditTrailIsConsistent(taskId, await readReminderEvents(taskId));
+  }
 
   it('never returns 500 across a burst of mixed writes', async () => {
     const taskId = await seedTask();
     await put(taskId, '2026-04-01', (await readState(taskId)).etag);
-    const token = (await readState(taskId)).etag;
+    const prior = await readState(taskId);
+    const token = prior.etag;
 
     const outcomes = await Promise.all([
       put(taskId, '2026-05-20', token).then(settle),
@@ -565,11 +810,8 @@ describeMaybe('A8.3b Owner reminder concurrency (real PostgreSQL)', () => {
       put(taskId, '2026-08-01', token).then(settle),
     ]);
 
-    expect(outcomes.map((outcome) => outcome.status)).not.toContain(500);
     expect(outcomes.filter((outcome) => outcome.status === 200)).toHaveLength(1);
-    for (const loser of outcomes.filter((outcome) => outcome.status !== 200)) {
-      expect([409, 412]).toContain(loser.status);
-    }
+    await assertRaceIsSafe(taskId, outcomes, prior);
   });
 
   /**
@@ -581,36 +823,6 @@ describeMaybe('A8.3b Owner reminder concurrency (real PostgreSQL)', () => {
    * a terminal or Waiting Task left holding an occurrence a worker would claim.
    */
   describe('lifecycle versus Owner mutation', () => {
-    /** A lifecycle route call, settled to a plain outcome so it can be raced against a reminder call. */
-    async function lifecycle(
-      handler: (
-        request: Request,
-        context: { params: Promise<{ taskId: string }> },
-      ) => Promise<Response>,
-      taskId: string,
-      path: string,
-      body: unknown,
-    ): Promise<Outcome> {
-      const taskEtag = await currentTaskEtag(taskId);
-      const response = await handler(
-        new Request(`http://localhost/api/v1/tasks/${taskId}/${path}`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', 'if-match': taskEtag },
-          body: JSON.stringify(body),
-        }),
-        params(taskId),
-      );
-      return settle(response);
-    }
-
-    async function currentTaskEtag(taskId: string): Promise<string> {
-      const task = await prisma.task.findFirstOrThrow({
-        where: { organizationId: org, id: taskId },
-        select: { version: true },
-      });
-      return formatETag('task', taskId, task.version);
-    }
-
     const enterWaiting = (taskId: string) =>
       lifecycle(waitTask, taskId, 'waiting', { waitingUntil: '2026-04-20T17:00:00.000Z' });
     const leaveWaiting = (taskId: string) => lifecycle(resumeTask, taskId, 'resume', {});
@@ -628,6 +840,14 @@ describeMaybe('A8.3b Owner reminder concurrency (real PostgreSQL)', () => {
       expect(statuses, `statuses ${statuses.join(',')}`).not.toContain(500);
       for (const loser of outcomes.filter((outcome) => ![200, 201].includes(outcome.status))) {
         expect([409, 412], `loser status ${loser.status}`).toContain(loser.status);
+      }
+      // Every successful *reminder* response, mutating or not, must describe a state that could exist
+      // (A8 lifecycle audit H-1). `overdueDeliveredCount` is what distinguishes a reminder
+      // representation from the Task representation a lifecycle route returns.
+      for (const [index, outcome] of outcomes.entries()) {
+        if (outcome.status === 200 && 'overdueDeliveredCount' in outcome.body) {
+          assertRepresentationIsCoherent(outcome.body, `lifecycle race outcome ${index}`);
+        }
       }
       await assertScheduleInvariants(taskId);
       await assertAuditTrailIsConsistent(taskId, await readReminderEvents(taskId));

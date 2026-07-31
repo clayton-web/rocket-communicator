@@ -120,7 +120,7 @@ Optional Owner-selected **organization-local calendar date** on a Task. When pre
 
 ### Reminder Schedule
 
-The **Task-scoped** scheduling state derived from a Task's due date: at most one per Task, surviving reassignment, carrying the current **generation**, status, advance-occurrence disposition, next overdue occurrence, per-generation overdue delivered count, and `requiresOwnerAttention` (D104, D109). Supersedes the Assignment-scoped Follow-up Schedule (D096). **Persisted but not operational:** the `task_reminder_schedules` table exists as of A8.3a (D128); nothing creates, advances, or acts on a schedule.
+The **Task-scoped** scheduling state derived from a Task's due date: at most one per Task, surviving reassignment, carrying the current **generation**, status, advance-occurrence disposition, next overdue occurrence, per-generation overdue delivered count, and `requiresOwnerAttention` (D104, D109). Supersedes the Assignment-scoped Follow-up Schedule (D096). **Maintained but never delivered:** the Owner reminder APIs create and change a schedule (A8.3b) and the Task-lifecycle wiring suspends, resumes, and stops one as the Task moves (D107); nothing scans, claims, or sends, because no reminder worker exists.
 
 ### Reminder occurrence
 

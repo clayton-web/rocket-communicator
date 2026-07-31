@@ -15,7 +15,7 @@ Operations: [../../docs/DEPLOYMENT.md](../../docs/DEPLOYMENT.md)
 
 ### Local Docker Postgres
 
-Minimal Compose service at the repo root (`docker-compose.yml`). Postgres **15**, loopback-only port **5433**, databases `prisma` (dev) and `prisma_test` (future suites). Named volume `aicaa_pgdata`.
+Minimal Compose service at the repo root (`docker-compose.yml`). Postgres **16**, loopback-only port **5433**, databases `prisma` (dev) and `prisma_test` (future suites). Named volume `aicaa_pgdata`.
 
 | Command                        | Purpose                                     |
 | ------------------------------ | ------------------------------------------- |

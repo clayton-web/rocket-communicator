@@ -1,6 +1,7 @@
 import type { LocalDate, TaskStatus, UtcInstant } from '@aicaa/domain';
 import {
   decideReminderLifecycleIntent,
+  hasAdvanceOccurrenceElapsed,
   OVERDUE_SUCCESSFUL_DELIVERY_CEILING,
   selectNextOverdueOccurrence,
 } from '../../../domain/dist/index.js';
@@ -11,6 +12,7 @@ import type {
   ReminderScheduleStatus,
   ReminderScheduleStopReason,
 } from '../mappers/reminder-mappers.js';
+import { hasProcessedAdvanceOccurrence } from '../repositories/reminder-delivery-attempt-repository.js';
 import {
   findReminderScheduleByTaskId,
   resumeReminderScheduleFromWaiting,
@@ -75,6 +77,11 @@ export interface ReminderLifecycleEffect {
    * computes forward and never replays what Waiting covered (D107).
    */
   readonly nextOverdueOccurrenceAt: string | null;
+  /**
+   * The advance occurrence this resume marked permanently skipped because the Waiting period spanned
+   * it, or null when the advance disposition was left as it was (A8 lifecycle audit H-2).
+   */
+  readonly skippedAdvanceOccurrenceLocalDate: LocalDate | null;
 }
 
 export interface ReconcileReminderScheduleInput {
@@ -132,6 +139,7 @@ export async function reconcileReminderScheduleForTaskStatus(
         schedule: suspended,
         stopReason: null,
         nextOverdueOccurrenceAt: null,
+        skippedAdvanceOccurrenceLocalDate: null,
       };
     }
 
@@ -140,10 +148,16 @@ export async function reconcileReminderScheduleForTaskStatus(
         return null;
       }
       const occurrence = nextOccurrenceOnResume(schedule, input.now);
+      const advanceSpannedByWaiting = await advanceOccurrenceSpannedByWaiting(
+        tx,
+        schedule,
+        input.now,
+      );
       const resumed = await resumeReminderScheduleFromWaiting(tx, {
         organizationId: scope.organizationId,
         scheduleId: schedule.id,
         nextOverdueOccurrence: occurrence,
+        advanceDisposition: advanceSpannedByWaiting ? 'skipped_waiting_elapsed' : undefined,
       });
       return {
         ...base,
@@ -151,6 +165,9 @@ export async function reconcileReminderScheduleForTaskStatus(
         schedule: resumed,
         stopReason: null,
         nextOverdueOccurrenceAt: occurrence?.occurrenceAt ?? null,
+        skippedAdvanceOccurrenceLocalDate: advanceSpannedByWaiting
+          ? schedule.advanceOccurrenceLocalDate
+          : null,
       };
     }
 
@@ -170,6 +187,7 @@ export async function reconcileReminderScheduleForTaskStatus(
         schedule: stopped,
         stopReason: intent.reason,
         nextOverdueOccurrenceAt: null,
+        skippedAdvanceOccurrenceLocalDate: null,
       };
     }
   }
@@ -191,13 +209,13 @@ export const REMINDER_LIFECYCLE_AUDIT_ACTIONS: Record<ReminderLifecycleTransitio
 };
 
 /**
- * Describe a lifecycle-derived reminder transition as an audit event (D110).
+ * Describe a lifecycle-derived reminder transition as an audit event (D107).
  *
  * ## Attribution
  *
  * The actor is copied from the Task lifecycle event that caused the transition, so a suspension a
  * Recipient caused by marking a Task Waiting is attributed to that capability and never to the Owner.
- * D110's rule that an automated *send* must be attributed to `system` rather than the Owner is not in
+ * D107's rule that an automated *send* must be attributed to `system` rather than the Owner is not in
  * tension with this: nothing was sent, and a state change that exists only because a human acted has
  * a human cause worth recording. Recording it as `system` would erase the one fact most worth
  * keeping — which of the two parties paused this Task's reminders.
@@ -247,6 +265,13 @@ export function buildReminderLifecycleAudit(
     effect.transition === 'resumed_from_waiting'
       ? `next_overdue_occurrence_at=${effect.nextOverdueOccurrenceAt ?? 'none'}`
       : null,
+    // Only when Waiting actually spanned the advance morning, so the note stays silent about an
+    // advance reminder that is still pending or was already accounted for (A8 lifecycle audit H-2).
+    effect.skippedAdvanceOccurrenceLocalDate === null
+      ? null
+      : `advance_disposition=skipped_waiting_elapsed ` +
+        `advance_occurrence_local_date=${effect.skippedAdvanceOccurrenceLocalDate} ` +
+        `advance_skip_reason=waiting_spanned_occurrence`,
     `overdue_delivered_count=${effect.schedule.overdueDeliveredCount}`,
   ]
     .filter((entry): entry is string => entry !== null)
@@ -306,4 +331,54 @@ function nextOccurrenceOnResume(
     occurrenceLocalDate: occurrence.occurrenceLocalDate,
     occurrenceAt: occurrence.occurrenceAt,
   };
+}
+
+/**
+ * Whether this resume must permanently skip the generation's advance occurrence (A8 lifecycle audit
+ * H-2).
+ *
+ * Suspension preserves the advance disposition rather than clearing it, which is right — a Task that
+ * waits an hour and resumes before its advance morning must still get that reminder. But the audit
+ * proved the other case was left untruthful: resume armed only the next *overdue* occurrence and
+ * never revisited the advance one, so a Task that waited past its advance morning came back
+ * **active** still carrying `advance_disposition = 'scheduled'` with an instant already in the past.
+ * Nothing could act on it, because no worker exists — but the row asserted a pending reminder that
+ * must never be sent, and the first due-scan would have had to invent the product decision to know
+ * that.
+ *
+ * The decision is now made here, and it is the one D107 already implies: Waiting suspends reminder
+ * scheduling, and a suspended reminder is not a deferred one. The occurrence is skipped for this
+ * generation and never replayed, so a three-week Waiting period produces no advance reminder on the
+ * day it ends — exactly the no-backlog rule the overdue side already follows.
+ *
+ * Three states are left alone, each because rewriting it would be a lie:
+ *
+ * - a disposition that is not `'scheduled'` — already skipped at establishment (D105), or already
+ *   marked by an earlier resume, so there is nothing pending to skip and the earlier reason is the
+ *   truthful one;
+ * - an occurrence still strictly in the future — the reminder is genuinely pending and resume arms it;
+ * - an occurrence with an attempt row against it — a recorded fact about what happened to that
+ *   occurrence, which the schedule row must not contradict.
+ *
+ * The boundary itself belongs to the A8.2 domain, not here: `hasAdvanceOccurrenceElapsed` states the
+ * `<=` rule once, so resuming at exactly 09:00 on the advance morning is too late in the same way a
+ * generation established at exactly 09:00 gets no advance reminder.
+ */
+async function advanceOccurrenceSpannedByWaiting(
+  tx: DbTransaction,
+  schedule: PersistedReminderSchedule,
+  now: string,
+): Promise<boolean> {
+  if (schedule.advanceDisposition !== 'scheduled') {
+    return false;
+  }
+  if (!hasAdvanceOccurrenceElapsed(schedule.advanceOccurrenceAt as UtcInstant, now as UtcInstant)) {
+    return false;
+  }
+  return !(await hasProcessedAdvanceOccurrence(
+    tx,
+    schedule.organizationId,
+    schedule.id,
+    schedule.generation,
+  ));
 }

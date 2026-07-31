@@ -8,5 +8,7 @@
 
     * `skipped_window_elapsed` (value: `"skipped_window_elapsed"`)
 
+    * `skipped_waiting_elapsed` (value: `"skipped_waiting_elapsed"`)
+
 
 

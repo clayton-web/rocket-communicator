@@ -201,6 +201,7 @@ export {
 export {
   hasReminderSchedule,
   decideAdvanceReminder,
+  hasAdvanceOccurrenceElapsed,
   selectNextOverdueOccurrence,
   isDueDateChangeMaterial,
   countSuccessfulOverdueDeliveries,

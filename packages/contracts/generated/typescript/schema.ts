@@ -1420,13 +1420,19 @@ export interface components {
             occurrence?: components["schemas"]["TaskReminderOccurrence"] | null;
         };
         /**
-         * @description The advance-reminder decision for the current generation, made once when the schedule was
-         *     established and then immutable (D105). `skipped_window_elapsed` means the day before the due
-         *     date had already passed when the Owner chose the date.
+         * @description The advance-reminder decision for the current generation, made when the schedule was
+         *     established and thereafter changed by exactly one event (D105, D107).
+         *
+         *     `skipped_window_elapsed` means the day before the due date had already passed when the Owner
+         *     chose the date, so no advance reminder was ever scheduled. `skipped_waiting_elapsed` means the
+         *     advance reminder was validly scheduled and the Task was Waiting when it came due: it is
+         *     permanently skipped for this generation and is never replayed when the Task resumes. The
+         *     occurrence's own date is reported either way, so a client can always say which morning was
+         *     missed.
          *
          * @enum {string}
          */
-        TaskReminderAdvanceDisposition: "scheduled" | "skipped_window_elapsed";
+        TaskReminderAdvanceDisposition: "scheduled" | "skipped_window_elapsed" | "skipped_waiting_elapsed";
         /** @description One reminder occurrence. `localDate` is the organization-local calendar day and is
          *     authoritative; `at` is the absolute instant that day's 09:00 organization-local resolves to,
          *     supplied for display and ordering only (D103).

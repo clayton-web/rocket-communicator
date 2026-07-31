@@ -489,7 +489,9 @@ model TaskReminderSchedule {
   /// through the reminder ETag; it is never a request field.
   reminderVersion Int @default(1) @map("reminder_version")
 
-  /// Decided once at establishment and never reclassified (D105). The occurrence itself is always
+  /// Decided at establishment and never reclassified from the current clock (D105). The one later
+  /// change permitted is a Waiting period that spanned the occurrence, which marks it
+  /// `skipped_waiting_elapsed` on resume (A8 lifecycle audit H-2). The occurrence itself is always
   /// stored — even when skipped — so the Owner surface can say which morning was missed.
   advanceDisposition         ReminderAdvanceDisposition @map("advance_disposition")
   advanceOccurrenceLocalDate String                     @map("advance_occurrence_local_date") @db.VarChar(10)
@@ -736,12 +738,19 @@ enum ReminderScheduleStopReason {
   permanent_delivery_failure
 }
 
-/// The advance-reminder decision for one generation, made **once at establishment** and then
-/// immutable (D105). A later scheduler run must never reclassify it, which is why it is stored
-/// rather than recomputed from the current clock.
+/// The advance-reminder decision for one generation, made at establishment and thereafter changed by
+/// exactly one event (D105, D107). A scheduler run must never reclassify it from the current clock,
+/// which is why it is stored rather than recomputed.
+///
+/// `skipped_window_elapsed` means the advance morning had already passed when the Owner chose the
+/// date, so no advance reminder was ever scheduled. `skipped_waiting_elapsed` means the opposite
+/// history: the advance reminder *was* validly scheduled, and the Task was Waiting when it came due,
+/// so it is permanently skipped for this generation and never replayed on resume (A8 lifecycle audit
+/// H-2). The two stay distinct so the history can say which happened.
 enum ReminderAdvanceDisposition {
   scheduled
   skipped_window_elapsed
+  skipped_waiting_elapsed
 }
 
 /// Which occurrence a delivery attempt belongs to. Mirrors the A8.2 domain

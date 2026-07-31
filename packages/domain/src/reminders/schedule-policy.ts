@@ -117,6 +117,30 @@ export function decideAdvanceReminder(
 }
 
 /**
+ * Whether a scheduled advance occurrence can no longer be sent at `at` (D105, D107).
+ *
+ * The single place the "no advance reminder is ever sent late" boundary is stated for an occurrence
+ * that was *already scheduled*, as opposed to `decideAdvanceReminder`, which answers the same
+ * question at establishment before an occurrence exists. The two use the same `<=`/`>` boundary
+ * deliberately: `decideAdvanceReminder` schedules only when the occurrence is *strictly* after the
+ * reference instant, so anything not strictly after it has elapsed. A resume landing exactly on the
+ * occurrence instant is therefore too late, matching a generation established at exactly 09:00 on the
+ * advance morning, which gets no advance reminder either.
+ *
+ * Used by the Waiting-resume path to decide whether a suspension spanned the advance morning (A8
+ * lifecycle audit H-2). Comparing two instants is not calendar arithmetic — the occurrence instant was
+ * resolved through this module's zone rules when it was scheduled — so this deliberately does not
+ * re-derive it from the due date. Re-deriving would let a resume silently reclassify an occurrence
+ * D105 froze.
+ */
+export function hasAdvanceOccurrenceElapsed(
+  advanceOccurrenceAt: UtcInstant,
+  at: UtcInstant,
+): boolean {
+  return parseUtcInstant(advanceOccurrenceAt).getTime() <= parseUtcInstant(at).getTime();
+}
+
+/**
  * Select the next overdue occurrence — always exactly one, always in the future (D106).
  *
  * Elapsed calendar days are skipped rather than accumulated: a due date years in the past

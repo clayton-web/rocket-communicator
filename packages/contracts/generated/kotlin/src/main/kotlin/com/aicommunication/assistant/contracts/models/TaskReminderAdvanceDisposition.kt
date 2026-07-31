@@ -20,9 +20,9 @@ import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 
 /**
- * The advance-reminder decision for the current generation, made once when the schedule was established and then immutable (D105). `skipped_window_elapsed` means the day before the due date had already passed when the Owner chose the date. 
+ * The advance-reminder decision for the current generation, made when the schedule was established and thereafter changed by exactly one event (D105, D107).  `skipped_window_elapsed` means the day before the due date had already passed when the Owner chose the date, so no advance reminder was ever scheduled. `skipped_waiting_elapsed` means the advance reminder was validly scheduled and the Task was Waiting when it came due: it is permanently skipped for this generation and is never replayed when the Task resumes. The occurrence's own date is reported either way, so a client can always say which morning was missed. 
  *
- * Values: scheduled,skipped_window_elapsed
+ * Values: scheduled,skipped_window_elapsed,skipped_waiting_elapsed
  */
 
 @JsonClass(generateAdapter = false)
@@ -32,7 +32,10 @@ enum class TaskReminderAdvanceDisposition(val value: kotlin.String) {
     scheduled("scheduled"),
 
     @Json(name = "skipped_window_elapsed")
-    skipped_window_elapsed("skipped_window_elapsed");
+    skipped_window_elapsed("skipped_window_elapsed"),
+
+    @Json(name = "skipped_waiting_elapsed")
+    skipped_waiting_elapsed("skipped_waiting_elapsed");
 
     /**
      * Override [toString()] to avoid using the enum variable name as the value, and instead use

@@ -14,6 +14,7 @@ import {
   toStorableLocalDate,
   toStorableLocalDateOrNull,
   type PersistedReminderSchedule,
+  type ReminderAdvanceDisposition,
   type ReminderScheduleStopReason,
 } from '../mappers/reminder-mappers.js';
 import { requireTaskScope } from './reminder-scope-guard.js';
@@ -354,6 +355,13 @@ export async function suspendReminderScheduleForWaiting(
  *
  * No elapsed-time accounting and no backlog: whatever the caller passes is exactly one occurrence,
  * and persistence has no way to reconstruct the missed ones even if it wanted to.
+ *
+ * `advanceDisposition` is the one field a resume may rewrite, and only to
+ * `'skipped_waiting_elapsed'` (A8 lifecycle audit H-2). The advance occurrence's local date and
+ * instant are deliberately left untouched: the generation's record of *which* morning was missed is
+ * history and survives, while the disposition stops asserting that a passed occurrence is still
+ * pending. Whether it elapsed is the caller's decision, made with the A8.2 domain boundary rule —
+ * persistence does not compare instants to the clock.
  */
 export async function resumeReminderScheduleFromWaiting(
   db: Client,
@@ -361,6 +369,8 @@ export async function resumeReminderScheduleFromWaiting(
     organizationId: string;
     scheduleId: string;
     nextOverdueOccurrence: ReminderOccurrenceInput | null;
+    /** Set only when the Waiting period spanned a still-scheduled advance occurrence. */
+    advanceDisposition?: Extract<ReminderAdvanceDisposition, 'skipped_waiting_elapsed'>;
   },
 ): Promise<PersistedReminderSchedule> {
   const nextOverdueOccurrenceLocalDate = toStorableLocalDateOrNull(
@@ -380,6 +390,7 @@ export async function resumeReminderScheduleFromWaiting(
       suspendedAt: null,
       nextOverdueOccurrenceLocalDate,
       nextOverdueOccurrenceAt: fromIso(input.nextOverdueOccurrence?.occurrenceAt ?? null),
+      ...(input.advanceDisposition ? { advanceDisposition: input.advanceDisposition } : {}),
     },
   });
 

@@ -1,5 +1,5 @@
 import type { TaskStatus } from '@aicaa/domain';
-import { decideReminderScheduling } from '../../../domain/dist/index.js';
+import { decideReminderScheduling, isDueDateChangeMaterial } from '../../../domain/dist/index.js';
 import type { DbClient } from '../client/create-prisma-client.js';
 import type { AuditEventRecord } from '../mappers/domain-mappers.js';
 import { createAuditEvent, type CreateAuditEventInput } from '../repositories/audit-repository.js';
@@ -193,8 +193,35 @@ export async function persistOwnerReminderEstablishment(input: {
   });
 }
 
+export interface OwnerReminderSaveResult {
+  readonly schedule: PersistedReminderSchedule;
+  readonly skippedAdvanceAttempt: PersistedReminderDeliveryAttempt | null;
+  /** Null when the save was an immaterial repeat, since no mutation happened to audit. */
+  readonly audit: AuditEventRecord | null;
+  /** False when the requested date was already the live schedule's date, so nothing was written. */
+  readonly changed: boolean;
+}
+
 /**
- * Close the current generation, open the next one, update the canonical due date, and audit it.
+ * What the save transaction found once it held the Task lock, and what it did about it.
+ *
+ * Handed to the caller's audit builder so the event describes authoritative state rather than the
+ * state the caller happened to read before the lock (A8 lifecycle audit H-1).
+ */
+export interface OwnerReminderSaveOutcome {
+  /** The schedule as it existed under the lock, before this transaction touched it. */
+  readonly priorSchedule: PersistedReminderSchedule;
+  /** The Task's canonical due date as it existed under the lock. */
+  readonly priorDueLocalDate: string | null;
+  /** The schedule this transaction wrote. */
+  readonly schedule: PersistedReminderSchedule;
+  /** True when the prior schedule was stopped, so this save restarted reminders (D109). */
+  readonly reactivating: boolean;
+}
+
+/**
+ * Close the current generation, open the next one, update the canonical due date, and audit it —
+ * or answer a truthful no-op when the requested date is already in force.
  *
  * Prior delivery attempts are untouched — history is superseded, never rewritten (D107, D109) — so
  * the new generation starts with a zero overdue count while every earlier attempt remains readable
@@ -203,19 +230,84 @@ export async function persistOwnerReminderEstablishment(input: {
  * `openNextReminderGeneration` matches on `expectedGeneration`, so two Owners changing the due date
  * concurrently cannot both succeed; the loser gets an optimistic-concurrency failure rather than a
  * silently discarded change.
+ *
+ * ## Materiality is decided here, under the lock (A8 lifecycle audit H-1)
+ *
+ * Re-saving the date a live schedule already carries must write nothing: resetting the generation
+ * would reset the delivered count, and repeated saves would then defeat the D106 ceiling. The route
+ * service used to answer that case itself, from a schedule read and a canonical-due-date read taken
+ * before any lock and therefore from two different snapshots. The lifecycle audit reproduced the
+ * consequence on real PostgreSQL: racing a `DELETE`, an immaterial `PUT` returned `200` describing an
+ * **active** schedule with a `NULL` due date and a live future occurrence, carrying an ETag for a
+ * version that had already been superseded. Nothing was corrupted — a no-op writes nothing — but the
+ * API asserted a state that had never existed at any instant.
+ *
+ * So the caller no longer decides. It supplies the date it wants and the reminder version it
+ * observed; this transaction takes the Task lock, re-reads the schedule *and* the canonical due date
+ * under it, and decides materiality from that single snapshot. The version precondition runs first,
+ * exactly as in the removal transaction, so a stale caller is refused with
+ * `OPTIMISTIC_CONCURRENCY` rather than told its no-op succeeded.
+ *
+ * The no-op requires all three of: a schedule that is not stopped, a requested date the domain calls
+ * immaterial, and a canonical due date that agrees with the schedule's own. The third is what makes
+ * the returned representation coherent by construction — the caller can project the response from
+ * the schedule alone and cannot pair it with a due date from a different snapshot. A stopped schedule
+ * is never a no-op: re-saving even an identical date after a stop is the only way reminders restart
+ * (D109), and treating it as immaterial would silently refuse the Owner.
  */
 export async function persistOwnerReminderGenerationChange(input: {
   readonly db: DbClient;
-  readonly generation: OpenNextReminderGenerationInput;
+  readonly generation: OpenNextReminderGenerationInput & {
+    /**
+     * The reminder version the Owner observed, from the reminder ETag. Required — the no-op branch
+     * performs no compare-and-set of its own, so this is the only thing standing between a stale
+     * caller and a `200` describing state it never saw.
+     */
+    readonly expectedReminderVersion: number;
+  };
   readonly skippedAdvanceAttempt?: SkippedAdvanceAttemptInput;
-  readonly audit: CreateAuditEventInput;
-}): Promise<OwnerReminderMutationResult> {
+  /** Builds the audit event from authoritative in-transaction state. */
+  readonly audit: (outcome: OwnerReminderSaveOutcome) => CreateAuditEventInput;
+}): Promise<OwnerReminderSaveResult> {
   return runOwnerReminderTransaction(input.db, 'Reminder generation change', async (tx) => {
     const scope = await lockTaskScopeForReminderMutation(
       tx,
       input.generation.organizationId,
       input.generation.taskId,
     );
+
+    const priorSchedule = await findReminderScheduleByTaskId(
+      tx,
+      scope.organizationId,
+      scope.taskId,
+    );
+    const observedVersion = priorSchedule?.reminderVersion ?? NO_SCHEDULE_REMINDER_VERSION;
+    if (observedVersion !== input.generation.expectedReminderVersion) {
+      throw optimisticConcurrency(
+        `Reminder state for task ${scope.taskId} changed since reminder version ` +
+          `${input.generation.expectedReminderVersion}; it is now at ${observedVersion}.`,
+      );
+    }
+    if (priorSchedule === null) {
+      // The caller routed here because it saw a schedule. Absence now, with a matching version, can
+      // only mean the caller presented the no-schedule token, which establishment handles.
+      throw optimisticConcurrency(`Task ${scope.taskId} has no reminder schedule to change.`);
+    }
+
+    const taskRow = await tx.task.findUnique({
+      where: { id: scope.taskId },
+      select: { dueLocalDate: true },
+    });
+    const priorDueLocalDate = taskRow?.dueLocalDate ?? null;
+
+    const immaterialRepeat =
+      priorSchedule.status !== 'stopped' &&
+      !isDueDateChangeMaterial(priorSchedule.dueLocalDate, input.generation.dueLocalDate) &&
+      priorDueLocalDate === priorSchedule.dueLocalDate;
+    if (immaterialRepeat) {
+      return { schedule: priorSchedule, skippedAdvanceAttempt: null, audit: null, changed: false };
+    }
+
     assertLockedTaskAllowsSchedule(scope, input.generation.status ?? 'active');
 
     const schedule = await openNextReminderGeneration(tx, input.generation);
@@ -229,8 +321,16 @@ export async function persistOwnerReminderGenerationChange(input: {
       ? await recordSkippedAdvance(tx, schedule, input.skippedAdvanceAttempt)
       : null;
 
-    const audit = await createAuditEvent(tx, input.audit);
-    return { schedule, skippedAdvanceAttempt, audit };
+    const audit = await createAuditEvent(
+      tx,
+      input.audit({
+        priorSchedule,
+        priorDueLocalDate,
+        schedule,
+        reactivating: priorSchedule.status === 'stopped',
+      }),
+    );
+    return { schedule, skippedAdvanceAttempt, audit, changed: true };
   });
 }
 

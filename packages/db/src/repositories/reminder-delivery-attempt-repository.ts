@@ -326,6 +326,28 @@ export async function listReminderDeliveryAttemptsForGeneration(
 }
 
 /**
+ * Whether this generation's advance occurrence has already been processed.
+ *
+ * Asked by the Waiting-resume path before it marks an elapsed advance occurrence skipped (A8
+ * lifecycle audit H-2). Any attempt row at all counts — sent, failed, claimed, or skipped — because
+ * every one of them is a recorded fact about that occurrence, and relabelling the disposition behind
+ * an existing record would make the schedule row and the attempt history disagree about what
+ * happened. No worker exists to write such a row yet; the guard exists so that when one does, resume
+ * cannot rewrite the history it produced.
+ */
+export async function hasProcessedAdvanceOccurrence(
+  db: Client,
+  organizationId: string,
+  scheduleId: string,
+  generation: number,
+): Promise<boolean> {
+  const count = await db.reminderDeliveryAttempt.count({
+    where: { organizationId, scheduleId, generation, occurrenceKind: 'advance' },
+  });
+  return count > 0;
+}
+
+/**
  * Count the deliveries that consume the ceiling: successful **overdue** rows in one generation
  * (D106).
  *

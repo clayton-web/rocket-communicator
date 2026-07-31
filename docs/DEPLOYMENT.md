@@ -113,7 +113,7 @@ Why it exists: reminder writes deliberately do not bump `Task.version`, so the T
 pnpm --filter @aicaa/db migrate:deploy
 ```
 
-**Local Docker** (loopback Postgres 15 on port 5433; never production):
+**Local Docker** (loopback Postgres 16 on port 5433; never production):
 
 ```bash
 pnpm db:docker:up
@@ -220,7 +220,7 @@ Operator notes:
 - Handoff idempotency is durable. A repeated same-key call replays the single attempt; it does not send a second message.
 - Recipients are currently managed through the A7.6 Owner Recipient endpoints; there is no Recipient management UI yet (A7 deferred backlog).
 
-**A8.0 documentation Decision Lock** recorded (D095–D101) and partly superseded. **A8.1 documentation Decision Lock** recorded (**D102–D110**): A8 is a **due-date-driven** reminder model. Do not implement any further part of the Follow-up Engine or Event Notification Engine until the specific slice is authorized. **P1.0 documentation Decision Lock** recorded (**D111–D120**): the Owner web experience foundation is scoped; **P1.1 through P1.5 are implemented**; **P1 is COMPLETE** — implemented, deployed, and production-validated with one documented evidence limitation ([P1_5_EVIDENCE.md](P1_5_EVIDENCE.md)). Roadmap: **A7 → A8 → A9** (no early separate A9.0); **P1** was sequenced before the remaining A8 implementation slices and is now closed. **A8 is the current milestone: A8.1, A8.2, A8.3a, and A8.3b are complete; A8.4 onward are not started.** Nothing in A8 is operational in Production — the A8.3a migration is **not applied**, so the Owner reminder APIs that exist in the repository cannot function against Production, and no reminder worker, scheduler, cron job, delivery path, or UI exists.
+**A8.0 documentation Decision Lock** recorded (D095–D101) and partly superseded. **A8.1 documentation Decision Lock** recorded (**D102–D110**): A8 is a **due-date-driven** reminder model. Do not implement any further part of the Follow-up Engine or Event Notification Engine until the specific slice is authorized. **P1.0 documentation Decision Lock** recorded (**D111–D120**): the Owner web experience foundation is scoped; **P1.1 through P1.5 are implemented**; **P1 is COMPLETE** — implemented, deployed, and production-validated with one documented evidence limitation ([P1_5_EVIDENCE.md](P1_5_EVIDENCE.md)). Roadmap: **A7 → A8 → A9** (no early separate A9.0); **P1** was sequenced before the remaining A8 implementation slices and is now closed. **A8 is the current milestone: A8.1, A8.2, A8.3a, A8.3b, and the Task-lifecycle wiring are complete; A8.4a onward are not started.** Nothing in A8 is operational in Production — no A8 migration is **applied**, so the Owner reminder APIs and lifecycle wiring that exist in the repository cannot function against Production, and no reminder worker, scheduler, cron job, delivery path, or UI exists.
 
 ### Owner web experience foundation operations (P1)
 
@@ -248,7 +248,7 @@ Production currently serves commit `8588c5d260176b24c8ecf6fb16e026c5c6034359` vi
 
 ### Reminder engine operations (A8 — not operational)
 
-**Nothing in this subsection is operational.** No reminder scheduler job, worker endpoint, feature flag, or environment variable has been created, and no reminder has ever been sent. The A8.3b Owner reminder routes configure a schedule; nothing consumes one. The A8.3a persistence tables (`task_reminder_schedules`, `reminder_delivery_attempts`, and `tasks.due_local_date`) **exist in the repository migration but are not applied in Production** — see the migration history above. This records the approved enablement gate so it cannot be missed later; it is not a runbook for existing infrastructure.
+**Nothing in this subsection is operational.** No reminder scheduler job, worker endpoint, feature flag, or environment variable has been created, and no reminder has ever been sent. The A8.3b Owner reminder routes configure a schedule and the Task-lifecycle wiring keeps it truthful as the Task moves; nothing **delivers** from one, because no worker scans or claims. The A8.3a persistence tables (`task_reminder_schedules`, `reminder_delivery_attempts`, and `tasks.due_local_date`) **exist in the repository migration but are not applied in Production** — see the migration history above. This records the approved enablement gate so it cannot be missed later; it is not a runbook for existing infrastructure.
 
 **Production-enablement dependency and closure gate (D108).** Scheduler and delivery code **may** be developed and merged behind a **disabled** production feature flag before the Event Notification Engine is finished. However:
 
