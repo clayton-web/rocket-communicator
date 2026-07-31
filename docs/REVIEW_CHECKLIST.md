@@ -14,6 +14,20 @@ Governing references: [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md) · [AI_
 - [ ] No unrelated refactoring or drive-by feature work
 - [ ] New discoveries parked in [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md) or a future milestone
 - [ ] Version-one exclusions (WhatsApp, Play Store, Rocket PM, auto-create, etc.) untouched
+- [ ] Plan or prompt classified Docker as 🟢 not required, 🟡 recommended, or 🔴 required ([ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW.md))
+
+## Environment and verification
+
+Governing process: [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW.md) (Environment Guard, Docker indicator, verification exit criterion, Environment Status report block).
+
+- [ ] **Environment Guard** ran before application-code changes (Node, pnpm, `JAVA_HOME` → Java 17, Gradle on JDK 17, slice-specific tools, and a green `pnpm verify` baseline unless authorization waived the baseline)
+- [ ] Environment failures were classified as environment issues — application code was not modified to compensate
+- [ ] Toolchains that were already healthy were not reinstalled or reconfigured
+- [ ] **`pnpm verify` is green** as the default exit criterion, **or** the authorization explicitly permitted a narrower scope
+- [ ] If verification was partial: the report says **partial**, lists every blocked step exactly, and does **not** claim full verification
+- [ ] An environment failure is not treated as proof of application correctness
+- [ ] Genuine repository defects from verification were reported, not silently bypassed
+- [ ] Completion report includes the **Environment Status** block (Node, pnpm, `JAVA_HOME`, Java, Gradle, Docker required for this slice, `pnpm verify`)
 
 ## Architecture
 
@@ -202,6 +216,7 @@ Gates for D111–D126. Record **expected behaviour and required proof**; no spec
 - [ ] Partial/incomplete forward paths never report full success (D088)
 - [ ] Android/notification fixtures updated if parsers changed
 - [ ] Failure paths (reauth, missing SMS body, OpenAI down) considered
+- [ ] Default full-`pnpm verify` gate satisfied unless a narrower scope was explicitly authorized (see Environment and verification)
 
 ## UX
 

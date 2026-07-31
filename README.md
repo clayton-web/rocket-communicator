@@ -61,6 +61,10 @@ pnpm install
 pnpm verify
 ```
 
+**Environment Guard and verification:** before implementation work, confirm Node, pnpm, JDK 17 via `JAVA_HOME`, Gradle on that JDK, and a green `pnpm verify` baseline — see [ENGINEERING_WORKFLOW.md](docs/ENGINEERING_WORKFLOW.md). **`pnpm verify` is the default exit criterion** for implementation slices unless an authorization explicitly narrows scope.
+
+**Docker for this repository’s ordinary path:** 🟢 Docker not required. Host JDK 17 covers contract generation and Android Gradle. Mark Docker 🟡/🔴 only when a slice truly needs containers (local Supabase/Postgres, Docker-based tests, or `contracts:generate:docker`).
+
 Owner auth local setup: copy `apps/web/.env.example` → `apps/web/.env.local`, configure Supabase Google OAuth redirect `{NEXT_PUBLIC_APP_URL}/auth/callback`, then:
 
 ```bash
