@@ -101,6 +101,22 @@ Do **not** mark Docker required merely for:
 
 This is contributor guidance, not application behaviour. Host JDK 17 remains the default for `pnpm contracts:generate` and Android Gradle; Docker is an optional fallback for Kotlin generation when host Java is unavailable ([API_CONTRACT.md](API_CONTRACT.md)).
 
+## Concurrency suites need real PostgreSQL, and `pnpm verify` must not need Docker
+
+Most persistence tests run on **PGlite**, which is fast and needs nothing installed. It is one in-process connection, so it cannot express two transactions contending for the same row: a concurrency guarantee "verified" on PGlite is reasoned, not tested. The A8.3b audit made that concrete — a lost update and a deadlock that a full green PGlite suite had not detected.
+
+Suites that must contend therefore carry a `.pg.test.ts` suffix and **skip themselves** unless given a database URL, so `pnpm verify` stays Docker-free and deterministic. A skipped concurrency suite is not evidence; run it explicitly and report it separately from the PGlite results.
+
+```bash
+pnpm db:docker:up                                     # PostgreSQL 16, loopback 5433
+AICAA_LOCAL_DATABASE_URL="postgresql://prisma:prisma@127.0.0.1:5433/prisma_test?schema=public" \
+  pnpm db:migrate:local                               # apply migrations to the test database
+AICAA_PG_CONCURRENCY_URL="postgresql://prisma:prisma@127.0.0.1:5433/prisma_test?schema=public" \
+  pnpm --filter @aicaa/web exec vitest run owner-reminder-concurrency
+```
+
+**Always route Prisma through the `:local` helpers for local work.** `packages/db/.env` holds a production URL, and bare `prisma migrate deploy` reads it — so the bare command targets production from a developer's machine with no prompt. `pnpm db:migrate:local` overrides `DATABASE_URL` explicitly and refuses any non-loopback host (`packages/db/scripts/assert-local-database-url.mjs`). This guards the _local_ helpers only; applying a migration to production remains a deliberate, unguarded operator action ([DEPLOYMENT.md](DEPLOYMENT.md)).
+
 ## Verification exit criterion
 
 **`pnpm verify` is the default required exit criterion for implementation slices unless the applicable authorization explicitly permits a narrower validation scope.**

@@ -103,19 +103,31 @@ A8.3a reminder persistence migration: `packages/db/prisma/migrations/20260731040
 
 **This migration is now a prerequisite for the A8.3b Owner reminder routes, and applying it still schedules nothing.** As of A8.3b, `GET`/`PUT`/`DELETE /api/v1/tasks/{taskId}/reminder` read and write these tables, so until the migration is applied those three routes will fail against Production while every other route is unaffected. Applying it makes reminder configuration possible, not reminder delivery: there is no scheduler, worker, cron job, or email path, so the most a schedule can do is sit in the table waiting for a later, separately authorized slice.
 
-**Apply to production** (with production `DATABASE_URL` configured for the target):
+A8.3b audit remediation migration: `packages/db/prisma/migrations/20260731170000_a8_3b_reminder_concurrency/` (**not yet applied in production**). Additive and forward-only: it adds `task_reminder_schedules.reminder_version` with a `DEFAULT 1` and three CHECK constraints. It creates no table, drops nothing, and changes no existing column type. Because the table itself does not exist in Production yet, this migration has no production rows to touch and will be applied in the same first run as the A8.3a migration whenever that intentional operator action is taken.
+
+Why it exists: reminder writes deliberately do not bump `Task.version`, so the Task ETag cannot protect a reminder mutation, and a real-PostgreSQL audit demonstrated two concurrent Owners each holding a valid token and one of them losing a write silently. `reminder_version` is the reminder resource's own concurrency token, and correctness could not be expressed without persisting it. The CHECK constraints assert what the application already guarantees — a positive version, and a `suspended_waiting` schedule holding no next occurrence — so a paused Task cannot sit in the worker's due-scan index.
+
+**Apply to production** (with production `DATABASE_URL` configured for the target — do this only as an intentional operator action):
 
 ```bash
 pnpm --filter @aicaa/db migrate:deploy
 ```
 
-**Verify status:**
+**Local Docker** (loopback Postgres 15 on port 5433; never production):
+
+```bash
+pnpm db:docker:up
+pnpm db:migrate:local
+pnpm db:migrate:status:local
+```
+
+**Verify status (uses `packages/db/.env` — production if that file holds a remote URL):**
 
 ```bash
 pnpm --filter @aicaa/db migrate:status
 ```
 
-Ordinary package tests use in-process **PGlite** and do not require production `DATABASE_URL`. Production always uses Supabase Postgres.
+Ordinary package tests use in-process **PGlite** and do not require production `DATABASE_URL`. Production always uses Supabase Postgres. Local Docker setup: [packages/db/README.md](../packages/db/README.md).
 
 ## Production smoke checks
 

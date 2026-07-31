@@ -420,23 +420,37 @@ export interface paths {
          *     failure detail appears in the response.
          *
          *     A8.3b implements the API only. Nothing schedules, claims, sends, or retries a reminder, so
-         *     `overdueDeliveredCount` is always 0 and `state` is never `suspended_waiting` yet.
+         *     `overdueDeliveredCount` is always 0.
+         *
+         *     Allowed for every Task status, including completed and dismissed, so the Owner can always see
+         *     the truthful history of what was scheduled.
+         *
+         *     The `ETag` returned here is the token PUT and DELETE require. All responses are `no-store`.
          *
          */
         get: operations["getTaskReminder"];
         /**
          * Establish or change the task due date and its reminder schedule (Owner only)
          * @description Sets the canonical organization-local due date and establishes or re-generates the Task
-         *     Reminder Schedule (D102, D104, D105). Uses `If-Match` Task concurrency.
+         *     Reminder Schedule (D102, D104, D105). Requires the reminder `If-Match`, not the Task's.
          *
          *     Idempotent: re-sending the same effective due date against a live schedule returns the
-         *     current state unchanged and does **not** open a generation. A material due-date change opens
-         *     the next generation and preserves all prior delivery history. Re-setting a date on a stopped
-         *     schedule opens a new generation, because a stopped schedule is not the same effective
-         *     schedule (D109 requires explicit Owner re-save to reactivate).
+         *     current state unchanged, does **not** open a generation, does not change the ETag, and emits
+         *     no audit event. A material due-date change opens the next generation and preserves all prior
+         *     delivery history. Re-setting a date on a stopped schedule opens a new generation, because a
+         *     stopped schedule is not the same effective schedule (D109 requires explicit Owner re-save to
+         *     reactivate); that is audited as `reminder.schedule.reactivated`.
          *
-         *     Every occurrence in the response is computed by the reminder domain. The request cannot
-         *     carry an organization, generation, occurrence, status, count, or stop reason.
+         *     **Task eligibility (D107).** A `completed` or `dismissed` Task is rejected with 409: reminders
+         *     stop permanently for a terminal Task, and nothing here reopens one. A `waiting` Task is
+         *     accepted, and its schedule is created or re-generated directly in `suspended_waiting` with no
+         *     claimable occurrence — Waiting suspends reminder scheduling and is the only pause mechanism.
+         *     Resuming when the Task leaves Waiting is lifecycle wiring and is not implemented in A8.3b.
+         *
+         *     Every occurrence in the response is computed by the reminder domain. The request body accepts
+         *     exactly `dueLocalDate`; any other property, nested or not, is rejected with 400.
+         *
+         *     All responses are `no-store`.
          *
          */
         put: operations["setTaskReminder"];
@@ -445,8 +459,18 @@ export interface paths {
          * Remove the task due date and stop its reminders (Owner only)
          * @description Clears the canonical due date and stops the schedule with reason `due_date_removed` (D107).
          *     Delivery history is preserved — no reminder row is deleted — and no future occurrence
-         *     remains. Idempotent: removing an already-removed due date returns the current state and
-         *     emits no audit event.
+         *     remains. Idempotent: removing an already-removed due date returns the current state, leaves
+         *     the ETag unchanged, and emits no audit event.
+         *
+         *     Requires the reminder `If-Match`, not the Task's. Only the schedule state the caller observed
+         *     is stopped, so a removal cannot silently cancel a due date somebody else changed in the
+         *     meantime.
+         *
+         *     Allowed for every Task status, including completed and dismissed: removal can only reduce
+         *     reminder activity, so refusing it would strand an active schedule with no way to switch it
+         *     off.
+         *
+         *     All responses are `no-store`.
          *
          */
         delete: operations["removeTaskReminder"];
@@ -1339,6 +1363,12 @@ export interface components {
          *      */
         TaskReminderState: {
             taskId: string;
+            /** @description Strong ETag for the *reminder* resource, required as `If-Match` on PUT and DELETE.
+             *     Distinct from the Task ETag: a reminder change deliberately does not bump `Task.version`,
+             *     so a Task ETag cannot detect that reminder state moved. Opaque — clients must echo it, not
+             *     parse it. Also returned in the `ETag` response header.
+             *      */
+            etag: string;
             /** @description The canonical Owner-selected organization-local due date. Null when the Owner has not
              *     chosen one. This is authoritative for reminders; the instant-typed `Task.dueAt` is not
              *     (D102, D109).
@@ -1981,6 +2011,21 @@ export interface components {
          *      */
         Cursor: string;
         Limit: number;
+        /**
+         * @description Strong ETag for the *reminder* resource, from `GET /api/v1/tasks/{taskId}/reminder` or the
+         *     `ETag` header of a previous reminder mutation.
+         *
+         *     A Task ETag is **not** accepted here and is rejected with 412. A reminder write deliberately
+         *     does not bump `Task.version`, so a Task ETag stays valid across a reminder change it cannot
+         *     describe, and two Owners could each hold a "current" Task token for a schedule only one of
+         *     them had read.
+         *
+         *     Weak (`W/`), wildcard (`*`), multiple, and malformed values are rejected with 412; an absent
+         *     header is rejected with 428.
+         *
+         * @example "task-reminder-01JXYZ-v3"
+         */
+        ReminderIfMatch: string;
     };
     requestBodies: never;
     headers: never;
@@ -2643,14 +2688,19 @@ export interface operations {
             /** @description Reminder state */
             200: {
                 headers: {
+                    /** @description Strong reminder-resource ETag, to be sent as `If-Match` on PUT and DELETE. */
+                    ETag?: string;
+                    "Cache-Control"?: "no-store";
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["TaskReminderState"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
         };
     };
     setTaskReminder: {
@@ -2658,10 +2708,20 @@ export interface operations {
             query?: never;
             header: {
                 /**
-                 * @description Strong ETag from the current resource version.
-                 * @example "task-01JXYZ-v3"
+                 * @description Strong ETag for the *reminder* resource, from `GET /api/v1/tasks/{taskId}/reminder` or the
+                 *     `ETag` header of a previous reminder mutation.
+                 *
+                 *     A Task ETag is **not** accepted here and is rejected with 412. A reminder write deliberately
+                 *     does not bump `Task.version`, so a Task ETag stays valid across a reminder change it cannot
+                 *     describe, and two Owners could each hold a "current" Task token for a schedule only one of
+                 *     them had read.
+                 *
+                 *     Weak (`W/`), wildcard (`*`), multiple, and malformed values are rejected with 412; an absent
+                 *     header is rejected with 428.
+                 *
+                 * @example "task-reminder-01JXYZ-v3"
                  */
-                "If-Match": components["parameters"]["IfMatch"];
+                "If-Match": components["parameters"]["ReminderIfMatch"];
             };
             path: {
                 taskId: components["parameters"]["TaskId"];
@@ -2677,6 +2737,11 @@ export interface operations {
             /** @description Reminder state after establishment or change */
             200: {
                 headers: {
+                    /** @description The new strong reminder-resource ETag. Changes on every material mutation; unchanged
+                     *     when the request was an immaterial repeat.
+                     *      */
+                    ETag?: string;
+                    "Cache-Control"?: "no-store";
                     [name: string]: unknown;
                 };
                 content: {
@@ -2686,9 +2751,31 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
-            412: components["responses"]["PreconditionFailed"];
+            /** @description The Task is `completed` or `dismissed`, so reminders cannot be established, changed, or
+             *     reactivated for it (D107).
+             *      */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The reminder `If-Match` is stale, of the wrong kind (for example a Task ETag), weak,
+             *     wildcard, multiple, or malformed. Also returned when a concurrent reminder write won the
+             *     race, including when PostgreSQL refused to serialize the two transactions.
+             *      */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             428: components["responses"]["PreconditionRequired"];
+            500: components["responses"]["InternalError"];
         };
     };
     removeTaskReminder: {
@@ -2696,10 +2783,20 @@ export interface operations {
             query?: never;
             header: {
                 /**
-                 * @description Strong ETag from the current resource version.
-                 * @example "task-01JXYZ-v3"
+                 * @description Strong ETag for the *reminder* resource, from `GET /api/v1/tasks/{taskId}/reminder` or the
+                 *     `ETag` header of a previous reminder mutation.
+                 *
+                 *     A Task ETag is **not** accepted here and is rejected with 412. A reminder write deliberately
+                 *     does not bump `Task.version`, so a Task ETag stays valid across a reminder change it cannot
+                 *     describe, and two Owners could each hold a "current" Task token for a schedule only one of
+                 *     them had read.
+                 *
+                 *     Weak (`W/`), wildcard (`*`), multiple, and malformed values are rejected with 412; an absent
+                 *     header is rejected with 428.
+                 *
+                 * @example "task-reminder-01JXYZ-v3"
                  */
-                "If-Match": components["parameters"]["IfMatch"];
+                "If-Match": components["parameters"]["ReminderIfMatch"];
             };
             path: {
                 taskId: components["parameters"]["TaskId"];
@@ -2711,16 +2808,35 @@ export interface operations {
             /** @description Reminder state after removal */
             200: {
                 headers: {
+                    /** @description The new strong reminder-resource ETag. Changes when a schedule was actually stopped;
+                     *     unchanged when the request was an idempotent repeat.
+                     *      */
+                    ETag?: string;
+                    "Cache-Control"?: "no-store";
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["TaskReminderState"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
-            412: components["responses"]["PreconditionFailed"];
+            409: components["responses"]["Conflict"];
+            /** @description The reminder `If-Match` is stale, of the wrong kind (for example a Task ETag), weak,
+             *     wildcard, multiple, or malformed. Also returned when a concurrent reminder write won the
+             *     race, including when PostgreSQL refused to serialize the two transactions.
+             *      */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             428: components["responses"]["PreconditionRequired"];
+            500: components["responses"]["InternalError"];
         };
     };
     snoozeTask: {

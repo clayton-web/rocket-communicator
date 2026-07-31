@@ -9,6 +9,25 @@ components:
         type: string
         pattern: '^"(task|task-suggestion)-[^"]+-v[0-9]+"$'
       example: '"task-01JXYZ-v3"'
+    ReminderIfMatch:
+      name: If-Match
+      in: header
+      required: true
+      description: |
+        Strong ETag for the *reminder* resource, from `GET /api/v1/tasks/{taskId}/reminder` or the
+        `ETag` header of a previous reminder mutation.
+
+        A Task ETag is **not** accepted here and is rejected with 412. A reminder write deliberately
+        does not bump `Task.version`, so a Task ETag stays valid across a reminder change it cannot
+        describe, and two Owners could each hold a "current" Task token for a schedule only one of
+        them had read.
+
+        Weak (`W/`), wildcard (`*`), multiple, and malformed values are rejected with 412; an absent
+        header is rejected with 428.
+      schema:
+        type: string
+        pattern: '^"task-reminder-[^"]+-v[0-9]+"$'
+      example: '"task-reminder-01JXYZ-v3"'
     IdempotencyKey:
       name: Idempotency-Key
       in: header

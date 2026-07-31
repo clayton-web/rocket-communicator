@@ -1,5 +1,6 @@
 import type { components } from '@aicaa/contracts/schema';
 import type { PersistedReminderSchedule } from '@aicaa/db';
+import { NO_SCHEDULE_REMINDER_VERSION, reminderETag } from './etag';
 
 export type TaskReminderState = components['schemas']['TaskReminderState'];
 type TaskReminderOccurrence = components['schemas']['TaskReminderOccurrence'];
@@ -17,7 +18,8 @@ type TaskReminderScheduleState = components['schemas']['TaskReminderScheduleStat
  * The fields deliberately dropped are as important as the ones kept. `claimedBy`, `claimedAt`, and
  * `claimExpiresAt` are worker-coordination internals, and `id` is a database row identifier; none of
  * them mean anything to an Owner, and publishing them would make future lease changes a breaking
- * contract change.
+ * contract change. `reminderVersion` is dropped too, and reappears only inside the opaque `etag`, so
+ * a client cannot forge a token for a state it never read.
  */
 function occurrence(localDate: string | null, at: string | null): TaskReminderOccurrence | null {
   if (localDate === null || at === null) {
@@ -41,6 +43,7 @@ function scheduleState(schedule: PersistedReminderSchedule): TaskReminderSchedul
 export function noDueDateState(taskId: string): TaskReminderState {
   return {
     taskId,
+    etag: reminderETag(taskId, NO_SCHEDULE_REMINDER_VERSION),
     dueLocalDate: null,
     schedulingTimeZone: null,
     state: 'no_due_date',
@@ -83,6 +86,7 @@ export function toTaskReminderState(
 ): TaskReminderState {
   return {
     taskId: schedule.taskId,
+    etag: reminderETag(schedule.taskId, schedule.reminderVersion),
     dueLocalDate: canonicalDueLocalDate,
     schedulingTimeZone: schedule.schedulingTimeZone,
     state: scheduleState(schedule),

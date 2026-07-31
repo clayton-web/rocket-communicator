@@ -14,7 +14,8 @@ import {
   type CreateReminderScheduleInput,
   type OpenNextReminderGenerationInput,
 } from '../repositories/reminder-schedule-repository.js';
-import { requireTaskScope } from '../repositories/reminder-scope-guard.js';
+import { lockTaskScopeForReminderMutation } from '../repositories/reminder-scope-guard.js';
+import { rethrowAsConcurrencyFailure } from '../errors/persistence-errors.js';
 
 /**
  * A8.3b Owner-facing reminder units of work.
@@ -32,6 +33,16 @@ import { requireTaskScope } from '../repositories/reminder-scope-guard.js';
  *
  * These transactions still compute nothing. Occurrences, dispositions, and the current instant all
  * arrive as arguments from the A8.2 domain by way of the route service (D103, D127).
+ *
+ * ## One lock order (A8.3b audit F2)
+ *
+ * All three begin by locking the Task row, then write the schedule, then the Task's due date. The
+ * original A8.3b implementation ordered establishment and generation-change as schedule-then-Task
+ * and removal as Task-then-schedule; on real PostgreSQL a concurrent change and removal deadlocked,
+ * and the victim escaped as a 500. The lock also serializes the compare-and-set reads below, so the
+ * loser of a race reads the winner's committed state and reports a truthful precondition failure
+ * instead of racing past it. PGlite serializes everything on one connection and could not reveal
+ * this, which is why the proof lives in a real-PostgreSQL test.
  */
 
 /** The advance occurrence that had already elapsed when the Owner chose the date (D105). */
@@ -45,6 +56,27 @@ export interface OwnerReminderMutationResult {
   readonly schedule: PersistedReminderSchedule;
   readonly skippedAdvanceAttempt: PersistedReminderDeliveryAttempt | null;
   readonly audit: AuditEventRecord;
+}
+
+/**
+ * Run an Owner reminder unit of work, translating a database serialization refusal into the
+ * repository's typed concurrency error.
+ *
+ * The compare-and-set preconditions inside these transactions catch the races they can see. This
+ * catches the ones the database resolves for us: even with a single lock order, PostgreSQL may abort
+ * a transaction under `40001`/`40P01`, and that must reach the caller as "read it again", never as
+ * an unexplained failure.
+ */
+async function runOwnerReminderTransaction<T>(
+  db: DbClient,
+  context: string,
+  work: (tx: Parameters<Parameters<DbClient['$transaction']>[0]>[0]) => Promise<T>,
+): Promise<T> {
+  try {
+    return await db.$transaction(work);
+  } catch (error) {
+    rethrowAsConcurrencyFailure(error, context);
+  }
 }
 
 async function recordSkippedAdvance(
@@ -79,7 +111,13 @@ export async function persistOwnerReminderEstablishment(input: {
   readonly skippedAdvanceAttempt?: SkippedAdvanceAttemptInput;
   readonly audit: CreateAuditEventInput;
 }): Promise<OwnerReminderMutationResult> {
-  return input.db.$transaction(async (tx) => {
+  return runOwnerReminderTransaction(input.db, 'Reminder establishment', async (tx) => {
+    await lockTaskScopeForReminderMutation(
+      tx,
+      input.schedule.organizationId,
+      input.schedule.taskId,
+    );
+
     const schedule = await createReminderSchedule(tx, input.schedule);
 
     await tx.task.update({
@@ -113,7 +151,13 @@ export async function persistOwnerReminderGenerationChange(input: {
   readonly skippedAdvanceAttempt?: SkippedAdvanceAttemptInput;
   readonly audit: CreateAuditEventInput;
 }): Promise<OwnerReminderMutationResult> {
-  return input.db.$transaction(async (tx) => {
+  return runOwnerReminderTransaction(input.db, 'Reminder generation change', async (tx) => {
+    await lockTaskScopeForReminderMutation(
+      tx,
+      input.generation.organizationId,
+      input.generation.taskId,
+    );
+
     const schedule = await openNextReminderGeneration(tx, input.generation);
 
     await tx.task.update({
@@ -140,8 +184,13 @@ export interface OwnerReminderRemovalResult {
  * Clear the canonical due date, stop the schedule, and audit the removal — atomically.
  *
  * `stopReminderSchedule` writes the `due_date_removed` reason and clears the next occurrence, so no
- * future morning survives the removal. It is idempotent against an already-stopped schedule, which
- * matters because completion and due-date removal can legitimately race.
+ * future morning survives the removal.
+ *
+ * `expectedReminderVersion` makes the stop conditional (A8.3b audit F2). The audit demonstrated the
+ * alternative on real PostgreSQL: an unconditional removal racing a due-date change committed a
+ * `reminder.due_date.removed` event while the surviving row was active with a new due date, so the
+ * history described something that had not happened. With the precondition, the loser is refused and
+ * writes nothing — including no audit event.
  *
  * No reminder row is deleted. The Owner removing a due date is not the Owner erasing the record of
  * reminders that were already sent (D107, D109).
@@ -152,24 +201,30 @@ export async function persistOwnerReminderDueDateRemoval(input: {
   readonly taskId: string;
   readonly scheduleId: string | null;
   readonly stoppedAt: string;
+  /** The reminder version the Owner observed. Only that schedule state may be stopped. */
+  readonly expectedReminderVersion?: number;
   readonly audit: CreateAuditEventInput;
 }): Promise<OwnerReminderRemovalResult> {
-  return input.db.$transaction(async (tx) => {
-    const scope = await requireTaskScope(tx, input.organizationId, input.taskId);
+  return runOwnerReminderTransaction(input.db, 'Reminder due-date removal', async (tx) => {
+    const scope = await lockTaskScopeForReminderMutation(tx, input.organizationId, input.taskId);
 
-    await tx.task.update({
-      where: { id: scope.taskId },
-      data: { dueLocalDate: null },
-    });
-
+    // Schedule before Task, matching the other two transactions. The stop is also the write that
+    // can be refused, so failing it here leaves the Task's due date untouched rather than relying
+    // on the rollback to undo a change that should never have been attempted.
     const schedule = input.scheduleId
       ? await stopReminderSchedule(tx, {
           organizationId: scope.organizationId,
           scheduleId: input.scheduleId,
           reason: 'due_date_removed',
           stoppedAt: input.stoppedAt,
+          expectedReminderVersion: input.expectedReminderVersion,
         })
       : null;
+
+    await tx.task.update({
+      where: { id: scope.taskId },
+      data: { dueLocalDate: null },
+    });
 
     const audit = await createAuditEvent(tx, input.audit);
     return { schedule, audit };

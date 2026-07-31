@@ -28,6 +28,7 @@ import java.io.Serializable
  * Owner-facing reminder state for one Task (D104, D106, D107). Read-only projection of the Task Reminder Schedule. Deliberately excludes worker internals — claim leases, worker identifiers, delivery-attempt rows, provider message identifiers, and raw failure detail are not part of this contract. 
  *
  * @param taskId 
+ * @param etag Strong ETag for the *reminder* resource, required as `If-Match` on PUT and DELETE. Distinct from the Task ETag: a reminder change deliberately does not bump `Task.version`, so a Task ETag cannot detect that reminder state moved. Opaque — clients must echo it, not parse it. Also returned in the `ETag` response header. 
  * @param state Authoritative for whether reminders will be sent. `advance` and `nextOverdueOccurrence` describe the current generation's recorded decisions; when `state` is `stopped` those are history and nothing further will be delivered. 
  * @param requiresOwnerAttention Whether the schedule needs an Owner decision, for example after the overdue ceiling (D106, D108).
  * @param dueLocalDate 
@@ -44,6 +45,10 @@ data class TaskReminderState (
 
     @Json(name = "taskId")
     val taskId: kotlin.String,
+
+    /* Strong ETag for the *reminder* resource, required as `If-Match` on PUT and DELETE. Distinct from the Task ETag: a reminder change deliberately does not bump `Task.version`, so a Task ETag cannot detect that reminder state moved. Opaque — clients must echo it, not parse it. Also returned in the `ETag` response header.  */
+    @Json(name = "etag")
+    val etag: kotlin.String,
 
     /* Authoritative for whether reminders will be sent. `advance` and `nextOverdueOccurrence` describe the current generation's recorded decisions; when `state` is `stopped` those are history and nothing further will be delivered.  */
     @Json(name = "state")

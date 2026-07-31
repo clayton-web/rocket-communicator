@@ -60,6 +60,26 @@ Reminders derived from it: one advance reminder at 09:00 organization-local on t
 
 **Semantic direction (D109; persisted by A8.3a, contracted for the Owner reminder surface by A8.3b):** the authoritative representation is a local calendar date, stored as `tasks.due_local_date` since A8.3a (D128) and exposed as `dueLocalDate` on `/api/v1/tasks/{taskId}/reminder` since A8.3b. The instant-typed `dueAt` on the Task remains for contract compatibility, is unchanged, and drives no reminder — the local date is never reconstructed from it. Existing historical due-date data does **not** activate reminders: `due_local_date` was not backfilled, so an explicit Owner save through the reminder route is required, and re-saving a date onto a stopped schedule is treated as that explicit reactivation.
 
+#### Which Task states may carry reminder scheduling (D107; enforced since the A8.3b audit remediation)
+
+Setting a due date and _scheduling reminders from it_ are separable, and the Task's status decides the second. The rule below is derived from D107 rather than invented, lives in `packages/domain/src/reminders/eligibility.ts` so the Owner API and the future worker cannot disagree, and is exhaustive over `TaskStatus`.
+
+| Task status   | `PUT` (establish / change)                                  | Resulting schedule                     | `GET` | `DELETE` |
+| ------------- | ----------------------------------------------------------- | -------------------------------------- | ----- | -------- |
+| `open`        | Allowed                                                     | `active`, with a claimable occurrence  | Yes   | Yes      |
+| `in_progress` | Allowed                                                     | `active`, with a claimable occurrence  | Yes   | Yes      |
+| `waiting`     | Allowed                                                     | `suspended_waiting`, **no** occurrence | Yes   | Yes      |
+| `completed`   | Refused — `409 DOMAIN_CONFLICT`, nothing written or audited | Unchanged                              | Yes   | Yes      |
+| `dismissed`   | Refused — `409 DOMAIN_CONFLICT`, nothing written or audited | Unchanged                              | Yes   | Yes      |
+
+A **Waiting** Task accepts a due-date change because the Owner is planning, not activating: generation follows the ordinary materiality rules, but the schedule is created or re-generated directly in `suspended_waiting` with its next-occurrence fields cleared, so no occurrence is ever claimable while the Task is paused and no backlog accrues. Nothing resumes it automatically in this remediation — resume is part of the deferred lifecycle wiring.
+
+A **completed or dismissed** Task refuses establishment, material change, and reactivation alike: D107 stops reminders on completion and dismissal, and re-establishing one would contradict that within a single request. No reopening behaviour is implied — whether and how a terminal Task may return to an actionable status is undecided, and this gate deliberately does not decide it.
+
+**`GET` and `DELETE` are allowed for every status.** Reading is truthful history and is not scheduling. Removal can only ever reduce reminder activity, so refusing it on a terminal Task would strand an already-active schedule with no way to switch it off — the opposite of the safety the gate exists for. An **immaterial repeat** is answered before the gate is consulted, because a request that writes nothing has nothing to refuse.
+
+A status the policy has no decision for fails **closed**: scheduling is refused and the unresolved state is surfaced rather than defaulted to active. The enum currently holds exactly the five statuses above.
+
 ### Waiting and resume
 
 Entering `waiting` stores `priorActionableStatus` (`open` or `in_progress`). `resume` restores that status.

@@ -11,6 +11,12 @@
  *
  * A8.3b is configuration only: no worker, scheduler, cron, or delivery path exists, so every
  * assertion below is about stored state and audit truthfulness — never about a reminder being sent.
+ *
+ * **PGlite cannot prove concurrency.** It serializes every statement on one connection, so a race
+ * between two Owner requests is impossible to stage here — which is exactly how the A8.3b audit's
+ * lost update and deadlock went unnoticed. Two-connection proof lives in
+ * `packages/db/__tests__/a8-3b-owner-reminder-concurrency.pg.test.ts`, which runs only against a real
+ * PostgreSQL server.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -42,6 +48,9 @@ import {
   PUT as setReminder,
 } from '@/app/api/v1/tasks/[taskId]/reminder/route';
 import { POST as completeTask } from '@/app/api/v1/tasks/[taskId]/complete/route';
+import { POST as dismissTask } from '@/app/api/v1/tasks/[taskId]/dismiss/route';
+import { POST as startTask } from '@/app/api/v1/tasks/[taskId]/start/route';
+import { POST as waitTask } from '@/app/api/v1/tasks/[taskId]/waiting/route';
 
 const org = 'org_reminder_api';
 const otherOrg = 'org_reminder_other';
@@ -81,19 +90,21 @@ function url(taskId: string) {
 function request(
   taskId: string,
   method: 'GET' | 'PUT' | 'DELETE',
-  options: { body?: unknown; ifMatch?: string | null } = {},
+  options: { body?: unknown; ifMatch?: string | null; rawBody?: string } = {},
 ): Request {
   const headers: Record<string, string> = {};
-  if (options.body !== undefined) {
+  if (options.body !== undefined || options.rawBody !== undefined) {
     headers['content-type'] = 'application/json';
   }
   if (options.ifMatch) {
     headers['if-match'] = options.ifMatch;
   }
+  const body =
+    options.rawBody ?? (options.body === undefined ? undefined : JSON.stringify(options.body));
   return new Request(url(taskId), {
     method,
     headers,
-    ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
+    ...(body === undefined ? {} : { body }),
   });
 }
 
@@ -114,13 +125,77 @@ async function seedTask(): Promise<{ id: string; etag: string; version: number }
   return { id: task.id, etag: task.etag, version: task.version };
 }
 
-/** Establish a schedule and return the parsed reminder state. */
-async function establish(taskId: string, etag: string, dueLocalDate: string) {
+/** Read the current reminder state. */
+async function read(taskId: string) {
+  const response = await readReminder(request(taskId, 'GET'), params(taskId));
+  return { response, body: await response.json() };
+}
+
+/** The reminder ETag a mutation must present, read the way a client would. */
+async function reminderEtag(taskId: string): Promise<string> {
+  const { body } = await read(taskId);
+  return body.etag;
+}
+
+/**
+ * Establish or change a due date using the current reminder token.
+ *
+ * Fetching the token rather than accepting one is what a well-behaved client does, and it keeps the
+ * tests from encoding version arithmetic that the ETag is deliberately opaque about.
+ */
+async function establish(taskId: string, dueLocalDate: string, ifMatch?: string) {
+  const token = ifMatch ?? (await reminderEtag(taskId));
   const response = await setReminder(
-    request(taskId, 'PUT', { body: { dueLocalDate }, ifMatch: etag }),
+    request(taskId, 'PUT', { body: { dueLocalDate }, ifMatch: token }),
     params(taskId),
   );
   return { response, body: await response.json() };
+}
+
+async function remove(taskId: string, ifMatch?: string) {
+  const token = ifMatch ?? (await reminderEtag(taskId));
+  const response = await removeReminder(
+    request(taskId, 'DELETE', { ifMatch: token }),
+    params(taskId),
+  );
+  return { response, body: await response.json() };
+}
+
+/** Drive a Task through a lifecycle route, returning its new Task ETag. */
+async function taskAction(
+  handler: (
+    request: Request,
+    context: { params: Promise<{ taskId: string }> },
+  ) => Promise<Response>,
+  taskId: string,
+  path: string,
+  taskEtag: string,
+  body: unknown,
+): Promise<string> {
+  const response = await handler(
+    new Request(`http://localhost/api/v1/tasks/${taskId}/${path}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'if-match': taskEtag },
+      body: JSON.stringify(body),
+    }),
+    params(taskId),
+  );
+  expect(response.status, `${path}: ${await response.clone().text()}`).toBe(200);
+  return (await response.json()).etag;
+}
+
+const toWaiting = (taskId: string, etag: string) =>
+  taskAction(waitTask, taskId, 'waiting', etag, { waitingUntil: '2026-04-20T17:00:00.000Z' });
+const toInProgress = (taskId: string, etag: string) =>
+  taskAction(startTask, taskId, 'start', etag, {});
+const toCompleted = (taskId: string, etag: string) =>
+  taskAction(completeTask, taskId, 'complete', etag, { outcomeType: 'completed' });
+const toDismissed = (taskId: string, etag: string) =>
+  taskAction(dismissTask, taskId, 'dismiss', etag, { reason: 'not needed' });
+
+async function reminderAudits(taskId: string) {
+  const events = await listAuditEventsForTask(db.prisma, org, taskId);
+  return events.filter((event) => event.action.startsWith('reminder.'));
 }
 
 beforeAll(async () => {
@@ -166,10 +241,11 @@ describe('A8.3b Owner reminder routes: authentication and authorization', () => 
 
   it('rejects an unauthenticated establish and writes nothing', async () => {
     const task = await seedTask();
+    const token = await reminderEtag(task.id);
     unauthenticated();
 
     const response = await setReminder(
-      request(task.id, 'PUT', { body: { dueLocalDate: '2026-04-01' }, ifMatch: task.etag }),
+      request(task.id, 'PUT', { body: { dueLocalDate: '2026-04-01' }, ifMatch: token }),
       params(task.id),
     );
 
@@ -179,10 +255,11 @@ describe('A8.3b Owner reminder routes: authentication and authorization', () => 
 
   it('rejects an unauthenticated removal', async () => {
     const task = await seedTask();
+    const token = await reminderEtag(task.id);
     unauthenticated();
 
     const response = await removeReminder(
-      request(task.id, 'DELETE', { ifMatch: task.etag }),
+      request(task.id, 'DELETE', { ifMatch: token }),
       params(task.id),
     );
 
@@ -201,10 +278,11 @@ describe('A8.3b Owner reminder routes: authentication and authorization', () => 
 
   it('refuses a cross-organization establish and leaves no schedule behind', async () => {
     const task = await seedTask();
+    const token = await reminderEtag(task.id);
     authOwner(otherOwner);
 
     const response = await setReminder(
-      request(task.id, 'PUT', { body: { dueLocalDate: '2026-04-01' }, ifMatch: task.etag }),
+      request(task.id, 'PUT', { body: { dueLocalDate: '2026-04-01' }, ifMatch: token }),
       params(task.id),
     );
 
@@ -216,11 +294,12 @@ describe('A8.3b Owner reminder routes: authentication and authorization', () => 
 
   it('refuses a cross-organization removal and leaves the schedule intact', async () => {
     const task = await seedTask();
-    await establish(task.id, task.etag, '2026-04-01');
+    await establish(task.id, '2026-04-01');
+    const token = await reminderEtag(task.id);
 
     authOwner(otherOwner);
     const response = await removeReminder(
-      request(task.id, 'DELETE', { ifMatch: task.etag }),
+      request(task.id, 'DELETE', { ifMatch: token }),
       params(task.id),
     );
 
@@ -232,7 +311,7 @@ describe('A8.3b Owner reminder routes: authentication and authorization', () => 
 
   it('never reveals a foreign task through the organization the caller claims', async () => {
     const task = await seedTask();
-    await establish(task.id, task.etag, '2026-04-01');
+    await establish(task.id, '2026-04-01');
 
     authOwner(otherOwner);
     const response = await readReminder(request(task.id, 'GET'), params(task.id));
@@ -240,18 +319,44 @@ describe('A8.3b Owner reminder routes: authentication and authorization', () => 
     expect(response.status).toBe(404);
     expect(await response.text()).not.toContain('2026-04-01');
   });
+
+  it('does not let a cross-organization caller use the token as an existence oracle', async () => {
+    const task = await seedTask();
+    await establish(task.id, '2026-04-01');
+    const token = await reminderEtag(task.id);
+
+    authOwner(otherOwner);
+    // A valid current token, a forged one, and a token for a Task that does not exist must be
+    // indistinguishable: all 404, so nothing confirms the Task or its schedule exists.
+    const real = await removeReminder(
+      request(task.id, 'DELETE', { ifMatch: token }),
+      params(task.id),
+    );
+    const forged = await removeReminder(
+      request(task.id, 'DELETE', { ifMatch: formatETag('task-reminder', task.id, 99) }),
+      params(task.id),
+    );
+    const absent = await removeReminder(
+      request('task_missing', 'DELETE', {
+        ifMatch: formatETag('task-reminder', 'task_missing', 1),
+      }),
+      params('task_missing'),
+    );
+
+    expect([real.status, forged.status, absent.status]).toEqual([404, 404, 404]);
+  });
 });
 
 describe('A8.3b Owner reminder routes: route: GET reminder', () => {
   it('reports no_due_date for a task the Owner never scheduled', async () => {
     const task = await seedTask();
 
-    const response = await readReminder(request(task.id, 'GET'), params(task.id));
-    const body = await response.json();
+    const { response, body } = await read(task.id);
 
     expect(response.status).toBe(200);
     expect(body).toEqual({
       taskId: task.id,
+      etag: formatETag('task-reminder', task.id, 0),
       dueLocalDate: null,
       schedulingTimeZone: null,
       state: 'no_due_date',
@@ -266,10 +371,9 @@ describe('A8.3b Owner reminder routes: route: GET reminder', () => {
 
   it('reports an active schedule with the derived occurrences', async () => {
     const task = await seedTask();
-    await establish(task.id, task.etag, '2026-04-01');
+    await establish(task.id, '2026-04-01');
 
-    const response = await readReminder(request(task.id, 'GET'), params(task.id));
-    const body = await response.json();
+    const { body } = await read(task.id);
 
     expect(body.state).toBe('active');
     expect(body.dueLocalDate).toBe('2026-04-01');
@@ -287,10 +391,10 @@ describe('A8.3b Owner reminder routes: route: GET reminder', () => {
 
   it('reports a stopped schedule with its recorded reason', async () => {
     const task = await seedTask();
-    await establish(task.id, task.etag, '2026-04-01');
-    await removeReminder(request(task.id, 'DELETE', { ifMatch: task.etag }), params(task.id));
+    await establish(task.id, '2026-04-01');
+    await remove(task.id);
 
-    const body = await (await readReminder(request(task.id, 'GET'), params(task.id))).json();
+    const { body } = await read(task.id);
 
     expect(body.state).toBe('stopped');
     expect(body.stopReason).toBe('due_date_removed');
@@ -301,9 +405,9 @@ describe('A8.3b Owner reminder routes: route: GET reminder', () => {
   it('reports an advance skipped because its window had already elapsed', async () => {
     const task = await seedTask();
     // Due today: the day before 09:00 local is long past, so D105 forbids an advance reminder.
-    await establish(task.id, task.etag, '2026-03-10');
+    await establish(task.id, '2026-03-10');
 
-    const body = await (await readReminder(request(task.id, 'GET'), params(task.id))).json();
+    const { body } = await read(task.id);
 
     expect(body.advance.disposition).toBe('skipped_window_elapsed');
     expect(body.advance.occurrence.localDate).toBe('2026-03-09');
@@ -312,37 +416,32 @@ describe('A8.3b Owner reminder routes: route: GET reminder', () => {
 
   it('reports a suspended schedule as suspended_waiting', async () => {
     const task = await seedTask();
-    await establish(task.id, task.etag, '2026-04-01');
-    const schedule = await findReminderScheduleByTaskId(db.prisma, org, task.id);
-    // Seeded through persistence: A8.3b defers Waiting integration, so no route reaches this state.
-    await suspendReminderScheduleForWaiting(db.prisma, {
-      organizationId: org,
-      scheduleId: schedule!.id,
-      suspendedAt: NOW,
-    });
+    const waiting = await toWaiting(task.id, task.etag);
+    expect(waiting).toBeDefined();
+    await establish(task.id, '2026-04-01');
 
-    const body = await (await readReminder(request(task.id, 'GET'), params(task.id))).json();
+    const { body } = await read(task.id);
 
     expect(body.state).toBe('suspended_waiting');
   });
 
   it('reports requiresOwnerAttention truthfully', async () => {
     const task = await seedTask();
-    await establish(task.id, task.etag, '2026-04-01');
+    await establish(task.id, '2026-04-01');
     const schedule = await findReminderScheduleByTaskId(db.prisma, org, task.id);
     await db.prisma.taskReminderSchedule.update({
       where: { id: schedule!.id },
       data: { requiresOwnerAttention: true },
     });
 
-    const body = await (await readReminder(request(task.id, 'GET'), params(task.id))).json();
+    const { body } = await read(task.id);
 
     expect(body.requiresOwnerAttention).toBe(true);
   });
 
-  it('exposes no worker internals, row identifiers, or lease state', async () => {
+  it('exposes no worker internals, row identifiers, lease state, or the raw version', async () => {
     const task = await seedTask();
-    await establish(task.id, task.etag, '2026-04-01');
+    await establish(task.id, '2026-04-01');
     const schedule = await findReminderScheduleByTaskId(db.prisma, org, task.id);
     await db.prisma.taskReminderSchedule.update({
       where: { id: schedule!.id },
@@ -353,7 +452,14 @@ describe('A8.3b Owner reminder routes: route: GET reminder', () => {
     const text = await response.text();
     const body = JSON.parse(text);
 
-    for (const leaked of ['claimedBy', 'claimedAt', 'claimExpiresAt', 'id', 'scheduleId']) {
+    for (const leaked of [
+      'claimedBy',
+      'claimedAt',
+      'claimExpiresAt',
+      'id',
+      'scheduleId',
+      'reminderVersion',
+    ]) {
       expect(Object.keys(body)).not.toContain(leaked);
     }
     expect(text).not.toContain('worker-7');
@@ -361,10 +467,21 @@ describe('A8.3b Owner reminder routes: route: GET reminder', () => {
     expect(text).not.toContain('task_reminder_schedules');
   });
 
+  it('is allowed for a completed task so the history stays readable', async () => {
+    const task = await seedTask();
+    await establish(task.id, '2026-04-01');
+    await toCompleted(task.id, task.etag);
+
+    const { response, body } = await read(task.id);
+
+    expect(response.status).toBe(200);
+    expect(body.dueLocalDate).toBe('2026-04-01');
+  });
+
   it('is not cacheable', async () => {
     const task = await seedTask();
 
-    const response = await readReminder(request(task.id, 'GET'), params(task.id));
+    const { response } = await read(task.id);
 
     expect(response.headers.get('cache-control')).toBe('no-store');
   });
@@ -374,7 +491,7 @@ describe('A8.3b Owner reminder routes: route: PUT reminder', () => {
   it('establishes generation 1, the canonical due date, and the domain-derived occurrences', async () => {
     const task = await seedTask();
 
-    const { response, body } = await establish(task.id, task.etag, '2026-04-01');
+    const { response, body } = await establish(task.id, '2026-04-01');
 
     expect(response.status).toBe(200);
     expect(body.state).toBe('active');
@@ -387,26 +504,10 @@ describe('A8.3b Owner reminder routes: route: PUT reminder', () => {
     expect(schedule?.nextOverdueOccurrenceLocalDate).toBe('2026-04-02');
   });
 
-  it('derives the organization timezone rather than accepting one', async () => {
-    const task = await seedTask();
-
-    const response = await setReminder(
-      request(task.id, 'PUT', {
-        body: { dueLocalDate: '2026-04-01', schedulingTimeZone: 'UTC' },
-        ifMatch: task.etag,
-      }),
-      params(task.id),
-    );
-
-    expect(response.status).toBe(400);
-    expect((await response.json()).error.code).toBe('VALIDATION_ERROR');
-    expect(await findReminderScheduleByTaskId(db.prisma, org, task.id)).toBeNull();
-  });
-
   it('records a skipped advance attempt when the advance window had elapsed', async () => {
     const task = await seedTask();
 
-    const { body } = await establish(task.id, task.etag, '2026-03-10');
+    const { body } = await establish(task.id, '2026-03-10');
 
     expect(body.advance.disposition).toBe('skipped_window_elapsed');
     const attempts = await listReminderDeliveryAttemptsForTask(db.prisma, org, task.id);
@@ -419,13 +520,9 @@ describe('A8.3b Owner reminder routes: route: PUT reminder', () => {
   it('rejects an impossible Gregorian date', async () => {
     const task = await seedTask();
 
-    const response = await setReminder(
-      request(task.id, 'PUT', { body: { dueLocalDate: '2026-02-30' }, ifMatch: task.etag }),
-      params(task.id),
-    );
+    const { response } = await establish(task.id, '2026-02-30');
 
     expect(response.status).toBe(400);
-    expect((await response.json()).error.code).toBe('VALIDATION_ERROR');
     expect(await findReminderScheduleByTaskId(db.prisma, org, task.id)).toBeNull();
     expect(await getTaskDueLocalDate(db.prisma, org, task.id)).toBeNull();
   });
@@ -433,10 +530,7 @@ describe('A8.3b Owner reminder routes: route: PUT reminder', () => {
   it('rejects a non-leap-year February 29', async () => {
     const task = await seedTask();
 
-    const response = await setReminder(
-      request(task.id, 'PUT', { body: { dueLocalDate: '2025-02-29' }, ifMatch: task.etag }),
-      params(task.id),
-    );
+    const { response } = await establish(task.id, '2025-02-29');
 
     expect(response.status).toBe(400);
     expect(await findReminderScheduleByTaskId(db.prisma, org, task.id)).toBeNull();
@@ -444,78 +538,24 @@ describe('A8.3b Owner reminder routes: route: PUT reminder', () => {
 
   it('rejects a noncanonical date', async () => {
     const task = await seedTask();
+    const token = await reminderEtag(task.id);
 
     for (const dueLocalDate of ['2026-4-01', '2026/04/01', '20260401', '2026-04-01T00:00:00Z']) {
-      const response = await setReminder(
-        request(task.id, 'PUT', { body: { dueLocalDate }, ifMatch: task.etag }),
-        params(task.id),
-      );
+      const { response } = await establish(task.id, dueLocalDate, token);
       expect(response.status, dueLocalDate).toBe(400);
     }
     expect(await findReminderScheduleByTaskId(db.prisma, org, task.id)).toBeNull();
   });
 
-  it('refuses every derived field a client might try to choose', async () => {
+  it('is idempotent for an immaterial repeat, opens no generation, and keeps the token stable', async () => {
     const task = await seedTask();
+    const first = await establish(task.id, '2026-04-01');
 
-    const derived = [
-      { generation: 5 },
-      { occurrenceKind: 'overdue' },
-      { occurrenceLocalDate: '2026-04-02' },
-      { occurrenceAt: NOW },
-      { advanceDisposition: 'scheduled' },
-      { nextOverdueOccurrenceLocalDate: '2026-04-02' },
-      { state: 'active' },
-      { status: 'active' },
-      { overdueDeliveredCount: 0 },
-      { stopReason: 'due_date_removed' },
-      { requiresOwnerAttention: true },
-      { organizationId: otherOrg },
-      { claimedBy: 'worker-1' },
-      { dueAt: NOW },
-    ];
-
-    for (const extra of derived) {
-      const response = await setReminder(
-        request(task.id, 'PUT', {
-          body: { dueLocalDate: '2026-04-01', ...extra },
-          ifMatch: task.etag,
-        }),
-        params(task.id),
-      );
-      expect(response.status, JSON.stringify(extra)).toBe(400);
-    }
-    expect(await findReminderScheduleByTaskId(db.prisma, org, task.id)).toBeNull();
-  });
-
-  it('requires If-Match and rejects a stale one', async () => {
-    const task = await seedTask();
-
-    const missing = await setReminder(
-      request(task.id, 'PUT', { body: { dueLocalDate: '2026-04-01' } }),
-      params(task.id),
-    );
-    expect(missing.status).toBe(428);
-
-    const stale = await setReminder(
-      request(task.id, 'PUT', {
-        body: { dueLocalDate: '2026-04-01' },
-        ifMatch: formatETag('task', task.id, task.version + 7),
-      }),
-      params(task.id),
-    );
-    expect(stale.status).toBe(412);
-    expect(await findReminderScheduleByTaskId(db.prisma, org, task.id)).toBeNull();
-  });
-
-  it('is idempotent for an immaterial repeat and does not open a generation', async () => {
-    const task = await seedTask();
-    const first = await establish(task.id, task.etag, '2026-04-01');
-
-    const second = await establish(task.id, task.etag, '2026-04-01');
+    const second = await establish(task.id, '2026-04-01', first.body.etag);
 
     expect(second.response.status).toBe(200);
     expect(second.body).toEqual(first.body);
+    expect(second.body.etag).toBe(first.body.etag);
     expect(second.body.generation).toBe(1);
     const schedule = await findReminderScheduleByTaskId(db.prisma, org, task.id);
     expect(schedule?.generation).toBe(1);
@@ -524,11 +564,11 @@ describe('A8.3b Owner reminder routes: route: PUT reminder', () => {
   it('opens exactly one generation for a material change and preserves prior attempts', async () => {
     const task = await seedTask();
     // Establish with an elapsed advance window so generation 1 owns a real attempt row.
-    await establish(task.id, task.etag, '2026-03-10');
+    await establish(task.id, '2026-03-10');
     const before = await listReminderDeliveryAttemptsForTask(db.prisma, org, task.id);
     expect(before).toHaveLength(1);
 
-    const { body } = await establish(task.id, task.etag, '2026-05-20');
+    const { body } = await establish(task.id, '2026-05-20');
 
     expect(body.generation).toBe(2);
     expect(body.dueLocalDate).toBe('2026-05-20');
@@ -546,12 +586,12 @@ describe('A8.3b Owner reminder routes: route: PUT reminder', () => {
 
   it('re-establishes a new generation after a removal, because a stopped schedule is not live', async () => {
     const task = await seedTask();
-    await establish(task.id, task.etag, '2026-04-01');
-    await removeReminder(request(task.id, 'DELETE', { ifMatch: task.etag }), params(task.id));
+    await establish(task.id, '2026-04-01');
+    await remove(task.id);
 
     // Same date as before: immaterial as a date change, but the schedule was stopped, so D109
     // requires this explicit re-save to reactivate reminders rather than silently no-op.
-    const { body } = await establish(task.id, task.etag, '2026-04-01');
+    const { body } = await establish(task.id, '2026-04-01');
 
     expect(body.state).toBe('active');
     expect(body.generation).toBe(2);
@@ -559,53 +599,507 @@ describe('A8.3b Owner reminder routes: route: PUT reminder', () => {
     expect(await getTaskDueLocalDate(db.prisma, org, task.id)).toBe('2026-04-01');
   });
 
-  it('refuses to reschedule a suspended schedule rather than silently resuming it', async () => {
+  it('is not cacheable', async () => {
     const task = await seedTask();
-    await establish(task.id, task.etag, '2026-04-01');
-    const schedule = await findReminderScheduleByTaskId(db.prisma, org, task.id);
-    await suspendReminderScheduleForWaiting(db.prisma, {
-      organizationId: org,
-      scheduleId: schedule!.id,
-      suspendedAt: NOW,
-    });
 
-    // Unreachable through A8.3b routes, but opening a generation would return the schedule to
-    // `active`, and D107 makes Waiting the only pause mechanism — so a material change must refuse.
-    const response = await setReminder(
-      request(task.id, 'PUT', { body: { dueLocalDate: '2026-05-20' }, ifMatch: task.etag }),
-      params(task.id),
-    );
+    const { response } = await establish(task.id, '2026-04-01');
 
-    expect(response.status).toBe(409);
-    expect((await response.json()).error.code).toBe('DOMAIN_CONFLICT');
-    const after = await findReminderScheduleByTaskId(db.prisma, org, task.id);
-    expect(after?.status).toBe('suspended_waiting');
-    expect(after?.generation).toBe(1);
-    expect(after?.dueLocalDate).toBe('2026-04-01');
+    expect(response.headers.get('cache-control')).toBe('no-store');
+  });
+});
+
+/**
+ * F1: which Task states may carry reminder scheduling (D107).
+ *
+ * The audit found no gate at all — a completed Task could acquire a live schedule with claimable
+ * occurrences. Every status in the `TaskStatus` enum is covered here so a future status cannot be
+ * added without a decision.
+ */
+describe('A8.3b Owner reminder routes: task-state eligibility', () => {
+  it('allows establishment on an open task', async () => {
+    const task = await seedTask();
+
+    const { response, body } = await establish(task.id, '2026-04-01');
+
+    expect(response.status).toBe(200);
+    expect(body.state).toBe('active');
   });
 
-  it('stays idempotent for an immaterial repeat while suspended', async () => {
+  it('allows establishment on an in_progress task', async () => {
     const task = await seedTask();
-    await establish(task.id, task.etag, '2026-04-01');
-    const schedule = await findReminderScheduleByTaskId(db.prisma, org, task.id);
-    await suspendReminderScheduleForWaiting(db.prisma, {
-      organizationId: org,
-      scheduleId: schedule!.id,
-      suspendedAt: NOW,
-    });
+    await toInProgress(task.id, task.etag);
 
-    const { response, body } = await establish(task.id, task.etag, '2026-04-01');
+    const { response, body } = await establish(task.id, '2026-04-01');
+
+    expect(response.status).toBe(200);
+    expect(body.state).toBe('active');
+  });
+
+  it('creates a suspended generation 1 for a waiting task, with no claimable occurrence', async () => {
+    const task = await seedTask();
+    await toWaiting(task.id, task.etag);
+
+    const { response, body } = await establish(task.id, '2026-04-01');
 
     expect(response.status).toBe(200);
     expect(body.state).toBe('suspended_waiting');
     expect(body.generation).toBe(1);
+    expect(body.dueLocalDate).toBe('2026-04-01');
+    // The advance decision is still recorded — D105 decides it once at establishment — but nothing
+    // is claimable while suspended.
+    expect(body.advance.disposition).toBe('scheduled');
+    expect(body.nextOverdueOccurrence).toBeNull();
+
+    const schedule = await findReminderScheduleByTaskId(db.prisma, org, task.id);
+    expect(schedule?.status).toBe('suspended_waiting');
+    expect(schedule?.suspendedAt).not.toBeNull();
+    expect(schedule?.nextOverdueOccurrenceAt).toBeNull();
+    expect(await getTaskDueLocalDate(db.prisma, org, task.id)).toBe('2026-04-01');
   });
 
-  it('is not cacheable', async () => {
+  it('records no skipped advance attempt for a suspended establishment', async () => {
+    const task = await seedTask();
+    await toWaiting(task.id, task.etag);
+
+    // Due today, so the advance window has elapsed — but a suspended schedule owes no occurrence,
+    // so there is no delivery outcome to record.
+    await establish(task.id, '2026-03-10');
+
+    expect(await listReminderDeliveryAttemptsForTask(db.prisma, org, task.id)).toHaveLength(0);
+  });
+
+  it('keeps a waiting task suspended across a material change and increments once', async () => {
+    const task = await seedTask();
+    await toWaiting(task.id, task.etag);
+    await establish(task.id, '2026-04-01');
+
+    const { response, body } = await establish(task.id, '2026-05-20');
+
+    expect(response.status).toBe(200);
+    expect(body.state).toBe('suspended_waiting');
+    expect(body.generation).toBe(2);
+    expect(body.nextOverdueOccurrence).toBeNull();
+    const schedule = await findReminderScheduleByTaskId(db.prisma, org, task.id);
+    expect(schedule?.generation).toBe(2);
+    expect(schedule?.status).toBe('suspended_waiting');
+  });
+
+  it('treats an immaterial repeat while waiting as a no-op', async () => {
+    const task = await seedTask();
+    await toWaiting(task.id, task.etag);
+    const first = await establish(task.id, '2026-04-01');
+
+    const second = await establish(task.id, '2026-04-01', first.body.etag);
+
+    expect(second.response.status).toBe(200);
+    expect(second.body).toEqual(first.body);
+    expect(second.body.generation).toBe(1);
+    expect(await reminderAudits(task.id)).toHaveLength(1);
+  });
+
+  it('refuses establishment on a completed task and writes nothing', async () => {
+    const task = await seedTask();
+    await toCompleted(task.id, task.etag);
+
+    const { response, body } = await establish(task.id, '2026-04-01');
+
+    expect(response.status).toBe(409);
+    expect(body.error.code).toBe('DOMAIN_CONFLICT');
+    expect(await findReminderScheduleByTaskId(db.prisma, org, task.id)).toBeNull();
+    expect(await getTaskDueLocalDate(db.prisma, org, task.id)).toBeNull();
+    expect(await reminderAudits(task.id)).toHaveLength(0);
+  });
+
+  it('refuses a material change and a reactivation on a completed task', async () => {
+    const task = await seedTask();
+    await establish(task.id, '2026-04-01');
+    const stopped = await remove(task.id);
+    await toCompleted(task.id, task.etag);
+
+    const change = await establish(task.id, '2026-05-20', stopped.body.etag);
+    expect(change.response.status).toBe(409);
+
+    const reactivate = await establish(task.id, '2026-04-01', stopped.body.etag);
+    expect(reactivate.response.status).toBe(409);
+
+    const schedule = await findReminderScheduleByTaskId(db.prisma, org, task.id);
+    expect(schedule?.status).toBe('stopped');
+    expect(schedule?.generation).toBe(1);
+    expect(await getTaskDueLocalDate(db.prisma, org, task.id)).toBeNull();
+  });
+
+  it('refuses establishment on a dismissed task and writes nothing', async () => {
+    const task = await seedTask();
+    await toDismissed(task.id, task.etag);
+
+    const { response, body } = await establish(task.id, '2026-04-01');
+
+    expect(response.status).toBe(409);
+    expect(body.error.code).toBe('DOMAIN_CONFLICT');
+    expect(await findReminderScheduleByTaskId(db.prisma, org, task.id)).toBeNull();
+    expect(await getTaskDueLocalDate(db.prisma, org, task.id)).toBeNull();
+  });
+
+  it('refuses a material change on a dismissed task and leaves the schedule live', async () => {
+    const task = await seedTask();
+    await establish(task.id, '2026-04-01');
+    const token = await reminderEtag(task.id);
+    await toDismissed(task.id, task.etag);
+
+    const { response } = await establish(task.id, '2026-05-20', token);
+
+    expect(response.status).toBe(409);
+    const schedule = await findReminderScheduleByTaskId(db.prisma, org, task.id);
+    expect(schedule?.dueLocalDate).toBe('2026-04-01');
+    expect(schedule?.generation).toBe(1);
+  });
+
+  it('allows removal on a completed task and stops the schedule', async () => {
+    const task = await seedTask();
+    await establish(task.id, '2026-04-01');
+    await toCompleted(task.id, task.etag);
+
+    const { response, body } = await remove(task.id);
+
+    expect(response.status).toBe(200);
+    expect(body.state).toBe('stopped');
+    expect(body.stopReason).toBe('due_date_removed');
+    expect(await getTaskDueLocalDate(db.prisma, org, task.id)).toBeNull();
+  });
+
+  it('allows an idempotent removal on a dismissed task', async () => {
+    const task = await seedTask();
+    await establish(task.id, '2026-04-01');
+    await toDismissed(task.id, task.etag);
+
+    const first = await remove(task.id);
+    const second = await remove(task.id);
+
+    expect(first.response.status).toBe(200);
+    expect(second.response.status).toBe(200);
+    expect(second.body).toEqual(first.body);
+  });
+
+  it('allows an immaterial repeat on a completed task, since it writes nothing', async () => {
+    const task = await seedTask();
+    const established = await establish(task.id, '2026-04-01');
+    await toCompleted(task.id, task.etag);
+
+    const { response, body } = await establish(task.id, '2026-04-01', established.body.etag);
+
+    expect(response.status).toBe(200);
+    expect(body.generation).toBe(1);
+    expect(await reminderAudits(task.id)).toHaveLength(1);
+  });
+});
+
+/** F3: the request body accepts exactly `dueLocalDate`. */
+describe('A8.3b Owner reminder routes: request strictness', () => {
+  const rejected = [
+    { totallyUnknown: true },
+    { reminderTime: '09:00' },
+    { presetInterval: 'weekly' },
+    { taskId: 'task_other' },
+    { data: { dueLocalDate: '2026-04-01' } },
+    { nested: { anything: 1 } },
+    { generation: 5 },
+    { occurrenceKind: 'overdue' },
+    { occurrenceLocalDate: '2026-04-02' },
+    { occurrenceAt: NOW },
+    { advanceDisposition: 'scheduled' },
+    { nextOverdueOccurrenceLocalDate: '2026-04-02' },
+    { state: 'active' },
+    { status: 'active' },
+    { overdueDeliveredCount: 0 },
+    { stopReason: 'due_date_removed' },
+    { requiresOwnerAttention: true },
+    { organizationId: otherOrg },
+    { schedulingTimeZone: 'UTC' },
+    { claimedBy: 'worker-1' },
+    { dueAt: NOW },
+    { reminderVersion: 9 },
+    { etag: 'forged' },
+  ];
+
+  it('rejects every property other than dueLocalDate', async () => {
+    const task = await seedTask();
+    const token = await reminderEtag(task.id);
+
+    for (const extra of rejected) {
+      const response = await setReminder(
+        request(task.id, 'PUT', {
+          body: { dueLocalDate: '2026-04-01', ...extra },
+          ifMatch: token,
+        }),
+        params(task.id),
+      );
+      expect(response.status, JSON.stringify(extra)).toBe(400);
+      expect((await response.json()).error.code).toBe('VALIDATION_ERROR');
+    }
+    expect(await findReminderScheduleByTaskId(db.prisma, org, task.id)).toBeNull();
+  });
+
+  it('rejects a body with no dueLocalDate at all', async () => {
+    const task = await seedTask();
+    const token = await reminderEtag(task.id);
+
+    const response = await setReminder(
+      request(task.id, 'PUT', { body: {}, ifMatch: token }),
+      params(task.id),
+    );
+
+    expect(response.status).toBe(400);
+  });
+
+  it('accepts standard last-wins behaviour for duplicate JSON keys', async () => {
+    const task = await seedTask();
+    const token = await reminderEtag(task.id);
+
+    const response = await setReminder(
+      request(task.id, 'PUT', {
+        rawBody: '{"dueLocalDate":"2026-04-01","dueLocalDate":"2026-05-20"}',
+        ifMatch: token,
+      }),
+      params(task.id),
+    );
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).dueLocalDate).toBe('2026-05-20');
+  });
+});
+
+/** F5: the reminder resource supplies the token required to mutate it. */
+describe('A8.3b Owner reminder routes: reminder ETag and If-Match', () => {
+  it('emits a strong reminder ETag on GET, in the header and the body', async () => {
+    const task = await seedTask();
+    await establish(task.id, '2026-04-01');
+
+    const { response, body } = await read(task.id);
+
+    expect(response.headers.get('etag')).toBe(body.etag);
+    expect(body.etag).toMatch(/^"task-reminder-[^"]+-v\d+"$/);
+    expect(body.etag).toBe(formatETag('task-reminder', task.id, 1));
+  });
+
+  it('emits a stable v0 token before any schedule exists', async () => {
     const task = await seedTask();
 
-    const { response } = await establish(task.id, task.etag, '2026-04-01');
+    const first = await read(task.id);
+    const second = await read(task.id);
 
+    expect(first.body.etag).toBe(formatETag('task-reminder', task.id, 0));
+    expect(second.body.etag).toBe(first.body.etag);
+  });
+
+  it('emits a new token after each material mutation', async () => {
+    const task = await seedTask();
+
+    const established = await establish(task.id, '2026-04-01');
+    const changed = await establish(task.id, '2026-05-20', established.body.etag);
+    const removed = await remove(task.id, changed.body.etag);
+    const reactivated = await establish(task.id, '2026-06-01', removed.body.etag);
+
+    const tokens = [
+      formatETag('task-reminder', task.id, 0),
+      established.body.etag,
+      changed.body.etag,
+      removed.body.etag,
+      reactivated.body.etag,
+    ];
+    expect(new Set(tokens).size).toBe(tokens.length);
+    expect(reactivated.body.etag).toBe(formatETag('task-reminder', task.id, 4));
+  });
+
+  it('returns the mutation response ETag in the header too', async () => {
+    const task = await seedTask();
+
+    const { response, body } = await establish(task.id, '2026-04-01');
+
+    expect(response.headers.get('etag')).toBe(body.etag);
+  });
+
+  it('requires If-Match on PUT and DELETE', async () => {
+    const task = await seedTask();
+
+    const put = await setReminder(
+      request(task.id, 'PUT', { body: { dueLocalDate: '2026-04-01' } }),
+      params(task.id),
+    );
+    const del = await removeReminder(request(task.id, 'DELETE'), params(task.id));
+
+    expect(put.status).toBe(428);
+    expect((await put.json()).error.code).toBe('PRECONDITION_REQUIRED');
+    expect(del.status).toBe(428);
+    expect(await findReminderScheduleByTaskId(db.prisma, org, task.id)).toBeNull();
+  });
+
+  it('rejects a stale token on PUT and writes nothing', async () => {
+    const task = await seedTask();
+    const stale = await reminderEtag(task.id);
+    await establish(task.id, '2026-04-01', stale);
+
+    const { response, body } = await establish(task.id, '2026-05-20', stale);
+
+    expect(response.status).toBe(412);
+    expect(body.error.code).toBe('PRECONDITION_FAILED');
+    const schedule = await findReminderScheduleByTaskId(db.prisma, org, task.id);
+    expect(schedule?.dueLocalDate).toBe('2026-04-01');
+    expect(schedule?.generation).toBe(1);
+  });
+
+  it('rejects a stale token on DELETE and leaves the schedule live', async () => {
+    const task = await seedTask();
+    const established = await establish(task.id, '2026-04-01');
+    await establish(task.id, '2026-05-20', established.body.etag);
+
+    const { response } = await remove(task.id, established.body.etag);
+
+    expect(response.status).toBe(412);
+    const schedule = await findReminderScheduleByTaskId(db.prisma, org, task.id);
+    expect(schedule?.status).toBe('active');
+    expect(await getTaskDueLocalDate(db.prisma, org, task.id)).toBe('2026-05-20');
+  });
+
+  it('rejects replaying a successful mutation with its pre-mutation token', async () => {
+    const task = await seedTask();
+    const token = await reminderEtag(task.id);
+    const first = await establish(task.id, '2026-04-01', token);
+    expect(first.response.status).toBe(200);
+
+    const replay = await establish(task.id, '2026-04-01', token);
+
+    expect(replay.response.status).toBe(412);
+    expect((await findReminderScheduleByTaskId(db.prisma, org, task.id))?.generation).toBe(1);
+  });
+
+  it('refuses a Task ETag, so an unrelated Task edit cannot authorize a reminder write', async () => {
+    const task = await seedTask();
+
+    const response = await setReminder(
+      request(task.id, 'PUT', { body: { dueLocalDate: '2026-04-01' }, ifMatch: task.etag }),
+      params(task.id),
+    );
+
+    expect(response.status).toBe(412);
+    expect(await findReminderScheduleByTaskId(db.prisma, org, task.id)).toBeNull();
+  });
+
+  it('rejects weak, wildcard, multiple, malformed, and wrong-resource tokens', async () => {
+    const task = await seedTask();
+    const valid = await reminderEtag(task.id);
+
+    const bad = [
+      `W/${valid}`,
+      '*',
+      `${valid}, "task-reminder-other-v1"`,
+      'not-an-etag',
+      '"task-reminder-missing-version"',
+      formatETag('task-suggestion', task.id, 0),
+      formatETag('task-reminder', 'task_someone_else', 0),
+    ];
+
+    for (const ifMatch of bad) {
+      const response = await setReminder(
+        request(task.id, 'PUT', { body: { dueLocalDate: '2026-04-01' }, ifMatch }),
+        params(task.id),
+      );
+      expect(response.status, ifMatch).toBe(412);
+    }
+    expect(await findReminderScheduleByTaskId(db.prisma, org, task.id)).toBeNull();
+  });
+
+  it('keeps the token stable across an idempotent removal', async () => {
+    const task = await seedTask();
+    await establish(task.id, '2026-04-01');
+    const removed = await remove(task.id);
+
+    const repeat = await remove(task.id, removed.body.etag);
+
+    expect(repeat.response.status).toBe(200);
+    expect(repeat.body.etag).toBe(removed.body.etag);
+  });
+});
+
+/** F6: every response is `no-store`, including the ones the service throws. */
+describe('A8.3b Owner reminder routes: cache-control', () => {
+  it('applies no-store to success and to every error class', async () => {
+    const task = await seedTask();
+    const token = await reminderEtag(task.id);
+
+    const responses: Array<[string, Response]> = [];
+
+    responses.push(['200 GET', await readReminder(request(task.id, 'GET'), params(task.id))]);
+    responses.push([
+      '200 PUT',
+      await setReminder(
+        request(task.id, 'PUT', { body: { dueLocalDate: '2026-04-01' }, ifMatch: token }),
+        params(task.id),
+      ),
+    ]);
+    responses.push([
+      '400 validation',
+      await setReminder(
+        request(task.id, 'PUT', { body: { dueLocalDate: '2026-02-30' }, ifMatch: 'ignored' }),
+        params(task.id),
+      ),
+    ]);
+    responses.push([
+      '400 malformed json',
+      await setReminder(
+        request(task.id, 'PUT', { rawBody: '{bad', ifMatch: 'ignored' }),
+        params(task.id),
+      ),
+    ]);
+    responses.push([
+      '412 stale',
+      await setReminder(
+        request(task.id, 'PUT', { body: { dueLocalDate: '2026-05-20' }, ifMatch: token }),
+        params(task.id),
+      ),
+    ]);
+    responses.push([
+      '428 missing',
+      await setReminder(
+        request(task.id, 'PUT', { body: { dueLocalDate: '2026-05-20' } }),
+        params(task.id),
+      ),
+    ]);
+    responses.push([
+      '404 bad task id',
+      await readReminder(request('task_missing', 'GET'), params('task_missing')),
+    ]);
+
+    unauthenticated();
+    responses.push(['401', await readReminder(request(task.id, 'GET'), params(task.id))]);
+    authOwner();
+
+    for (const [label, response] of responses) {
+      expect(response.headers.get('cache-control'), label).toBe('no-store');
+    }
+    // The list above is only meaningful if it really covered those statuses.
+    expect(responses.map(([label]) => label.split(' ')[0])).toEqual([
+      '200',
+      '200',
+      '400',
+      '400',
+      '412',
+      '428',
+      '404',
+      '401',
+    ]);
+  });
+
+  it('applies no-store to a domain conflict thrown by the service', async () => {
+    const task = await seedTask();
+    await toCompleted(task.id, task.etag);
+    const token = await reminderEtag(task.id);
+
+    const response = await setReminder(
+      request(task.id, 'PUT', { body: { dueLocalDate: '2026-04-01' }, ifMatch: token }),
+      params(task.id),
+    );
+
+    expect(response.status).toBe(409);
     expect(response.headers.get('cache-control')).toBe('no-store');
   });
 });
@@ -613,13 +1107,9 @@ describe('A8.3b Owner reminder routes: route: PUT reminder', () => {
 describe('A8.3b Owner reminder routes: route: DELETE reminder', () => {
   it('stops the schedule, clears the due date, and leaves no future occurrence', async () => {
     const task = await seedTask();
-    await establish(task.id, task.etag, '2026-04-01');
+    await establish(task.id, '2026-04-01');
 
-    const response = await removeReminder(
-      request(task.id, 'DELETE', { ifMatch: task.etag }),
-      params(task.id),
-    );
-    const body = await response.json();
+    const { response, body } = await remove(task.id);
 
     expect(response.status).toBe(200);
     expect(body.state).toBe('stopped');
@@ -636,74 +1126,66 @@ describe('A8.3b Owner reminder routes: route: DELETE reminder', () => {
 
   it('preserves reminder history rather than deleting rows', async () => {
     const task = await seedTask();
-    await establish(task.id, task.etag, '2026-03-10');
+    await establish(task.id, '2026-03-10');
     const before = await listReminderDeliveryAttemptsForTask(db.prisma, org, task.id);
     expect(before).toHaveLength(1);
 
-    await removeReminder(request(task.id, 'DELETE', { ifMatch: task.etag }), params(task.id));
+    await remove(task.id);
 
     const after = await listReminderDeliveryAttemptsForTask(db.prisma, org, task.id);
     expect(after).toHaveLength(before.length);
     expect(await findReminderScheduleByTaskId(db.prisma, org, task.id)).not.toBeNull();
   });
 
-  it('is idempotent when repeated', async () => {
+  it('is idempotent when repeated with the current token', async () => {
     const task = await seedTask();
-    await establish(task.id, task.etag, '2026-04-01');
+    await establish(task.id, '2026-04-01');
 
-    const first = await removeReminder(
-      request(task.id, 'DELETE', { ifMatch: task.etag }),
-      params(task.id),
-    );
-    const second = await removeReminder(
-      request(task.id, 'DELETE', { ifMatch: task.etag }),
-      params(task.id),
-    );
+    const first = await remove(task.id);
+    const second = await remove(task.id, first.body.etag);
 
-    expect(first.status).toBe(200);
-    expect(second.status).toBe(200);
-    expect(await second.json()).toEqual(await first.json());
+    expect(first.response.status).toBe(200);
+    expect(second.response.status).toBe(200);
+    expect(second.body).toEqual(first.body);
   });
 
   it('is idempotent when the task never had a due date', async () => {
     const task = await seedTask();
 
-    const response = await removeReminder(
-      request(task.id, 'DELETE', { ifMatch: task.etag }),
-      params(task.id),
-    );
-    const body = await response.json();
+    const { response, body } = await remove(task.id);
 
     expect(response.status).toBe(200);
     expect(body.state).toBe('no_due_date');
     expect(await findReminderScheduleByTaskId(db.prisma, org, task.id)).toBeNull();
   });
 
-  it('requires If-Match and rejects a stale one', async () => {
+  it('stops a suspended schedule', async () => {
     const task = await seedTask();
-    await establish(task.id, task.etag, '2026-04-01');
+    await toWaiting(task.id, task.etag);
+    await establish(task.id, '2026-04-01');
 
-    expect((await removeReminder(request(task.id, 'DELETE'), params(task.id))).status).toBe(428);
+    const { response, body } = await remove(task.id);
 
-    const stale = await removeReminder(
-      request(task.id, 'DELETE', { ifMatch: formatETag('task', task.id, task.version + 7) }),
-      params(task.id),
-    );
-    expect(stale.status).toBe(412);
-    expect((await findReminderScheduleByTaskId(db.prisma, org, task.id))?.status).toBe('active');
+    expect(response.status).toBe(200);
+    expect(body.state).toBe('stopped');
+    expect(body.stopReason).toBe('due_date_removed');
+  });
+
+  it('is not cacheable', async () => {
+    const task = await seedTask();
+
+    const { response } = await remove(task.id);
+
+    expect(response.headers.get('cache-control')).toBe('no-store');
   });
 });
 
+/** F4: the audit trail must say what changed, not merely that something did. */
 describe('A8.3b Owner reminder routes: audit events', () => {
-  async function reminderAudits(taskId: string) {
-    const events = await listAuditEventsForTask(db.prisma, org, taskId);
-    return events.filter((event) => event.action.startsWith('reminder.'));
-  }
-
-  it('records establishment attributed to the Owner', async () => {
+  it('records establishment attributed to the Owner, with the new date and generation', async () => {
     const task = await seedTask();
 
-    await establish(task.id, task.etag, '2026-04-01');
+    await establish(task.id, '2026-04-01');
 
     const audits = await reminderAudits(task.id);
     expect(audits).toHaveLength(1);
@@ -711,50 +1193,90 @@ describe('A8.3b Owner reminder routes: audit events', () => {
     expect(audits[0]?.actorKind).toBe('owner');
     expect(audits[0]?.ownerId).toBe(owner.ownerId);
     expect(audits[0]?.outcome).toBe('succeeded');
+    expect(audits[0]?.taskStatus).toBe('open');
+    expect(audits[0]?.resourceVersion).toBe(1);
+    expect(audits[0]?.note).toBe('dueLocalDate=2026-04-01 generation=1 state=active');
   });
 
-  it('records a material change separately from establishment', async () => {
+  it('records a suspended establishment as suspended', async () => {
     const task = await seedTask();
-    await establish(task.id, task.etag, '2026-04-01');
+    await toWaiting(task.id, task.etag);
 
-    await establish(task.id, task.etag, '2026-05-20');
+    await establish(task.id, '2026-04-01');
+
+    const audits = await reminderAudits(task.id);
+    expect(audits[0]?.note).toBe('dueLocalDate=2026-04-01 generation=1 state=suspended_waiting');
+    expect(audits[0]?.taskStatus).toBe('waiting');
+  });
+
+  it('records both the prior and the new due date on a material change', async () => {
+    const task = await seedTask();
+    await establish(task.id, '2026-04-01');
+
+    await establish(task.id, '2026-05-20');
 
     const audits = await reminderAudits(task.id);
     expect(audits.map((event) => event.action)).toEqual([
       'reminder.schedule.established',
       'reminder.schedule.changed',
     ]);
+    expect(audits[1]?.note).toBe(
+      'priorDueLocalDate=2026-04-01 dueLocalDate=2026-05-20 priorGeneration=1 generation=2 state=active',
+    );
+    expect(audits[1]?.resourceVersion).toBe(2);
   });
 
-  it('records a due-date removal', async () => {
+  it('records a reactivation under its own action, with the reason it had stopped', async () => {
     const task = await seedTask();
-    await establish(task.id, task.etag, '2026-04-01');
+    await establish(task.id, '2026-04-01');
+    await remove(task.id);
 
-    await removeReminder(request(task.id, 'DELETE', { ifMatch: task.etag }), params(task.id));
+    await establish(task.id, '2026-04-01');
+
+    const audits = await reminderAudits(task.id);
+    expect(audits.map((event) => event.action)).toEqual([
+      'reminder.schedule.established',
+      'reminder.due_date.removed',
+      'reminder.schedule.reactivated',
+    ]);
+    expect(audits[2]?.note).toBe(
+      'priorDueLocalDate=2026-04-01 dueLocalDate=2026-04-01 priorGeneration=1 generation=2 priorStopReason=due_date_removed state=active',
+    );
+  });
+
+  it('records a removal with the date removed and the resulting stop reason', async () => {
+    const task = await seedTask();
+    await establish(task.id, '2026-04-01');
+
+    await remove(task.id);
 
     const audits = await reminderAudits(task.id);
     expect(audits.map((event) => event.action)).toEqual([
       'reminder.schedule.established',
       'reminder.due_date.removed',
     ]);
+    expect(audits[1]?.note).toBe(
+      'dueLocalDate=2026-04-01 generation=1 stopReason=due_date_removed state=stopped',
+    );
+    expect(audits[1]?.resourceVersion).toBe(2);
   });
 
   it('emits no event for an immaterial repeat', async () => {
     const task = await seedTask();
-    await establish(task.id, task.etag, '2026-04-01');
+    const first = await establish(task.id, '2026-04-01');
 
-    await establish(task.id, task.etag, '2026-04-01');
-    await establish(task.id, task.etag, '2026-04-01');
+    await establish(task.id, '2026-04-01', first.body.etag);
+    await establish(task.id, '2026-04-01', first.body.etag);
 
     expect(await reminderAudits(task.id)).toHaveLength(1);
   });
 
   it('emits no event for a repeated removal', async () => {
     const task = await seedTask();
-    await establish(task.id, task.etag, '2026-04-01');
-    await removeReminder(request(task.id, 'DELETE', { ifMatch: task.etag }), params(task.id));
+    await establish(task.id, '2026-04-01');
+    const removed = await remove(task.id);
 
-    await removeReminder(request(task.id, 'DELETE', { ifMatch: task.etag }), params(task.id));
+    await remove(task.id, removed.body.etag);
 
     const audits = await reminderAudits(task.id);
     expect(audits.filter((event) => event.action === 'reminder.due_date.removed')).toHaveLength(1);
@@ -762,44 +1284,105 @@ describe('A8.3b Owner reminder routes: audit events', () => {
 
   it('emits no event when the request is rejected', async () => {
     const task = await seedTask();
+    const token = await reminderEtag(task.id);
 
-    await setReminder(
-      request(task.id, 'PUT', { body: { dueLocalDate: '2026-02-30' }, ifMatch: task.etag }),
-      params(task.id),
-    );
+    await establish(task.id, '2026-02-30', token);
+    await establish(task.id, '2026-04-01', formatETag('task-reminder', task.id, 42));
     authOwner(otherOwner);
-    await setReminder(
-      request(task.id, 'PUT', { body: { dueLocalDate: '2026-04-01' }, ifMatch: task.etag }),
-      params(task.id),
-    );
+    await establish(task.id, '2026-04-01', token);
     authOwner();
 
     expect(await reminderAudits(task.id)).toHaveLength(0);
   });
+
+  it('records no worker internals or content in the note', async () => {
+    const task = await seedTask();
+    await establish(task.id, '2026-04-01');
+    await remove(task.id);
+    await establish(task.id, '2026-06-01');
+
+    for (const event of await reminderAudits(task.id)) {
+      expect(event.note ?? '').toMatch(/^[A-Za-z]+=[A-Za-z0-9_-]+(?: [A-Za-z]+=[A-Za-z0-9_-]+)*$/);
+      expect(event.note ?? '').not.toContain('Do work');
+      expect(event.note ?? '').not.toContain('claim');
+    }
+  });
+
+  it('records the route-scoped request id on reminder events', async () => {
+    const task = await seedTask();
+
+    await establish(task.id, '2026-04-01');
+    await establish(task.id, '2026-05-20');
+
+    // The request id is minted per request by the route context, not accepted from a caller, so the
+    // assertion is that each event carries its own and none is missing.
+    const audits = await reminderAudits(task.id);
+    expect(audits).toHaveLength(2);
+    for (const event of audits) {
+      expect(event.requestId).toMatch(/^[0-9a-f-]{36}$/);
+    }
+    expect(audits[0]?.requestId).not.toBe(audits[1]?.requestId);
+  });
 });
 
 describe('A8.3b Owner reminder routes: task lifecycle boundary', () => {
-  it('does not stop reminders when a task completes, because Waiting/lifecycle integration is deferred', async () => {
+  it('does not stop reminders when a task completes, because lifecycle wiring is deferred', async () => {
     const task = await seedTask();
-    await establish(task.id, task.etag, '2026-04-01');
+    await establish(task.id, '2026-04-01');
     const current = await findReminderScheduleByTaskId(db.prisma, org, task.id);
     expect(current?.status).toBe('active');
 
-    const completed = await completeTask(
-      new Request(`http://localhost/api/v1/tasks/${task.id}/complete`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', 'if-match': task.etag },
-        body: JSON.stringify({ outcomeType: 'completed' }),
-      }),
-      params(task.id),
-    );
-    expect(completed.status).toBe(200);
+    await toCompleted(task.id, task.etag);
 
     // Documents the A8.3b boundary rather than endorsing it: D107 requires completion to stop
-    // reminders, and that coupling is deferred with the Waiting integration. Nothing sends in this
-    // slice, so the schedule staying active has no delivery consequence yet — but a worker must not
-    // ship before this is closed.
+    // reminders, and that coupling is deferred to the A8.4a lifecycle gate. The eligibility rule now
+    // prevents a completed Task from *acquiring* an active schedule, but it cannot retroactively stop
+    // one established while the Task was open. Nothing sends in this slice, so there is no delivery
+    // consequence yet — and no worker may ship until this is closed.
     const after = await findReminderScheduleByTaskId(db.prisma, org, task.id);
     expect(after?.status).toBe('active');
+  });
+
+  it('does not suspend an existing active schedule when a task enters Waiting', async () => {
+    const task = await seedTask();
+    await establish(task.id, '2026-04-01');
+
+    await toWaiting(task.id, task.etag);
+
+    // Same boundary as above. The Owner's *next* material change would produce a suspended
+    // generation, but entering Waiting does not itself suspend — that is the deferred wiring.
+    const after = await findReminderScheduleByTaskId(db.prisma, org, task.id);
+    expect(after?.status).toBe('active');
+  });
+
+  it('suspends on the next material change once the task is Waiting', async () => {
+    const task = await seedTask();
+    await establish(task.id, '2026-04-01');
+    await toWaiting(task.id, task.etag);
+
+    const { body } = await establish(task.id, '2026-05-20');
+
+    expect(body.state).toBe('suspended_waiting');
+    expect(body.nextOverdueOccurrence).toBeNull();
+  });
+
+  it('still refuses to resurrect a schedule that persistence suspended', async () => {
+    const task = await seedTask();
+    await establish(task.id, '2026-04-01');
+    const schedule = await findReminderScheduleByTaskId(db.prisma, org, task.id);
+    // Seeded through persistence: no A8.3b route suspends an existing schedule.
+    await suspendReminderScheduleForWaiting(db.prisma, {
+      organizationId: org,
+      scheduleId: schedule!.id,
+      suspendedAt: NOW,
+    });
+
+    // The Task is still `open`, so eligibility says active — the Owner explicitly re-scheduling an
+    // actionable Task resumes it, which is the same act D109 uses to reactivate a stopped schedule.
+    const { response, body } = await establish(task.id, '2026-05-20');
+
+    expect(response.status).toBe(200);
+    expect(body.state).toBe('active');
+    expect(body.generation).toBe(2);
   });
 });

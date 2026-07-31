@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
 import { runOwnerTaskRoute } from '@/lib/tasks/route-context';
-import { parseTaskIfMatch } from '@/lib/http/etag';
+import { parseReminderIfMatch } from '@/lib/http/etag';
 import { assertTaskId, readJsonBody, requireObjectBody } from '@/lib/http/request';
 import {
   getOwnerTaskReminder,
   parseSetReminderBody,
   removeOwnerTaskReminder,
   setOwnerTaskReminder,
+  type TaskReminderState,
 } from '@/lib/reminders';
 
 /**
@@ -23,28 +24,46 @@ import {
  * A8.3b exposes configuration only. Nothing in this slice scans, claims, sends, retries, or delivers
  * a reminder.
  *
- * Responses are `no-store`. Reminder state changes without bumping the Task's `version` — the due
- * date is not part of the Task contract — so there is no ETag a cache could validate against, and a
- * cached reminder state could outlive the schedule it describes.
+ * ## Concurrency
+ *
+ * `PUT` and `DELETE` require the *reminder* `If-Match`, which `GET` supplies (A8.3b audit F5). A Task
+ * ETag is refused: reminder writes deliberately do not bump `Task.version`, so a Task token stays
+ * valid across a reminder change it cannot describe.
+ *
+ * ## Caching
+ *
+ * Every response is `no-store`, including errors. Reminder state has its own ETag but changes without
+ * bumping the Task's version, and the audit found error branches escaping without the header at all
+ * — so it is applied once, to whatever the route produces, rather than at each `return`.
  */
 
-const NO_STORE = { 'Cache-Control': 'no-store' } as const;
-
-function withNoStore(response: Response): Response {
+/**
+ * Apply `Cache-Control: no-store` to everything this route emits (A8.3b audit F6).
+ *
+ * Wrapping the result of `runOwnerTaskRoute` rather than each success path is the point: it covers
+ * the 401 the wrapper produces before the handler runs, every error the service throws, and any
+ * future branch nobody remembers to annotate.
+ */
+async function reminderRoute(
+  request: Request,
+  handler: Parameters<typeof runOwnerTaskRoute>[1],
+): Promise<Response> {
+  const response = await runOwnerTaskRoute(request, handler);
   response.headers.set('Cache-Control', 'no-store');
   return response;
 }
 
-function reminderResponse(body: unknown): Response {
-  return NextResponse.json(body, { status: 200, headers: NO_STORE });
+/** Success responses carry the reminder ETag the next mutation will have to present. */
+function reminderResponse(state: TaskReminderState): Response {
+  return NextResponse.json(state, { status: 200, headers: { ETag: state.etag } });
 }
 
 export async function GET(request: Request, context: { params: Promise<{ taskId: string }> }) {
-  return runOwnerTaskRoute(request, async (ctx) => {
+  return reminderRoute(request, async (ctx) => {
     const { taskId } = await context.params;
     const idCheck = assertTaskId(taskId);
     if (!idCheck.ok) {
-      return withNoStore(idCheck.response);
+      return idCheck.response;
     }
 
     const state = await getOwnerTaskReminder({
@@ -59,27 +78,27 @@ export async function GET(request: Request, context: { params: Promise<{ taskId:
 }
 
 export async function PUT(request: Request, context: { params: Promise<{ taskId: string }> }) {
-  return runOwnerTaskRoute(request, async (ctx) => {
+  return reminderRoute(request, async (ctx) => {
     const { taskId } = await context.params;
     const idCheck = assertTaskId(taskId);
     if (!idCheck.ok) {
-      return withNoStore(idCheck.response);
+      return idCheck.response;
     }
-    const ifMatch = parseTaskIfMatch(request, taskId);
+    const ifMatch = parseReminderIfMatch(request, taskId);
     if (!ifMatch.ok) {
-      return withNoStore(ifMatch.response);
+      return ifMatch.response;
     }
     const json = await readJsonBody(request);
     if (!json.ok) {
-      return withNoStore(json.response);
+      return json.response;
     }
     const object = requireObjectBody(json.body);
     if (!object.ok) {
-      return withNoStore(object.response);
+      return object.response;
     }
     const parsed = parseSetReminderBody(object.value);
     if (!parsed.ok) {
-      return withNoStore(parsed.response);
+      return parsed.response;
     }
 
     const result = await setOwnerTaskReminder({
@@ -87,7 +106,7 @@ export async function PUT(request: Request, context: { params: Promise<{ taskId:
       owner: ctx.owner,
       taskId,
       now: ctx.now,
-      expectedVersion: ifMatch.expectedVersion,
+      expectedReminderVersion: ifMatch.expectedVersion,
       requestId: ctx.requestId,
       dueLocalDate: parsed.value.dueLocalDate,
     });
@@ -96,15 +115,15 @@ export async function PUT(request: Request, context: { params: Promise<{ taskId:
 }
 
 export async function DELETE(request: Request, context: { params: Promise<{ taskId: string }> }) {
-  return runOwnerTaskRoute(request, async (ctx) => {
+  return reminderRoute(request, async (ctx) => {
     const { taskId } = await context.params;
     const idCheck = assertTaskId(taskId);
     if (!idCheck.ok) {
-      return withNoStore(idCheck.response);
+      return idCheck.response;
     }
-    const ifMatch = parseTaskIfMatch(request, taskId);
+    const ifMatch = parseReminderIfMatch(request, taskId);
     if (!ifMatch.ok) {
-      return withNoStore(ifMatch.response);
+      return ifMatch.response;
     }
 
     const result = await removeOwnerTaskReminder({
@@ -112,7 +131,7 @@ export async function DELETE(request: Request, context: { params: Promise<{ task
       owner: ctx.owner,
       taskId,
       now: ctx.now,
-      expectedVersion: ifMatch.expectedVersion,
+      expectedReminderVersion: ifMatch.expectedVersion,
       requestId: ctx.requestId,
     });
     return reminderResponse(result.state);

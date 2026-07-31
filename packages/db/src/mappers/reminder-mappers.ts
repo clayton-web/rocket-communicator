@@ -48,6 +48,12 @@ export interface PersistedReminderSchedule {
   readonly dueLocalDate: LocalDate;
   readonly schedulingTimeZone: string;
   readonly generation: number;
+  /**
+   * Optimistic-concurrency version for the reminder resource (A8.3b audit F5). Bumped by every
+   * transition that changes what an Owner decision was based on; surfaced only through the
+   * reminder ETag.
+   */
+  readonly reminderVersion: number;
   readonly status: ReminderScheduleStatus;
   readonly stopReason: ReminderScheduleStopReason | null;
   readonly stoppedAt: string | null;
@@ -137,6 +143,7 @@ export function mapReminderSchedule(row: PrismaTaskReminderSchedule): PersistedR
     dueLocalDate: brandLocalDate(row.dueLocalDate),
     schedulingTimeZone: row.schedulingTimeZone,
     generation: row.generation,
+    reminderVersion: row.reminderVersion,
     status: row.status,
     stopReason: row.stopReason,
     stoppedAt: row.stoppedAt ? toIso(row.stoppedAt) : null,

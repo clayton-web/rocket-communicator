@@ -211,6 +211,15 @@ export {
   type ReminderOccurrence,
   type ReminderOccurrenceOutcome,
 } from './reminders/schedule-policy.js';
+export {
+  decideReminderScheduling,
+  mayReadReminderState,
+  mayRemoveReminderDueDate,
+  taskStatusAllowsActiveReminders,
+  taskStatusStopsReminders,
+  type ReminderSchedulingDisposition,
+  type ReminderSchedulingRefusal,
+} from './reminders/eligibility.js';
 
 export { validateSummaryPoints } from './validation/summary-points.js';
 

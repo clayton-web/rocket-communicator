@@ -1,6 +1,14 @@
 import { preconditionFailed, preconditionRequired } from '../errors/domain-errors.js';
 
-export type ResourceKind = 'task' | 'task-suggestion';
+/**
+ * `task-reminder` is scoped by Task id but versioned independently of the Task.
+ *
+ * A reminder mutation deliberately does not bump `Task.version` — the due date is not part of the
+ * Task contract — so a Task ETag cannot detect that reminder state moved underneath a caller. The
+ * reminder resource therefore carries its own version, and its own token kind so the two can never
+ * be confused for one another.
+ */
+export type ResourceKind = 'task' | 'task-suggestion' | 'task-reminder';
 
 export function formatETag(kind: ResourceKind, resourceId: string, version: number): string {
   return `"${kind}-${resourceId}-v${version}"`;
@@ -9,7 +17,10 @@ export function formatETag(kind: ResourceKind, resourceId: string, version: numb
 export function parseETag(
   etag: string,
 ): { kind: ResourceKind; resourceId: string; version: number } | null {
-  const match = /^"(task-suggestion|task)-([^"]+)-v(\d+)"$/.exec(etag);
+  // `task-reminder` and `task-suggestion` precede `task`: the alternation is ordered so the longer
+  // prefixes win, otherwise `"task-reminder-abc-v1"` would parse as kind `task`, id
+  // `reminder-abc`.
+  const match = /^"(task-reminder|task-suggestion|task)-([^"]+)-v(\d+)"$/.exec(etag);
   if (!match) {
     return null;
   }

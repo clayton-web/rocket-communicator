@@ -1,0 +1,39 @@
+# Local development PostgreSQL only.
+# Never points at Supabase/production. Credentials are disposable and public in-repo.
+#
+# Start:  pnpm db:docker:up
+# Stop:   pnpm db:docker:down
+# Reset:  pnpm db:docker:reset
+#
+# Host port 5433 avoids clashing with a typical Homebrew Postgres on 5432.
+# Bind address is loopback-only so the container is not reachable on the LAN.
+#
+# PostgreSQL 16 is deliberate, not incidental. The A8.3b reminder concurrency suite needs two real
+# connections contending for the same rows, which PGlite cannot express because it is one in-process
+# connection; that suite runs against the `prisma_test` database created by
+# docker/postgres/init/01-create-databases.sql. See packages/db/README.md.
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: aicaa-postgres
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:5433:5432'
+    environment:
+      POSTGRES_USER: prisma
+      POSTGRES_PASSWORD: prisma
+      POSTGRES_DB: prisma
+    volumes:
+      - aicaa_pgdata:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U prisma -d prisma']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+volumes:
+  aicaa_pgdata:
+    name: aicaa_pgdata

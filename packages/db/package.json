@@ -11,7 +11,11 @@
     "validate": "DATABASE_URL=\"postgresql://prisma:prisma@127.0.0.1:5432/prisma?schema=public\" prisma validate",
     "migrate:dev": "prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
-    "migrate:status": "prisma migrate status"
+    "migrate:status": "prisma migrate status",
+    "migrate:local": "node ./scripts/run-local-prisma.mjs migrate deploy",
+    "migrate:status:local": "node ./scripts/run-local-prisma.mjs migrate status",
+    "migrate:dev:local": "node ./scripts/run-local-prisma.mjs migrate dev",
+    "studio:local": "node ./scripts/run-local-prisma.mjs studio"
   },
   "exports": {
     ".": {

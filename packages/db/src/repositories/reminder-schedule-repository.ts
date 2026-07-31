@@ -46,6 +46,15 @@ export interface ReminderOccurrenceInput {
   readonly occurrenceAt: string;
 }
 
+/**
+ * The state a new or superseded generation should sit in, decided by the A8.2 eligibility policy
+ * from the Task's status (D107).
+ *
+ * `suspended_waiting` is not a later transition applied to an active schedule — a Waiting Task's
+ * generation is *born* suspended, so no window exists in which its occurrence is claimable.
+ */
+export type ReminderScheduleInitialStatus = 'active' | 'suspended_waiting';
+
 export interface CreateReminderScheduleInput {
   readonly id: string;
   readonly organizationId: string;
@@ -60,6 +69,13 @@ export interface CreateReminderScheduleInput {
   readonly advanceOccurrence: ReminderOccurrenceInput;
   /** `selectNextOverdueOccurrence(...)` output. Null only when no overdue reminder is owed. */
   readonly nextOverdueOccurrence: ReminderOccurrenceInput | null;
+  /**
+   * Defaults to `active`. When `suspended_waiting`, the next overdue occurrence is discarded and
+   * `suspendedAt` is required — a suspended schedule owes no claimable occurrence (D107), and a
+   * database CHECK enforces both halves.
+   */
+  readonly status?: ReminderScheduleInitialStatus;
+  readonly suspendedAt?: string;
 }
 
 export interface OpenNextReminderGenerationInput {
@@ -67,12 +83,21 @@ export interface OpenNextReminderGenerationInput {
   readonly taskId: string;
   /** The generation the caller believes is current. A mismatch is a concurrency failure. */
   readonly expectedGeneration: number;
+  /**
+   * The reminder version the caller observed (A8.3b audit F5). Required for Owner-initiated
+   * changes: generation alone cannot detect a stop-and-reactivate that returned to the same
+   * generation, and the audit proved a removal could be silently overwritten without it.
+   */
+  readonly expectedReminderVersion?: number;
   readonly dueLocalDate: LocalDate;
   readonly schedulingTimeZone: string;
   readonly establishedAt: string;
   readonly advanceDisposition: 'scheduled' | 'skipped_window_elapsed';
   readonly advanceOccurrence: ReminderOccurrenceInput;
   readonly nextOverdueOccurrence: ReminderOccurrenceInput | null;
+  /** See {@link CreateReminderScheduleInput.status}. Defaults to `active`. */
+  readonly status?: ReminderScheduleInitialStatus;
+  readonly suspendedAt?: string;
 }
 
 export interface ClaimReminderScheduleInput {
@@ -111,6 +136,30 @@ async function requireScheduleById(
 }
 
 /**
+ * Translate a requested initial status into the column set a suspended generation requires.
+ *
+ * Two database CHECKs make this non-optional: `suspended_waiting` demands a `suspended_at`, and a
+ * suspended row must carry no next occurrence. Deriving all three from one argument means a caller
+ * cannot ask for suspension and forget half of what suspension means.
+ */
+function resolveSuspension(
+  status: ReminderScheduleInitialStatus | undefined,
+  suspendedAt: string | undefined,
+): {
+  readonly status: ReminderScheduleInitialStatus;
+  readonly suspended: boolean;
+  readonly suspendedAt: Date | null;
+} {
+  if (status !== 'suspended_waiting') {
+    return { status: 'active', suspended: false, suspendedAt: null };
+  }
+  if (!suspendedAt) {
+    throw persistenceValidation('suspendedAt is required when status is suspended_waiting.');
+  }
+  return { status: 'suspended_waiting', suspended: true, suspendedAt: fromIso(suspendedAt)! };
+}
+
+/**
  * Create the Reminder Schedule for a Task (D104: at most one per Task).
  *
  * A second schedule for the same Task is rejected by a unique index rather than by a prior read,
@@ -133,6 +182,7 @@ export async function createReminderSchedule(
     input.nextOverdueOccurrence?.occurrenceLocalDate,
     'nextOverdueOccurrence.occurrenceLocalDate',
   );
+  const suspension = resolveSuspension(input.status, input.suspendedAt);
 
   try {
     const row = await db.taskReminderSchedule.create({
@@ -143,12 +193,18 @@ export async function createReminderSchedule(
         dueLocalDate,
         schedulingTimeZone: input.schedulingTimeZone,
         generation: 1,
-        status: 'active',
+        reminderVersion: 1,
+        status: suspension.status,
+        suspendedAt: suspension.suspendedAt,
         advanceDisposition: input.advanceDisposition,
         advanceOccurrenceLocalDate,
         advanceOccurrenceAt: fromIso(input.advanceOccurrence.occurrenceAt)!,
-        nextOverdueOccurrenceLocalDate,
-        nextOverdueOccurrenceAt: fromIso(input.nextOverdueOccurrence?.occurrenceAt ?? null),
+        nextOverdueOccurrenceLocalDate: suspension.suspended
+          ? null
+          : nextOverdueOccurrenceLocalDate,
+        nextOverdueOccurrenceAt: suspension.suspended
+          ? null
+          : fromIso(input.nextOverdueOccurrence?.occurrenceAt ?? null),
         overdueDeliveredCount: 0,
         establishedAt: fromIso(input.establishedAt)!,
       },
@@ -205,6 +261,8 @@ export async function openNextReminderGeneration(
     'nextOverdueOccurrence.occurrenceLocalDate',
   );
 
+  const suspension = resolveSuspension(input.status, input.suspendedAt);
+
   const existing = await findReminderScheduleByTaskId(db, scope.organizationId, scope.taskId);
   if (!existing) {
     throw notFound(`Task ${input.taskId} has no Reminder Schedule to supersede.`);
@@ -215,21 +273,31 @@ export async function openNextReminderGeneration(
       id: existing.id,
       organizationId: scope.organizationId,
       generation: input.expectedGeneration,
+      // Reminder version is the stronger half of the precondition (A8.3b audit F5). Generation
+      // alone cannot detect that the schedule was stopped since the caller read it, because a stop
+      // keeps the generation number it stopped at — which is exactly how the audit's concurrent
+      // removal got silently overwritten by a reactivation.
+      ...(input.expectedReminderVersion === undefined
+        ? {}
+        : { reminderVersion: input.expectedReminderVersion }),
     },
     data: {
       generation: input.expectedGeneration + 1,
+      reminderVersion: { increment: 1 },
       dueLocalDate,
       schedulingTimeZone: input.schedulingTimeZone,
-      status: 'active',
+      status: suspension.status,
       stopReason: null,
       stoppedAt: null,
-      suspendedAt: null,
+      suspendedAt: suspension.suspendedAt,
       requiresOwnerAttention: false,
       advanceDisposition: input.advanceDisposition,
       advanceOccurrenceLocalDate,
       advanceOccurrenceAt: fromIso(input.advanceOccurrence.occurrenceAt)!,
-      nextOverdueOccurrenceLocalDate,
-      nextOverdueOccurrenceAt: fromIso(input.nextOverdueOccurrence?.occurrenceAt ?? null),
+      nextOverdueOccurrenceLocalDate: suspension.suspended ? null : nextOverdueOccurrenceLocalDate,
+      nextOverdueOccurrenceAt: suspension.suspended
+        ? null
+        : fromIso(input.nextOverdueOccurrence?.occurrenceAt ?? null),
       overdueDeliveredCount: 0,
       claimedBy: null,
       claimedAt: null,
@@ -240,7 +308,8 @@ export async function openNextReminderGeneration(
 
   if (updated.count !== 1) {
     throw optimisticConcurrency(
-      `Reminder schedule ${existing.id} is no longer at generation ${input.expectedGeneration}.`,
+      `Reminder schedule ${existing.id} is no longer at generation ${input.expectedGeneration}` +
+        `${input.expectedReminderVersion === undefined ? '' : ` and reminder version ${input.expectedReminderVersion}`}.`,
     );
   }
   return requireScheduleById(db, scope.organizationId, existing.id);
@@ -261,6 +330,7 @@ export async function suspendReminderScheduleForWaiting(
     where: { id: input.scheduleId, organizationId: input.organizationId, status: 'active' },
     data: {
       status: 'suspended_waiting',
+      reminderVersion: { increment: 1 },
       suspendedAt: fromIso(input.suspendedAt)!,
       nextOverdueOccurrenceLocalDate: null,
       nextOverdueOccurrenceAt: null,
@@ -306,6 +376,7 @@ export async function resumeReminderScheduleFromWaiting(
     },
     data: {
       status: 'active',
+      reminderVersion: { increment: 1 },
       suspendedAt: null,
       nextOverdueOccurrenceLocalDate,
       nextOverdueOccurrenceAt: fromIso(input.nextOverdueOccurrence?.occurrenceAt ?? null),
@@ -327,6 +398,13 @@ export async function resumeReminderScheduleFromWaiting(
  * Stopping clears the next occurrence — a database CHECK also refuses a stopped schedule that still
  * carries one, so a stopped schedule cannot reappear in the worker's due-scan. Stopping is
  * idempotent for the same reason: completion and due-date removal can legitimately race.
+ *
+ * `expectedReminderVersion` makes the stop conditional (A8.3b audit F2). Owner-initiated removal
+ * supplies it, so a removal can only stop the schedule the Owner actually looked at; the audit
+ * showed that without it, a removal issued against one generation would happily stop whatever the
+ * row had become in the meantime, and the audit trail would then claim a removal that the surviving
+ * state contradicted. Worker and lifecycle callers omit it and keep the unconditional, idempotent
+ * behaviour, because "stop this, whatever it is now" is genuinely what completion means.
  */
 export async function stopReminderSchedule(
   db: Client,
@@ -336,6 +414,7 @@ export async function stopReminderSchedule(
     reason: ReminderScheduleStopReason;
     stoppedAt: string;
     requiresOwnerAttention?: boolean;
+    expectedReminderVersion?: number;
   },
 ): Promise<PersistedReminderSchedule> {
   const updated = await db.taskReminderSchedule.updateMany({
@@ -343,9 +422,13 @@ export async function stopReminderSchedule(
       id: input.scheduleId,
       organizationId: input.organizationId,
       status: { in: ['active', 'suspended_waiting'] },
+      ...(input.expectedReminderVersion === undefined
+        ? {}
+        : { reminderVersion: input.expectedReminderVersion }),
     },
     data: {
       status: 'stopped',
+      reminderVersion: { increment: 1 },
       stopReason: input.reason,
       stoppedAt: fromIso(input.stoppedAt)!,
       suspendedAt: null,
@@ -361,7 +444,20 @@ export async function stopReminderSchedule(
   });
 
   const existing = await requireScheduleById(db, input.organizationId, input.scheduleId);
-  if (updated.count === 1 || existing.status === 'stopped') {
+  if (updated.count === 1) {
+    return existing;
+  }
+  // Ordered deliberately: a caller whose token is stale learns that, rather than being told the
+  // schedule "could not be stopped" when the truth is that someone else stopped or changed it.
+  if (
+    input.expectedReminderVersion !== undefined &&
+    existing.reminderVersion !== input.expectedReminderVersion
+  ) {
+    throw optimisticConcurrency(
+      `Reminder schedule ${input.scheduleId} changed since reminder version ${input.expectedReminderVersion}.`,
+    );
+  }
+  if (existing.status === 'stopped') {
     return existing;
   }
   throw domainConflict(`Reminder schedule ${input.scheduleId} could not be stopped.`);

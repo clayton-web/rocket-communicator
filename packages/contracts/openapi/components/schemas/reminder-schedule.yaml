@@ -78,6 +78,7 @@ components:
         not part of this contract.
       required:
         - taskId
+        - etag
         - state
         - requiresOwnerAttention
       additionalProperties: false
@@ -85,6 +86,13 @@ components:
         taskId:
           type: string
           maxLength: 64
+        etag:
+          type: string
+          description: |
+            Strong ETag for the *reminder* resource, required as `If-Match` on PUT and DELETE.
+            Distinct from the Task ETag: a reminder change deliberately does not bump `Task.version`,
+            so a Task ETag cannot detect that reminder state moved. Opaque — clients must echo it, not
+            parse it. Also returned in the `ETag` response header.
         dueLocalDate:
           description: |
             The canonical Owner-selected organization-local due date. Null when the Owner has not

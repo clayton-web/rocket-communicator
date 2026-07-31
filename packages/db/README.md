@@ -6,19 +6,41 @@ Operations: [../../docs/DEPLOYMENT.md](../../docs/DEPLOYMENT.md)
 
 ## Setup
 
-1. Provide a Postgres `DATABASE_URL` (Supabase **transaction pooler** URL is typical for production/serverless).
-2. Copy `.env.example` → `.env` (gitignored) for Prisma CLI.
-3. Apply migrations: `pnpm --filter @aicaa/db migrate:deploy`
+1. Provide a Postgres `DATABASE_URL`.
+   - **Local Docker (recommended for migrations / concurrency work):** `pnpm db:docker:up`, then use the `:local` scripts below. URL is `postgresql://prisma:prisma@127.0.0.1:5433/prisma?schema=public`.
+   - **Production / staging:** Supabase **transaction pooler** URL on the operator machine only (see [DEPLOYMENT.md](../../docs/DEPLOYMENT.md)).
+2. Copy `.env.example` → `.env` (gitignored) only if you need bare Prisma CLI. Prefer `:local` scripts so a leftover production URL in `.env` cannot be used by accident.
+3. Apply migrations locally: `pnpm db:migrate:local` (never use this against production).
 4. Generate client: `pnpm --filter @aicaa/db generate`
+
+### Local Docker Postgres
+
+Minimal Compose service at the repo root (`docker-compose.yml`). Postgres **15**, loopback-only port **5433**, databases `prisma` (dev) and `prisma_test` (future suites). Named volume `aicaa_pgdata`.
+
+| Command                        | Purpose                                     |
+| ------------------------------ | ------------------------------------------- |
+| `pnpm db:docker:up`            | Start and wait until healthy                |
+| `pnpm db:docker:down`          | Stop containers (keeps volume)              |
+| `pnpm db:docker:reset`         | Destroy volume and recreate empty databases |
+| `pnpm db:migrate:local`        | `prisma migrate deploy` against Docker only |
+| `pnpm db:migrate:status:local` | Migration status against Docker only        |
+| `pnpm db:studio:local`         | Prisma Studio against Docker only           |
+
+The `:local` helpers always set `DATABASE_URL` to the loopback Docker URL and refuse non-loopback hosts. Bare `migrate:deploy` / `migrate:status` still read `packages/db/.env` and can target production — that is intentional for operators, not for day-to-day local work.
+
+Ordinary Vitest remains on **PGlite** and does not need Docker.
+
+**PGlite cannot prove a race.** It is a single in-process connection, so two transactions never actually contend; a lock order or compare-and-set "verified" there is reasoned rather than tested. The A8.3b audit demonstrated the gap by finding a lost update and a deadlock that the green PGlite suite had not detected. Suites that must contend are named `*.pg.test.ts`, live in the package that owns the behaviour, and skip themselves unless handed a database URL, so `pnpm verify` needs no Docker — see [ENGINEERING_WORKFLOW.md](../../docs/ENGINEERING_WORKFLOW.md) for the commands.
 
 ## Tests vs production
 
-| Environment              | Database                                                                                                                                                               |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Ordinary Vitest**      | In-process **PGlite** (embedded Postgres) with migration SQL applied — no Docker or production database required. Use `createTestDatabase()` from `@aicaa/db/testing`. |
-| **Production / staging** | Current deployment uses Supabase Postgres via `DATABASE_URL` on Vercel (see [DEPLOYMENT.md](../../docs/DEPLOYMENT.md)); hosting remains replaceable under D079.        |
+| Environment              | Database                                                                                                                                                                                                           |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Ordinary Vitest**      | In-process **PGlite** (embedded Postgres) with migration SQL applied — no Docker or production database required. Use `createTestDatabase()` from `@aicaa/db/testing`.                                             |
+| **Local Docker**         | Real PostgreSQL 16 via `docker compose` (loopback 5433; `prisma` for development, `prisma_test` for contention). Use for Prisma migrate verification, multi-connection concurrency suites, and worker integration. |
+| **Production / staging** | Current deployment uses Supabase Postgres via `DATABASE_URL` on Vercel (see [DEPLOYMENT.md](../../docs/DEPLOYMENT.md)); hosting remains replaceable under D079.                                                    |
 
-Optional live DB: set `DATABASE_URL` and run Prisma CLI commands against your instance.
+Optional live DB: set `DATABASE_URL` and run Prisma CLI commands against your instance — or use the `:local` scripts for Docker.
 
 ## Security posture
 
@@ -91,4 +113,12 @@ Repositories take the current instant and every occurrence as **arguments**. Not
 
 **Not implemented by A8.3a:** no worker, scheduler, cron, delivery, Gmail, Event Notification, HTTP route, contract, feature flag, or UI. The claim-lease columns and worker indexes exist so A8.4 adds no migration.
 
-**A8.3b adds Owner-facing units of work, not worker behaviour.** `transactions/a8b-owner-reminder-transactions.ts` composes the A8.3a primitives above with an audit event in the same transaction, so a reminder state change and the record of it commit together or not at all. The A8.3a transactions are deliberately left unmodified. Only the read path and these three transactions are exported from `runtime.ts`; the claim, lease, and delivery-outcome primitives are absent from the traced serverless runtime, so nothing deployed can claim or send a reminder.
+**A8.3b adds Owner-facing units of work, not worker behaviour.** `transactions/a8b-owner-reminder-transactions.ts` composes the A8.3a primitives above with an audit event in the same transaction, so a reminder state change and the record of it commit together or not at all. Only the read path and these three transactions are exported from `runtime.ts`, so no deployed code path can claim or send a reminder.
+
+Be precise about what that does and does not mean. `runtime.ts` does not **re-export** the claim, lease, or delivery-outcome primitives, and nothing in `apps/web` can reach them — but they are not **absent** from the traced serverless artifact, because they share modules with the Owner transactions that are exported. The A8.3b audit recorded this as finding F7; splitting the modules is the real fix and is deferred with the worker slice. Unreachable is a weaker guarantee than absent, and the difference is worth stating plainly rather than glossing.
+
+**Reminder writes serialize on the Task row, and carry their own version.** All three A8.3b mutation transactions begin with `lockTaskScopeForReminderMutation` — a single-row `SELECT … FOR UPDATE` on `tasks` — and only then write the schedule and the Task's due date. The audit found the original ordering (schedule-then-Task for establishment and change, Task-then-schedule for removal) deadlocking on real PostgreSQL, with the victim escaping as a 500. One lock order fixes that by construction and makes the compare-and-set reads that follow trustworthy: a loser blocks until the winner commits, then reads the winner's bumped `reminder_version` and reports a truthful precondition failure.
+
+`task_reminder_schedules.reminder_version` is the optimistic-concurrency version for the reminder resource, separate from `Task.version` because a reminder write deliberately does not bump the Task. It increments on opening a generation, reactivating, suspending, resuming, and stopping — and deliberately **not** on recording a delivery, raising `requiresOwnerAttention`, or acquiring a lease, so a worker doing its job cannot invalidate an Owner's in-flight edit. Owner-initiated generation changes and removals pass the version they observed and are refused if it moved; worker and lifecycle callers omit it and keep the unconditional, idempotent behaviour, because "stop this, whatever it is now" is genuinely what completion means. `isSerializationFailure` translates a PostgreSQL `40001`/`40P01` refusal into the typed concurrency error as defence-in-depth.
+
+**A Waiting Task's schedule is born suspended.** `createReminderSchedule` and `openNextReminderGeneration` accept `status: 'suspended_waiting'`, which requires a `suspendedAt` and discards the next occurrence. Two CHECK constraints enforce both halves, so a suspended row cannot sit in the worker's due-scan index holding a date that will be in the past by the time the Task resumes (D107).

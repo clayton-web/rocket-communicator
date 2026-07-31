@@ -316,39 +316,67 @@ paths:
         failure detail appears in the response.
 
         A8.3b implements the API only. Nothing schedules, claims, sends, or retries a reminder, so
-        `overdueDeliveredCount` is always 0 and `state` is never `suspended_waiting` yet.
+        `overdueDeliveredCount` is always 0.
+
+        Allowed for every Task status, including completed and dismissed, so the Owner can always see
+        the truthful history of what was scheduled.
+
+        The `ETag` returned here is the token PUT and DELETE require. All responses are `no-store`.
       parameters:
         - $ref: '../components/parameters.yaml#/components/parameters/TaskId'
       responses:
         '200':
           description: Reminder state
+          headers:
+            ETag:
+              description: Strong reminder-resource ETag, to be sent as `If-Match` on PUT and DELETE.
+              schema:
+                type: string
+                pattern: '^"task-reminder-[^"]+-v[0-9]+"$'
+            Cache-Control:
+              schema:
+                type: string
+                enum: [no-store]
           content:
             application/json:
               schema:
                 $ref: '../openapi.yaml#/components/schemas/TaskReminderState'
+        '400':
+          $ref: '../components/responses.yaml#/components/responses/BadRequest'
         '401':
           $ref: '../components/responses.yaml#/components/responses/Unauthorized'
         '404':
           $ref: '../components/responses.yaml#/components/responses/NotFound'
+        '500':
+          $ref: '../components/responses.yaml#/components/responses/InternalError'
     put:
       operationId: setTaskReminder
       tags: [Tasks]
       summary: Establish or change the task due date and its reminder schedule (Owner only)
       description: |
         Sets the canonical organization-local due date and establishes or re-generates the Task
-        Reminder Schedule (D102, D104, D105). Uses `If-Match` Task concurrency.
+        Reminder Schedule (D102, D104, D105). Requires the reminder `If-Match`, not the Task's.
 
         Idempotent: re-sending the same effective due date against a live schedule returns the
-        current state unchanged and does **not** open a generation. A material due-date change opens
-        the next generation and preserves all prior delivery history. Re-setting a date on a stopped
-        schedule opens a new generation, because a stopped schedule is not the same effective
-        schedule (D109 requires explicit Owner re-save to reactivate).
+        current state unchanged, does **not** open a generation, does not change the ETag, and emits
+        no audit event. A material due-date change opens the next generation and preserves all prior
+        delivery history. Re-setting a date on a stopped schedule opens a new generation, because a
+        stopped schedule is not the same effective schedule (D109 requires explicit Owner re-save to
+        reactivate); that is audited as `reminder.schedule.reactivated`.
 
-        Every occurrence in the response is computed by the reminder domain. The request cannot
-        carry an organization, generation, occurrence, status, count, or stop reason.
+        **Task eligibility (D107).** A `completed` or `dismissed` Task is rejected with 409: reminders
+        stop permanently for a terminal Task, and nothing here reopens one. A `waiting` Task is
+        accepted, and its schedule is created or re-generated directly in `suspended_waiting` with no
+        claimable occurrence — Waiting suspends reminder scheduling and is the only pause mechanism.
+        Resuming when the Task leaves Waiting is lifecycle wiring and is not implemented in A8.3b.
+
+        Every occurrence in the response is computed by the reminder domain. The request body accepts
+        exactly `dueLocalDate`; any other property, nested or not, is rejected with 400.
+
+        All responses are `no-store`.
       parameters:
         - $ref: '../components/parameters.yaml#/components/parameters/TaskId'
-        - $ref: '../components/parameters.yaml#/components/parameters/IfMatch'
+        - $ref: '../components/parameters.yaml#/components/parameters/ReminderIfMatch'
       requestBody:
         required: true
         content:
@@ -358,6 +386,86 @@ paths:
       responses:
         '200':
           description: Reminder state after establishment or change
+          headers:
+            ETag:
+              description: |
+                The new strong reminder-resource ETag. Changes on every material mutation; unchanged
+                when the request was an immaterial repeat.
+              schema:
+                type: string
+                pattern: '^"task-reminder-[^"]+-v[0-9]+"$'
+            Cache-Control:
+              schema:
+                type: string
+                enum: [no-store]
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/TaskReminderState'
+        '400':
+          $ref: '../components/responses.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: '../components/responses.yaml#/components/responses/Unauthorized'
+        '404':
+          $ref: '../components/responses.yaml#/components/responses/NotFound'
+        '409':
+          description: |
+            The Task is `completed` or `dismissed`, so reminders cannot be established, changed, or
+            reactivated for it (D107).
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        '412':
+          description: |
+            The reminder `If-Match` is stale, of the wrong kind (for example a Task ETag), weak,
+            wildcard, multiple, or malformed. Also returned when a concurrent reminder write won the
+            race, including when PostgreSQL refused to serialize the two transactions.
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        '428':
+          $ref: '../components/responses.yaml#/components/responses/PreconditionRequired'
+        '500':
+          $ref: '../components/responses.yaml#/components/responses/InternalError'
+    delete:
+      operationId: removeTaskReminder
+      tags: [Tasks]
+      summary: Remove the task due date and stop its reminders (Owner only)
+      description: |
+        Clears the canonical due date and stops the schedule with reason `due_date_removed` (D107).
+        Delivery history is preserved — no reminder row is deleted — and no future occurrence
+        remains. Idempotent: removing an already-removed due date returns the current state, leaves
+        the ETag unchanged, and emits no audit event.
+
+        Requires the reminder `If-Match`, not the Task's. Only the schedule state the caller observed
+        is stopped, so a removal cannot silently cancel a due date somebody else changed in the
+        meantime.
+
+        Allowed for every Task status, including completed and dismissed: removal can only reduce
+        reminder activity, so refusing it would strand an active schedule with no way to switch it
+        off.
+
+        All responses are `no-store`.
+      parameters:
+        - $ref: '../components/parameters.yaml#/components/parameters/TaskId'
+        - $ref: '../components/parameters.yaml#/components/parameters/ReminderIfMatch'
+      responses:
+        '200':
+          description: Reminder state after removal
+          headers:
+            ETag:
+              description: |
+                The new strong reminder-resource ETag. Changes when a schedule was actually stopped;
+                unchanged when the request was an idempotent repeat.
+              schema:
+                type: string
+                pattern: '^"task-reminder-[^"]+-v[0-9]+"$'
+            Cache-Control:
+              schema:
+                type: string
+                enum: [no-store]
           content:
             application/json:
               schema:
@@ -371,36 +479,18 @@ paths:
         '409':
           $ref: '../components/responses.yaml#/components/responses/Conflict'
         '412':
-          $ref: '../components/responses.yaml#/components/responses/PreconditionFailed'
-        '428':
-          $ref: '../components/responses.yaml#/components/responses/PreconditionRequired'
-    delete:
-      operationId: removeTaskReminder
-      tags: [Tasks]
-      summary: Remove the task due date and stop its reminders (Owner only)
-      description: |
-        Clears the canonical due date and stops the schedule with reason `due_date_removed` (D107).
-        Delivery history is preserved — no reminder row is deleted — and no future occurrence
-        remains. Idempotent: removing an already-removed due date returns the current state and
-        emits no audit event.
-      parameters:
-        - $ref: '../components/parameters.yaml#/components/parameters/TaskId'
-        - $ref: '../components/parameters.yaml#/components/parameters/IfMatch'
-      responses:
-        '200':
-          description: Reminder state after removal
+          description: |
+            The reminder `If-Match` is stale, of the wrong kind (for example a Task ETag), weak,
+            wildcard, multiple, or malformed. Also returned when a concurrent reminder write won the
+            race, including when PostgreSQL refused to serialize the two transactions.
           content:
             application/json:
               schema:
-                $ref: '../openapi.yaml#/components/schemas/TaskReminderState'
-        '401':
-          $ref: '../components/responses.yaml#/components/responses/Unauthorized'
-        '404':
-          $ref: '../components/responses.yaml#/components/responses/NotFound'
-        '412':
-          $ref: '../components/responses.yaml#/components/responses/PreconditionFailed'
+                $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
         '428':
           $ref: '../components/responses.yaml#/components/responses/PreconditionRequired'
+        '500':
+          $ref: '../components/responses.yaml#/components/responses/InternalError'
   /api/v1/tasks/{taskId}/snooze:
     post:
       operationId: snoozeTask

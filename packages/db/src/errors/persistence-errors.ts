@@ -67,3 +67,38 @@ export function domainConflict(message: string): PersistenceError {
 export function invalidState(message: string): PersistenceError {
   return new PersistenceError('INVALID_STATE', message);
 }
+
+/**
+ * Whether a thrown error is PostgreSQL refusing to serialize concurrent writes.
+ *
+ * Deadlock (`40P01`) and serialization failure (`40001`) are not faults — they are the database
+ * correctly telling one of two racing transactions to give up. The A8.3b audit found them escaping
+ * as a generic 500, which taught a caller that the server was broken when the truthful answer was
+ * "someone else changed this first, read it again".
+ *
+ * Prisma reports them inconsistently depending on driver and shape: sometimes as `P2034`
+ * ("write conflict or deadlock"), sometimes as an unknown request error whose message carries the
+ * raw SQLSTATE. Both are matched, and the SQLSTATE is matched as a whole token so an unrelated
+ * message containing those digits cannot be mistaken for a conflict.
+ */
+export function isSerializationFailure(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const code = (error as { code?: unknown }).code;
+  if (code === 'P2034') {
+    return true;
+  }
+  return /\b(40P01|40001)\b/.test(error.message) || /deadlock detected/i.test(error.message);
+}
+
+/**
+ * Re-throw a serialization failure as an optimistic-concurrency failure, leaving anything else
+ * untouched. Callers get the retryable concurrency code their HTTP boundary already maps to 412.
+ */
+export function rethrowAsConcurrencyFailure(error: unknown, context: string): never {
+  if (isSerializationFailure(error)) {
+    throw optimisticConcurrency(`${context} lost a concurrent write race; re-read and retry.`);
+  }
+  throw error;
+}

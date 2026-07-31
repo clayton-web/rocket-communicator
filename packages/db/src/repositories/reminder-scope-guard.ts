@@ -63,6 +63,49 @@ export async function requireTaskScope(
 }
 
 /**
+ * Resolve a Task's scope **and hold a row lock on it** for the rest of the transaction
+ * (A8.3b audit F2).
+ *
+ * Every Owner reminder mutation calls this first, so all three of them serialize on the same Task
+ * row. The audit demonstrated why on real PostgreSQL: the establishment and generation-change
+ * transactions wrote `task_reminder_schedules` before `tasks`, while removal wrote `tasks` before
+ * `task_reminder_schedules`, and two concurrent Owner requests deadlocked — PostgreSQL logged
+ * `deadlock detected` and the victim surfaced as an unmapped error and a 500.
+ *
+ * Taking one lock up front fixes the lock order by construction rather than by asking every future
+ * transaction to remember the same sequence. It also makes the compare-and-set reads that follow
+ * trustworthy: the loser of a race blocks here until the winner commits, then reads the winner's
+ * bumped `reminder_version` and fails its own precondition, which is a truthful 412 instead of a
+ * deadlock.
+ *
+ * This is a single-row `FOR UPDATE`, not a table lock, and it is scoped to the Task the caller is
+ * already authorized for. `FOR UPDATE` cannot be expressed through the Prisma query API, hence the
+ * raw statement; the identifier is bound as a parameter, never interpolated.
+ */
+export async function lockTaskScopeForReminderMutation(
+  db: Client,
+  organizationId: string,
+  taskId: string,
+): Promise<AuthoritativeTaskScope> {
+  // Selected by identifier alone, like `requireTaskScope`, so a cross-organization caller is
+  // refused explicitly rather than blocked by an empty result it cannot interpret.
+  const rows = await db.$queryRaw<Array<{ id: string; organization_id: string }>>`
+    SELECT id, organization_id
+    FROM tasks
+    WHERE id = ${taskId}
+    FOR UPDATE
+  `;
+  if (rows.length !== 1) {
+    throw notFound(`Task ${taskId} not found.`);
+  }
+  const row = rows[0];
+  if (row.organization_id !== organizationId) {
+    throw organizationMismatch('Task organizationId must match the persistence scope.');
+  }
+  return { taskId: row.id, organizationId: row.organization_id };
+}
+
+/**
  * Resolve the organization and Task that own `scheduleId`, refusing a mismatched caller.
  *
  * Returning the schedule's `taskId` is what lets delivery-attempt writes stop accepting a Task

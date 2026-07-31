@@ -9,3 +9,4 @@ export {
 } from './service';
 export { parseSetReminderBody } from './validate';
 export { type TaskReminderState } from './state';
+export { NO_SCHEDULE_REMINDER_VERSION, reminderETag } from './etag';

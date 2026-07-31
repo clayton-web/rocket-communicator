@@ -479,6 +479,16 @@ model TaskReminderSchedule {
   /// Raised when the overdue ceiling is reached or a permanent failure occurs (D106, D108).
   requiresOwnerAttention Boolean        @default(false) @map("requires_owner_attention")
 
+  /// Optimistic-concurrency version for the *reminder* resource (A8.3b audit F5).
+  ///
+  /// Separate from `Task.version` because a reminder mutation deliberately does not bump the Task,
+  /// so a Task ETag cannot detect that reminder state moved. Incremented by every transition that
+  /// changes what an Owner decision was based on — opening a generation, reactivating, suspending,
+  /// resuming, stopping — and deliberately **not** by delivery counting or the attention flag, so a
+  /// worker recording a send cannot invalidate an Owner's in-flight due-date edit. Exposed only
+  /// through the reminder ETag; it is never a request field.
+  reminderVersion Int @default(1) @map("reminder_version")
+
   /// Decided once at establishment and never reclassified (D105). The occurrence itself is always
   /// stored — even when skipped — so the Owner surface can say which morning was missed.
   advanceDisposition         ReminderAdvanceDisposition @map("advance_disposition")
