@@ -589,14 +589,25 @@ export async function incrementOverdueDeliveredCount(
 }
 
 /**
- * Acquire a processing lease (persistence primitive for the future A8.4 worker).
+ * Acquire a schedule processing lease.
+ *
+ * ## This lease is a scan-efficiency hint, not the duplicate-delivery authority (A8.3a audit F6)
+ *
+ * The audit asked which of two claim systems is correctness-bearing, because two independent ones
+ * that can disagree are worse than either alone. The answer, decided in A8.4a, is the occurrence
+ * row: `(schedule, generation, kind, local date)` is a unique index, a claim on it is a fenced
+ * bounded lease, and finalization is conditional on holding that fence. Nothing about whether a
+ * message is sent twice depends on this lease.
+ *
+ * What this lease buys is that two overlapping five-minute invocations do not both walk the same
+ * schedules and do redundant eligibility work before losing the occurrence race. Losing it costs
+ * wasted queries, never a duplicate reminder. Delivery finalization therefore never checks it, and
+ * a worker that finds a schedule leased simply moves to the next one.
  *
  * A lease is granted only when the schedule is unclaimed or the previous lease has expired, and the
  * grant is a single conditional update — two workers racing produce one winner and one `null`,
- * rather than two claimants deciding politely in application code.
- *
- * This is not a worker and performs no delivery. It exists now so the worker slice adds no
- * migration and so claim semantics are testable before anything can send email.
+ * rather than two claimants deciding politely in application code. Release is fenced on exact grant
+ * identity so a stale claimant cannot release a successor's lease.
  */
 export async function claimReminderScheduleForProcessing(
   db: Client,
@@ -623,20 +634,126 @@ export async function claimReminderScheduleForProcessing(
   return requireScheduleById(db, input.organizationId, input.scheduleId);
 }
 
-/** Release a lease held by a specific claimant. A foreign lease is left alone. */
+/**
+ * Release a schedule lease, proving exact claim identity (A8.3a audit F6).
+ *
+ * `claimedAt` is required alongside `claimedBy` and is the fence. Without it, a worker whose lease
+ * expired and was re-granted to a *differently named* successor would be refused — but one re-granted
+ * to a successor with the same identity, which is what happens when the same deployment wakes up
+ * twice, would release a lease it no longer held. `(claimedBy, claimedAt)` is unique per grant, so a
+ * stale claimant matches nothing and leaves the successor alone.
+ *
+ * This lease is a scan-efficiency hint, not the duplicate-delivery authority — see the module
+ * header on {@link claimReminderScheduleForProcessing}. Releasing the wrong one would waste work,
+ * not send a second reminder; the occurrence row is what prevents that.
+ */
 export async function releaseReminderScheduleClaim(
   db: Client,
-  input: { organizationId: string; scheduleId: string; claimedBy: string },
+  input: {
+    organizationId: string;
+    scheduleId: string;
+    claimedBy: string;
+    /** The exact grant instant this claimant was given. */
+    claimedAt: string;
+  },
 ): Promise<PersistedReminderSchedule> {
   await db.taskReminderSchedule.updateMany({
     where: {
       id: input.scheduleId,
       organizationId: input.organizationId,
       claimedBy: input.claimedBy,
+      claimedAt: fromIso(input.claimedAt)!,
     },
     data: { claimedBy: null, claimedAt: null, claimExpiresAt: null },
   });
   return requireScheduleById(db, input.organizationId, input.scheduleId);
+}
+
+/** One due schedule from the global internal scan, carrying its own authoritative organization. */
+export interface DueReminderScheduleRow {
+  readonly id: string;
+  /** Authoritative row data, not a caller-supplied filter. Every later write scopes itself by it. */
+  readonly organizationId: string;
+  readonly taskId: string;
+  readonly generation: number;
+  /**
+   * The generation's due date. Carried because the *next* overdue occurrence is a function of the
+   * due date, not of the occurrence being processed — deriving it from today's occurrence would
+   * quietly re-anchor the series every morning (D106).
+   */
+  readonly dueLocalDate: LocalDate;
+  readonly nextOverdueOccurrenceLocalDate: LocalDate;
+  readonly nextOverdueOccurrenceAt: string;
+  readonly schedulingTimeZone: string;
+}
+
+/**
+ * Bounded global scan for schedules whose next overdue occurrence has arrived (A8.3a audit F11).
+ *
+ * ## Why this scan spans organizations
+ *
+ * One Owner organization exists. A cron-driven worker that had to enumerate organizations would
+ * hold that list in application memory, re-derive it every wake-up, and make a fairness decision in
+ * the least observable place available. A bounded global scan ordered by occurrence instant is
+ * simpler and is the ordering that a multi-organization deployment would want anyway: the reminder
+ * that has been owed longest goes first.
+ *
+ * Scanning globally is not the same as writing globally. Every row carries its own
+ * `organizationId`, read from the database rather than supplied by the caller, and every subsequent
+ * claim, transport decision, and finalization scopes itself by that value. The Owner-facing reads
+ * remain organization-scoped and are unaffected.
+ *
+ * Future multi-organization fairness — round-robin, per-organization batch caps, weighted
+ * ordering — is a change to this ORDER BY and this WHERE. It requires no change to occurrence
+ * identity, because identity is `(schedule, generation, kind, local date)` and never mentions the
+ * scan that found it.
+ *
+ * "Has arrived" is entirely the caller's judgement: `dueAtOrBefore` is an argument. This function
+ * has no notion of now, today, or overdue. The ordering is total — occurrence instant then id — so
+ * the batch bound is deterministic and two workers see the same candidates in the same order.
+ */
+export async function listDueReminderSchedulesGlobally(
+  db: Client,
+  input: { readonly dueAtOrBefore: string; readonly limit: number },
+): Promise<DueReminderScheduleRow[]> {
+  if (!Number.isInteger(input.limit) || input.limit < 1 || input.limit > 500) {
+    throw persistenceValidation('Reminder processing batch limit must be between 1 and 500.');
+  }
+
+  const rows = await db.taskReminderSchedule.findMany({
+    where: {
+      status: 'active',
+      nextOverdueOccurrenceAt: { lte: fromIso(input.dueAtOrBefore)! },
+    },
+    orderBy: [{ nextOverdueOccurrenceAt: 'asc' }, { id: 'asc' }],
+    take: input.limit,
+    select: {
+      id: true,
+      organizationId: true,
+      taskId: true,
+      generation: true,
+      dueLocalDate: true,
+      nextOverdueOccurrenceLocalDate: true,
+      nextOverdueOccurrenceAt: true,
+      schedulingTimeZone: true,
+    },
+  });
+
+  return rows.map((row) => ({
+    id: row.id,
+    organizationId: row.organizationId,
+    taskId: row.taskId,
+    generation: row.generation,
+    dueLocalDate: toStorableLocalDate(row.dueLocalDate, 'dueLocalDate'),
+    // Non-null by the `next_overdue_pair_coherent` CHECK plus the `lte` filter above: a row with a
+    // matching instant necessarily has the local date beside it.
+    nextOverdueOccurrenceLocalDate: toStorableLocalDate(
+      row.nextOverdueOccurrenceLocalDate!,
+      'nextOverdueOccurrenceLocalDate',
+    ),
+    nextOverdueOccurrenceAt: row.nextOverdueOccurrenceAt!.toISOString(),
+    schedulingTimeZone: row.schedulingTimeZone,
+  }));
 }
 
 /**

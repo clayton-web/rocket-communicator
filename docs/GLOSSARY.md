@@ -120,7 +120,7 @@ Optional Owner-selected **organization-local calendar date** on a Task. When pre
 
 ### Reminder Schedule
 
-The **Task-scoped** scheduling state derived from a Task's due date: at most one per Task, surviving reassignment, carrying the current **generation**, status, advance-occurrence disposition, next overdue occurrence, per-generation overdue delivered count, and `requiresOwnerAttention` (D104, D109). Supersedes the Assignment-scoped Follow-up Schedule (D096). **Maintained but never delivered:** the Owner reminder APIs create and change a schedule (A8.3b) and the Task-lifecycle wiring suspends, resumes, and stops one as the Task moves (D107); nothing scans, claims, or sends, because no reminder worker exists.
+The **Task-scoped** scheduling state derived from a Task's due date: at most one per Task, surviving reassignment, carrying the current **generation**, status, advance-occurrence disposition, next overdue occurrence, per-generation overdue delivered count, and `requiresOwnerAttention` (D104, D109). Supersedes the Assignment-scoped Follow-up Schedule (D096). **Maintained and processed, but never delivered:** the Owner reminder APIs create and change a schedule (A8.3b), the Task-lifecycle wiring suspends, resumes, and stops one as the Task moves (D107), and since A8.4a a processing service scans, claims, and finalizes occurrences against a **fake transport** — disabled by default and invoked by no cron job. Nothing has been sent.
 
 ### Reminder occurrence
 
@@ -134,7 +134,15 @@ A monotonically increasing marker opened by a **material due-date change** — t
 
 ### Reminder delivery attempt
 
-One processed reminder occurrence with its outcome (`sent` / `failed` / `skipped`), truthful skip or failure reason (for example `advance_window_elapsed`), generation identity, and a server-derived idempotency identity enforced by a database constraint (D109). Durable and privacy-safe (D100); superseded rather than deleted or rewritten. Contains **no** capability token or capability URL.
+One processed reminder occurrence with its outcome (`sent` / `failed` / `skipped`), truthful skip or failure reason (for example `advance_window_elapsed`), generation identity, and a server-derived idempotency identity enforced by a database constraint (D109). Durable and privacy-safe (D100); superseded rather than deleted or rewritten. Contains **no** capability token or capability URL. Since A8.4a the row also carries its processing lifecycle — see **Occurrence claim** — and a retry reuses this same row rather than creating a second one, because the occurrence, not the attempt, is the identity.
+
+### Occurrence claim
+
+The bounded lease a worker takes on a single reminder occurrence before processing it (A8.4a): a claim owner, an acquisition time, an expiry, and a monotonic **fencing token** (`claim_sequence`) that every subsequent state change must present. It is the **duplicate-prevention authority** — the schedule-level claim is only a scan hint, and losing that hint costs duplicated work but never a duplicated send. An expired claim is recovered by one of two rules, decided entirely by whether `provider_call_started_at` was written **before** the transport was invoked: without it nothing left the building and the occurrence is reclaimed; with it a provider may hold the message and nobody can prove otherwise, so the occurrence is finalized **ambiguous**, consumes its local calendar day, and is never retried.
+
+### Ambiguous outcome
+
+A terminal reminder occurrence outcome meaning the provider may or may not have delivered and the truth is not recoverable — typically a worker that died between starting a provider call and recording its result. It is terminal by design: retrying would risk a second real email about the same morning, which is worse than a missed one. It consumes the local calendar day, is never counted toward the overdue ceiling, and never carries provider acceptance metadata, because the whole content of the outcome is that acceptance is unknown. A suspension threshold for repeated ambiguity is required before A8.4b and is deliberately not yet decided.
 
 ### Overdue ceiling
 

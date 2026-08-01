@@ -59,6 +59,7 @@ docs/OwnerAuditContext.md
 docs/Recipient.md
 docs/RecipientReminderPreferences.md
 docs/ReminderMetadata.md
+docs/ReminderProcessResponse.md
 docs/RequestCapabilityClarificationRequest.md
 docs/RequestClarificationRequest.md
 docs/RequestSummaryPoint.md
@@ -160,6 +161,7 @@ src/main/kotlin/com/aicommunication/assistant/contracts/models/OwnerAuditContext
 src/main/kotlin/com/aicommunication/assistant/contracts/models/Recipient.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/RecipientReminderPreferences.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/ReminderMetadata.kt
+src/main/kotlin/com/aicommunication/assistant/contracts/models/ReminderProcessResponse.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/RequestCapabilityClarificationRequest.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/RequestClarificationRequest.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/RequestSummaryPoint.kt

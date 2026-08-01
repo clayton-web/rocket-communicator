@@ -240,10 +240,15 @@ export async function getOwnerTaskReminder(
   const task = await loadOwnerTask(command.db, owner, command.taskId);
 
   try {
-    const [schedule, dueLocalDate] = await Promise.all([
-      findSchedule(command.db, owner.organizationId, task.id),
-      readCanonicalDueLocalDate(command.db, owner.organizationId, task.id),
-    ]);
+    // One snapshot, not two reads (re-audit H-A). Racing a `Promise.all` of these two statements
+    // against a concurrent removal produced an `active` schedule behind a `null` due date — each
+    // half true, of different moments. The projection now describes one instant that existed.
+    const { readCoherentReminderProjection } = await loadDbRuntime();
+    const { schedule, dueLocalDate } = await readCoherentReminderProjection(
+      command.db,
+      owner.organizationId,
+      task.id,
+    );
 
     if (schedule) {
       return toTaskReminderState(schedule, dueLocalDate);

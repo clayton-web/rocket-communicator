@@ -213,10 +213,16 @@ describe('contracts package', () => {
     // `skipped_waiting_elapsed` is deliberately distinct from `skipped_window_elapsed`: one says the
     // Owner chose the date too late, the other that a Waiting period covered the advance morning
     // (A8 lifecycle audit H-2). Collapsing them would leave a client unable to say which happened.
+    // A8.4a appends the four values occurrence processing can reach; the order is pinned so an
+    // addition has to be a deliberate edit here rather than a silent contract widening.
     expect((schemas.TaskReminderAdvanceDisposition as { enum?: string[] }).enum).toEqual([
       'scheduled',
       'skipped_window_elapsed',
       'skipped_waiting_elapsed',
+      'delivered',
+      'skipped_not_eligible',
+      'failed_permanent',
+      'ambiguous',
     ]);
 
     // Local calendar dates stay canonical text, never instants (D103, D109).
@@ -229,9 +235,51 @@ describe('contracts package', () => {
     expect(occurrenceProperties?.localDate?.format).toBeUndefined();
     expect(occurrenceProperties?.at?.format).toBe('date-time');
 
-    // A8.3b is the API only: no reminder worker, processing, or attempt-history surface.
-    expect(bundled.paths?.['/api/v1/internal/reminders/process']).toBeUndefined();
+    // Still no Owner-facing attempt history: delivery attempts are internal records, and exposing
+    // them would contract the worker's row shape before the worker is finished.
     expect(bundled.paths?.['/api/v1/tasks/{taskId}/reminder/attempts']).toBeUndefined();
+  });
+
+  it('contracts the A8.4a processing endpoint as POST-only aggregates and nothing more', () => {
+    execSync('pnpm bundle', { cwd: root, stdio: 'pipe' });
+    const bundled = parseYaml(readFileSync(path.join(root, 'dist/openapi.bundled.yaml'), 'utf8'));
+    const schemas = (bundled.components?.schemas ?? {}) as Record<string, unknown>;
+    const processPath = bundled.paths?.['/api/v1/internal/reminders/process'] as
+      Record<string, unknown> | undefined;
+
+    expect(processPath).toBeDefined();
+
+    // No `GET`. The Gmail poll accepts both verbs for historical reasons; this one must not, because
+    // a scheduler misconfigured onto `GET` would be a side-effecting read.
+    expect(Object.keys(processPath!).sort()).toEqual(['post']);
+
+    // Cron bearer, never an Owner session.
+    const post = processPath!.post as { security?: Array<Record<string, unknown>> };
+    expect(post.security?.map((entry) => Object.keys(entry)[0])).toEqual(['InternalCronBearer']);
+
+    // Aggregate counters only. A Recipient identity, address, provider payload, failure detail, or
+    // claim internal appearing here would leak per-Task facts through an operational endpoint.
+    const response = schemas.ReminderProcessResponse as {
+      properties?: Record<string, unknown>;
+      required?: string[];
+    };
+    expect(Object.keys(response.properties ?? {}).sort()).toEqual([
+      'ambiguous',
+      'ceilingStops',
+      'delivered',
+      'deliveryEnabled',
+      'failedPermanent',
+      'failedRetryable',
+      'occurrencesClaimed',
+      'recoveredClaims',
+      'requestId',
+      'schedulesScanned',
+      'skipped',
+    ]);
+    // Every field is required, so a caller can never be handed a partial picture of a run.
+    expect([...(response.required ?? [])].sort()).toEqual(
+      Object.keys(response.properties ?? {}).sort(),
+    );
   });
 
   it('has no stale generated Kotlin artifacts outside the generator manifest', () => {

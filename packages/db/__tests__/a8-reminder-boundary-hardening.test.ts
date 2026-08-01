@@ -20,17 +20,20 @@ import {
   createReminderSchedule,
   createTask,
   getTaskDueLocalDate,
+  markProviderCallStarted,
   openNextReminderGeneration,
   persistCanonicalDueLocalDate,
   persistDueDateRemoval,
   persistEstablishedReminderSchedule,
-  recordReminderDeliveryOutcome,
   recordSkippedReminderOccurrence,
   resumeReminderScheduleFromWaiting,
   setNextOverdueOccurrence,
   suspendReminderScheduleForWaiting,
   upsertRecipient,
 } from '../src/index.js';
+// The raw terminal writer is deliberately absent from the barrel (A8.3a audit F8), so the tests
+// that exercise it directly reach into its own module. Production callers cannot.
+import { recordTerminalOccurrenceOutcomeUnsafe } from '../src/repositories/reminder-delivery-attempt-repository.js';
 import { createTestDatabase, type TestDatabase } from '../src/client/create-test-database.js';
 
 /**
@@ -296,6 +299,9 @@ describe('A8.3a reminder persistence boundary hardening (PGlite)', () => {
           occurrenceAt: seed.nextOverdue.occurrenceAt,
           claimedBy: 'worker_a',
           claimedAt: '2026-08-11T16:00:00.000Z',
+          claimExpiresAt: '2099-01-01T00:00:00.000Z',
+          now: '2026-08-11T16:00:00.000Z',
+          maxAttempts: 3,
         }),
       );
 
@@ -323,6 +329,9 @@ describe('A8.3a reminder persistence boundary hardening (PGlite)', () => {
         occurrenceAt: seed.nextOverdue.occurrenceAt,
         claimedBy: 'worker_a',
         claimedAt: '2026-08-11T16:00:00.000Z',
+        claimExpiresAt: '2099-01-01T00:00:00.000Z',
+        now: '2026-08-11T16:00:00.000Z',
+        maxAttempts: 3,
       });
 
       expect(claim.attempt.taskId).toBe(seed.taskId);
@@ -493,6 +502,9 @@ describe('A8.3a reminder persistence boundary hardening (PGlite)', () => {
             occurrenceAt: '2026-03-01T16:00:00.000Z',
             claimedBy: 'worker_a',
             claimedAt: '2026-03-01T16:00:00.000Z',
+            claimExpiresAt: '2099-01-01T00:00:00.000Z',
+            now: '2026-03-01T16:00:00.000Z',
+            maxAttempts: 3,
           }),
         ),
       ).toBe('VALIDATION');
@@ -551,6 +563,9 @@ describe('A8.3a reminder persistence boundary hardening (PGlite)', () => {
         occurrenceKind: 'overdue' as const,
         claimedBy: 'worker_a',
         claimedAt: '2026-08-11T16:00:00.000Z',
+        claimExpiresAt: '2099-01-01T00:00:00.000Z',
+        now: '2026-08-11T16:00:00.000Z',
+        maxAttempts: 3,
       };
 
       await claimReminderOccurrence(db.prisma, {
@@ -589,6 +604,9 @@ describe('A8.3a reminder persistence boundary hardening (PGlite)', () => {
         occurrenceLocalDate: seed.nextOverdue.occurrenceLocalDate,
         occurrenceAt: seed.nextOverdue.occurrenceAt,
         claimedAt: '2026-08-11T16:00:00.000Z',
+        claimExpiresAt: '2099-01-01T00:00:00.000Z',
+        now: '2026-08-11T16:00:00.000Z',
+        maxAttempts: 3,
       };
 
       const first = await claimReminderOccurrence(db.prisma, {
@@ -689,13 +707,25 @@ describe('A8.3a reminder persistence boundary hardening (PGlite)', () => {
           id: `att_${label}_claim`,
           claimedBy: 'worker_a',
           claimedAt: '2026-08-11T16:00:00.000Z',
+          claimExpiresAt: '2099-01-01T00:00:00.000Z',
+          now: '2026-08-11T16:00:00.000Z',
+          maxAttempts: 3,
         });
-        await recordReminderDeliveryOutcome(db.prisma, {
+        // A success requires the durable in-flight marker committed before the call (A8.4a F2).
+        await markProviderCallStarted(db.prisma, {
           organizationId: orgA,
           attemptId: claim.attempt.id,
+          claimSequence: 1,
+          startedAt: '2026-08-11T16:00:03.000Z',
+        });
+        await recordTerminalOccurrenceOutcomeUnsafe(db.prisma, {
+          organizationId: orgA,
+          attemptId: claim.attempt.id,
+          claimSequence: 1,
           outcome,
           completedAt: '2026-08-11T16:00:05.000Z',
           failureCode: outcome === 'success' ? null : 'provider_unavailable',
+          providerAcceptedAt: outcome === 'success' ? '2026-08-11T16:00:04.000Z' : null,
         });
 
         const code = await rejectionCode(() =>
@@ -732,6 +762,9 @@ describe('A8.3a reminder persistence boundary hardening (PGlite)', () => {
         id: 'att_claimed_only',
         claimedBy: 'worker_a',
         claimedAt: '2026-08-11T16:00:00.000Z',
+        claimExpiresAt: '2099-01-01T00:00:00.000Z',
+        now: '2026-08-11T16:00:00.000Z',
+        maxAttempts: 3,
       });
 
       const code = await rejectionCode(() =>

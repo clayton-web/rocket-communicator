@@ -161,6 +161,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/internal/reminders/process": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Internal reminder occurrence processing (deployed dark)
+         * @description Claims and finalizes due reminder occurrences for a bounded batch of schedules (A8.4a;
+         *     D104-D107, D109). Recovers abandoned occurrence claims, validates Task and schedule
+         *     eligibility immediately before sending, invokes an injected transport, and records the
+         *     outcome through the safe occurrence transaction.
+         *
+         *     **Deployed dark.** Delivery is off unless `ENABLE_REMINDER_DELIVERY` is exactly `"true"`,
+         *     which is set in no environment. With it off this endpoint scans nothing, claims nothing,
+         *     writes nothing, and calls no transport: it returns zero aggregates with
+         *     `deliveryEnabled: false`. The only transport implemented in this milestone is a deterministic
+         *     fake — no Gmail account, credential, or provider API is reachable from this path, and no cron
+         *     job invokes it.
+         *
+         *     Requires `InternalCronBearer` (`CRON_SECRET`). Not an Owner session. Empty body. Safe to
+         *     invoke repeatedly and safe to overlap: occurrence identity is unique in the database, so two
+         *     concurrent invocations cannot both process the same occurrence. Suitable for an approximately
+         *     five-minute external wake-up; nothing repeats every five minutes, because persisted
+         *     occurrence instants are the scheduling authority and missed invocations are recovered later.
+         *
+         *     Returns aggregate counts only — never a Task summary, Recipient identity, address, provider
+         *     payload, or claim internals.
+         *     **Status: Contracted for A8.4a** (POST only; no GET handler).
+         *
+         */
+        post: operations["processRemindersInternal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/internal/suggestions/process": {
         parameters: {
             query?: never;
@@ -1419,20 +1460,67 @@ export interface components {
              *      */
             occurrence?: components["schemas"]["TaskReminderOccurrence"] | null;
         };
+        /** @description Aggregate outcome of one internal reminder-processing invocation (A8.4a). Counts only:
+         *     never a Task summary, Recipient identity, address, provider payload, failure detail, or
+         *     claim internal. When `deliveryEnabled` is false every count is zero, because the invocation
+         *     scanned nothing, claimed nothing, wrote nothing, and called no transport.
+         *      */
+        ReminderProcessResponse: {
+            /** @description Whether `ENABLE_REMINDER_DELIVERY` was exactly "true". False in every environment in
+             *     this milestone.
+             *      */
+            deliveryEnabled: boolean;
+            schedulesScanned: number;
+            occurrencesClaimed: number;
+            /** @description Occurrences a transport accepted. Counts fake-transport acceptances only. */
+            delivered: number;
+            /** @description Occurrences a pre-send eligibility check truthfully refused. */
+            skipped: number;
+            /** @description Definite rejections that leave the occurrence owed and retryable. */
+            failedRetryable: number;
+            failedPermanent: number;
+            /** @description Occurrences whose result could not be determined. Terminal and never retried.
+             *      */
+            ambiguous: number;
+            /** @description Abandoned occurrence claims released or finalized before this batch ran. */
+            recoveredClaims: number;
+            /** @description Schedules stopped by reaching the D106 overdue delivery ceiling. */
+            ceilingStops: number;
+            requestId: string;
+        };
         /**
-         * @description The advance-reminder decision for the current generation, made when the schedule was
-         *     established and thereafter changed by exactly one event (D105, D107).
+         * @description What happened to this generation's advance reminder (D105, D107). `scheduled` is the only
+         *     value that means anything is still pending; every other value is terminal and settled.
          *
-         *     `skipped_window_elapsed` means the day before the due date had already passed when the Owner
-         *     chose the date, so no advance reminder was ever scheduled. `skipped_waiting_elapsed` means the
-         *     advance reminder was validly scheduled and the Task was Waiting when it came due: it is
-         *     permanently skipped for this generation and is never replayed when the Task resumes. The
-         *     occurrence's own date is reported either way, so a client can always say which morning was
-         *     missed.
+         *     The occurrence's own date is reported for every disposition, so a client can always say which
+         *     morning was involved.
+         *
+         *     Decided at establishment:
+         *
+         *     - `scheduled` — the advance reminder is owed and has not yet been processed.
+         *     - `skipped_window_elapsed` — the day before the due date had already passed when the Owner
+         *       chose the date, so no advance reminder was ever scheduled.
+         *
+         *     Decided by a Task lifecycle transition:
+         *
+         *     - `skipped_waiting_elapsed` — the advance reminder was validly scheduled and the Task was
+         *       Waiting when it came due. Permanently skipped for this generation, never replayed on resume.
+         *
+         *     Decided by occurrence processing (A8.4a). Processing runs against a fake transport only, is
+         *     disabled by default, and reaches no real provider, so these values cannot occur in the
+         *     deployed application in this milestone:
+         *
+         *     - `delivered` — the occurrence reached a provider that accepted it.
+         *     - `skipped_not_eligible` — a pre-send check found the Task or schedule no longer eligible.
+         *     - `failed_permanent` — delivery failed in a way that retrying cannot fix, or the retry budget
+         *       was exhausted.
+         *     - `ambiguous` — the transport could not report whether the message was accepted. Treated as
+         *       sent and never retried, because a Recipient hearing about the same morning twice is the
+         *       worse failure.
          *
          * @enum {string}
          */
-        TaskReminderAdvanceDisposition: "scheduled" | "skipped_window_elapsed" | "skipped_waiting_elapsed";
+        TaskReminderAdvanceDisposition: "scheduled" | "skipped_window_elapsed" | "skipped_waiting_elapsed" | "delivered" | "skipped_not_eligible" | "failed_permanent" | "ambiguous";
         /** @description One reminder occurrence. `localDate` is the organization-local calendar day and is
          *     authoritative; `at` is the absolute instant that day's 09:00 organization-local resolves to,
          *     supplied for display and ordering only (D103).
@@ -2280,6 +2368,28 @@ export interface operations {
             409: components["responses"]["Conflict"];
             412: components["responses"]["PreconditionFailed"];
             428: components["responses"]["PreconditionRequired"];
+        };
+    };
+    processRemindersInternal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Aggregate processing counts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderProcessResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalError"];
         };
     };
     processSuggestionsInternal: {

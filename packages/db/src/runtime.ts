@@ -182,17 +182,41 @@ export {
   type BeginInitialHandoffResult,
 } from './transactions/a7-handoff-transactions.js';
 
-// A8.3b Owner reminder API surface. Only what the Owner routes call: the read path and the three
-// audited units of work. Worker primitives (claim, lease, delivery outcome, due-scan) are
-// deliberately absent from the traced runtime — nothing in the deployed application may claim or
-// send a reminder in this slice.
+// A8.3b Owner reminder API surface plus the A8.4a worker-safety foundation.
+//
+// The worker primitives are present from A8.4a because the internal processing endpoint calls them,
+// but the endpoint is deployed dark and the only transport that exists is a fake — nothing in the
+// deployed application can reach a provider. `recordTerminalOccurrenceOutcomeUnsafe` remains absent
+// deliberately (A8.3a audit F8): `finalizeReminderOccurrence` is the only success path, and
+// `apps/web/__tests__/a8-4a-worker-safety-guards.test.ts` fails if the raw writer appears here.
 export {
   findReminderScheduleByTaskId,
+  claimReminderScheduleForProcessing,
+  releaseReminderScheduleClaim,
+  listDueReminderSchedulesGlobally,
   type CreateReminderScheduleInput,
   type OpenNextReminderGenerationInput,
   type ReminderOccurrenceInput,
+  type DueReminderScheduleRow,
 } from './repositories/reminder-schedule-repository.js';
-export { getTaskDueLocalDate } from './transactions/a8-reminder-transactions.js';
+export {
+  claimReminderOccurrence,
+  listExpiredOccurrenceClaims,
+  markProviderCallStarted,
+  type ClaimReminderOccurrenceResult,
+  type ExpiredOccurrenceClaim,
+} from './repositories/reminder-delivery-attempt-repository.js';
+export {
+  finalizeReminderOccurrence,
+  finalizeAbandonedInFlightOccurrence,
+  releaseReminderOccurrenceClaim,
+  type FinalizeReminderOccurrenceResult,
+} from './transactions/a8-4a-occurrence-transactions.js';
+export {
+  getTaskDueLocalDate,
+  readCoherentReminderProjection,
+  type CoherentReminderProjection,
+} from './transactions/a8-reminder-transactions.js';
 export {
   persistOwnerReminderEstablishment,
   persistOwnerReminderGenerationChange,

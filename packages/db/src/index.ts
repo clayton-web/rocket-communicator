@@ -129,6 +129,7 @@ export {
   mapReminderSchedule,
   mapReminderDeliveryAttempt,
   isLiveReminderSchedule,
+  isTerminalReminderOutcome,
   NO_SCHEDULE_REMINDER_VERSION,
   toReminderOccurrenceOutcome,
   toStorableLocalDate,
@@ -156,10 +157,12 @@ export {
   claimReminderScheduleForProcessing,
   releaseReminderScheduleClaim,
   listReminderSchedulesDueForProcessing,
+  listDueReminderSchedulesGlobally,
   type CreateReminderScheduleInput,
   type OpenNextReminderGenerationInput,
   type ClaimReminderScheduleInput,
   type ListSchedulesDueForProcessingInput,
+  type DueReminderScheduleRow,
   type ReminderOccurrenceInput,
 } from './repositories/reminder-schedule-repository.js';
 export {
@@ -168,19 +171,36 @@ export {
   type AuthoritativeTaskScope,
   type AuthoritativeScheduleScope,
 } from './repositories/reminder-scope-guard.js';
+// `recordTerminalOccurrenceOutcomeUnsafe` is deliberately absent (A8.3a audit F8). It can write a
+// `success` without counting it, without evaluating the D106 ceiling, and without settling an
+// advance disposition. `finalizeReminderOccurrence` below is the only public success path, and
+// `packages/db/__tests__/a8-4a-worker-safety-boundary.test.ts` fails if the raw writer reappears in
+// this barrel or in the runtime entry.
 export {
   claimReminderOccurrence,
-  recordReminderDeliveryOutcome,
   recordSkippedReminderOccurrence,
   listReminderDeliveryAttemptsForTask,
   listReminderDeliveryAttemptsForGeneration,
   countSuccessfulOverdueDeliveriesForGeneration,
+  hasTerminalAdvanceOccurrence,
+  listExpiredOccurrenceClaims,
+  markProviderCallStarted,
   type ClaimReminderOccurrenceInput,
   type ClaimReminderOccurrenceResult,
+  type ClaimRefusalReason,
+  type ExpiredOccurrenceClaim,
   type RecordTerminalOutcomeInput,
   type RecordSkippedOccurrenceInput,
   type TerminalReminderDeliveryOutcome,
 } from './repositories/reminder-delivery-attempt-repository.js';
+// A8.4a occurrence lifecycle: the safe success path and the claim-recovery primitives.
+export {
+  finalizeReminderOccurrence,
+  finalizeAbandonedInFlightOccurrence,
+  releaseReminderOccurrenceClaim,
+  type FinalizeReminderOccurrenceInput,
+  type FinalizeReminderOccurrenceResult,
+} from './transactions/a8-4a-occurrence-transactions.js';
 
 export {
   getCommunicationAccountByOrganization,
@@ -270,16 +290,13 @@ export {
 
 export {
   persistEstablishedReminderSchedule,
-  persistSuccessfulOverdueDelivery,
-  persistNonDeliveryOutcome,
   persistDueDateRemoval,
   persistCanonicalDueLocalDate,
   getTaskDueLocalDate,
+  readCoherentReminderProjection,
   type EstablishReminderScheduleInput,
+  type CoherentReminderProjection,
   type EstablishReminderScheduleResult,
-  type RecordOverdueDeliveryInput,
-  type RecordOverdueDeliveryResult,
-  type RecordNonDeliveryOutcomeInput,
 } from './transactions/a8-reminder-transactions.js';
 
 // A8.3b Owner-facing reminder units of work: the A8.3a primitives plus an audit event in the same

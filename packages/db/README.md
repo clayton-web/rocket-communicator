@@ -1,6 +1,6 @@
 # @aicaa/db
 
-Server-side Prisma persistence for A4–A7.3 and the A8.3a reminder foundation (D062, D006, D086–D094, D128). Domain rules live in `@aicaa/domain`; this package stores and retrieves records.
+Server-side Prisma persistence for A4–A7.3, the A8.3a reminder foundation, and the A8.4a occurrence lifecycle (D062, D006, D086–D094, D128). Domain rules live in `@aicaa/domain`; this package stores and retrieves records.
 
 Operations: [../../docs/DEPLOYMENT.md](../../docs/DEPLOYMENT.md)
 
@@ -96,14 +96,22 @@ Validation runs in **both directions**. Every write parses before it stores and 
 
 ### Constraints that carry product law
 
-| Constraint                                                | Rule it enforces                                                               |
-| --------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `task_reminder_schedules_overdue_delivered_count_bounded` | The D106 ceiling of 14 successful overdue deliveries per generation (backstop) |
-| `task_reminder_schedules_stopped_has_no_next_occurrence`  | A stopped schedule cannot reappear in a worker's due-scan                      |
-| `task_reminder_schedules_stop_reason_matches_status`      | A stopped schedule always records **why**                                      |
-| `task_reminder_schedules_claim_fields_coherent`           | A half-written lease cannot look like a free schedule                          |
-| `reminder_delivery_attempts_skip_reason_matches_outcome`  | A skip always carries a truthful reason (D105, D107)                           |
-| `reminder_delivery_attempts_failure_code_only_on_failure` | A success cannot carry a failure code, so ceiling counting reads unambiguously |
+| Constraint                                                 | Rule it enforces                                                               |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `task_reminder_schedules_overdue_delivered_count_bounded`  | The D106 ceiling of 14 successful overdue deliveries per generation (backstop) |
+| `task_reminder_schedules_stopped_has_no_next_occurrence`   | A stopped schedule cannot reappear in a worker's due-scan                      |
+| `task_reminder_schedules_stop_reason_matches_status`       | A stopped schedule always records **why**                                      |
+| `task_reminder_schedules_claim_fields_coherent`            | A half-written lease cannot look like a free schedule                          |
+| `reminder_delivery_attempts_skip_reason_matches_outcome`   | A skip always carries a truthful reason (D105, D107)                           |
+| `reminder_delivery_attempts_failure_code_only_on_failure`  | A success cannot carry a failure code, so ceiling counting reads unambiguously |
+| `reminder_delivery_attempts_claim_fields_coherent`         | A claim's owner and acquisition time are one fact and move together (A8.4a)    |
+| `reminder_delivery_attempts_lease_requires_owner`          | An expiry with no owner would be a countdown nobody is running                 |
+| `reminder_delivery_attempts_terminal_holds_no_lease`       | A settled occurrence never advertises a lease the recovery sweep could see     |
+| `reminder_delivery_attempts_claim_sequence_matches_claim`  | Every claim carries a fencing token; an unclaimed row carries none             |
+| `reminder_delivery_attempts_provider_start_requires_claim` | A provider call cannot be attributed to nobody                                 |
+| `reminder_delivery_attempts_acceptance_implies_started`    | Acceptance without a start marker would break the ambiguity recovery rule      |
+| `reminder_delivery_attempts_acceptance_only_for_success`   | Only a success may claim the provider accepted it                              |
+| `task_reminder_schedules_claim_requires_active`            | A non-active schedule holds no live scan lease (A8.4a)                         |
 
 A test asserts the SQL ceiling bound equals the domain `OVERDUE_SUCCESSFUL_DELIVERY_CEILING`, so the two cannot drift apart.
 
@@ -111,14 +119,32 @@ A test asserts the SQL ceiling bound equals the domain `OVERDUE_SUCCESSFUL_DELIV
 
 Repositories take the current instant and every occurrence as **arguments**. Nothing here derives "tomorrow", "overdue", an advance date, a 09:00 local instant, or any daylight-saving behaviour — D103 places that arithmetic exclusively in `packages/domain/src/reminders/`. `a8-reminder-persistence-boundary.test.ts` fails the build if a reminder persistence module reads a clock, resolves a timezone, performs day arithmetic, or restates the ceiling.
 
-**Not implemented by A8.3a:** no worker, scheduler, cron, delivery, Gmail, Event Notification, HTTP route, contract, feature flag, or UI. The claim-lease columns and worker indexes exist so A8.4 adds no migration.
+**Not implemented by A8.3a:** no worker, scheduler, cron, delivery, Gmail, Event Notification, HTTP route, contract, feature flag, or UI. The claim-lease columns and worker indexes were added early in the hope that A8.4 would need no migration; it needed one anyway, because a lease with no expiry and no fencing token turned out to be unrecoverable rather than merely incomplete. See [A8.4a occurrence lifecycle](#a84a-occurrence-lifecycle).
 
-**A8.3b adds Owner-facing units of work, not worker behaviour.** `transactions/a8b-owner-reminder-transactions.ts` composes the A8.3a primitives above with an audit event in the same transaction, so a reminder state change and the record of it commit together or not at all. Only the read path and these three transactions are exported from `runtime.ts`, so no deployed code path can claim or send a reminder.
+**A8.3b adds Owner-facing units of work, not worker behaviour.** `transactions/a8b-owner-reminder-transactions.ts` composes the A8.3a primitives above with an audit event in the same transaction, so a reminder state change and the record of it commit together or not at all.
 
-Be precise about what that does and does not mean. `runtime.ts` does not **re-export** the claim, lease, or delivery-outcome primitives, and nothing in `apps/web` can reach them — but they are not **absent** from the traced serverless artifact, because they share modules with the Owner transactions that are exported. The A8.3b audit recorded this as finding F7; splitting the modules is the real fix and is deferred with the worker slice. Unreachable is a weaker guarantee than absent, and the difference is worth stating plainly rather than glossing.
+**A8.4a widened `runtime.ts` deliberately**, because the processing service runs in the serverless runtime and needs the claim, recovery, scan, and finalization functions. What it does **not** export is `recordTerminalOccurrenceOutcomeUnsafe`, and that exclusion is now enforced by a test rather than by care. The A8.3b note here used to say the unexported primitives were nonetheless _present_ in the traced artifact because they shared modules with exported ones — that is still true and is still a weaker guarantee than absence, but the guarantee that matters has moved: the unsafe writer is unreachable by name from any barrel, and the safe transaction validates what the unsafe one would have skipped.
 
 **Reminder writes serialize on the Task row, and carry their own version.** All three A8.3b mutation transactions begin with `lockTaskScopeForReminderMutation` — a single-row `SELECT … FOR UPDATE` on `tasks` — and only then write the schedule and the Task's due date. The audit found the original ordering (schedule-then-Task for establishment and change, Task-then-schedule for removal) deadlocking on real PostgreSQL, with the victim escaping as a 500. One lock order fixes that by construction and makes the compare-and-set reads that follow trustworthy: a loser blocks until the winner commits, then reads the winner's bumped `reminder_version` and reports a truthful precondition failure.
 
 `task_reminder_schedules.reminder_version` is the optimistic-concurrency version for the reminder resource, separate from `Task.version` because a reminder write deliberately does not bump the Task. It increments on opening a generation, reactivating, suspending, resuming, and stopping — and deliberately **not** on recording a delivery, raising `requiresOwnerAttention`, or acquiring a lease, so a worker doing its job cannot invalidate an Owner's in-flight edit. Owner-initiated generation changes and removals pass the version they observed and are refused if it moved; worker and lifecycle callers omit it and keep the unconditional, idempotent behaviour, because "stop this, whatever it is now" is genuinely what completion means. `isSerializationFailure` translates a PostgreSQL `40001`/`40P01` refusal into the typed concurrency error as defence-in-depth.
 
 **A Waiting Task's schedule is born suspended.** `createReminderSchedule` and `openNextReminderGeneration` accept `status: 'suspended_waiting'`, which requires a `suspendedAt` and discards the next occurrence. Two CHECK constraints enforce both halves, so a suspended row cannot sit in the worker's due-scan index holding a date that will be in the past by the time the Task resumes (D107).
+
+## A8.4a occurrence lifecycle
+
+Migration: `20260801120000_a8_4a_worker_safety` (additive, forward-only, with one backfill — see [DEPLOYMENT.md](../../docs/DEPLOYMENT.md)).
+
+**`finalizeReminderOccurrence` in `transactions/a8-4a-occurrence-transactions.ts` is the only public way to record a delivery outcome.** It runs two phases in one transaction: the occurrence terminalizes **unconditionally**, fenced on the caller's claim sequence, and only then is the schedule effect applied through `updateMany` statements whose zero-row result is an expected no-op. That ordering is the whole point. The previous transaction ended in a `status = 'active'` compare-and-set, so an Owner changing the due date while a provider call was in flight aborted the transaction and rolled back the row saying the Recipient had been emailed — the email still sent, and the next scan would send it again. A schedule that suspended, stopped, or moved generation now costs the count, never the history.
+
+`recordTerminalOccurrenceOutcomeUnsafe` is the low-level writer beneath it. It is **module-private and exported from neither `index.ts` nor `runtime.ts`**; a source guard fails the build if it reappears in either. An export is an invitation, and a success written through it would skip the kind check, the generation check, the counter, and the ceiling.
+
+**Claims are bounded leases with fencing tokens.** `claimReminderOccurrence` takes an unclaimed occurrence or reclaims an expired pre-provider one, and otherwise refuses with a reason the caller can act on (`lease_held`, `in_flight_unknown`, `already_terminal`, `retry_budget_exhausted`). Every takeover is one conditional update on `claim_sequence`, so two workers reclaiming the same abandoned lease produce a winner and a refusal rather than two claimants.
+
+**`markProviderCallStarted` must be called before the transport, never after**, and that ordering is the entire recovery rule. `listExpiredOccurrenceClaims` splits expired leases on it: without the marker nothing left the building, so the occurrence is released and reclaimed; with it a provider may hold the message and nobody can prove otherwise, so `finalizeAbandonedInFlightOccurrence` records `ambiguous`, consumes the local day, and never retries. Marking afterwards would make a crash mid-call indistinguishable from a crash before it, and the sweep would resend.
+
+**`hasTerminalAdvanceOccurrence` replaces `hasProcessedAdvanceOccurrence`.** The old function counted a bare `claimed` lease as processed, so a worker that claimed an advance occurrence and died would have frozen that advance permanently — unreclaimable, because the unique occurrence identity refuses a second row. Only a terminal outcome settles the schedule's advance disposition, and it does so in the same transaction that writes the outcome, so the attempt row and the schedule cannot describe different histories.
+
+**`listDueReminderSchedulesGlobally` scans across organizations; nothing writes across them.** It returns a bounded batch ordered by occurrence instant then id, against a partial index on active schedules. Every row carries its own `organizationId`, read from the database rather than supplied, and every subsequent claim and finalization scopes by it. Owner-facing reads remain organization-scoped and take no such path.
+
+**Concurrency evidence:** `__tests__/a8-4a-occurrence-concurrency.pg.test.ts` on real PostgreSQL 16 with independent connections, plus direct SQL invariant queries. PGlite is one connection and cannot express any of it.

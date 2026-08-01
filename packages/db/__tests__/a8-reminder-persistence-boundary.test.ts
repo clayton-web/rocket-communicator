@@ -24,6 +24,7 @@ const REMINDER_PERSISTENCE_MODULES = [
   'repositories/reminder-scope-guard.ts',
   'transactions/a8-reminder-transactions.ts',
   'transactions/a8b-owner-reminder-transactions.ts',
+  'transactions/a8-4a-occurrence-transactions.ts',
   'mappers/reminder-mappers.ts',
 ];
 
@@ -98,12 +99,21 @@ describe('A8.3a reminder persistence boundary guard', () => {
   });
 
   it('imports the ceiling rule from the domain rather than restating it', () => {
+    // A8.4a moved ceiling evaluation out of `a8-reminder-transactions.ts` and into the occurrence
+    // finalizer, along with the two F1-unsafe delivery transactions it replaced. The rule the guard
+    // protects is unchanged: whichever module judges the ceiling must ask the domain.
+    const finalizer = readFileSync(
+      path.join(srcRoot, 'transactions/a8-4a-occurrence-transactions.ts'),
+      'utf8',
+    );
+    expect(finalizer).toContain('hasReachedOverdueDeliveryCeiling');
+    // The relative specifier is required by the serverless packaging convention (A7.4 guard).
+    expect(finalizer).toContain("from '../../../domain/dist/index.js'");
+
     const transactions = readFileSync(
       path.join(srcRoot, 'transactions/a8-reminder-transactions.ts'),
       'utf8',
     );
-    expect(transactions).toContain('hasReachedOverdueDeliveryCeiling');
-    // The relative specifier is required by the serverless packaging convention (A7.4 guard).
-    expect(transactions).toContain("from '../../../domain/dist/index.js'");
+    expect(transactions).not.toContain('OVERDUE_SUCCESSFUL_DELIVERY_CEILING');
   });
 });

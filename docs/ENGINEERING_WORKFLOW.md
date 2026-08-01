@@ -115,6 +115,10 @@ AICAA_PG_CONCURRENCY_URL="postgresql://prisma:prisma@127.0.0.1:5433/prisma_test?
   pnpm --filter @aicaa/web exec vitest run owner-reminder-concurrency
 ```
 
+**A race test is evidence of behaviour, not a regression guard.** A8.4a measured this rather than assuming it: the PostgreSQL suite written to defend the H-1 fix was re-run against the restored pre-fix code and passed 240 consecutive rounds. The race is real and the assertions are right, but the window is microseconds wide and the scheduler will not reliably put a test inside it. A suite that goes green on the broken code protects nothing, and its passing is the most misleading kind of evidence because it looks like proof. When a fix is **structural** — a decision moved inside a lock, an unsafe export removed, a forbidden import — write a source or architecture guard that fails deterministically on any machine with no database, and keep the race test for what it can actually show: that the fixed design holds up under contention. Adding rounds is not a substitute; 240 of them bought nothing here.
+
+**Also measure test isolation before trusting a concurrency result.** A8.4a's global due-scan suites initially passed for the wrong reason and then failed for one: schedules left active by an earlier test were picked up by a later test's global scan. Any suite whose subject is a query with no tenant filter must actively quiesce shared state, and any seeded row should carry a per-run prefix so a crashed round cannot poison the next one.
+
 **Always route Prisma through the `:local` helpers for local work.** `packages/db/.env` holds a production URL, and bare `prisma migrate deploy` reads it — so the bare command targets production from a developer's machine with no prompt. `pnpm db:migrate:local` overrides `DATABASE_URL` explicitly and refuses any non-loopback host (`packages/db/scripts/assert-local-database-url.mjs`). This guards the _local_ helpers only; applying a migration to production remains a deliberate, unguarded operator action ([DEPLOYMENT.md](DEPLOYMENT.md)).
 
 ## Verification exit criterion

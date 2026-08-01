@@ -62,6 +62,8 @@ paths:
     $ref: './paths/task-suggestions.yaml#/paths/~1api~1v1~1task-suggestions~1{suggestionId}~1dismiss'
   /api/v1/task-suggestions/{suggestionId}/merge:
     $ref: './paths/task-suggestions.yaml#/paths/~1api~1v1~1task-suggestions~1{suggestionId}~1merge'
+  /api/v1/internal/reminders/process:
+    $ref: './paths/tasks.yaml#/paths/~1api~1v1~1internal~1reminders~1process'
   /api/v1/internal/suggestions/process:
     $ref: './paths/task-suggestions.yaml#/paths/~1api~1v1~1internal~1suggestions~1process'
   /api/v1/recipients:
@@ -216,6 +218,8 @@ components:
       $ref: './components/schemas/reminder-schedule.yaml#/components/schemas/TaskReminderStopReason'
     TaskReminderAdvance:
       $ref: './components/schemas/reminder-schedule.yaml#/components/schemas/TaskReminderAdvance'
+    ReminderProcessResponse:
+      $ref: './components/schemas/reminder-schedule.yaml#/components/schemas/ReminderProcessResponse'
     TaskReminderAdvanceDisposition:
       $ref: './components/schemas/reminder-schedule.yaml#/components/schemas/TaskReminderAdvanceDisposition'
     TaskReminderOccurrence:

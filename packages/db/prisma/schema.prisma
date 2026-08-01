@@ -526,6 +526,9 @@ model TaskReminderSchedule {
   @@index([organizationId, status, advanceOccurrenceAt])
   @@index([organizationId, requiresOwnerAttention])
   @@index([claimExpiresAt])
+  /// Global internal due-scan (A8.4a, A8.3a audit F11). Organization-leading indexes cannot serve a
+  /// scan that deliberately spans organizations; the migration makes this one partial on `active`.
+  @@index([nextOverdueOccurrenceAt, id])
   @@map("task_reminder_schedules")
 }
 
@@ -572,6 +575,28 @@ model ReminderDeliveryAttempt {
   /// When the outcome became terminal.
   completedAt  DateTime? @map("completed_at") @db.Timestamptz(3)
 
+  /// Occurrence lease expiry (A8.4a, A8.3a audit F2). Before this column a claim was indefinite, so
+  /// a worker that died mid-occurrence froze it forever and nothing could tell an active claim from
+  /// an abandoned one.
+  claimExpiresAt DateTime? @map("claim_expires_at") @db.Timestamptz(3)
+  /// Monotonically increasing per occurrence; incremented by every claim and reclaim. This is the
+  /// fencing token: a claimant proves ownership by presenting the sequence it was granted, so a
+  /// resurrected predecessor cannot finalize or release the occurrence its successor now owns.
+  claimSequence  Int       @default(0) @map("claim_sequence")
+
+  /// Set immediately before the transport is invoked and never cleared (A8.4a).
+  ///
+  /// This is the difference between the two recovery classes. An expired lease with this null means
+  /// nothing left the building and the occurrence may be reclaimed; an expired lease with this set
+  /// means a provider may already have accepted the message, so the occurrence is finalized
+  /// `ambiguous` and never retried rather than risking a duplicate reminder to a real Recipient.
+  providerCallStartedAt DateTime? @map("provider_call_started_at") @db.Timestamptz(3)
+  /// When the provider accepted the message. Durable proof a send happened, written in the same
+  /// statement that terminalizes the outcome and never rolled back for a schedule change (F1).
+  providerAcceptedAt    DateTime? @map("provider_accepted_at") @db.Timestamptz(3)
+  /// Short normalized provider reference. Never a body, address, subject, or capability value.
+  providerMessageRef    String?   @map("provider_message_ref") @db.VarChar(128)
+
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -582,6 +607,8 @@ model ReminderDeliveryAttempt {
   @@index([organizationId, taskId, occurrenceAt])
   @@index([scheduleId, generation, outcome])
   @@index([organizationId, outcome, occurrenceAt])
+  /// Expired-claim recovery sweep (A8.4a). Partial in migration SQL: only `claimed` rows can expire.
+  @@index([claimExpiresAt])
   @@map("reminder_delivery_attempts")
 }
 
@@ -747,10 +774,20 @@ enum ReminderScheduleStopReason {
 /// history: the advance reminder *was* validly scheduled, and the Task was Waiting when it came due,
 /// so it is permanently skipped for this generation and never replayed on resume (A8 lifecycle audit
 /// H-2). The two stay distinct so the history can say which happened.
+/// What happened to this generation's advance occurrence.
+///
+/// `scheduled` is the only non-terminal value: everything else says the occurrence is settled and
+/// must never be sent. A terminal outcome on the advance attempt row and this column are written in
+/// the same transaction (A8.4a), so the schedule and the attempt history cannot disagree about the
+/// same occurrence — the disagreement the A8 lifecycle re-audit found reachable once a worker exists.
 enum ReminderAdvanceDisposition {
   scheduled
   skipped_window_elapsed
   skipped_waiting_elapsed
+  delivered
+  skipped_not_eligible
+  failed_permanent
+  ambiguous
 }
 
 /// Which occurrence a delivery attempt belongs to. Mirrors the A8.2 domain

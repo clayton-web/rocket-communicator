@@ -12,7 +12,7 @@ import type {
   ReminderScheduleStatus,
   ReminderScheduleStopReason,
 } from '../mappers/reminder-mappers.js';
-import { hasProcessedAdvanceOccurrence } from '../repositories/reminder-delivery-attempt-repository.js';
+import { hasTerminalAdvanceOccurrence } from '../repositories/reminder-delivery-attempt-repository.js';
 import {
   findReminderScheduleByTaskId,
   resumeReminderScheduleFromWaiting,
@@ -357,8 +357,16 @@ function nextOccurrenceOnResume(
  *   marked by an earlier resume, so there is nothing pending to skip and the earlier reason is the
  *   truthful one;
  * - an occurrence still strictly in the future — the reminder is genuinely pending and resume arms it;
- * - an occurrence with an attempt row against it — a recorded fact about what happened to that
- *   occurrence, which the schedule row must not contradict.
+ * - an occurrence whose attempt row has reached a *terminal* outcome — a recorded fact about what
+ *   happened to that occurrence, which the schedule row must not contradict.
+ *
+ * That last condition narrowed in A8.4a (re-audit finding A-A). It used to ask whether *any* attempt
+ * row existed, which counted a bare `claimed` lease as a processed occurrence. Once claims became
+ * reachable that was the same bug in a new place: a worker that claimed the advance occurrence and
+ * died would leave the row `claimed` forever, resume would decline to settle the disposition, and
+ * the schedule would sit active with a `scheduled` advance whose morning had passed — with no path
+ * back, because the unique occurrence identity refuses a second claim. A lease is not a result; the
+ * occurrence recovery sweep terminalizes abandoned claims, and only then does this defer to history.
  *
  * The boundary itself belongs to the A8.2 domain, not here: `hasAdvanceOccurrenceElapsed` states the
  * `<=` rule once, so resuming at exactly 09:00 on the advance morning is too late in the same way a
@@ -375,7 +383,7 @@ async function advanceOccurrenceSpannedByWaiting(
   if (!hasAdvanceOccurrenceElapsed(schedule.advanceOccurrenceAt as UtcInstant, now as UtcInstant)) {
     return false;
   }
-  return !(await hasProcessedAdvanceOccurrence(
+  return !(await hasTerminalAdvanceOccurrence(
     tx,
     schedule.organizationId,
     schedule.id,

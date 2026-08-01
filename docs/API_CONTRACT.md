@@ -150,7 +150,11 @@ Eligibility is re-checked against the Task row **under the transaction's lock**,
 
 **Errors.** `401 UNAUTHORIZED` unauthenticated; `404 NOT_FOUND` for a missing or malformed Task id and, per the established convention, for a Task in another organization; `400 VALIDATION_ERROR` for malformed JSON, a non-object body, an impossible or noncanonical date, or any property other than `dueLocalDate`; `409 DOMAIN_CONFLICT` for a terminal-Task `PUT` or an illegal schedule transition; `412 PRECONDITION_FAILED` for a stale, weak, wildcard, multiple, malformed, or wrong-kind `If-Match`, and for losing a concurrent reminder write — including when PostgreSQL refuses to serialize the two transactions; `428 PRECONDITION_REQUIRED` for a missing `If-Match` on a mutation; `500` only for genuine faults. A normal write race never surfaces as a 500. Prisma and PostgreSQL detail is never surfaced.
 
-**Not contracted:** no reminder processing or worker endpoint, no attempt-history route, no Recipient-facing reminder surface, no Event Notification resource, and no reminder suspend/resume control — Waiting remains the only pause mechanism (D107), and its reminder coupling is wired to the existing lifecycle routes rather than exposed as a control of its own ([MILESTONES.md](MILESTONES.md)).
+**The `GET` projection comes from one database snapshot (A8.4a).** It previously read the schedule and the canonical Task due date as two independent unlocked statements, so racing a `DELETE` could return `active` behind a null `dueLocalDate` — each half true, of different moments. Both reads now happen inside one `RepeatableRead` transaction. No write lock is taken for an ordinary read, and `Cache-Control: no-store` is unchanged.
+
+**`advance.disposition` gained four terminal values in A8.4a**: `delivered`, `skipped_not_eligible`, `failed_permanent`, and `ambiguous`. They are additive — no existing value changed meaning — and they exist because an advance occurrence can now reach a terminal outcome. A schedule whose advance occurrence is merely claimed still reports `scheduled`: a lease is not a processed occurrence, and reporting otherwise would tell an Owner a reminder had been resolved when a worker had only picked it up.
+
+**Not contracted:** no attempt-history route, no Recipient-facing reminder surface, no Event Notification resource, and no reminder suspend/resume control — Waiting remains the only pause mechanism (D107), and its reminder coupling is wired to the existing lifecycle routes rather than exposed as a control of its own ([MILESTONES.md](MILESTONES.md)). The reminder processing endpoint added in A8.4a is **internal**, not an Owner surface; see below.
 
 ### Owner Recipient handoff (A7.1 contracted; A7.7 implemented)
 
@@ -215,6 +219,24 @@ Recipient **work requests** in A4 create pending suggestions in persistence with
 **AI operational error codes (names only; stored on events/audits, not in HTTP aggregate body beyond counts):** `AI_MISSING_CREDENTIALS`, `AI_INVALID_CREDENTIALS`, `AI_DISABLED`, `AI_TIMEOUT`, `AI_RATE_LIMIT`, `AI_INSUFFICIENT_QUOTA`, `AI_PROVIDER_5XX`, `AI_NETWORK`, `AI_EMPTY_OUTPUT`, `AI_MALFORMED_JSON`, `AI_SCHEMA_INVALID`, `AI_INVALID_OUTPUT` (legacy umbrella), `AI_POLICY_REFUSAL`, `AI_UNSUPPORTED_RESPONSE`.
 
 **Credentials (names only):** application auth uses `CRON_SECRET`. The External Scheduler management credential (for example cron-job.org’s API key env name `CRON_JOB_ORG_API_KEY`) is never stored in the repository and is not used by the application endpoint.
+
+### Internal reminder processing (A8.4a — contracted, deployed dark)
+
+**Status: implemented and contracted, deliberately inert.** `operationId`: `processRemindersInternal`. No External Scheduler job invokes it, `ENABLE_REMINDER_DELIVERY` is set in no environment, and the A8 migrations are not applied in Production — so this endpoint is reachable in the repository and does nothing anywhere.
+
+| Method | Path                                 | Purpose                                                              |
+| ------ | ------------------------------------ | -------------------------------------------------------------------- |
+| POST   | `/api/v1/internal/reminders/process` | External Scheduler invocation (`InternalCronBearer` / `CRON_SECRET`) |
+
+**POST only, and deliberately no `GET` handler** — unlike the Gmail poll, which accepts both. Empty body, Node runtime, 60-second maximum, bounded batch with a soft time budget, `Cache-Control: no-store`. Not an Owner session; a valid Owner cookie is not authorization here.
+
+**Disabled behaviour is a contract, not an implementation detail.** With `ENABLE_REMINDER_DELIVERY` absent or anything other than the exact string `"true"`, the endpoint returns `200` with `deliveryEnabled: false` and every count zero, having scanned nothing, claimed nothing, written nothing, and called no transport. The match is exact — `"1"`, `"TRUE"`, and `"yes"` all leave delivery off, because the cost of a lenient parse is mail nobody approved.
+
+**Response is aggregate counts only:** `deliveryEnabled`, `schedulesScanned`, `occurrencesClaimed`, `delivered`, `skipped`, `failedRetryable`, `failedPermanent`, `ambiguous`, `recoveredClaims`, `ceilingStops`, `requestId`. No Task summary, Recipient identity, email address, provider payload, failure detail, claim owner, lease, or row identifier appears in the body or in the structured logs, which carry the same aggregates plus operation timing. A caller learns how much work happened, never whose.
+
+**Safe to invoke repeatedly and safe to overlap.** Two concurrent invocations cannot both process the same occurrence, because occurrence identity is unique in the database and every state change is fenced on a claim sequence — not because the invocations are prevented from overlapping. A missed invocation is recovered by a later one: persisted occurrence instants are the scheduling authority, so an approximately five-minute wake-up asks which have arrived rather than causing anything to happen every five minutes.
+
+**Nothing here sends.** The only transport implemented in A8.4a is a deterministic fake used by tests. No Gmail account, credential, or provider API is reachable from any processing module, and a source guard fails the build if one is imported.
 
 ### Recipient capability routes and pages
 

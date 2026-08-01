@@ -1,8 +1,7 @@
 import type { LocalDate } from '@aicaa/domain';
-import { hasReachedOverdueDeliveryCeiling } from '../../../domain/dist/index.js';
 import type { DbClient, DbTransaction } from '../client/create-prisma-client.js';
 import {
-  toReminderOccurrenceOutcome,
+  mapReminderSchedule,
   toStorableLocalDate,
   type PersistedReminderDeliveryAttempt,
   type PersistedReminderSchedule,
@@ -10,17 +9,10 @@ import {
 import { lockTaskScopeForReminderMutation } from '../repositories/reminder-scope-guard.js';
 import {
   createReminderSchedule,
-  incrementOverdueDeliveredCount,
-  setNextOverdueOccurrence,
   stopReminderSchedule,
   type CreateReminderScheduleInput,
 } from '../repositories/reminder-schedule-repository.js';
-import {
-  listReminderDeliveryAttemptsForGeneration,
-  recordReminderDeliveryOutcome,
-  recordSkippedReminderOccurrence,
-  type TerminalReminderDeliveryOutcome,
-} from '../repositories/reminder-delivery-attempt-repository.js';
+import { recordSkippedReminderOccurrence } from '../repositories/reminder-delivery-attempt-repository.js';
 import type { ReminderSkipReason } from '../mappers/reminder-mappers.js';
 
 /**
@@ -118,157 +110,19 @@ export async function persistEstablishedReminderSchedule(
   });
 }
 
-export interface RecordOverdueDeliveryInput {
-  readonly db: DbClient;
-  readonly organizationId: string;
-  readonly scheduleId: string;
-  readonly attemptId: string;
-  /** The generation the delivery was made under. A superseded generation must not be credited. */
-  readonly generation: number;
-  readonly completedAt: string;
-  /**
-   * The next occurrence the caller computed with the A8.2 domain, supplied optimistically. It is
-   * discarded when this delivery reaches the ceiling, because a stopped schedule must carry no
-   * future occurrence.
-   */
-  readonly nextOverdueOccurrence: {
-    readonly occurrenceLocalDate: LocalDate;
-    readonly occurrenceAt: string;
-  } | null;
-}
-
-export interface RecordOverdueDeliveryResult {
-  readonly attempt: PersistedReminderDeliveryAttempt;
-  readonly schedule: PersistedReminderSchedule;
-  /** True when this delivery was the one that reached the D106 ceiling. */
-  readonly ceilingReached: boolean;
-}
-
-/**
- * Record a successful overdue delivery: complete the attempt, credit the per-generation count, and
- * either arm the next occurrence or stop at the ceiling — all or nothing (D106).
+/*
+ * `persistSuccessfulOverdueDelivery` and `persistNonDeliveryOutcome` lived here until A8.4a and are
+ * deliberately gone rather than deprecated.
  *
- * Splitting these would allow a crash to leave a delivery recorded but uncounted, which is how a
- * Recipient ends up receiving a 15th, 16th, and 17th overdue reminder from a schedule that believes
- * it has sent 14.
+ * Both were the shape the A8.3a audit named in F1: they recorded the occurrence outcome and then
+ * compare-and-set the schedule *in statements that threw*, so a due-date change committed while a
+ * provider call was in flight aborted the transaction and erased the record of a message that had
+ * already been sent. Leaving them exported alongside a safe replacement would have left the unsafe
+ * one reachable, and F8 asks for exactly the opposite: one public success path.
  *
- * Reaching the ceiling stops the schedule permanently and raises Owner attention; it never restarts
- * automatically, and only an Owner-authorized material due-date change (D104) resets the count.
+ * `finalizeReminderOccurrence` in `a8-4a-occurrence-transactions.ts` replaces both. It keeps the
+ * occurrence unconditional and makes every schedule write a non-throwing conditional update.
  */
-export async function persistSuccessfulOverdueDelivery(
-  input: RecordOverdueDeliveryInput,
-): Promise<RecordOverdueDeliveryResult> {
-  return input.db.$transaction(async (tx) => {
-    const attempt = await recordReminderDeliveryOutcome(tx, {
-      organizationId: input.organizationId,
-      attemptId: input.attemptId,
-      outcome: 'success',
-      completedAt: input.completedAt,
-    });
-
-    await incrementOverdueDeliveredCount(tx, {
-      organizationId: input.organizationId,
-      scheduleId: input.scheduleId,
-      expectedGeneration: input.generation,
-    });
-
-    // The ceiling is judged against the recorded occurrences, not the denormalized counter, and by
-    // the domain rather than by a comparison written here. The counter is a cache for reads; the
-    // attempt rows are what actually happened, and D106 defines the ceiling over them.
-    const history = await listReminderDeliveryAttemptsForGeneration(
-      tx,
-      input.organizationId,
-      input.scheduleId,
-      input.generation,
-    );
-    const ceilingReached = hasReachedOverdueDeliveryCeiling(
-      history.map(toReminderOccurrenceOutcome),
-    );
-
-    if (ceilingReached) {
-      const stopped = await stopReminderSchedule(tx, {
-        organizationId: input.organizationId,
-        scheduleId: input.scheduleId,
-        reason: 'overdue_ceiling_reached',
-        stoppedAt: input.completedAt,
-        requiresOwnerAttention: true,
-      });
-      return { attempt, schedule: stopped, ceilingReached };
-    }
-
-    const armed = await setNextOverdueOccurrence(tx, {
-      organizationId: input.organizationId,
-      scheduleId: input.scheduleId,
-      expectedGeneration: input.generation,
-      nextOverdueOccurrence: input.nextOverdueOccurrence,
-    });
-    return { attempt, schedule: armed, ceilingReached };
-  });
-}
-
-export interface RecordNonDeliveryOutcomeInput {
-  readonly db: DbClient;
-  readonly organizationId: string;
-  readonly scheduleId: string;
-  readonly attemptId: string;
-  readonly generation: number;
-  readonly outcome: Exclude<TerminalReminderDeliveryOutcome, 'success'>;
-  readonly completedAt: string;
-  readonly skipReason?: ReminderSkipReason | null;
-  readonly failureCode?: string | null;
-  readonly nextOverdueOccurrence: {
-    readonly occurrenceLocalDate: LocalDate;
-    readonly occurrenceAt: string;
-  } | null;
-  /**
-   * Set for a permanent delivery failure, which suspends further sends and raises Owner attention
-   * (D107). Supplied by the caller because "permanent" is a delivery classification, not a fact
-   * persistence can read off a row.
-   */
-  readonly stopForPermanentFailure?: boolean;
-}
-
-/**
- * Record a failed, ambiguous, or skipped occurrence and arm the next one.
- *
- * The per-generation count is deliberately untouched: D106 excludes retryable failures, permanent
- * failures, ambiguity, skips, and claims from the ceiling. A skipped day is also not consumed —
- * the one-delivery-per-local-day index covers successful rows only — so a Task skipped today for
- * having no active assignment can still be reminded today once an assignment exists.
- */
-export async function persistNonDeliveryOutcome(
-  input: RecordNonDeliveryOutcomeInput,
-): Promise<{ attempt: PersistedReminderDeliveryAttempt; schedule: PersistedReminderSchedule }> {
-  return input.db.$transaction(async (tx) => {
-    const attempt = await recordReminderDeliveryOutcome(tx, {
-      organizationId: input.organizationId,
-      attemptId: input.attemptId,
-      outcome: input.outcome,
-      completedAt: input.completedAt,
-      skipReason: input.skipReason ?? null,
-      failureCode: input.failureCode ?? null,
-    });
-
-    if (input.stopForPermanentFailure) {
-      const stopped = await stopReminderSchedule(tx, {
-        organizationId: input.organizationId,
-        scheduleId: input.scheduleId,
-        reason: 'permanent_delivery_failure',
-        stoppedAt: input.completedAt,
-        requiresOwnerAttention: true,
-      });
-      return { attempt, schedule: stopped };
-    }
-
-    const armed = await setNextOverdueOccurrence(tx, {
-      organizationId: input.organizationId,
-      scheduleId: input.scheduleId,
-      expectedGeneration: input.generation,
-      nextOverdueOccurrence: input.nextOverdueOccurrence,
-    });
-    return { attempt, schedule: armed };
-  });
-}
 
 /**
  * Clear a Task's canonical local due date and stop its schedule, atomically (D107).
@@ -313,6 +167,51 @@ export async function getTaskDueLocalDate(
     select: { dueLocalDate: true },
   });
   return row?.dueLocalDate ?? null;
+}
+
+/** The two halves of the Owner reminder representation, read from one database snapshot. */
+export interface CoherentReminderProjection {
+  readonly dueLocalDate: string | null;
+  readonly schedule: PersistedReminderSchedule | null;
+}
+
+/**
+ * Read the Task's canonical due date and its schedule as one consistent snapshot (re-audit H-A).
+ *
+ * The Owner `GET` used to issue these as two independent statements on two pooled connections. The
+ * re-audit raced that against a concurrent removal and reproduced the same impossible response H-1
+ * was about: an `active` schedule reported behind a `null` canonical due date, with an ETag already
+ * stale on arrival. Nothing was corrupt — each read was individually true, of two different moments.
+ *
+ * `RepeatableRead` fixes it at the cost of one transaction per read. PostgreSQL takes the snapshot
+ * at the first statement and holds it for the second, so the pair describes one instant that
+ * actually existed. A read-only snapshot is the right tool rather than a Task row lock: an ordinary
+ * `GET` has no business blocking an Owner's write, and it needs consistency, not exclusion.
+ *
+ * The transaction is marked read-only so the intent is enforced by the database rather than by
+ * convention, and so a future edit cannot quietly turn a projection into a write path.
+ */
+export async function readCoherentReminderProjection(
+  db: DbClient,
+  organizationId: string,
+  taskId: string,
+): Promise<CoherentReminderProjection> {
+  return db.$transaction(
+    async (tx) => {
+      const [task, schedule] = [
+        await tx.task.findFirst({
+          where: { id: taskId, organizationId },
+          select: { dueLocalDate: true },
+        }),
+        await tx.taskReminderSchedule.findFirst({ where: { taskId, organizationId } }),
+      ];
+      return {
+        dueLocalDate: task?.dueLocalDate ?? null,
+        schedule: schedule ? mapReminderSchedule(schedule) : null,
+      };
+    },
+    { isolationLevel: 'RepeatableRead' },
+  );
 }
 
 /**

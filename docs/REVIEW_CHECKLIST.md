@@ -70,6 +70,22 @@ Gates for the due-date-driven Follow-up Engine (D102–D110). These record **exp
 - [ ] Deferred scope absent: no preset reminder choices, Owner-created additional reminders, custom-reminder routes or UI, recurrence editor, reminder-time picker, Recipient reminder preferences, or AI-controlled scheduling (D110)
 - [ ] No regression to A7 assignment delivery on either path
 
+### Worker safety (A8.4a; apply to any occurrence-processing change)
+
+- [ ] A provider-accepted delivery is recorded **durably** and cannot be rolled back by a schedule that suspended, stopped, or changed generation mid-call; the schedule effect is an expected no-op, never an abort
+- [ ] The **occurrence row** is the only duplicate-prevention authority; the schedule lease is a scan hint and no correctness decision consults it
+- [ ] `provider_call_started_at` is written **before** the transport call, never after — an expired claim without it is reclaimed, with it is finalized `ambiguous` and never retried
+- [ ] Every occurrence state change is fenced on the claim sequence the caller observed; a stale claimant cannot finalize, release, or mark in-flight over a successor
+- [ ] A retry reuses the **same** occurrence row; no second row is created for a retry, and an exhausted budget terminalizes rather than leaving an unclaimable retryable row
+- [ ] Only a **terminal** occurrence outcome settles a schedule's advance disposition; a claim is not a processed occurrence
+- [ ] The safe finalization transaction is the **only** public success path; no raw outcome writer is exported from `@aicaa/db` or `@aicaa/db/runtime`
+- [ ] Pre-send re-validation happens **immediately before** the transport call, not only at claim time — a claim proves exclusivity, not eligibility
+- [ ] A global scan is still an organization-scoped write: every mutation derives its organization from the row, never from a caller argument
+- [ ] Structural fixes carry a **structural guard** that fails with no database; race suites are supporting evidence, not the regression mechanism ([ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW.md))
+- [ ] Processing modules import **no** Gmail client or real provider transport, and the delivery flag defaults disabled by exact-string match
+- [ ] Internal endpoint responses and logs carry aggregates only — no Recipient identity, address, provider payload, failure detail, lease, or row identifier
+- [ ] Additive migrations are tested **from the existing migration state with live rows present**, not only from empty; any new constraint over existing data carries a backfill
+
 ## Owner web experience foundation (P1; apply when P1 work is in scope)
 
 Gates for D111–D126. Record **expected behaviour and required proof**; no specific implementation is pre-approved.

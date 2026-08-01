@@ -89,8 +89,28 @@ export interface PersistedReminderDeliveryAttempt {
   readonly claimedAt: string | null;
   readonly claimedBy: string | null;
   readonly completedAt: string | null;
+  /** Lease expiry for the current claim (A8.4a). Null when the occurrence was never claimed. */
+  readonly claimExpiresAt: string | null;
+  /** Fencing token: the claim generation a claimant must present to act on this occurrence. */
+  readonly claimSequence: number;
+  /** Set immediately before the transport was invoked; never cleared. */
+  readonly providerCallStartedAt: string | null;
+  readonly providerAcceptedAt: string | null;
+  readonly providerMessageRef: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
+}
+
+/**
+ * The one non-terminal delivery outcome (A8.4a).
+ *
+ * `claimed` is a lease, not a result. Stated once here because the A8 lifecycle re-audit found the
+ * distinction inlined inconsistently: `TerminalReminderDeliveryOutcome` excluded it while
+ * `hasProcessedAdvanceOccurrence` counted it as processed, so a dead claim could freeze an advance
+ * occurrence forever.
+ */
+export function isTerminalReminderOutcome(outcome: ReminderDeliveryOutcome): boolean {
+  return outcome !== 'claimed';
 }
 
 /**
@@ -213,6 +233,11 @@ export function mapReminderDeliveryAttempt(
     claimedAt: row.claimedAt ? toIso(row.claimedAt) : null,
     claimedBy: row.claimedBy,
     completedAt: row.completedAt ? toIso(row.completedAt) : null,
+    claimExpiresAt: row.claimExpiresAt ? toIso(row.claimExpiresAt) : null,
+    claimSequence: row.claimSequence,
+    providerCallStartedAt: row.providerCallStartedAt ? toIso(row.providerCallStartedAt) : null,
+    providerAcceptedAt: row.providerAcceptedAt ? toIso(row.providerAcceptedAt) : null,
+    providerMessageRef: row.providerMessageRef,
     createdAt: toIso(row.createdAt),
     updatedAt: toIso(row.updatedAt),
   };

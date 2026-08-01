@@ -29,14 +29,13 @@ import {
   findReminderScheduleByTaskId,
   getTaskDueLocalDate,
   listReminderDeliveryAttemptsForGeneration,
+  markProviderCallStarted,
   listReminderDeliveryAttemptsForTask,
   listReminderSchedulesDueForProcessing,
   openNextReminderGeneration,
   persistDueDateRemoval,
   persistEstablishedReminderSchedule,
-  persistNonDeliveryOutcome,
-  persistSuccessfulOverdueDelivery,
-  recordReminderDeliveryOutcome,
+  finalizeReminderOccurrence,
   recordSkippedReminderOccurrence,
   releaseReminderScheduleClaim,
   resumeReminderScheduleFromWaiting,
@@ -46,6 +45,9 @@ import {
   upsertRecipient,
   type ReminderOccurrenceInput,
 } from '../src/index.js';
+// The raw terminal writer is deliberately absent from the barrel (A8.3a audit F8), so the tests
+// that exercise it directly reach into its own module. Production callers cannot.
+import { recordTerminalOccurrenceOutcomeUnsafe } from '../src/repositories/reminder-delivery-attempt-repository.js';
 import { createTestDatabase, type TestDatabase } from '../src/client/create-test-database.js';
 
 /**
@@ -413,6 +415,9 @@ describe('A8.3a reminder persistence (PGlite)', () => {
         occurrenceLocalDate: seed.nextOverdue.occurrenceLocalDate,
         occurrenceAt: seed.nextOverdue.occurrenceAt,
         claimedAt: '2026-08-11T16:00:00.000Z',
+        claimExpiresAt: '2099-01-01T00:00:00.000Z',
+        now: '2026-08-11T16:00:00.000Z',
+        maxAttempts: 3,
       };
 
       const first = await claimReminderOccurrence(db.prisma, {
@@ -450,11 +455,23 @@ describe('A8.3a reminder persistence (PGlite)', () => {
         occurrenceAt: seed.nextOverdue.occurrenceAt,
         claimedBy: 'worker_a',
         claimedAt: '2026-08-11T16:00:00.000Z',
+        claimExpiresAt: '2099-01-01T00:00:00.000Z',
+        now: '2026-08-11T16:00:00.000Z',
+        maxAttempts: 3,
       });
-      await recordReminderDeliveryOutcome(db.prisma, {
+      // A success requires the durable in-flight marker committed before the call (A8.4a F2).
+      await markProviderCallStarted(db.prisma, {
         organizationId: org,
         attemptId: claim.attempt.id,
+        claimSequence: 1,
+        startedAt: '2026-08-11T16:00:03.000Z',
+      });
+      await recordTerminalOccurrenceOutcomeUnsafe(db.prisma, {
+        organizationId: org,
+        attemptId: claim.attempt.id,
+        claimSequence: 1,
         outcome: 'success',
+        providerAcceptedAt: '2026-08-11T16:00:04.000Z',
         completedAt: '2026-08-11T16:00:05.000Z',
       });
 
@@ -474,14 +491,26 @@ describe('A8.3a reminder persistence (PGlite)', () => {
         occurrenceAt: seed.nextOverdue.occurrenceAt,
         claimedBy: 'worker_b',
         claimedAt: '2026-08-11T17:00:00.000Z',
+        claimExpiresAt: '2099-01-01T00:00:00.000Z',
+        now: '2026-08-11T17:00:00.000Z',
+        maxAttempts: 3,
       });
       expect(secondClaim.claimed).toBe(true);
 
+      // A success requires the durable in-flight marker committed before the call (A8.4a F2).
+      await markProviderCallStarted(db.prisma, {
+        organizationId: org,
+        attemptId: secondClaim.attempt.id,
+        claimSequence: 1,
+        startedAt: '2026-08-11T16:00:03.000Z',
+      });
       await expect(
-        recordReminderDeliveryOutcome(db.prisma, {
+        recordTerminalOccurrenceOutcomeUnsafe(db.prisma, {
           organizationId: org,
           attemptId: secondClaim.attempt.id,
+          claimSequence: 1,
           outcome: 'success',
+          providerAcceptedAt: '2026-08-11T16:00:04.000Z',
           completedAt: '2026-08-11T17:00:05.000Z',
         }),
       ).rejects.toMatchObject({ code: 'UNIQUE_VIOLATION' });
@@ -518,11 +547,23 @@ describe('A8.3a reminder persistence (PGlite)', () => {
         occurrenceAt: seed.nextOverdue.occurrenceAt,
         claimedBy: 'worker_a',
         claimedAt: '2026-08-11T18:00:00.000Z',
+        claimExpiresAt: '2099-01-01T00:00:00.000Z',
+        now: '2026-08-11T18:00:00.000Z',
+        maxAttempts: 3,
       });
-      const delivered = await recordReminderDeliveryOutcome(db.prisma, {
+      // A success requires the durable in-flight marker committed before the call (A8.4a F2).
+      await markProviderCallStarted(db.prisma, {
         organizationId: org,
         attemptId: claim.attempt.id,
+        claimSequence: 1,
+        startedAt: '2026-08-11T16:00:03.000Z',
+      });
+      const delivered = await recordTerminalOccurrenceOutcomeUnsafe(db.prisma, {
+        organizationId: org,
+        attemptId: claim.attempt.id,
+        claimSequence: 1,
         outcome: 'success',
+        providerAcceptedAt: '2026-08-11T16:00:04.000Z',
         completedAt: '2026-08-11T18:00:05.000Z',
       });
       expect(delivered.outcome).toBe('success');
@@ -540,10 +581,14 @@ describe('A8.3a reminder persistence (PGlite)', () => {
         occurrenceAt: seed.nextOverdue.occurrenceAt,
         claimedBy: 'worker_a',
         claimedAt: '2026-08-11T16:00:00.000Z',
+        claimExpiresAt: '2099-01-01T00:00:00.000Z',
+        now: '2026-08-11T16:00:00.000Z',
+        maxAttempts: 3,
       });
-      await recordReminderDeliveryOutcome(db.prisma, {
+      await recordTerminalOccurrenceOutcomeUnsafe(db.prisma, {
         organizationId: org,
         attemptId: claim.attempt.id,
+        claimSequence: 1,
         outcome: 'permanent_failure',
         failureCode: 'GMAIL_PERMANENT',
         completedAt: '2026-08-11T16:00:05.000Z',
@@ -551,10 +596,12 @@ describe('A8.3a reminder persistence (PGlite)', () => {
 
       // A late duplicate must not upgrade a recorded failure into a success the ceiling counts.
       await expect(
-        recordReminderDeliveryOutcome(db.prisma, {
+        recordTerminalOccurrenceOutcomeUnsafe(db.prisma, {
           organizationId: org,
           attemptId: claim.attempt.id,
+          claimSequence: 1,
           outcome: 'success',
+          providerAcceptedAt: '2026-08-11T16:00:04.000Z',
           completedAt: '2026-08-11T16:00:09.000Z',
         }),
       ).rejects.toMatchObject({ code: 'DOMAIN_CONFLICT' });
@@ -616,8 +663,17 @@ describe('A8.3a reminder persistence (PGlite)', () => {
           occurrenceAt: occurrence.occurrenceAt,
           claimedBy: 'worker_a',
           claimedAt: occurrence.occurrenceAt,
+          claimExpiresAt: '2099-01-01T00:00:00.000Z',
+          now: occurrence.occurrenceAt,
+          maxAttempts: 3,
         });
         expect(claim.claimed).toBe(true);
+        await markProviderCallStarted(db.prisma, {
+          organizationId: org,
+          attemptId: claim.attempt.id,
+          claimSequence: 1,
+          startedAt: occurrence.occurrenceAt,
+        });
 
         const nextLocalDate = addLocalDays(occurrence.occurrenceLocalDate, 1);
         const next = selectNextOverdueOccurrence({
@@ -625,12 +681,16 @@ describe('A8.3a reminder persistence (PGlite)', () => {
           now: occurrence.occurrenceAt,
         });
 
-        const result = await persistSuccessfulOverdueDelivery({
+        const result = await finalizeReminderOccurrence({
           db: db.prisma,
           organizationId: org,
           scheduleId: schedule.id,
           attemptId: claim.attempt.id,
-          generation: schedule.generation,
+          claimSequence: 1,
+          outcome: 'success',
+          providerAcceptedAt: occurrence.occurrenceAt,
+          providerMessageRef: `fake-${day}`,
+          expectedGeneration: schedule.generation,
           completedAt: occurrence.occurrenceAt,
           nextOverdueOccurrence: toOccurrenceInput(next),
         });
@@ -701,11 +761,23 @@ describe('A8.3a reminder persistence (PGlite)', () => {
         occurrenceAt: schedule.advanceOccurrenceAt,
         claimedBy: 'worker_a',
         claimedAt: schedule.advanceOccurrenceAt,
+        claimExpiresAt: '2099-01-01T00:00:00.000Z',
+        now: schedule.advanceOccurrenceAt,
+        maxAttempts: 3,
       });
-      await recordReminderDeliveryOutcome(db.prisma, {
+      // A success requires the durable in-flight marker committed before the call (A8.4a F2).
+      await markProviderCallStarted(db.prisma, {
         organizationId: org,
         attemptId: advanceClaim.attempt.id,
+        claimSequence: 1,
+        startedAt: '2026-08-11T16:00:03.000Z',
+      });
+      await recordTerminalOccurrenceOutcomeUnsafe(db.prisma, {
+        organizationId: org,
+        attemptId: advanceClaim.attempt.id,
+        claimSequence: 1,
         outcome: 'success',
+        providerAcceptedAt: '2026-08-11T16:00:04.000Z',
         completedAt: schedule.advanceOccurrenceAt,
       });
 
@@ -726,13 +798,17 @@ describe('A8.3a reminder persistence (PGlite)', () => {
           occurrenceAt: seed.nextOverdue.occurrenceAt,
           claimedBy: 'worker_a',
           claimedAt: seed.nextOverdue.occurrenceAt,
+          claimExpiresAt: '2099-01-01T00:00:00.000Z',
+          now: seed.nextOverdue.occurrenceAt,
+          maxAttempts: 3,
         });
-        await persistNonDeliveryOutcome({
+        await finalizeReminderOccurrence({
           db: db.prisma,
           organizationId: org,
           scheduleId: schedule.id,
           attemptId: claim.attempt.id,
-          generation: 1,
+          claimSequence: 1,
+          expectedGeneration: 1,
           outcome: entry.outcome,
           failureCode: entry.failureCode,
           completedAt: seed.nextOverdue.occurrenceAt,
@@ -752,6 +828,9 @@ describe('A8.3a reminder persistence (PGlite)', () => {
         occurrenceAt: seed.nextOverdue.occurrenceAt,
         claimedBy: 'worker_a',
         claimedAt: seed.nextOverdue.occurrenceAt,
+        claimExpiresAt: '2099-01-01T00:00:00.000Z',
+        now: seed.nextOverdue.occurrenceAt,
+        maxAttempts: 3,
       });
 
       const history = await listReminderDeliveryAttemptsForGeneration(
@@ -809,13 +888,25 @@ describe('A8.3a reminder persistence (PGlite)', () => {
         occurrenceAt: seed.nextOverdue.occurrenceAt,
         claimedBy: 'worker_a',
         claimedAt: seed.nextOverdue.occurrenceAt,
+        claimExpiresAt: '2099-01-01T00:00:00.000Z',
+        now: seed.nextOverdue.occurrenceAt,
+        maxAttempts: 3,
       });
-      await persistSuccessfulOverdueDelivery({
+      await markProviderCallStarted(db.prisma, {
+        organizationId: org,
+        attemptId: claim.attempt.id,
+        claimSequence: 1,
+        startedAt: seed.nextOverdue.occurrenceAt,
+      });
+      await finalizeReminderOccurrence({
         db: db.prisma,
         organizationId: org,
         scheduleId: schedule.id,
         attemptId: claim.attempt.id,
-        generation: 1,
+        claimSequence: 1,
+        outcome: 'success',
+        providerAcceptedAt: seed.nextOverdue.occurrenceAt,
+        expectedGeneration: 1,
         completedAt: seed.nextOverdue.occurrenceAt,
         nextOverdueOccurrence: toOccurrenceInput(
           selectNextOverdueOccurrence({
@@ -911,6 +1002,15 @@ describe('A8.3a reminder persistence (PGlite)', () => {
         occurrenceAt: seed.nextOverdue.occurrenceAt,
         claimedBy: 'worker_a',
         claimedAt: seed.nextOverdue.occurrenceAt,
+        claimExpiresAt: '2099-01-01T00:00:00.000Z',
+        now: seed.nextOverdue.occurrenceAt,
+        maxAttempts: 3,
+      });
+      await markProviderCallStarted(db.prisma, {
+        organizationId: org,
+        attemptId: claim.attempt.id,
+        claimSequence: 1,
+        startedAt: seed.nextOverdue.occurrenceAt,
       });
 
       const newDue = parseLocalDate('2026-09-01');
@@ -928,22 +1028,41 @@ describe('A8.3a reminder persistence (PGlite)', () => {
         nextOverdueOccurrence: null,
       });
 
-      // The in-flight generation-1 delivery cannot inflate generation 2's count.
-      await expect(
-        persistSuccessfulOverdueDelivery({
-          db: db.prisma,
-          organizationId: org,
-          scheduleId: schedule.id,
-          attemptId: claim.attempt.id,
-          generation: 1,
-          completedAt: '2026-08-12T16:00:00.000Z',
-          nextOverdueOccurrence: null,
-        }),
-      ).rejects.toBeInstanceOf(PersistenceError);
+      // The in-flight generation-1 delivery cannot inflate generation 2's count — and, since the
+      // A8.4a F1 fix, cannot be erased by trying. This transaction used to throw here and take the
+      // record of a sent message down with it: the provider had already accepted, and the next scan
+      // would have found the occurrence unprocessed and sent it again.
+      const finalized = await finalizeReminderOccurrence({
+        db: db.prisma,
+        organizationId: org,
+        scheduleId: schedule.id,
+        attemptId: claim.attempt.id,
+        claimSequence: 1,
+        outcome: 'success',
+        providerAcceptedAt: '2026-08-12T15:59:58.000Z',
+        providerMessageRef: 'fake-stalegen',
+        expectedGeneration: 1,
+        completedAt: '2026-08-12T16:00:00.000Z',
+        nextOverdueOccurrence: null,
+      });
+
+      expect(finalized.attempt.outcome).toBe('success');
+      expect(finalized.attempt.providerAcceptedAt).toBe('2026-08-12T15:59:58.000Z');
+      expect(finalized.counted).toBe(false);
+      expect(finalized.scheduleAdvanced).toBe(false);
 
       const reloaded = await findReminderScheduleByTaskId(db.prisma, org, seed.taskId);
       expect(reloaded?.generation).toBe(2);
       expect(reloaded?.overdueDeliveredCount).toBe(0);
+
+      // The truthful record survives in history, attributed to the generation it was made under.
+      const preserved = await listReminderDeliveryAttemptsForGeneration(
+        db.prisma,
+        org,
+        schedule.id,
+        1,
+      );
+      expect(preserved.map((row) => [row.outcome, row.generation])).toEqual([['success', 1]]);
     });
   });
 
@@ -1084,6 +1203,7 @@ describe('A8.3a reminder persistence (PGlite)', () => {
         organizationId: org,
         scheduleId: 'sched_lease',
         claimedBy: 'worker_b',
+        claimedAt: '2026-08-11T16:10:00.000Z',
       });
       expect(released.claimedBy).toBeNull();
       expect(released.claimExpiresAt).toBeNull();

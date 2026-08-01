@@ -697,3 +697,44 @@ paths:
                 $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
         '500':
           $ref: '../components/responses.yaml#/components/responses/InternalError'
+
+  /api/v1/internal/reminders/process:
+    post:
+      operationId: processRemindersInternal
+      tags: [Tasks]
+      summary: Internal reminder occurrence processing (deployed dark)
+      description: |
+        Claims and finalizes due reminder occurrences for a bounded batch of schedules (A8.4a;
+        D104-D107, D109). Recovers abandoned occurrence claims, validates Task and schedule
+        eligibility immediately before sending, invokes an injected transport, and records the
+        outcome through the safe occurrence transaction.
+
+        **Deployed dark.** Delivery is off unless `ENABLE_REMINDER_DELIVERY` is exactly `"true"`,
+        which is set in no environment. With it off this endpoint scans nothing, claims nothing,
+        writes nothing, and calls no transport: it returns zero aggregates with
+        `deliveryEnabled: false`. The only transport implemented in this milestone is a deterministic
+        fake — no Gmail account, credential, or provider API is reachable from this path, and no cron
+        job invokes it.
+
+        Requires `InternalCronBearer` (`CRON_SECRET`). Not an Owner session. Empty body. Safe to
+        invoke repeatedly and safe to overlap: occurrence identity is unique in the database, so two
+        concurrent invocations cannot both process the same occurrence. Suitable for an approximately
+        five-minute external wake-up; nothing repeats every five minutes, because persisted
+        occurrence instants are the scheduling authority and missed invocations are recovered later.
+
+        Returns aggregate counts only — never a Task summary, Recipient identity, address, provider
+        payload, or claim internals.
+        **Status: Contracted for A8.4a** (POST only; no GET handler).
+      security:
+        - InternalCronBearer: []
+      responses:
+        '200':
+          description: Aggregate processing counts
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/ReminderProcessResponse'
+        '401':
+          $ref: '../components/responses.yaml#/components/responses/Unauthorized'
+        '500':
+          $ref: '../components/responses.yaml#/components/responses/InternalError'
