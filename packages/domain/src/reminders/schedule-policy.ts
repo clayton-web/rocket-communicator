@@ -20,6 +20,7 @@
 import { DomainError } from '../errors/domain-errors.js';
 import { parseUtcInstant, type UtcInstant } from '../types/timestamps.js';
 import {
+  CONSECUTIVE_AMBIGUOUS_STOP_THRESHOLD,
   OVERDUE_SUCCESSFUL_DELIVERY_CEILING,
   REMINDER_LOCAL_HOUR,
   REMINDER_LOCAL_MINUTE,
@@ -213,4 +214,56 @@ export function hasReachedOverdueDeliveryCeiling(
   outcomes: readonly ReminderOccurrenceOutcome[],
 ): boolean {
   return countSuccessfulOverdueDeliveries(outcomes) >= OVERDUE_SUCCESSFUL_DELIVERY_CEILING;
+}
+
+/**
+ * The occurrence outcomes that participate in D129's consecutive-ambiguity sequence.
+ *
+ * Membership is "a delivery was attempted and it finished", which is narrower than "the row is
+ * terminal" and much narrower than "something happened". Three outcomes qualify:
+ *
+ * - `ambiguous` extends the run — the whole point.
+ * - `success` breaks it, because a message that provably arrived says the path to the provider works.
+ * - `permanent_failure` breaks it, because it is a *definite* answer. That includes an occurrence
+ *   that spent its retry budget: the worker records the exhaustion as a permanent failure, and it is
+ *   counted as the permanent failure it was recorded as, never re-read as ambiguity because some
+ *   attempt along the way was uncertain.
+ *
+ * Everything else is excluded, and the two exclusions are excluded for different reasons.
+ * `skipped` is not a delivery attempt at all — no provider was contacted, so it neither extends nor
+ * breaks a run; a schedule that skips a fortnight between two ambiguous mornings has still seen two
+ * consecutive ambiguous *deliveries*. `retryable_failure` and `claimed` are not finished: the
+ * occurrence may still be delivered, and counting an unsettled row would judge a generation on an
+ * outcome it has not reached yet.
+ *
+ * Exported as data rather than as a predicate so persistence can push the filter into SQL and the
+ * rule still lives here. A second hand-written list in a query would be the drift this prevents.
+ */
+export const AMBIGUITY_SEQUENCE_OUTCOMES = [
+  'success',
+  'permanent_failure',
+  'ambiguous',
+] as const satisfies readonly ReminderOccurrenceOutcome['outcome'][];
+
+/**
+ * Whether the most recent overdue deliveries end a generation under D129.
+ *
+ * `orderedNewestFirst` must already be filtered to {@link AMBIGUITY_SEQUENCE_OUTCOMES} and ordered
+ * newest occurrence first. Both are the caller's job because only the caller can order occurrences
+ * cheaply and correctly — by *scheduled* occurrence identity rather than by when a settlement
+ * happened to run, which is the ordering a late or recovered settlement would otherwise scramble.
+ *
+ * Deliberately reads a bounded window rather than counting a stored total. There is no ambiguity
+ * counter anywhere in the system: the occurrence rows are the record, and a derived answer cannot
+ * drift from them the way a denormalized column can.
+ */
+export function hasReachedConsecutiveAmbiguousStop(
+  orderedNewestFirst: readonly ReminderOccurrenceOutcome[],
+): boolean {
+  if (orderedNewestFirst.length < CONSECUTIVE_AMBIGUOUS_STOP_THRESHOLD) {
+    return false;
+  }
+  return orderedNewestFirst
+    .slice(0, CONSECUTIVE_AMBIGUOUS_STOP_THRESHOLD)
+    .every((entry) => entry.occurrence === 'overdue' && entry.outcome === 'ambiguous');
 }

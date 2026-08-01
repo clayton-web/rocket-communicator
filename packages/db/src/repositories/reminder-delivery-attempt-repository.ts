@@ -1,4 +1,8 @@
-import type { LocalDate } from '@aicaa/domain';
+import type { LocalDate, ReminderOccurrenceOutcome } from '@aicaa/domain';
+// Runtime value, so the relative built path rather than the package name (A7.4 packaging guard):
+// the traced serverless layout has no resolvable `@aicaa/domain`, and a bare specifier here fails
+// at cold start rather than at build.
+import { AMBIGUITY_SEQUENCE_OUTCOMES } from '../../../domain/dist/index.js';
 import type { DbClient, DbTransaction } from '../client/create-prisma-client.js';
 import { Prisma } from '../generated/client/index.js';
 import {
@@ -568,6 +572,59 @@ export async function listReminderDeliveryAttemptsForGeneration(
     orderBy: [{ occurrenceAt: 'asc' }, { id: 'asc' }],
   });
   return rows.map(mapReminderDeliveryAttempt);
+}
+
+/**
+ * The newest overdue occurrences that participate in D129's ambiguity sequence (A8.4b.2).
+ *
+ * Answers "what were the last few *finished delivery attempts* for this generation" and nothing
+ * else. Three properties matter, and each one is a decision rather than an incidental detail.
+ *
+ * **Bounded.** `take` is the threshold, so the query reads three rows whether the generation has
+ * four occurrences or four hundred. D129 asks whether the newest few are all ambiguous, and no
+ * amount of older history can change that answer, so loading it would be work done to be discarded.
+ * This is deliberately unlike the D106 ceiling, which must count every success in the generation.
+ *
+ * **Filtered in SQL, from the domain's own list.** The `IN` set is
+ * {@link AMBIGUITY_SEQUENCE_OUTCOMES} rather than a list retyped here, because a second copy of
+ * "which outcomes count" is exactly the thing that drifts. Skips are excluded because no provider
+ * was contacted, so they neither extend nor break a run; retryable and still-claimed occurrences are
+ * excluded because they have not finished and may yet be delivered.
+ *
+ * **Ordered by scheduled occurrence identity, not by settlement time.** `occurrence_at` is the
+ * 09:00-local instant the occurrence *belongs to*, fixed when the occurrence was armed and immutable
+ * thereafter; `completed_at` is whenever a worker happened to finish it. Those disagree whenever a
+ * settlement is late — a crashed occurrence swept hours afterwards, or a recovery sweep collecting
+ * debt out of order — and ordering by the latter would let the repair of an old occurrence appear to
+ * be the newest event in the sequence. `id` breaks ties so the order is total even if two rows ever
+ * shared an instant, which the one-occurrence-per-local-day identity already forbids.
+ *
+ * Returned newest first, which is the order {@link hasReachedConsecutiveAmbiguousStop} reads.
+ */
+export async function listRecentAmbiguitySequenceOutcomes(
+  db: Client,
+  input: {
+    readonly organizationId: string;
+    readonly scheduleId: string;
+    readonly generation: number;
+    readonly limit: number;
+  },
+): Promise<ReminderOccurrenceOutcome[]> {
+  const rows = await db.reminderDeliveryAttempt.findMany({
+    where: {
+      organizationId: input.organizationId,
+      scheduleId: input.scheduleId,
+      generation: input.generation,
+      // D129 counts overdue delivery only. The advance occurrence is a different kind with its own
+      // disposition, and A8.4b.3 has not made it deliverable at all.
+      occurrenceKind: 'overdue',
+      outcome: { in: [...AMBIGUITY_SEQUENCE_OUTCOMES] },
+    },
+    orderBy: [{ occurrenceAt: 'desc' }, { id: 'desc' }],
+    take: input.limit,
+    select: { occurrenceKind: true, outcome: true },
+  });
+  return rows.map((row) => ({ occurrence: row.occurrenceKind, outcome: row.outcome }));
 }
 
 /**

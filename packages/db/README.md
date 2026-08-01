@@ -1,6 +1,6 @@
 # @aicaa/db
 
-Server-side Prisma persistence for A4–A7.3, the A8.3a reminder foundation, the A8.4a occurrence lifecycle, and the A8.4b.1 capability pre-send snapshot (D062, D006, D086–D094, D128, D130). Domain rules live in `@aicaa/domain`; this package stores and retrieves records.
+Server-side Prisma persistence for A4–A7.3, the A8.3a reminder foundation, the A8.4a occurrence lifecycle, the A8.4b.1 capability pre-send snapshot, and the A8.4b.2 D129 repeated-ambiguity stop (D062, D006, D086–D094, D128, D129, D130). Domain rules live in `@aicaa/domain`; this package stores and retrieves records.
 
 Operations: [../../docs/DEPLOYMENT.md](../../docs/DEPLOYMENT.md)
 
@@ -166,4 +166,16 @@ Migration: `20260802173000_a8_4b1_capability_skip_reason` — one additive `ALTE
 
 **`listDueReminderSchedulesGlobally` scans across organizations; nothing writes across them.** It returns a bounded batch ordered by occurrence instant then id, against a partial index on active schedules. Every row carries its own `organizationId`, read from the database rather than supplied, and every subsequent claim and finalization scopes by it. Owner-facing reads remain organization-scoped and take no such path.
 
-**Concurrency evidence:** `__tests__/a8-4a-occurrence-concurrency.pg.test.ts` on real PostgreSQL 16 with independent connections, plus direct SQL invariant queries. PGlite is one connection and cannot express any of it.
+### A8.4b.2 additions
+
+Migration: `20260802210000_a8_4b2_repeated_ambiguous_stop_reason` — one additive `ALTER TYPE "ReminderScheduleStopReason" ADD VALUE IF NOT EXISTS 'repeated_ambiguous_outcomes'`, **unapplied in Production**. Same shape and same reasoning as the A8.4b.1 migration: one statement, using the new value nowhere, because Prisma wraps each file in a transaction and PostgreSQL forbids using a freshly added enum value inside it. `task_reminder_schedules_stop_reason_matches_status` constrains only that a reason is present exactly when the status is `stopped`, so it enumerates no value and needs no rebuild. Evidence: `__tests__/a8-4b2-ambiguous-stop-reason-migration.test.ts`.
+
+**D129 is enforced inside `settleReminderOccurrenceSchedule`, in `applyScheduleEffect`'s ambiguous branch.** That function is already the one place holding the Task lock, already applies the schedule effect exactly once, and already evaluates the D106 ceiling from occurrence history rather than from the denormalized counter. Putting the threshold anywhere else would mean reading history outside the lock and mutating from a conclusion that could already be stale. The occurrence being settled is durably `ambiguous` before this runs — phase A committed it — so it counts as itself, and nothing rewrites it: D129 changes the schedule, never the occurrence.
+
+**`listRecentAmbiguitySequenceOutcomes` is the derivation, and it is bounded.** Three rows — the threshold — filtered in SQL to overdue occurrences whose outcome is in `AMBIGUITY_SEQUENCE_OUTCOMES`, scoped to schedule and current generation. The filter list is imported from the domain rather than retyped here, because a second hand-written copy of "which outcomes participate" is precisely what drifts. This is deliberately unlike `listReminderDeliveryAttemptsForGeneration`, which the D106 ceiling needs unbounded because it must count every success; D129 asks only whether the newest few are all ambiguous, and no older row can change that answer.
+
+**Ordering is by `occurrence_at`, then `id`, never by `completed_at`.** `occurrence_at` is the 09:00-local instant an occurrence belongs to, fixed when it was armed and immutable afterwards; `completed_at` is whenever a worker finished it. Those diverge whenever settlement is late — a crashed occurrence swept hours afterwards, or recovery collecting debt out of order — and ordering by the latter would let the repair of an old occurrence appear as the newest event in the sequence. `id` makes the order total even if two rows shared an instant, which the one-occurrence-per-local-day identity already prevents.
+
+**No ambiguity counter column exists, and none should be added.** A stored count has to be incremented on ambiguity and reset on success, on permanent failure, and on a new generation; any path that misses one leaves a schedule that stops early or never stops. Derived from generation-scoped history, a new generation resets it by definition rather than by an operation. A guard asserts no such column appears on `TaskReminderSchedule` and that `ReminderScheduleStatus` still has exactly its three values.
+
+**Concurrency evidence:** `__tests__/a8-4a-occurrence-concurrency.pg.test.ts` on real PostgreSQL 16 with independent connections, plus direct SQL invariant queries. PGlite is one connection and cannot express any of it. Its D129 block proves two connections settling the third ambiguity produce exactly one stop transition, that no scanner finds the schedule afterwards, and that an Owner completion racing the third ambiguity leaves one reason recorded rather than two.

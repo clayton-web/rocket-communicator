@@ -1,5 +1,9 @@
 import type { LocalDate } from '@aicaa/domain';
-import { hasReachedOverdueDeliveryCeiling } from '../../../domain/dist/index.js';
+import {
+  CONSECUTIVE_AMBIGUOUS_STOP_THRESHOLD,
+  hasReachedConsecutiveAmbiguousStop,
+  hasReachedOverdueDeliveryCeiling,
+} from '../../../domain/dist/index.js';
 import type { DbClient } from '../client/create-prisma-client.js';
 import { domainConflict, notFound } from '../errors/persistence-errors.js';
 import { fromIso } from '../mappers/domain-mappers.js';
@@ -12,6 +16,7 @@ import {
   type ReminderSkipReason,
 } from '../mappers/reminder-mappers.js';
 import {
+  listRecentAmbiguitySequenceOutcomes,
   listReminderDeliveryAttemptsForGeneration,
   recordTerminalOccurrenceOutcomeUnsafe,
   terminalizeExhaustedOccurrenceUnsafe,
@@ -132,6 +137,14 @@ export interface ReminderScheduleSettlementResult {
   /** True when this delivery reached the D106 ceiling and stopped the schedule. */
   readonly ceilingReached: boolean;
   /**
+   * True when this settlement was the third consecutive terminal ambiguous overdue occurrence in
+   * its generation and stopped the schedule for `repeated_ambiguous_outcomes` (D129, A8.4b.2).
+   *
+   * False when the threshold was not reached *and* when it was reached but the schedule had already
+   * been stopped by an earlier authoritative transition, because this settlement stopped nothing.
+   */
+  readonly repeatedAmbiguityStop: boolean;
+  /**
    * False when the schedule had moved on — superseded generation, suspended, or stopped — so the
    * occurrence was recorded truthfully but changed nothing about the current schedule.
    */
@@ -168,6 +181,7 @@ const UNSETTLED = {
   schedule: null,
   counted: false,
   ceilingReached: false,
+  repeatedAmbiguityStop: false,
   scheduleAdvanced: false,
   settledAdvanceDisposition: null,
   alreadySettled: false,
@@ -400,6 +414,7 @@ async function applyScheduleEffect(
   const nothing = {
     counted: false,
     ceilingReached: false,
+    repeatedAmbiguityStop: false,
     scheduleAdvanced: false,
     settledAdvanceDisposition: null,
   } as const;
@@ -447,6 +462,60 @@ async function applyScheduleEffect(
     return { ...nothing, scheduleAdvanced: stopped.count === 1 };
   }
 
+  if (input.outcome === 'ambiguous') {
+    // ---- D129: three consecutive terminal ambiguous overdue occurrences stop the generation. ----
+    //
+    // Evaluated here, and only here, for the same reason the D106 ceiling is: this is the one place
+    // that holds the Task lock, has the occurrence in its final terminal state, and applies the
+    // schedule effect exactly once. Deciding it in the worker would mean reading history outside the
+    // transaction and mutating from a conclusion that could already be stale; deciding it in the
+    // transport would put a scheduling rule inside a Gmail adapter.
+    //
+    // The occurrence being settled is already durably `ambiguous` — phase A committed it — so it is
+    // one of the rows this query counts, and it counts as itself. Nothing rewrites it: D129 changes
+    // the schedule, never the occurrence, which stays truthfully ambiguous forever.
+    const recent = await listRecentAmbiguitySequenceOutcomes(tx, {
+      organizationId: input.organizationId,
+      scheduleId: input.scheduleId,
+      generation: input.generation,
+      limit: CONSECUTIVE_AMBIGUOUS_STOP_THRESHOLD,
+    });
+    if (hasReachedConsecutiveAmbiguousStop(recent)) {
+      // Conditional on `active`, like every other stop: a schedule an earlier authoritative
+      // transition already stopped — completed, dismissed, ceiling, permanent failure — keeps the
+      // reason it stopped for. Late settlement of an old ambiguous occurrence must not overwrite it.
+      const stopped = await tx.taskReminderSchedule.updateMany({
+        where: { ...scope, status: 'active' },
+        data: {
+          status: 'stopped',
+          reminderVersion: { increment: 1 },
+          stopReason: 'repeated_ambiguous_outcomes',
+          stoppedAt: fromIso(input.effectiveAt)!,
+          suspendedAt: null,
+          requiresOwnerAttention: true,
+          // Disarming is what makes the stop bite inside the *same* invocation: the due scan selects
+          // on `next_overdue_occurrence_at`, so a schedule with none is unclaimable by this worker,
+          // by a concurrent one, and by the next wake-up.
+          nextOverdueOccurrenceLocalDate: null,
+          nextOverdueOccurrenceAt: null,
+          claimedBy: null,
+          claimedAt: null,
+          claimExpiresAt: null,
+        },
+      });
+      if (stopped.count === 1) {
+        return {
+          ...nothing,
+          scheduleAdvanced: true,
+          repeatedAmbiguityStop: true,
+        };
+      }
+      // Already stopped by something else. The occurrence stays terminal and truthful, and the
+      // schedule is left exactly as the earlier transition left it.
+      return nothing;
+    }
+  }
+
   const counted =
     input.outcome === 'success'
       ? (
@@ -486,6 +555,7 @@ async function applyScheduleEffect(
       return {
         counted,
         ceilingReached: true,
+        repeatedAmbiguityStop: false,
         scheduleAdvanced: true,
         settledAdvanceDisposition: null,
       };

@@ -181,6 +181,7 @@ export {
   recordSkippedReminderOccurrence,
   listReminderDeliveryAttemptsForTask,
   listReminderDeliveryAttemptsForGeneration,
+  listRecentAmbiguitySequenceOutcomes,
   countSuccessfulOverdueDeliveriesForGeneration,
   hasTerminalAdvanceOccurrence,
   listExpiredOccurrenceClaims,

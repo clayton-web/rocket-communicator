@@ -1,0 +1,30 @@
+-- A8.4b.2: the stop reason D129 makes possible.
+--
+-- D129 decided that three consecutive terminal ambiguous overdue occurrences within one schedule
+-- generation stop reminder delivery. An ambiguous occurrence is one where the transport could not
+-- prove whether Gmail accepted the message, so the occurrence consumed its local calendar day
+-- (D106) and was never retried. One of those is unremarkable. Three in a row says something about
+-- this deployment's path to the provider is producing messages nobody can confirm, and continuing
+-- would spend the Recipient's remaining days manufacturing more uncertainty.
+--
+-- Deliberately not 'permanent_delivery_failure', which must stay distinguishable: that value says a
+-- provider gave a definite refusal and the Owner's remedy is to fix what was refused. This value
+-- says the provider gave no answer at all, three times, and the Owner's remedy is to check whether
+-- the Recipient actually received anything before re-scheduling. Collapsing them would leave the
+-- history unable to tell an Owner which question to ask.
+--
+-- No counter column accompanies this value. The sequence is derived from the occurrence rows at
+-- settlement time, scoped to the current generation, so a new generation resets it by definition
+-- rather than by a reset operation, and a denormalized count cannot drift from the history.
+--
+-- Additive only: adding an enum value rewrites no row and invalidates no existing value. The stop
+-- reason CHECK (`task_reminder_schedules_stop_reason_matches_status`) tests only that a reason is
+-- present exactly when the status is `stopped`, so it enumerates no value and needs no amendment or
+-- revalidation.
+--
+-- This file deliberately contains one statement and uses the new value nowhere. PostgreSQL permits
+-- ALTER TYPE ... ADD VALUE inside a transaction block, but forbids *using* the new value in that
+-- same transaction, and Prisma wraps each migration file in one transaction. A file that added the
+-- value and then referenced it -- in an index predicate, a CHECK, or a backfill -- would pass a
+-- from-empty test and fail on apply.
+ALTER TYPE "ReminderScheduleStopReason" ADD VALUE IF NOT EXISTS 'repeated_ambiguous_outcomes';

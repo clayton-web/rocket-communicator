@@ -14,5 +14,7 @@
 
     * `permanent_delivery_failure` (value: `"permanent_delivery_failure"`)
 
+    * `repeated_ambiguous_outcomes` (value: `"repeated_ambiguous_outcomes"`)
+
 
 

@@ -145,7 +145,9 @@ describe('A8.4b.1 capability skip-reason migration: the file itself', () => {
   it('exists in the recorded migration sequence, after the settlement marker', () => {
     const directories = migrationDirectories();
     expect(directories).toContain(MIGRATION_ELEVEN);
-    expect(directories.at(-1)).toBe(MIGRATION_ELEVEN);
+    // Eleventh, not last: A8.4b.2 added a twelfth. What matters is its position relative to what
+    // came before it, since that is what `applyThroughMigrationTen` reconstructs.
+    expect(directories.indexOf(MIGRATION_ELEVEN)).toBe(10);
   });
 
   it('adds the value idempotently', () => {

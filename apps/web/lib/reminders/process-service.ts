@@ -138,6 +138,16 @@ export interface ReminderProcessAggregate {
   /** Settlements this invocation could not complete, leaving durable debt for the next one. */
   readonly settlementsDeferred: number;
   readonly ceilingStops: number;
+  /**
+   * Schedules stopped by D129 — three consecutive terminal ambiguous overdue occurrences in one
+   * generation (A8.4b.2).
+   *
+   * Reported apart from `ceilingStops` because the two say opposite things about a deployment. A
+   * ceiling stop is a schedule finishing its job; an ambiguity stop is the system admitting it does
+   * not know whether the last three reminders reached anybody. A run where this is non-zero is the
+   * one an operator should look at.
+   */
+  readonly ambiguityStops: number;
   /** True when the soft deadline cut the invocation short before its work was exhausted. */
   readonly deadlineStopped: boolean;
   readonly requestId: string;
@@ -195,6 +205,7 @@ const ZERO_AGGREGATE: Counters = {
   unsettledOccurrencesSettled: 0,
   settlementsDeferred: 0,
   ceilingStops: 0,
+  ambiguityStops: 0,
   deadlineStopped: false,
 };
 
@@ -363,6 +374,9 @@ async function settleUnsettledOccurrences(
         counters.unsettledOccurrencesSettled += 1;
         if (settled.ceilingReached) {
           counters.ceilingStops += 1;
+        }
+        if (settled.repeatedAmbiguityStop) {
+          counters.ambiguityStops += 1;
         }
       }
     } catch {
@@ -687,6 +701,9 @@ async function settle(
 
   if (finalized.ceilingReached) {
     counters.ceilingStops += 1;
+  }
+  if (finalized.repeatedAmbiguityStop) {
+    counters.ambiguityStops += 1;
   }
   if (finalized.settlementDeferred) {
     counters.settlementsDeferred += 1;

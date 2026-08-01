@@ -1457,9 +1457,21 @@ export interface components {
         TaskReminderScheduleState: "no_due_date" | "not_scheduled" | "active" | "suspended_waiting" | "stopped";
         /**
          * @description Why reminders stopped. Recorded when the schedule stops, never inferred later (D106, D107).
+         *
+         *     `repeated_ambiguous_outcomes` is D129: three consecutive terminal ambiguous overdue
+         *     occurrences within one schedule generation. An ambiguous occurrence is one where the
+         *     transport could not prove whether the provider accepted the message, so it consumed its
+         *     local calendar day and was never retried. It is kept distinct from
+         *     `permanent_delivery_failure` because the Owner's question differs: a permanent failure says
+         *     the provider refused something and names what to fix, while this says the provider gave no
+         *     answer three mornings running and the Recipient may or may not have been reminded.
+         *
+         *     Reminders never resume by themselves after any stop. Only a material Owner due-date change
+         *     opens a new generation, and the new generation begins with no ambiguity history of its own.
+         *
          * @enum {string}
          */
-        TaskReminderStopReason: "task_completed" | "task_dismissed" | "due_date_removed" | "overdue_ceiling_reached" | "permanent_delivery_failure";
+        TaskReminderStopReason: "task_completed" | "task_dismissed" | "due_date_removed" | "overdue_ceiling_reached" | "permanent_delivery_failure" | "repeated_ambiguous_outcomes";
         /** @description The single advance reminder for the current generation (D105). */
         TaskReminderAdvance: {
             disposition: components["schemas"]["TaskReminderAdvanceDisposition"];
@@ -1538,6 +1550,15 @@ export interface components {
             settlementsDeferred: number;
             /** @description Schedules stopped by reaching the D106 overdue delivery ceiling. */
             ceilingStops: number;
+            /** @description Schedules stopped by D129 — a third consecutive terminal ambiguous overdue occurrence in
+             *     one generation.
+             *
+             *     Reported separately from `ceilingStops` because the two mean opposite things. A ceiling
+             *     stop is a schedule that finished its work; an ambiguity stop is the system reporting that
+             *     it cannot tell whether the last three reminders reached anyone. Non-zero here is the
+             *     signal to inspect the provider path, not the affected Tasks.
+             *      */
+            ambiguityStops: number;
             /** @description Whether the invocation stopped at its soft deadline with work still outstanding. The
              *     remaining work is durable and picked up by the next invocation.
              *      */

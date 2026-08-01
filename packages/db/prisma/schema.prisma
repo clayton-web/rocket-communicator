@@ -777,12 +777,18 @@ enum ReminderScheduleStatus {
 
 /// Why a schedule stopped (D106, D107). Recorded rather than inferred, so the Owner-visible
 /// reason and the audit trail cannot disagree. A stopped schedule never restarts automatically.
+/// `repeated_ambiguous_outcomes` is D129 (A8.4b.2): three consecutive terminal ambiguous overdue
+/// occurrences in one generation. Distinct from `permanent_delivery_failure`, which records a
+/// provider saying no; this one records a provider that never said anything definite three mornings
+/// running, so nobody knows whether the Recipient was mailed. The two remedies differ, so the two
+/// reasons must. Derived from occurrence history at settlement — no counter is stored anywhere.
 enum ReminderScheduleStopReason {
   task_completed
   task_dismissed
   due_date_removed
   overdue_ceiling_reached
   permanent_delivery_failure
+  repeated_ambiguous_outcomes
 }
 
 /// The advance-reminder decision for one generation, made at establishment and thereafter changed by

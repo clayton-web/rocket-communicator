@@ -20,9 +20,9 @@ import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 
 /**
- * Why reminders stopped. Recorded when the schedule stops, never inferred later (D106, D107).
+ * Why reminders stopped. Recorded when the schedule stops, never inferred later (D106, D107).  `repeated_ambiguous_outcomes` is D129: three consecutive terminal ambiguous overdue occurrences within one schedule generation. An ambiguous occurrence is one where the transport could not prove whether the provider accepted the message, so it consumed its local calendar day and was never retried. It is kept distinct from `permanent_delivery_failure` because the Owner's question differs: a permanent failure says the provider refused something and names what to fix, while this says the provider gave no answer three mornings running and the Recipient may or may not have been reminded.  Reminders never resume by themselves after any stop. Only a material Owner due-date change opens a new generation, and the new generation begins with no ambiguity history of its own. 
  *
- * Values: task_completed,task_dismissed,due_date_removed,overdue_ceiling_reached,permanent_delivery_failure
+ * Values: task_completed,task_dismissed,due_date_removed,overdue_ceiling_reached,permanent_delivery_failure,repeated_ambiguous_outcomes
  */
 
 @JsonClass(generateAdapter = false)
@@ -41,7 +41,10 @@ enum class TaskReminderStopReason(val value: kotlin.String) {
     overdue_ceiling_reached("overdue_ceiling_reached"),
 
     @Json(name = "permanent_delivery_failure")
-    permanent_delivery_failure("permanent_delivery_failure");
+    permanent_delivery_failure("permanent_delivery_failure"),
+
+    @Json(name = "repeated_ambiguous_outcomes")
+    repeated_ambiguous_outcomes("repeated_ambiguous_outcomes");
 
     /**
      * Override [toString()] to avoid using the enum variable name as the value, and instead use

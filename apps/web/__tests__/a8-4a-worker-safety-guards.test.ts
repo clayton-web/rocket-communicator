@@ -661,6 +661,134 @@ describe('the internal endpoint marks every response no-store', () => {
 });
 
 /**
+ * A8.4b.2 (D129) structural guards.
+ *
+ * Only the boundaries that behavioural tests cannot state. The sequence semantics — what counts,
+ * what breaks a run, what a generation does — are proved against real occurrence histories in
+ * `packages/db/__tests__/a8-4b2-consecutive-ambiguity.test.ts`, and are not restated here as string
+ * matches. What is here is the set of shapes D129 must never take, each of which would pass every
+ * behavioural test on the day it was written and be wrong later.
+ */
+describe('A8.4b.2: D129 is derived at settlement and stored nowhere', () => {
+  const schema = readFileSync(path.join(repoRoot, 'packages/db/prisma/schema.prisma'), 'utf8');
+  const settlement = readCode(path.join(dbSrc, 'transactions/a8-4a-occurrence-transactions.ts'));
+
+  /**
+   * The counter D129 must not have.
+   *
+   * A stored count is the obvious implementation and the wrong one: it has to be incremented on
+   * ambiguity, reset on success, reset on permanent failure, and reset again on a new generation,
+   * and any path that forgets one of those leaves a schedule that stops early or never stops. A
+   * derived answer cannot be stale because there is nothing to keep up to date.
+   */
+  it('adds no ambiguity counter to the schedule model', () => {
+    const model = schema.slice(
+      schema.indexOf('model TaskReminderSchedule'),
+      schema.indexOf('}', schema.indexOf('model TaskReminderSchedule')),
+    );
+    expect(model).not.toMatch(/ambigu/i);
+    expect(model).not.toMatch(/consecutive/i);
+  });
+
+  /** Waiting is the only suspension mechanism (D107, D097). D129 stops; it does not pause. */
+  it('adds no new schedule status, so D129 stops rather than suspending', () => {
+    const statuses = schema.slice(
+      schema.indexOf('enum ReminderScheduleStatus'),
+      schema.indexOf('}', schema.indexOf('enum ReminderScheduleStatus')),
+    );
+    expect(
+      statuses
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0 && !line.startsWith('enum') && !line.startsWith('/')),
+    ).toEqual(['active', 'suspended_waiting', 'stopped']);
+  });
+
+  it('records the new stop reason in the canonical enum', () => {
+    const reasons = schema.slice(
+      schema.indexOf('enum ReminderScheduleStopReason'),
+      schema.indexOf('}', schema.indexOf('enum ReminderScheduleStopReason')),
+    );
+    expect(reasons).toContain('repeated_ambiguous_outcomes');
+    // Appended, not substituted: a definite refusal and an unconfirmable send stay distinguishable.
+    expect(reasons).toContain('permanent_delivery_failure');
+  });
+
+  /**
+   * The threshold is reached by occurrences, not by attempts.
+   *
+   * `attempt_count` is a column on the same rows the derivation reads, and counting it would be a
+   * plausible-looking mistake with a specific consequence: one occurrence retried three times would
+   * stop a schedule that had seen a single uncertain morning.
+   */
+  it('derives the threshold from occurrence outcomes rather than attempt counts', () => {
+    const effect = extractFunction(settlement, 'applyScheduleEffect');
+    expect(effect).toContain('listRecentAmbiguitySequenceOutcomes');
+    expect(effect).toContain('hasReachedConsecutiveAmbiguousStop');
+    expect(effect).not.toMatch(/attemptCount/);
+  });
+
+  /** Scoped to the generation, which is why a new generation needs no reset operation. */
+  it('scopes the history read to the schedule and its current generation', () => {
+    const effect = extractFunction(settlement, 'applyScheduleEffect');
+    const call = effect.slice(effect.indexOf('listRecentAmbiguitySequenceOutcomes'));
+    expect(call.slice(0, 400)).toContain('generation: input.generation');
+    expect(call.slice(0, 400)).toContain('scheduleId: input.scheduleId');
+  });
+
+  /**
+   * A scheduling rule does not belong in a provider adapter. The Gmail transport reports what
+   * happened to one message; whether three of those end a generation is not its question, and an
+   * adapter that answered it would have to be re-answered for every future transport.
+   */
+  it('keeps the threshold out of every Gmail-specific file', () => {
+    const gmailDir = path.join(webRoot, 'lib/gmail');
+    const files: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (entry.name.endsWith('.ts')) files.push(full);
+      }
+    };
+    walk(gmailDir);
+    expect(files.length).toBeGreaterThan(0);
+
+    const offenders = files.filter((file) => {
+      const code = readCode(file);
+      return (
+        code.includes('repeated_ambiguous_outcomes') ||
+        code.includes('hasReachedConsecutiveAmbiguousStop') ||
+        code.includes('CONSECUTIVE_AMBIGUOUS_STOP_THRESHOLD') ||
+        code.includes('listRecentAmbiguitySequenceOutcomes')
+      );
+    });
+    expect(offenders.map((file) => path.relative(webRoot, file))).toEqual([]);
+  });
+
+  /** Nor in the worker, which would be reading history outside the lock that protects it. */
+  it('keeps the threshold out of the processing service, which holds no lock', () => {
+    const service = readCode(path.join(webRoot, 'lib/reminders/process-service.ts'));
+    expect(service).not.toContain('hasReachedConsecutiveAmbiguousStop');
+    expect(service).not.toContain('listRecentAmbiguitySequenceOutcomes');
+    // It may report the stop the database decided, and that is all.
+    expect(service).toContain('repeatedAmbiguityStop');
+  });
+
+  /** A8.4b.3 has not happened. D129 is an overdue rule and must not have grown an advance path. */
+  it('leaves advance reminder delivery unimplemented', () => {
+    const service = readCode(path.join(webRoot, 'lib/reminders/process-service.ts'));
+    // The worker claims overdue occurrences only; nothing constructs an advance claim.
+    expect(service).not.toMatch(/occurrenceKind:\s*'advance'/);
+    const effect = extractFunction(settlement, 'applyScheduleEffect');
+    // The advance branch settles a disposition and returns before any of this is reachable.
+    const advanceBranch = effect.slice(0, effect.indexOf("if (input.outcome === 'ambiguous')"));
+    expect(advanceBranch).toContain("input.occurrenceKind === 'advance'");
+    expect(advanceBranch).not.toContain('hasReachedConsecutiveAmbiguousStop');
+  });
+});
+
+/**
  * Extract one function body by brace matching.
  *
  * A regex cannot do this: the bodies here contain nested braces, template literals, and object

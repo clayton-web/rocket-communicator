@@ -734,6 +734,248 @@ describeMaybe('A8.4a occurrence lifecycle under contention (real PostgreSQL 16)'
   });
 
   // ---------------------------------------------------------------------------------------------
+  // D129 — three consecutive terminal ambiguous outcomes (A8.4b.2)
+  // ---------------------------------------------------------------------------------------------
+
+  describe('D129: the repeated-ambiguity stop happens once, under contention', () => {
+    /**
+     * Run one ambiguous overdue occurrence and return where the series is now.
+     *
+     * Ambiguity is what A8.4b.1 produces from a send failure carrying no HTTP status, so these are
+     * ordinary occurrences: claimed, provider call started, terminal, settled.
+     */
+    async function ambiguousMorning(
+      seeded: Awaited<ReturnType<typeof seed>>,
+      day: number,
+      cursor: { localDate: LocalDate; occurrenceAt: string },
+    ) {
+      const claim = await claimReminderOccurrence(a, {
+        id: `att_${seeded.key}_amb${day}`,
+        organizationId: org,
+        scheduleId: seeded.scheduleId,
+        generation: 1,
+        occurrenceKind: 'overdue',
+        occurrenceLocalDate: cursor.localDate,
+        occurrenceAt: cursor.occurrenceAt,
+        claimedBy: 'a',
+        claimedAt: cursor.occurrenceAt,
+        claimExpiresAt: FOREVER,
+        now: cursor.occurrenceAt,
+        maxAttempts: 3,
+      });
+      await markProviderCallStarted(a, {
+        organizationId: org,
+        attemptId: claim.attempt.id,
+        claimSequence: 1,
+        startedAt: cursor.occurrenceAt,
+      });
+      const next = {
+        localDate: addLocalDays(cursor.localDate, 1),
+        occurrenceAt: new Date(Date.parse(cursor.occurrenceAt) + 86_400_000).toISOString(),
+      };
+      const finalized = await finalizeReminderOccurrence({
+        db: a,
+        organizationId: org,
+        scheduleId: seeded.scheduleId,
+        attemptId: claim.attempt.id,
+        claimSequence: 1,
+        expectedGeneration: 1,
+        outcome: 'ambiguous',
+        completedAt: cursor.occurrenceAt,
+        failureCode: 'GMAIL_AMBIGUOUS_SEND',
+        nextOverdueOccurrence: {
+          occurrenceLocalDate: next.localDate,
+          occurrenceAt: next.occurrenceAt,
+        },
+      });
+      return { claim, finalized, next };
+    }
+
+    it('stops exactly once when two connections settle the third ambiguity together', async () => {
+      for (let round = 0; round < ROUNDS; round += 1) {
+        const seeded = await seed('amb_race');
+        let cursor = {
+          localDate: seeded.overdue.occurrenceLocalDate,
+          occurrenceAt: seeded.overdue.occurrenceAt,
+        };
+
+        for (const day of [1, 2]) {
+          const morning = await ambiguousMorning(seeded, day, cursor);
+          expect(morning.finalized.repeatedAmbiguityStop, `round ${round} day ${day}`).toBe(false);
+          cursor = morning.next;
+        }
+
+        // The third occurrence reaches phase A and stops there, which is exactly the state a
+        // crashed worker leaves behind and the state two settlers can therefore both find.
+        const third = await claimReminderOccurrence(a, {
+          id: `att_${seeded.key}_amb3`,
+          organizationId: org,
+          scheduleId: seeded.scheduleId,
+          generation: 1,
+          occurrenceKind: 'overdue',
+          occurrenceLocalDate: cursor.localDate,
+          occurrenceAt: cursor.occurrenceAt,
+          claimedBy: 'a',
+          claimedAt: cursor.occurrenceAt,
+          claimExpiresAt: FOREVER,
+          now: cursor.occurrenceAt,
+          maxAttempts: 3,
+        });
+        await markProviderCallStarted(a, {
+          organizationId: org,
+          attemptId: third.attempt.id,
+          claimSequence: 1,
+          startedAt: cursor.occurrenceAt,
+        });
+        await terminalizeReminderOccurrence({
+          db: a,
+          organizationId: org,
+          scheduleId: seeded.scheduleId,
+          attemptId: third.attempt.id,
+          claimSequence: 1,
+          expectedGeneration: 1,
+          outcome: 'ambiguous',
+          completedAt: cursor.occurrenceAt,
+          failureCode: 'GMAIL_AMBIGUOUS_SEND',
+          nextOverdueOccurrence: null,
+        });
+
+        const settleThird = (db: DbClient) =>
+          settle(
+            settleReminderOccurrenceSchedule({
+              db,
+              organizationId: org,
+              attemptId: third.attempt.id,
+              settledAt: cursor.occurrenceAt,
+              nextOverdueOccurrence: {
+                occurrenceLocalDate: addLocalDays(cursor.localDate, 1),
+                occurrenceAt: new Date(Date.parse(cursor.occurrenceAt) + 86_400_000).toISOString(),
+              },
+            }),
+          );
+        const results = await Promise.all([settleThird(a), settleThird(b)]);
+
+        // Both connections may succeed — the second finds the occurrence already settled and says
+        // so — but the stop transition itself belongs to exactly one of them.
+        const applied = results.filter((result) => result.ok && result.value.repeatedAmbiguityStop);
+        expect(applied, `round ${round}`).toHaveLength(1);
+
+        const schedule = await a.taskReminderSchedule.findUniqueOrThrow({
+          where: { id: seeded.scheduleId },
+        });
+        expect(schedule.status, `round ${round}`).toBe('stopped');
+        expect(schedule.stopReason, `round ${round}`).toBe('repeated_ambiguous_outcomes');
+        expect(schedule.requiresOwnerAttention, `round ${round}`).toBe(true);
+        expect(schedule.nextOverdueOccurrenceAt, `round ${round}`).toBeNull();
+        // Ambiguity is not delivery, so the D106 count stayed where it was.
+        expect(schedule.overdueDeliveredCount, `round ${round}`).toBe(0);
+      }
+    });
+
+    it('leaves no fourth occurrence for any worker to find after the stop commits', async () => {
+      const seeded = await seed('amb_no_fourth');
+      let cursor = {
+        localDate: seeded.overdue.occurrenceLocalDate,
+        occurrenceAt: seeded.overdue.occurrenceAt,
+      };
+      for (const day of [1, 2, 3]) {
+        const morning = await ambiguousMorning(seeded, day, cursor);
+        cursor = morning.next;
+      }
+
+      // The scan is how every worker finds work, and it selects on an armed occurrence. A stopped,
+      // disarmed schedule is therefore invisible to this worker, to a concurrent one, and to the
+      // next invocation — which is what makes "no fourth reminder" a property of the data rather
+      // than of any worker remembering to check.
+      const due = await Promise.all([
+        listDueReminderSchedulesGlobally(a, { dueAtOrBefore: FOREVER, limit: 100 }),
+        listDueReminderSchedulesGlobally(b, { dueAtOrBefore: FOREVER, limit: 100 }),
+      ]);
+      for (const batch of due) {
+        expect(batch.map((row) => row.id)).not.toContain(seeded.scheduleId);
+      }
+
+      const attempts = await a.reminderDeliveryAttempt.count({
+        where: { scheduleId: seeded.scheduleId, occurrenceKind: 'overdue' },
+      });
+      expect(attempts).toBe(3);
+    });
+
+    it('keeps the reason an earlier authoritative stop recorded', async () => {
+      const seeded = await seed('amb_precedence');
+      let cursor = {
+        localDate: seeded.overdue.occurrenceLocalDate,
+        occurrenceAt: seeded.overdue.occurrenceAt,
+      };
+      for (const day of [1, 2]) {
+        const morning = await ambiguousMorning(seeded, day, cursor);
+        cursor = morning.next;
+      }
+
+      const third = await claimReminderOccurrence(a, {
+        id: `att_${seeded.key}_amb3`,
+        organizationId: org,
+        scheduleId: seeded.scheduleId,
+        generation: 1,
+        occurrenceKind: 'overdue',
+        occurrenceLocalDate: cursor.localDate,
+        occurrenceAt: cursor.occurrenceAt,
+        claimedBy: 'a',
+        claimedAt: cursor.occurrenceAt,
+        claimExpiresAt: FOREVER,
+        now: cursor.occurrenceAt,
+        maxAttempts: 3,
+      });
+      await markProviderCallStarted(a, {
+        organizationId: org,
+        attemptId: third.attempt.id,
+        claimSequence: 1,
+        startedAt: cursor.occurrenceAt,
+      });
+
+      // The Owner completes the Task on another connection while the third send is in flight.
+      const [finalized] = await Promise.all([
+        settle(
+          finalizeReminderOccurrence({
+            db: a,
+            organizationId: org,
+            scheduleId: seeded.scheduleId,
+            attemptId: third.attempt.id,
+            claimSequence: 1,
+            expectedGeneration: 1,
+            outcome: 'ambiguous',
+            completedAt: cursor.occurrenceAt,
+            failureCode: 'GMAIL_AMBIGUOUS_SEND',
+            nextOverdueOccurrence: null,
+          }),
+        ),
+        settle(
+          stopReminderSchedule(b, {
+            organizationId: org,
+            scheduleId: seeded.scheduleId,
+            reason: 'task_completed',
+            stoppedAt: cursor.occurrenceAt,
+          }),
+        ),
+      ]);
+
+      // Whichever committed first, the schedule ends stopped for one reason, the occurrence is
+      // recorded ambiguous, and no state says both things happened to it.
+      expect(finalized.ok).toBe(true);
+      const schedule = await a.taskReminderSchedule.findUniqueOrThrow({
+        where: { id: seeded.scheduleId },
+      });
+      expect(schedule.status).toBe('stopped');
+      expect(['task_completed', 'repeated_ambiguous_outcomes']).toContain(schedule.stopReason);
+      expect(schedule.nextOverdueOccurrenceAt).toBeNull();
+      const row = await a.reminderDeliveryAttempt.findUniqueOrThrow({
+        where: { id: third.attempt.id },
+      });
+      expect(row.outcome).toBe('ambiguous');
+    });
+  });
+
+  // ---------------------------------------------------------------------------------------------
   // F6 and F11 — the schedule lease and the global scan
   // ---------------------------------------------------------------------------------------------
 

@@ -20,6 +20,7 @@
 | **unsettledOccurrencesSettled** | **kotlin.Int** | Terminal occurrences whose schedule settlement had not completed, and was completed by this invocation. Non-zero means a previous invocation died between recording an outcome and applying it to the schedule.  |  |
 | **settlementsDeferred** | **kotlin.Int** | Schedule settlements this invocation could not complete. The occurrence outcomes are recorded and durable regardless; the debt is picked up by a later invocation.  |  |
 | **ceilingStops** | **kotlin.Int** | Schedules stopped by reaching the D106 overdue delivery ceiling. |  |
+| **ambiguityStops** | **kotlin.Int** | Schedules stopped by D129 — a third consecutive terminal ambiguous overdue occurrence in one generation.  Reported separately from &#x60;ceilingStops&#x60; because the two mean opposite things. A ceiling stop is a schedule that finished its work; an ambiguity stop is the system reporting that it cannot tell whether the last three reminders reached anyone. Non-zero here is the signal to inspect the provider path, not the affected Tasks.  |  |
 | **deadlineStopped** | **kotlin.Boolean** | Whether the invocation stopped at its soft deadline with work still outstanding. The remaining work is durable and picked up by the next invocation.  |  |
 | **requestId** | **kotlin.String** |  |  |
 

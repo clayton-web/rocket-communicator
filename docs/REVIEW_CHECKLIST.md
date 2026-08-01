@@ -102,6 +102,13 @@ Gates for the due-date-driven Follow-up Engine (D102–D110). These record **exp
 - [ ] An ambiguous-outcome **counter is not stored**; D129's threshold is derived from history, and nothing auto-resumes a schedule stopped for repeated ambiguity
 
 ## Owner web experience foundation (P1; apply when P1 work is in scope)
+- [ ] D129's threshold is evaluated **inside the settlement transaction** that holds the Task lock and applies the schedule effect once — never in a provider adapter, never in the worker, and never from history read before the lock was taken
+- [ ] The sequence counts **final occurrence outcomes, not provider attempts**: one occurrence retried three times is one outcome, and `attempt_count` is not an input
+- [ ] A **skip neither counts toward nor breaks** the run (no provider was contacted), while a success or a permanent failure — retry-budget exhaustion included — breaks it
+- [ ] History is scoped to the **current generation** and ordered by scheduled occurrence identity, not by `completed_at`, so a late or swept settlement cannot reorder the run
+- [ ] The stop is conditional on the schedule still being `active`, so an **earlier authoritative stop reason is never overwritten**, and the third occurrence stays recorded as ambiguous rather than being rewritten
+- [ ] A stop **disarms the next occurrence**, so no fourth reminder is reachable by the same invocation, a concurrent worker, or the next wake-up
+- [ ] No new schedule status is introduced: Waiting remains the only suspension mechanism (D097, D107), and D129 stops rather than pauses
 
 Gates for D111–D126. Record **expected behaviour and required proof**; no specific implementation is pre-approved.
 

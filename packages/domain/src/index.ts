@@ -178,6 +178,7 @@ export {
   REMINDER_LOCAL_HOUR,
   REMINDER_LOCAL_MINUTE,
   OVERDUE_SUCCESSFUL_DELIVERY_CEILING,
+  CONSECUTIVE_AMBIGUOUS_STOP_THRESHOLD,
 } from './reminders/constants.js';
 export {
   isLocalDate,
@@ -206,6 +207,8 @@ export {
   isDueDateChangeMaterial,
   countSuccessfulOverdueDeliveries,
   hasReachedOverdueDeliveryCeiling,
+  hasReachedConsecutiveAmbiguousStop,
+  AMBIGUITY_SEQUENCE_OUTCOMES,
   type AdvanceReminderDisposition,
   type AdvanceReminderEstablishmentInput,
   type NextOverdueOccurrenceInput,

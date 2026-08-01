@@ -1317,6 +1317,7 @@ describe('A8.4a reminder occurrence processing', () => {
         'unsettledOccurrencesSettled',
         'settlementsDeferred',
         'ceilingStops',
+        'ambiguityStops',
         'deadlineStopped',
         'requestId',
       ]);

@@ -36,3 +36,16 @@ export const REMINDER_LOCAL_MINUTE = 0;
  * claims, and the advance reminder never count toward it.
  */
 export const OVERDUE_SUCCESSFUL_DELIVERY_CEILING = 14;
+
+/**
+ * Consecutive **terminal ambiguous** overdue occurrences that stop a generation (D129).
+ *
+ * Ambiguity means the transport could not prove whether Gmail accepted the message, so the
+ * occurrence consumes its local day and is never retried. One is unremarkable. Three in a row is a
+ * different claim: something about this deployment's path to the provider is broken in a way that
+ * keeps producing messages nobody can confirm, and continuing would spend a Recipient's remaining
+ * calendar days generating more of the same uncertainty. Three is deliberately small — the cost of
+ * stopping early is an Owner glance, and the cost of stopping late is a Recipient who may or may
+ * not have been mailed a dozen times.
+ */
+export const CONSECUTIVE_AMBIGUOUS_STOP_THRESHOLD = 3;

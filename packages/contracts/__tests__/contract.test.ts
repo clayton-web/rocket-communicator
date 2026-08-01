@@ -264,6 +264,9 @@ describe('contracts package', () => {
       required?: string[];
     };
     expect(Object.keys(response.properties ?? {}).sort()).toEqual([
+      // Schedules D129 stopped for three consecutive unconfirmable sends (A8.4b.2). A count, like
+      // its neighbours: which Tasks they were is deliberately not reportable here.
+      'ambiguityStops',
       'ambiguous',
       'ceilingStops',
       // Occurrences another worker held, or that no worker may claim again (A8.4a audit B2).
