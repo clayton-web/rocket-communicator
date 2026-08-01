@@ -4,6 +4,7 @@ import {
   decideReminderScheduling,
   selectNextOverdueOccurrence,
   type LocalDate,
+  type TaskSummaryPoint,
   type UtcInstant,
 } from '@aicaa/domain';
 import type { DbClient } from '@aicaa/db';
@@ -20,7 +21,12 @@ import {
   SCHEDULE_CLAIM_LEASE_MS,
   isReminderDeliveryEnabled,
 } from './process-config';
-import type { ReminderTransport, ReminderTransportResult } from './transport';
+import type {
+  ReminderDeliveryMaterial,
+  ReminderTransport,
+  ReminderTransportProvider,
+  ReminderTransportResult,
+} from './transport';
 
 /**
  * A8.4a reminder occurrence processing.
@@ -72,7 +78,26 @@ import type { ReminderTransport, ReminderTransportResult } from './transport';
  * The due scan selects on `next_overdue_occurrence_at`, so the only occurrences this service ever
  * claims are `overdue` ones. The advance terminalization and settlement paths exist in persistence
  * and are exercised by tests, but no worker code path reaches them: delivering advance reminders is
- * A8.4b work and needs its own scan predicate and index before it can claim anything.
+ * A8.4b.3 work and needs its own scan predicate and index before it can claim anything.
+ *
+ * ## Authorization is an invocation-level fact (A8.4b.1)
+ *
+ * A8.4b.1 gives the transport seam a real Gmail implementation, which introduces a prerequisite the
+ * fake never had: an authorized Owner Gmail connection. It is resolved exactly **once, before the
+ * first claim**, through the abstract `ReminderTransportProvider` — never per schedule, per Task, per
+ * Recipient, or per occurrence.
+ *
+ * The ordering is the whole point. Resolving later would let an invocation claim occurrences, consume
+ * their local calendar days under D106, and only then discover that nothing could ever have been
+ * sent. An unusable connection is a fact about the deployment; charging it to whichever Task the scan
+ * happened to reach first would write a permanent delivery failure onto a schedule that did nothing
+ * wrong. So an unavailable provider ends the invocation before it starts: zero claims, zero occurrence
+ * rows, zero attempts, zero schedule mutations, zero provider calls, and `transportAuthorized: false`
+ * so an operator can see which of the three ways to do nothing this was.
+ *
+ * This file still imports nothing from Gmail or any provider. The seam is abstract, the Gmail
+ * implementation lives beside the Gmail primitives, the route composes them, and
+ * `a8-4a-worker-safety-guards.test.ts` fails the build if that ever stops being true.
  */
 
 /** Aggregate counters. Counts only — never a Task summary, recipient, address, or provider body. */
@@ -83,6 +108,19 @@ export interface ReminderProcessAggregate {
    * scan, no claim, no write (A8.4a audit H3).
    */
   readonly transportConfigured: boolean;
+  /**
+   * Whether this invocation held a usable provider authorization when it began scanning (A8.4b.1).
+   *
+   * Only meaningful when {@link deliveryEnabled} and {@link transportConfigured} are both true; it is
+   * false by default in the other two cases, where authorization was never attempted. Read as a
+   * triple, the three flags name which of the three ways to do nothing this was.
+   *
+   * False with the other two true means the Owner's Gmail connection is missing, lacks the send
+   * scope, or could not produce an access token, and the invocation stopped before its first claim:
+   * no occurrence exists, no schedule moved, nothing was sent. Which cause applied is not reported.
+   * True with a directly-injected transport, which is already-authorized by construction.
+   */
+  readonly transportAuthorized: boolean;
   readonly schedulesScanned: number;
   readonly occurrencesClaimed: number;
   /** Occurrences another worker held, or that no worker may claim again. */
@@ -109,12 +147,23 @@ export interface RunReminderProcessInput {
   readonly db: DbClient;
   readonly requestId: string;
   /**
-   * The transport to send through. **Required for any work to happen** (A8.4a audit H3).
+   * An already-authorized transport, injected directly. **Test and fake seam only.**
    *
-   * Nothing in production supplies one. That is the point: A8.4a has no real transport, and a
-   * worker that quietly manufactured a fake would record deliveries it never made.
+   * A8.4a required this for any work to happen (audit H3) and A8.4b.1 keeps that rule: a transport
+   * must arrive from outside, because a worker that quietly manufactured one would record deliveries
+   * it never made. What changed is that production now supplies {@link transportProvider} instead, so
+   * that the authorization step happens where it can be ordered before the first claim. A caller that
+   * passes this is asserting authorization is already settled — true for a fake, and true for the
+   * transport a provider returns.
    */
   readonly transport?: ReminderTransport;
+  /**
+   * The production seam: resolve authorization once, then send through what it returns (A8.4b.1).
+   *
+   * Preferred over {@link transport} when both are supplied, because it is the only one of the two
+   * that can fail before any claim happens.
+   */
+  readonly transportProvider?: ReminderTransportProvider;
   readonly now?: string;
   readonly startedAtMs?: number;
   readonly deadlineMs?: number;
@@ -124,7 +173,11 @@ export interface RunReminderProcessInput {
 
 type CountKeys = Exclude<
   keyof ReminderProcessAggregate,
-  'deliveryEnabled' | 'transportConfigured' | 'deadlineStopped' | 'requestId'
+  | 'deliveryEnabled'
+  | 'transportConfigured'
+  | 'transportAuthorized'
+  | 'deadlineStopped'
+  | 'requestId'
 >;
 type Counters = { -readonly [K in CountKeys]: number } & { deadlineStopped: boolean };
 
@@ -149,9 +202,10 @@ export async function runInternalReminderProcess(
   input: RunReminderProcessInput,
 ): Promise<{ response: ReminderProcessAggregate }> {
   const deliveryEnabled = isReminderDeliveryEnabled(input.env ?? process.env);
-  const transport = input.transport;
+  const provider = input.transportProvider;
+  const transportConfigured = provider !== undefined || input.transport !== undefined;
 
-  if (!deliveryEnabled || !transport) {
+  if (!deliveryEnabled || !transportConfigured) {
     // Two ways to do nothing, reported apart so an operator can tell them apart.
     //
     // Delivery off is the dark default and needs no explanation. No transport is the fail-closed
@@ -161,11 +215,37 @@ export async function runInternalReminderProcess(
     return {
       response: {
         deliveryEnabled,
-        transportConfigured: transport !== undefined,
+        transportConfigured,
+        transportAuthorized: false,
         ...ZERO_AGGREGATE,
         requestId: input.requestId,
       },
     };
+  }
+
+  // ---- Authorization, once, before anything is claimed (A8.4b.1). ----
+  //
+  // Ahead of `loadDbRuntime` in the failure case as well, for the same reason the disabled path is:
+  // an invocation that cannot send must not need a database to establish that. A provider that needs
+  // one to resolve opens it itself.
+  let transport: ReminderTransport;
+  if (provider) {
+    const resolution = await provider.resolve();
+    if (resolution.state === 'unavailable') {
+      return {
+        response: {
+          deliveryEnabled: true,
+          transportConfigured: true,
+          transportAuthorized: false,
+          ...ZERO_AGGREGATE,
+          requestId: input.requestId,
+        },
+      };
+    }
+    transport = resolution.transport;
+  } else {
+    // Directly-injected transport: already authorized by construction (tests and fakes).
+    transport = input.transport as ReminderTransport;
   }
 
   const startedAtMs = input.startedAtMs ?? Date.now();
@@ -207,6 +287,7 @@ export async function runInternalReminderProcess(
     response: {
       deliveryEnabled: true,
       transportConfigured: true,
+      transportAuthorized: true,
       ...counters,
       requestId: input.requestId,
     },
@@ -484,9 +565,12 @@ async function processOneOccurrence(
   const lastAttempt = claim.attempt.attemptCount >= MAX_OCCURRENCE_ATTEMPTS;
 
   // ---- Pre-send guards: re-read everything, from one snapshot, immediately before the call. ----
-  const refusal = await evaluatePreSendGuards(runtime, db, schedule, now);
-  if (refusal) {
-    await settle(args, attemptId, claimSequence, { outcome: 'skipped', skipReason: refusal });
+  const verdict = await evaluatePreSendGuards(runtime, db, schedule, now);
+  if (verdict.kind === 'skip') {
+    await settle(args, attemptId, claimSequence, {
+      outcome: 'skipped',
+      skipReason: verdict.reason,
+    });
     counters.skipped += 1;
     return;
   }
@@ -503,9 +587,11 @@ async function processOneOccurrence(
   try {
     result = await transport.send({
       occurrenceId: attemptId,
+      organizationId: schedule.organizationId,
       taskId: schedule.taskId,
       occurrenceKind: 'overdue',
       occurrenceLocalDate: schedule.nextOverdueOccurrenceLocalDate,
+      delivery: verdict.delivery,
     });
   } catch {
     // The marker is already committed, so this occurrence is ambiguous whether the throw happened
@@ -575,7 +661,7 @@ async function settle(
   claimSequence: number,
   outcome: {
     outcome: 'success' | 'retryable_failure' | 'permanent_failure' | 'ambiguous' | 'skipped';
-    skipReason?: 'no_active_assignment' | 'task_not_eligible' | 'schedule_superseded';
+    skipReason?: ReminderSkipDecision;
     failureCode?: string;
     providerAcceptedAt?: string;
     providerMessageRef?: string;
@@ -624,35 +710,81 @@ async function settle(
  * plus conditional settlement: a send racing a lifecycle change is recorded truthfully and changes
  * nothing about the schedule that moved.
  *
- * Capability and recipient-link requirements beyond "an active assignment exists" are deliberately
- * not checked: the A8.4b envelope question decides what a reminder is addressed to, and inventing
- * an answer here would be inventing product law.
+ * ## The capability gate (D130, A8.4b.1)
+ *
+ * A8.4a left this open, because what a reminder is addressed to was still an open product question.
+ * D130 answered it: the reminder carries no link and tells the Recipient to use the original
+ * assignment email. That answer makes the health of *that* email's capability a precondition for
+ * sending, because the reminder's only call to action is useless once it is dead — and the occurrence
+ * it would spend is a scarce resource, one per local calendar day, capped at fourteen (D106). Sending
+ * a reminder that instructs somebody to follow a revoked link consumes a day and delivers nothing.
+ *
+ * So a non-actionable capability is a truthful skip: `skipped` / `no_actionable_capability`, recorded
+ * on the immutable occurrence row, with no provider call. It is deliberately not a delivery failure —
+ * nothing failed to deliver, and the Owner's remedy is to re-send the assignment rather than to
+ * investigate a transport. It reads the canonical capability row from the same snapshot as everything
+ * else, so it cannot be reasoning about a capability that was live at a different instant than the
+ * Task, the assignment, and the schedule were.
+ *
+ * ## The delivery material
+ *
+ * A `proceed` verdict carries what the transport needs, taken from this same snapshot: the address the
+ * original assignment email went to, the persisted summary points, the canonical local due date, and
+ * the schedule's own IANA timezone. Read here rather than in the transport so every fact the send is
+ * built from comes from the one instant the guards approved.
  */
+type PreSendVerdict =
+  | { readonly kind: 'skip'; readonly reason: ReminderSkipDecision }
+  | { readonly kind: 'proceed'; readonly delivery: ReminderDeliveryMaterial };
+
+type ReminderSkipDecision =
+  'no_active_assignment' | 'task_not_eligible' | 'schedule_superseded' | 'no_actionable_capability';
+
+const SKIP = (reason: ReminderSkipDecision): PreSendVerdict => ({ kind: 'skip', reason });
+
+/**
+ * Reduce persisted summary points to the display lines a reminder body is built from.
+ *
+ * The same rule the assignment email applies — prefer a point's value, fall back to its label —
+ * deliberately restated here rather than imported from the A7 outbound builders. `lib/reminders` may
+ * not import Gmail code, and that guard is worth more than five lines of reuse. It is also not
+ * accidental duplication: D130 makes reminder content diverge from assignment content on purpose, and
+ * the reminder builder redacts what this returns before rendering it.
+ */
+function summaryLinesFor(points: readonly TaskSummaryPoint[]): string[] {
+  return points
+    .map((point) =>
+      ('value' in point && typeof point.value === 'string' ? point.value : point.label).trim(),
+    )
+    .filter((line) => line.length > 0);
+}
+
 async function evaluatePreSendGuards(
   runtime: DbRuntime,
   db: DbClient,
   schedule: DueSchedule,
   now: string,
-): Promise<'no_active_assignment' | 'task_not_eligible' | 'schedule_superseded' | null> {
+): Promise<PreSendVerdict> {
   const snapshot = await runtime.readReminderPreSendSnapshot(
     db,
     schedule.organizationId,
     schedule.taskId,
+    now,
   );
   if (!snapshot) {
-    return 'task_not_eligible';
+    return SKIP('task_not_eligible');
   }
 
   // Completed, dismissed, and Waiting all resolve to "not now", and the A8.2 policy says which is
   // which — the worker does not restate D107.
   if (decideReminderScheduling(snapshot.taskStatus).kind !== 'schedule_active') {
-    return 'task_not_eligible';
+    return SKIP('task_not_eligible');
   }
   if (!snapshot.hasActiveAssignment) {
-    return 'no_active_assignment';
+    return SKIP('no_active_assignment');
   }
   if (snapshot.dueLocalDate === null) {
-    return 'schedule_superseded';
+    return SKIP('schedule_superseded');
   }
 
   const current = snapshot.schedule;
@@ -664,14 +796,28 @@ async function evaluatePreSendGuards(
     current.nextOverdueOccurrenceAt === null ||
     current.nextOverdueOccurrenceAt !== schedule.nextOverdueOccurrenceAt
   ) {
-    return 'schedule_superseded';
+    return SKIP('schedule_superseded');
   }
 
   // The armed occurrence must genuinely have arrived. A scan reading `lte: now` and a guard reading
   // the row again cannot disagree unless the schedule moved, which the checks above already caught;
   // this is the belt on those braces, and it costs one comparison.
   if (Date.parse(schedule.nextOverdueOccurrenceAt) > Date.parse(now)) {
-    return 'schedule_superseded';
+    return SKIP('schedule_superseded');
   }
-  return null;
+
+  // D130: no actionable original capability, no reminder, no provider call.
+  if (snapshot.capabilityState !== 'actionable' || snapshot.deliveryTarget === null) {
+    return SKIP('no_actionable_capability');
+  }
+
+  return {
+    kind: 'proceed',
+    delivery: {
+      recipientEmail: snapshot.deliveryTarget.recipientEmail,
+      summaryLines: summaryLinesFor(snapshot.deliveryTarget.summaryPoints),
+      dueLocalDate: snapshot.dueLocalDate,
+      timeZone: current.schedulingTimeZone || REMINDER_SCHEDULING_TIME_ZONE,
+    },
+  };
 }

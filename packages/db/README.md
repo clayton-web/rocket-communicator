@@ -1,6 +1,6 @@
 # @aicaa/db
 
-Server-side Prisma persistence for A4–A7.3, the A8.3a reminder foundation, and the A8.4a occurrence lifecycle (D062, D006, D086–D094, D128). Domain rules live in `@aicaa/domain`; this package stores and retrieves records.
+Server-side Prisma persistence for A4–A7.3, the A8.3a reminder foundation, the A8.4a occurrence lifecycle, and the A8.4b.1 capability pre-send snapshot (D062, D006, D086–D094, D128, D130). Domain rules live in `@aicaa/domain`; this package stores and retrieves records.
 
 Operations: [../../docs/DEPLOYMENT.md](../../docs/DEPLOYMENT.md)
 
@@ -154,7 +154,15 @@ Phase B is not exported on its own from either barrel under a name that could be
 
 **`hasTerminalAdvanceOccurrence` replaces `hasProcessedAdvanceOccurrence`.** The old function counted a bare `claimed` lease as processed, so a worker that claimed an advance occurrence and died would have frozen that advance permanently — unreclaimable, because the unique occurrence identity refuses a second row. Only a terminal outcome settles the schedule's advance disposition, and settlement is the phase that writes both, so the attempt row and the schedule cannot describe different histories for longer than it takes to discharge the debt.
 
-**The advance-occurrence APIs are foundations, not a live path.** Nothing in A8.4a scans for or claims an advance occurrence: the due scan reads `next_overdue_occurrence_at` only. These functions handle `advance` correctly and tests exercise them directly, but delivering advance reminders is A8.4b work and needs its own scan predicate and matching index first.
+**The advance-occurrence APIs are foundations, not a live path.** Nothing in A8.4a scans for or claims an advance occurrence: the due scan reads `next_overdue_occurrence_at` only. These functions handle `advance` correctly and tests exercise them directly, but delivering advance reminders is A8.4b.3 work and needs its own scan predicate and matching index first.
+
+### A8.4b.1 additions
+
+Migration: `20260802173000_a8_4b1_capability_skip_reason` — one additive `ALTER TYPE "ReminderSkipReason" ADD VALUE IF NOT EXISTS 'no_actionable_capability'`, **unapplied in Production**. It rewrites no row, and `reminder_delivery_attempts_skip_reason_matches_outcome` tests only that a reason is present exactly when the outcome is `skipped`, so it enumerates no value and needs no revalidation. The file contains **one statement and uses the new value nowhere**, deliberately: PostgreSQL permits `ALTER TYPE ... ADD VALUE` inside a transaction but forbids _using_ the value in that same transaction, and Prisma wraps each file in one — so a file that added the value and then referenced it in an index predicate, a CHECK, or a backfill would pass a from-empty test and fail on apply. Evidence: `__tests__/a8-4b1-capability-skip-migration.test.ts`.
+
+**`no_actionable_capability` is deliberately not `no_active_assignment`.** D130 gives a reminder no capability link and directs the Recipient to the original assignment email, which creates a state the worker must be able to record: the assignment is alive, the Task is eligible, the schedule is armed — and the capability that email carried is revoked, expired, never activated, or already consumed. The two reasons must stay distinguishable because they imply different Owner remedies: one says nobody is assigned, so assign somebody; the other says somebody is assigned and cannot act, so re-send the assignment. Collapsing them would leave the history unable to say which.
+
+**`readReminderPreSendSnapshot` now reads five facts in the one `RepeatableRead` transaction, not four.** It gained the canonical capability row and, only when that capability is actionable, the recipient address and authorized summary points the transport needs. Adding a second query after the snapshot would have reintroduced the incoherent-read defect the A8.4a audit raised against the three-statement version of this function — the capability could be revoked between the two reads and the send would proceed on a fact that was true of a different moment. The delivery target is deliberately a **discriminated** field: it is `null` unless the capability is actionable, so a caller cannot reach a recipient address on a path that is not permitted to send. Persistence still derives no schedule and reads no clock; `now` is an argument, as the boundary guard requires.
 
 **`listDueReminderSchedulesGlobally` scans across organizations; nothing writes across them.** It returns a bounded batch ordered by occurrence instant then id, against a partial index on active schedules. Every row carries its own `organizationId`, read from the database rather than supplied, and every subsequent claim and finalization scopes by it. Owner-facing reads remain organization-scoped and take no such path.
 

@@ -21,14 +21,15 @@ import com.squareup.moshi.JsonClass
 import java.io.Serializable
 
 /**
- * Aggregate outcome of one internal reminder-processing invocation (A8.4a). Counts only: never a Task summary, Recipient identity, address, provider payload, failure detail, or claim internal. When `deliveryEnabled` or `transportConfigured` is false every count is zero, because the invocation scanned nothing, claimed nothing, wrote nothing, and called no transport. 
+ * Aggregate outcome of one internal reminder-processing invocation (A8.4a, A8.4b.1). Counts only: never a Task summary, Recipient identity, address, provider payload, failure detail, or claim internal. When `deliveryEnabled`, `transportConfigured`, or `transportAuthorized` is false every count is zero, because the invocation scanned nothing, claimed nothing, wrote nothing, and called no transport. 
  *
  * @param deliveryEnabled Whether `ENABLE_REMINDER_DELIVERY` was exactly \"true\". False in every environment in this milestone. 
- * @param transportConfigured Whether a transport was injected. False means the invocation failed closed and did no work at all: no real transport exists in this milestone, and processing refuses to run rather than manufacturing a fake that would report deliveries it never made. 
+ * @param transportConfigured Whether a transport was available to send through. False means the invocation failed closed and did no work at all: processing refuses to run rather than manufacturing a transport that would report deliveries it never made. Also false whenever delivery is disabled, because no transport is constructed at all in that case. 
+ * @param transportAuthorized Whether this invocation held a usable provider authorization when it began scanning.  Only meaningful when `deliveryEnabled` and `transportConfigured` are both true. It is false by default in the other two cases, where authorization was never attempted at all, so the three flags must be read as a triple: (false, false, false) is delivery disabled, (true, false, false) is delivery enabled with nothing to send through, (true, true, false) is authorization unusable, and (true, true, true) is an invocation that scanned.  False with the first two true means the Owner's Gmail connection is missing, has not granted the send scope, or could not produce an access token, and the invocation stopped before its first claim: no occurrence was created, no schedule moved, and no provider was contacted. Authorization is resolved once per invocation and always before any claim, so an unusable connection is never charged to a Task as a delivery failure. Which of those causes applied is deliberately not reported here. 
  * @param schedulesScanned 
  * @param occurrencesClaimed 
  * @param claimRefusals Occurrences a claim was refused for — held by another worker, already terminal, or out of retry budget. Ordinary contention; a persistently non-zero value alongside zero claims is the signature of a stuck occurrence. 
- * @param delivered Occurrences a transport accepted. Counts fake-transport acceptances only.
+ * @param delivered Occurrences a transport confirmed it accepted. Never an ambiguous outcome: a send whose result could not be determined is counted under `ambiguous` and is never reported here. 
  * @param skipped Occurrences a pre-send eligibility check truthfully refused.
  * @param failedRetryable Definite rejections that leave the occurrence owed and retryable.
  * @param failedPermanent 
@@ -49,9 +50,13 @@ data class ReminderProcessResponse (
     @Json(name = "deliveryEnabled")
     val deliveryEnabled: kotlin.Boolean,
 
-    /* Whether a transport was injected. False means the invocation failed closed and did no work at all: no real transport exists in this milestone, and processing refuses to run rather than manufacturing a fake that would report deliveries it never made.  */
+    /* Whether a transport was available to send through. False means the invocation failed closed and did no work at all: processing refuses to run rather than manufacturing a transport that would report deliveries it never made. Also false whenever delivery is disabled, because no transport is constructed at all in that case.  */
     @Json(name = "transportConfigured")
     val transportConfigured: kotlin.Boolean,
+
+    /* Whether this invocation held a usable provider authorization when it began scanning.  Only meaningful when `deliveryEnabled` and `transportConfigured` are both true. It is false by default in the other two cases, where authorization was never attempted at all, so the three flags must be read as a triple: (false, false, false) is delivery disabled, (true, false, false) is delivery enabled with nothing to send through, (true, true, false) is authorization unusable, and (true, true, true) is an invocation that scanned.  False with the first two true means the Owner's Gmail connection is missing, has not granted the send scope, or could not produce an access token, and the invocation stopped before its first claim: no occurrence was created, no schedule moved, and no provider was contacted. Authorization is resolved once per invocation and always before any claim, so an unusable connection is never charged to a Task as a delivery failure. Which of those causes applied is deliberately not reported here.  */
+    @Json(name = "transportAuthorized")
+    val transportAuthorized: kotlin.Boolean,
 
     @Json(name = "schedulesScanned")
     val schedulesScanned: kotlin.Int,
@@ -63,7 +68,7 @@ data class ReminderProcessResponse (
     @Json(name = "claimRefusals")
     val claimRefusals: kotlin.Int,
 
-    /* Occurrences a transport accepted. Counts fake-transport acceptances only. */
+    /* Occurrences a transport confirmed it accepted. Never an ambiguous outcome: a send whose result could not be determined is counted under `ambiguous` and is never reported here.  */
     @Json(name = "delivered")
     val delivered: kotlin.Int,
 

@@ -289,7 +289,10 @@ export interface GmailSendRawResponse {
  * users.messages.send (simple JSON `{ raw }` path). Returns the raw HTTP status plus the accepted
  * message id/thread id when Google returns 2xx, so the transport layer can classify outcomes.
  *
- * - fetch rejection (connection error) → GmailSendRawError('network') — request not submitted.
+ * - fetch rejection (connection error) → GmailSendRawError('network') — **acceptance is unknown**.
+ *   Node rejects with the same non-abort `TypeError` whether the connection was refused before the
+ *   request was written or reset (`UND_ERR_SOCKET`) after Gmail received the whole body, so callers
+ *   must not read this kind as proof that nothing was sent.
  * - abort/timeout → GmailSendRawError('timeout') — outcome is unknown (may have been accepted).
  * - 2xx with unparseable/absent id → GmailSendRawError('parse') — outcome is unknown.
  * The response body is never logged; only status + id/threadId are surfaced.

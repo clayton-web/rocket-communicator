@@ -24,6 +24,26 @@ export function isReminderDeliveryEnabled(env: NodeJS.ProcessEnv = process.env):
   return env[ENABLE_REMINDER_DELIVERY_ENV] === 'true';
 }
 
+/**
+ * The organization reminders are delivered for, or null when it is not configured (A8.4b.1).
+ *
+ * Reminder processing scans globally, but Gmail authorization is per-organization: a token belongs to
+ * one Owner's connected account and must never carry another Owner's mail. `OWNER_ORGANIZATION_ID` is
+ * the established name for the single Owner organization — `lib/auth/config.ts` requires it and
+ * `poll-service.ts` reads it exactly this way for exactly this reason — so authorization can be
+ * resolved once per invocation rather than once per organization discovered mid-scan.
+ *
+ * Read directly rather than through `getAuthConfig()`, which also requires the Supabase and app-URL
+ * variables a cron-only invocation has no use for. Null means no transport is composed at all, so the
+ * invocation fails closed exactly as it does with no transport configured.
+ */
+export function getReminderDeliveryOrganizationId(
+  env: NodeJS.ProcessEnv = process.env,
+): string | null {
+  const value = env.OWNER_ORGANIZATION_ID;
+  return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
 /** Schedules examined per invocation. Bounded so one wake-up cannot fan out without limit. */
 export const MAX_SCHEDULES_PER_PROCESS = 25;
 
@@ -57,8 +77,8 @@ export const SCHEDULE_CLAIM_LEASE_MS = 60_000;
  * Three, and then the occurrence is finalized `permanent_failure` with `retry_budget_exhausted`.
  * Leaving it retryable forever would let one unreachable Recipient monopolize every batch; leaving
  * it unsettled would let an elapsed occurrence sit `scheduled` indefinitely, which is the state
- * H-2 closed. The terminal row is also the durable evidence a future Owner-attention threshold
- * (Q8) will count.
+ * H-2 closed. The terminal row is also the durable evidence D129's consecutive-ambiguous threshold
+ * will count in A8.4b.2.
  */
 export const MAX_OCCURRENCE_ATTEMPTS = 3;
 

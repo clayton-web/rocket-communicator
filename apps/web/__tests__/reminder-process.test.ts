@@ -88,6 +88,59 @@ function taskFixture(id: string, at: string): Task {
 }
 
 /**
+ * Give the Task's assignment an actionable original capability (D130, A8.4b.1).
+ *
+ * Every A8.4a seed here represented a Recipient who was assigned but had never been sent anything
+ * they could act on, which was invisible while there was no real transport. D130 made it visible: a
+ * reminder's only instruction is "use the original assignment email", so the worker now refuses to
+ * send when that email's capability is not actionable. The seed has to represent a Recipient who can
+ * actually act, or every test would assert against a skip.
+ *
+ * Written through Prisma rather than the A7 issue/activate pair on purpose: this is a fixture stating
+ * a starting condition, not an exercise of the capability lifecycle, and going through the real path
+ * would drag handoff attempts and token minting into a reminder test.
+ */
+async function grantActionableCapability(
+  taskId: string,
+  overrides: {
+    status?: 'active' | 'revoked' | 'expired';
+    expiresAt?: string;
+    actionableAt?: string | null;
+  } = {},
+): Promise<string> {
+  const assignment = await db.prisma.taskAssignment.findFirstOrThrow({
+    where: { taskId, organizationId: org, clearedAt: null },
+  });
+  const capabilityId = `cap_${taskId}`;
+  await db.prisma.taskCapability.create({
+    data: {
+      id: capabilityId,
+      organizationId: org,
+      taskId,
+      assignmentId: assignment.id,
+      recipientId: assignment.recipientId,
+      intendedRecipientEmail: assignment.intendedRecipientEmail,
+      scope: [...DEFAULT_RECIPIENT_CAPABILITY_SCOPE],
+      status: overrides.status ?? 'active',
+      tokenHash: `hash_${capabilityId}`,
+      issuedAt: new Date('2026-08-01T12:00:00.000Z'),
+      expiresAt: new Date(overrides.expiresAt ?? '2027-01-01T00:00:00.000Z'),
+      actionableAt:
+        overrides.actionableAt === null
+          ? null
+          : new Date(overrides.actionableAt ?? '2026-08-01T12:05:00.000Z'),
+      revokedAt: overrides.status === 'revoked' ? new Date('2026-08-10T00:00:00.000Z') : null,
+      revocationReason: overrides.status === 'revoked' ? 'manual' : null,
+    },
+  });
+  await db.prisma.taskAssignment.update({
+    where: { id: assignment.id },
+    data: { activeCapabilityId: capabilityId, capabilityStatus: overrides.status ?? 'active' },
+  });
+  return capabilityId;
+}
+
+/**
  * A Task with an active schedule whose overdue occurrence has already arrived.
  *
  * The due date is well in the past so the armed occurrence is due at the `now` every test uses,
@@ -95,7 +148,7 @@ function taskFixture(id: string, at: string): Task {
  */
 async function seedDueTask(
   key: string,
-  options: { dueLocalDate?: string } = {},
+  options: { dueLocalDate?: string; capability?: false } = {},
 ): Promise<{ taskId: string; scheduleId: string; occurrenceAt: string }> {
   const taskId = `task_${key}`;
   const establishedAt = '2026-08-01T12:00:00.000Z';
@@ -105,6 +158,9 @@ async function seedDueTask(
   });
   const task = taskFixture(taskId, establishedAt);
   await createTask(db.prisma, org, task, task.assignment);
+  if (options.capability !== false) {
+    await grantActionableCapability(taskId);
+  }
 
   const dueLocalDate = parseLocalDate(options.dueLocalDate ?? '2026-08-05');
   const advance = decideAdvanceReminder({ dueLocalDate, establishedAt });
@@ -524,7 +580,9 @@ describe('A8.4a reminder occurrence processing', () => {
     });
 
     it('skips a Task with no active assignment', async () => {
-      const seeded = await seedDueTask('guard_assignment');
+      // Seeded without a capability: the capability row references the assignment, and this test is
+      // about the assignment being gone rather than about how it went.
+      const seeded = await seedDueTask('guard_assignment', { capability: false });
       const transport = new FakeReminderTransport();
       await db.prisma.taskAssignment.deleteMany({ where: { taskId: seeded.taskId } });
 
@@ -1245,6 +1303,7 @@ describe('A8.4a reminder occurrence processing', () => {
       const allowed = new Set([
         'deliveryEnabled',
         'transportConfigured',
+        'transportAuthorized',
         'schedulesScanned',
         'occurrencesClaimed',
         'claimRefusals',

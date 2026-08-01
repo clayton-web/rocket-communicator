@@ -190,6 +190,43 @@ describeMaybe('A8.4a worker and Owner contention (real PostgreSQL 16)', () => {
     await prisma.$disconnect();
   });
 
+  /**
+   * An actionable original assignment capability (D130, A8.4b.1).
+   *
+   * The overdue path will not send without one, and it is right that it will not: a reminder's only
+   * instruction is to use the original assignment email, so a Recipient holding no working capability
+   * is skipped rather than told to follow a dead link. This suite's subject is claim, recovery, and
+   * settlement behaviour, which means its fixture has to represent a Recipient who can actually act —
+   * otherwise every round would assert against a `skipped` occurrence and prove nothing about
+   * contention. What the capability gate itself does is asserted in `a8-4b1-reminder-delivery.test.ts`.
+   */
+  async function grantActionableCapability(taskId: string): Promise<void> {
+    const assignment = await prisma.taskAssignment.findFirstOrThrow({
+      where: { taskId, organizationId: org, clearedAt: null },
+    });
+    const capabilityId = `cap_${taskId}`;
+    await prisma.taskCapability.create({
+      data: {
+        id: capabilityId,
+        organizationId: org,
+        taskId,
+        assignmentId: assignment.id,
+        recipientId: assignment.recipientId,
+        intendedRecipientEmail: assignment.intendedRecipientEmail,
+        scope: [...DEFAULT_RECIPIENT_CAPABILITY_SCOPE],
+        status: 'active',
+        tokenHash: `hash_${capabilityId}`,
+        issuedAt: new Date('2026-08-01T12:00:00.000Z'),
+        expiresAt: new Date('2027-01-01T00:00:00.000Z'),
+        actionableAt: new Date('2026-08-01T12:05:00.000Z'),
+      },
+    });
+    await prisma.taskAssignment.update({
+      where: { id: assignment.id },
+      data: { activeCapabilityId: capabilityId, capabilityStatus: 'active' },
+    });
+  }
+
   /** A Task with an established, active schedule whose overdue occurrence has already arrived. */
   async function seed(prefix: string): Promise<{ taskId: string; scheduleId: string }> {
     sequence += 1;
@@ -201,6 +238,7 @@ describeMaybe('A8.4a worker and Owner contention (real PostgreSQL 16)', () => {
     });
     const task = taskFixture(taskId, establishedAt);
     await createTaskRow(prisma, org, task, task.assignment);
+    await grantActionableCapability(taskId);
 
     const dueLocalDate = parseLocalDate('2026-08-05');
     const advance = decideAdvanceReminder({ dueLocalDate, establishedAt });

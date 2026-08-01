@@ -33,16 +33,66 @@ export type ReminderTransportResult =
   | { readonly kind: 'permanent'; readonly failureCode: string }
   | { readonly kind: 'ambiguous'; readonly failureCode: string };
 
+/**
+ * What a real transport must be told in order to compose a reminder (A8.4b.1).
+ *
+ * Isolated behind its own key for the same reason `ReminderPreSendSnapshot.deliveryTarget` is: this
+ * is the only part of a transport request that carries a Recipient address or Task text. Counters,
+ * aggregates, and logs take the identity fields beside it and are structurally unable to reach in
+ * here. It arrives from the pre-send snapshot, so it describes the same instant the guards passed on,
+ * and it is discarded when the call returns — nothing persists it.
+ *
+ * There is no capability token, capability URL, task URL, or redirect target, and there is no field
+ * one could be smuggled through. D130 is enforced by the shape as well as by the builder.
+ */
+export interface ReminderDeliveryMaterial {
+  readonly recipientEmail: string;
+  readonly summaryLines: readonly string[];
+  /** Organization-local calendar date (D103). Never an instant. */
+  readonly dueLocalDate: string;
+  /** Named IANA organization timezone (D103). */
+  readonly timeZone: string;
+}
+
 export interface ReminderTransportRequest {
   /** Opaque occurrence identity. Never a recipient address, subject, or body. */
   readonly occurrenceId: string;
+  readonly organizationId: string;
   readonly taskId: string;
   readonly occurrenceKind: 'advance' | 'overdue';
   readonly occurrenceLocalDate: string;
+  readonly delivery: ReminderDeliveryMaterial;
 }
 
 export interface ReminderTransport {
   send(request: ReminderTransportRequest): Promise<ReminderTransportResult>;
+}
+
+/**
+ * The once-per-invocation authorization seam (A8.4b.1).
+ *
+ * Sending a reminder needs an authorized Owner Gmail connection, and *when* that is established is a
+ * safety property rather than an implementation detail. Resolving it per occurrence would mean an
+ * invocation could claim ten occurrences, deliver three, and then discover the connection was never
+ * usable — having already consumed three local calendar days under D106 for messages that had no
+ * chance of being sent. Resolving it per schedule has the same shape at a smaller scale.
+ *
+ * So the service resolves this exactly once, before it claims anything. An `unavailable` result ends
+ * the invocation with zero claims, zero occurrence rows, zero schedule mutations, and zero provider
+ * calls: a missing Gmail connection is a fact about the deployment, not a delivery failure belonging
+ * to some Task that happened to be scanned first.
+ *
+ * Deliberately provider-free. This interface names no Gmail concept, so `lib/reminders` still imports
+ * nothing from any provider and `a8-4a-worker-safety-guards.test.ts` keeps enforcing that. The Gmail
+ * implementation lives beside the Gmail primitives it wraps and is composed in the route.
+ */
+export type ReminderTransportResolution =
+  | { readonly state: 'available'; readonly transport: ReminderTransport }
+  /** Privacy-safe, enumerable reason. Never a provider error, body, or token. */
+  | { readonly state: 'unavailable'; readonly reason: string };
+
+export interface ReminderTransportProvider {
+  resolve(): Promise<ReminderTransportResolution>;
 }
 
 /** Deterministic scripted outcomes, keyed by Task id — the identity a test controls. */

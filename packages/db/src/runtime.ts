@@ -228,6 +228,8 @@ export {
   readCoherentReminderProjection,
   readReminderPreSendSnapshot,
   type CoherentReminderProjection,
+  type ReminderCapabilityState,
+  type ReminderDeliveryTarget,
   type ReminderPreSendSnapshot,
 } from './transactions/a8-reminder-transactions.js';
 export {

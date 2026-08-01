@@ -1,4 +1,4 @@
-import type { LocalDate, TaskStatus } from '@aicaa/domain';
+import type { LocalDate, TaskStatus, TaskSummaryPoint } from '@aicaa/domain';
 import type { DbClient, DbTransaction } from '../client/create-prisma-client.js';
 import {
   mapReminderSchedule,
@@ -215,17 +215,60 @@ export async function readCoherentReminderProjection(
 }
 
 /**
+ * Whether the Recipient can still act on the assignment this reminder points at (D130, A8.4b.1).
+ *
+ * Identity-free by construction: five states, no address, no capability id, no token, and no URL.
+ * D130 forbids a reminder from carrying a link, so the reminder's only call to action is "use the
+ * original assignment email" — which makes the health of *that* email's capability a precondition
+ * for sending at all. These are the distinctions the Owner needs to tell apart, because each one
+ * implies a different remedy:
+ *
+ * - `actionable` — an active, activated, unexpired capability exists. The reminder may be sent.
+ * - `missing` — no active assignment, or no capability on it. Nothing was ever delivered to act on.
+ * - `expired` — the capability's own TTL has passed.
+ * - `revoked` — the Owner or a supersession revoked it.
+ * - `not_actionable` — it exists and is active but was never activated by an accepted send, or has
+ *   already been consumed. A8.4a's `deliveryStatus`/`actionableAt` rule (D092), read as a state.
+ */
+export type ReminderCapabilityState =
+  'actionable' | 'missing' | 'expired' | 'revoked' | 'not_actionable';
+
+/**
+ * The material a real transport needs to compose a reminder, and nothing else (A8.4b.1).
+ *
+ * Deliberately a separate, separately-named field rather than extra keys on the snapshot: this is
+ * the only part of the pre-send read that carries a Recipient address or Task text, so isolating it
+ * is what lets every other consumer — counters, aggregates, telemetry, logs — be structurally unable
+ * to touch it. Present only when `capabilityState === 'actionable'`; a skip never needs it.
+ *
+ * `recipientEmail` is the capability's `intended_recipient_email`, which is precisely the address
+ * the original assignment email went to. That is the address D130's instruction refers to, so the
+ * reminder must go to the same one rather than to a Recipient record that may since have changed.
+ *
+ * Never logged, never counted, never returned by the internal endpoint (D109, D114).
+ */
+export interface ReminderDeliveryTarget {
+  readonly recipientEmail: string;
+  /** Persisted, privacy-reviewed Task summary points. Never a source excerpt or raw Gmail content. */
+  readonly summaryPoints: TaskSummaryPoint[];
+}
+
+/**
  * Everything the worker must re-check immediately before a send, as one snapshot (A8.4a audit).
  *
  * `hasActiveAssignment` rather than the assignment itself: the worker's only question is whether
  * one exists, and returning the row would put a Recipient identity into a structure the aggregate
- * telemetry path also touches.
+ * telemetry path also touches. A8.4b.1 keeps that rule and adds the two fields a real send cannot
+ * work without — an identity-free capability verdict, and the delivery material quarantined behind
+ * its own key so the boolean-and-enum part of this structure stays safe to hand anywhere.
  */
 export interface ReminderPreSendSnapshot {
   readonly taskStatus: TaskStatus;
   readonly hasActiveAssignment: boolean;
   readonly dueLocalDate: string | null;
   readonly schedule: PersistedReminderSchedule | null;
+  readonly capabilityState: ReminderCapabilityState;
+  readonly deliveryTarget: ReminderDeliveryTarget | null;
 }
 
 /**
@@ -250,17 +293,29 @@ export interface ReminderPreSendSnapshot {
  * better reasons — so the final authority stays where it belongs, on the immutable occurrence row
  * and on conditional settlement, which together mean a send racing a lifecycle change is recorded
  * truthfully and changes nothing about the schedule that moved.
+ *
+ * ## Why the capability read belongs in here rather than beside it (A8.4b.1)
+ *
+ * D130 makes capability health a pre-send gate, and the obvious implementation — a second query
+ * after this one returns — would reintroduce exactly the defect the A8.4a audit raised against the
+ * three-statement version of this function. A capability revoked between two reads would be seen as
+ * live by one of them, and the decision being fed is still "send an email to a real person". So the
+ * capability and the delivery material are read inside the same `RepeatableRead` snapshot as the
+ * Task, the assignment, and the schedule: five reads, one instant that existed.
+ *
+ * `now` is an argument, never a clock read here (D103, and the persistence boundary guard).
  */
 export async function readReminderPreSendSnapshot(
   db: DbClient,
   organizationId: string,
   taskId: string,
+  now: string,
 ): Promise<ReminderPreSendSnapshot | null> {
   return db.$transaction(
     async (tx) => {
       const task = await tx.task.findFirst({
         where: { id: taskId, organizationId },
-        select: { status: true, dueLocalDate: true },
+        select: { status: true, dueLocalDate: true, summaryPoints: true },
       });
       if (!task) {
         return null;
@@ -269,20 +324,78 @@ export async function readReminderPreSendSnapshot(
       // immutable history and a returned assignment must not keep a reminder addressable.
       const activeAssignment = await tx.taskAssignment.findFirst({
         where: { taskId, organizationId, clearedAt: null },
-        select: { id: true },
+        select: { id: true, activeCapabilityId: true },
       });
       const schedule = await tx.taskReminderSchedule.findFirst({
         where: { taskId, organizationId },
       });
+
+      // The capability the original assignment email carried, read from the same snapshot. Scoped by
+      // organization as well as id: a global scan is still an organization-scoped read.
+      const capability = activeAssignment?.activeCapabilityId
+        ? await tx.taskCapability.findFirst({
+            where: { id: activeAssignment.activeCapabilityId, organizationId, taskId },
+            select: {
+              status: true,
+              expiresAt: true,
+              actionableAt: true,
+              intendedRecipientEmail: true,
+            },
+          })
+        : null;
+
+      const capabilityState = classifyReminderCapabilityState(capability, now);
       return {
         taskStatus: task.status,
         hasActiveAssignment: activeAssignment !== null,
         dueLocalDate: task.dueLocalDate ?? null,
         schedule: schedule ? mapReminderSchedule(schedule) : null,
+        capabilityState,
+        deliveryTarget:
+          capabilityState === 'actionable' && capability
+            ? {
+                recipientEmail: capability.intendedRecipientEmail,
+                summaryPoints: task.summaryPoints as unknown as TaskSummaryPoint[],
+              }
+            : null,
       };
     },
     { isolationLevel: 'RepeatableRead' },
   );
+}
+
+/**
+ * Reduce a capability row to the identity-free verdict the reminder gate acts on (D130).
+ *
+ * Ordered so the more specific cause wins: a capability that is both revoked and past its TTL
+ * reports `revoked`, because that is the fact that explains it and the one whose remedy differs.
+ * `expired` is decided on the wall-clock comparison as well as the persisted status, since expiry is
+ * a passage of time rather than an event and the status row may not have been swept yet.
+ *
+ * The actionability rule is `isPersistedCapabilityActionable`'s, restated here against a selected
+ * projection rather than duplicated policy: active, activated by an accepted send, and unexpired.
+ */
+function classifyReminderCapabilityState(
+  capability: {
+    readonly status: string;
+    readonly expiresAt: Date;
+    readonly actionableAt: Date | null;
+  } | null,
+  now: string,
+): ReminderCapabilityState {
+  if (!capability) {
+    return 'missing';
+  }
+  if (capability.status === 'revoked') {
+    return 'revoked';
+  }
+  if (capability.status === 'expired' || capability.expiresAt.toISOString() <= now) {
+    return 'expired';
+  }
+  if (capability.status !== 'active' || capability.actionableAt === null) {
+    return 'not_actionable';
+  }
+  return 'actionable';
 }
 
 /**

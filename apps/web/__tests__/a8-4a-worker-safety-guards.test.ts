@@ -203,12 +203,9 @@ describe('the processing slice cannot reach a real provider', () => {
    * is covered on the day it appears, by nobody remembering anything.
    */
   const REMINDER_DIR = 'lib/reminders';
-  const PROCESSING_SOURCES = [
-    ...readdirSync(path.join(webRoot, REMINDER_DIR))
-      .filter((entry) => entry.endsWith('.ts') && !entry.endsWith('.d.ts'))
-      .map((entry) => `${REMINDER_DIR}/${entry}`),
-    'app/api/v1/internal/reminders/process/route.ts',
-  ];
+  const PROCESSING_SOURCES = readdirSync(path.join(webRoot, REMINDER_DIR))
+    .filter((entry) => entry.endsWith('.ts') && !entry.endsWith('.d.ts'))
+    .map((entry) => `${REMINDER_DIR}/${entry}`);
 
   /**
    * `authorizeCronRequest` sits under `lib/gmail/` because the Gmail poll was the first internal
@@ -253,11 +250,36 @@ describe('the processing slice cannot reach a real provider', () => {
     expect(cronAuth).not.toMatch(/googleapis|google-auth|OAuth2/i);
   });
 
-  it('the fake transport is the only transport that exists at all', () => {
+  /**
+   * The route is the composition root, and A8.4b.1 gives it exactly one more Gmail import.
+   *
+   * The directory guard above deliberately no longer covers the route. It cannot: a real transport
+   * has to be constructed *somewhere*, and the whole design of this slice is that the somewhere is a
+   * single composition point rather than anywhere inside the processing slice. So the rule for the
+   * route is not "no Gmail" but "one Gmail seam and nothing else", enumerated here — which is a
+   * stronger statement than the old blanket ban was, because the old ban was satisfiable only by an
+   * endpoint that could never deliver anything.
+   */
+  it('the route imports exactly two Gmail seams: cron auth and the reminder transport provider', () => {
+    const route = readCode(path.join(webRoot, 'app/api/v1/internal/reminders/process/route.ts'));
+    const gmailImports = [
+      ...route.matchAll(/from\s+['"](?<specifier>[^'"]*gmail[^'"]*)['"]/gi),
+    ].map((match) => match.groups?.specifier);
+    expect([...gmailImports].sort()).toEqual([
+      '@/lib/gmail/cron-auth',
+      '@/lib/gmail/reminder-transport-provider',
+    ]);
+    for (const forbidden of [/googleapis/i, /@aicaa\/ai/, /nodemailer/i]) {
+      expect(route.match(forbidden)?.[0] ?? null).toBe(null);
+    }
+  });
+
+  it('the fake transport is the only transport inside the processing slice', () => {
     const transport = readCode(path.join(webRoot, 'lib/reminders/transport.ts'));
     expect(transport).toContain('FakeReminderTransport');
-    // A8.4b introduces the real one. Until then a production transport must not exist to inject.
-    expect(transport).not.toMatch(/class\s+Gmail|RealReminderTransport/);
+    // A8.4b.1's real transport is a Gmail module. It must never appear in this directory, because
+    // `lib/reminders` is what the guards above keep provider-free.
+    expect(transport).not.toMatch(/class\s+Gmail|RealReminderTransport|sendRawMessage/);
   });
 });
 
@@ -277,10 +299,11 @@ describe('H3: the processing service fails closed rather than faking a send', ()
   it('never constructs a transport of any kind', () => {
     expect(
       service.match(/new\s+\w*Transport\w*\s*\(/)?.[0] ?? null,
-      'The service must not instantiate a transport. A8.4a has no real one, so anything it could ' +
-        'construct is a fake, and a fake that reports acceptance records deliveries that never ' +
-        'happened (A8.4a audit H3).',
+      'The service must not instantiate a transport. Anything it could construct is either a fake ' +
+        'that reports deliveries which never happened (A8.4a audit H3) or a real sender it has no ' +
+        'business authorizing (A8.4b.1). Both arrive from outside.',
     ).toBe(null);
+    expect(service).not.toContain('createGmailReminderTransport');
   });
 
   it('does not even import the fake transport class', () => {
@@ -294,7 +317,7 @@ describe('H3: the processing service fails closed rather than faking a send', ()
   it('refuses to proceed when no transport was injected', () => {
     // The fail-closed branch must be reached before any database work, which is why it is checked
     // in the same expression as the feature flag and returns before the runtime is loaded.
-    const guardIndex = service.indexOf('!deliveryEnabled || !transport');
+    const guardIndex = service.indexOf('!deliveryEnabled || !transportConfigured');
     expect(
       guardIndex,
       'expected a combined disabled/unconfigured fail-closed guard',
@@ -312,10 +335,195 @@ describe('H3: the processing service fails closed rather than faking a send', ()
     ).toBe(null);
   });
 
-  it('the route injects nothing, so the endpoint cannot deliver even if enabled', () => {
+  /**
+   * A8.4b.1: the flag decides whether a Gmail object is *built*, not just whether it is used.
+   *
+   * The A8.4a version of this guard asserted the route injected nothing at all, which was true and is
+   * no longer the design. The replacement is the stronger property that took its place: with the flag
+   * unset, `composeTransportProvider` returns before touching Gmail, so no access resolver exists, no
+   * refresh token is decrypted, and no token exchange is attempted. "Disabled implies no Gmail
+   * contact" is then a fact about the composition rather than a promise made further down the stack.
+   */
+  it('composes no Gmail transport at all unless the flag is exactly on', () => {
     const route = readCode(path.join(webRoot, 'app/api/v1/internal/reminders/process/route.ts'));
-    expect(route).toContain('runInternalReminderProcess({ db, requestId: requestId! })');
-    expect(route).not.toContain('transport');
+    const compose = extractFunction(route, 'composeTransportProvider');
+    const flagIndex = compose.indexOf('isReminderDeliveryEnabled()');
+    const constructIndex = compose.indexOf('createGmailReminderTransportProvider(');
+    expect(flagIndex, 'expected the flag to be checked in the composition root').toBeGreaterThan(
+      -1,
+    );
+    expect(constructIndex).toBeGreaterThan(flagIndex);
+    // The early return between them is what makes the ordering load-bearing rather than incidental.
+    expect(compose.slice(flagIndex, constructIndex)).toMatch(/return\s+undefined/);
+  });
+
+  it('fails closed when the Owner organization is not configured', () => {
+    const route = readCode(path.join(webRoot, 'app/api/v1/internal/reminders/process/route.ts'));
+    const compose = extractFunction(route, 'composeTransportProvider');
+    const orgIndex = compose.indexOf('getReminderDeliveryOrganizationId()');
+    expect(orgIndex).toBeGreaterThan(-1);
+    expect(orgIndex).toBeLessThan(compose.indexOf('createGmailReminderTransportProvider('));
+    expect(compose).toMatch(/if\s*\(!organizationId\)/);
+  });
+});
+
+/**
+ * A8.4b.1: the real Gmail reminder transport, and every way it must stay out of reach.
+ */
+describe('A8.4b.1: the reminder transport cannot be reached by accident', () => {
+  const adapterPath = 'lib/gmail/outbound/reminder-transport.ts';
+  const adapter = readCode(path.join(webRoot, adapterPath));
+  const providerPath = 'lib/gmail/reminder-transport-provider.ts';
+  const provider = readCode(path.join(webRoot, providerPath));
+  const email = readCode(path.join(webRoot, 'lib/gmail/outbound/reminder-email.ts'));
+  const service = readCode(path.join(webRoot, 'lib/reminders/process-service.ts'));
+
+  /**
+   * The send half and the authorization half are two files because two guards point in opposite
+   * directions and both are right: `lib/reminders` may import no provider, and A7.4's
+   * `gmail-transport-packaging.test.ts` forbids anything under `lib/gmail/outbound` from importing
+   * the database layer — so that message construction and provider I/O cannot reach persistence and
+   * quietly mutate handoff state. Asserting the split here records *why* it exists, so a later slice
+   * that merges the files back together fails with the reason rather than with a stale path.
+   */
+  it('keeps the sender free of persistence and the authorization out of the outbound directory', () => {
+    expect(adapter).not.toMatch(/from\s+['"]@aicaa\/db(\/[^'"]*)?['"]/);
+    expect(adapter).not.toMatch(/from\s+['"]@\/lib\/db\//);
+    expect(adapter).not.toContain('createGmailAccessResolver');
+    // And the composition point is the only place the two meet.
+    expect(provider).toContain('createGmailAccessResolver');
+    expect(provider).toContain('createGmailReminderTransport');
+  });
+
+  it('resolves the access token in exactly one place and passes it as an argument', () => {
+    // A second resolver would be a second refresh-token decryption and a second scope evaluation,
+    // free to disagree with A7's. The adapter must therefore never learn where its token came from.
+    expect((provider.match(/accessResolver\.resolve\(/g) ?? []).length).toBe(1);
+    expect(adapter).toContain('deps.accessToken');
+    expect(adapter).not.toMatch(/refreshToken|granted_scopes|grantedScopes/i);
+  });
+
+  it('refuses to build a real sender under an automated test runner', () => {
+    // The only protection in this file that also covers tests nobody has written yet.
+    expect(adapter).toContain('ReminderTransportTestEnvironmentError');
+    const resolver = extractFunction(adapter, 'resolveRawSender');
+    expect(resolver).toContain('isAutomatedTestEnvironment()');
+    expect(resolver).toMatch(/throw\s+new\s+ReminderTransportTestEnvironmentError/);
+    // The real sender must be the last resort, after both the injection and the test check.
+    expect(resolver.indexOf('sendRawMessage')).toBeGreaterThan(
+      resolver.indexOf('isAutomatedTestEnvironment()'),
+    );
+  });
+
+  it('never reuses an A7 handoff send path for a reminder', () => {
+    for (const forbidden of [
+      'createHandoffTransportPort',
+      'createGmailTransport',
+      'buildAssignmentEmail',
+      'buildGmailForward',
+      'createOutboundMessagePreparer',
+      'runInitialHandoff',
+      'runHandoffRetry',
+    ]) {
+      for (const [label, source] of [
+        [adapterPath, adapter],
+        [providerPath, provider],
+      ] as const) {
+        expect(
+          source.includes(forbidden),
+          `${label} must not route a reminder through A7 handoff code (${forbidden}).`,
+        ).toBe(false);
+      }
+    }
+  });
+
+  it('adds no threading, CC, or BCC', () => {
+    for (const forbidden of [/threadId/, /\bcc\s*:/i, /\bbcc\b/i, /In-Reply-To/i, /References/]) {
+      for (const source of [adapter, provider, email]) {
+        expect(source.match(forbidden)?.[0] ?? null).toBe(null);
+      }
+    }
+  });
+
+  it('builds no capability, link, or URL into a reminder (D130)', () => {
+    for (const source of [adapter, provider, email]) {
+      for (const forbidden of [
+        /buildCapabilityUrl/,
+        /capabilityUrl/,
+        /issueCapability/,
+        /mintCapability/,
+        /https?:\/\//,
+        /<a\s+href/i,
+      ]) {
+        expect(source.match(forbidden)?.[0] ?? null).toBe(null);
+      }
+    }
+  });
+
+  it('never stores or logs a token, a raw response, or a MIME body', () => {
+    for (const source of [adapter, provider, email]) {
+      expect(source).not.toMatch(/console\./);
+      expect(source).not.toMatch(/logger?\.(info|warn|error|debug)/);
+    }
+    // The only thing kept from an acceptance is the provider message id, in exactly one place.
+    const send = adapter.slice(adapter.indexOf('async send('));
+    expect(send).toContain('providerMessageRef: response.id');
+    expect((send.match(/providerMessageRef/g) ?? []).length).toBe(1);
+    expect(send).not.toMatch(/response\.(headers|body|text|raw|threadId)/);
+  });
+
+  it('resolves authorization exactly once, before the first claim', () => {
+    const resolveIndex = service.indexOf('provider.resolve()');
+    expect(resolveIndex, 'expected a once-per-invocation authorization resolution').toBeGreaterThan(
+      -1,
+    );
+    // Exactly one call site: a second would be a second resolution per invocation.
+    expect((service.match(/provider\.resolve\(\)/g) ?? []).length).toBe(1);
+    for (const laterWork of [
+      'settleUnsettledOccurrences(context',
+      'listDueReminderSchedulesGlobally',
+      'claimReminderScheduleForProcessing',
+      'claimReminderOccurrence',
+    ]) {
+      const index = service.indexOf(laterWork);
+      expect(index, `expected to find ${laterWork}`).toBeGreaterThan(-1);
+      expect(
+        resolveIndex,
+        `authorization must be resolved before ${laterWork}: an unusable connection must cost ` +
+          'zero claims and zero writes (A8.4b.1).',
+      ).toBeLessThan(index);
+    }
+  });
+
+  it('checks the capability state before the provider marker and the send', () => {
+    // Execution order, read from the one function that performs all three steps in sequence. The
+    // gate itself lives in `evaluatePreSendGuards`, which is declared further down the file — so
+    // comparing declaration positions would prove nothing about the order things happen in.
+    const occurrence = extractFunction(service, 'processOneOccurrence');
+    const guardIndex = occurrence.indexOf('evaluatePreSendGuards(');
+    const markerIndex = occurrence.indexOf('markProviderCallStarted');
+    const sendIndex = occurrence.indexOf('transport.send(');
+    expect(
+      guardIndex,
+      'expected the pre-send guards to run in the occurrence path',
+    ).toBeGreaterThan(-1);
+    expect(guardIndex).toBeLessThan(markerIndex);
+    expect(markerIndex).toBeLessThan(sendIndex);
+    // A skip verdict must return rather than fall through to the marker and the call.
+    expect(occurrence.slice(guardIndex, markerIndex)).toMatch(/kind === 'skip'[\s\S]*return;/);
+
+    const guards = extractFunction(service, 'evaluatePreSendGuards');
+    expect(guards, 'expected a D130 capability gate').toContain("capabilityState !== 'actionable'");
+    expect(guards).toContain('no_actionable_capability');
+  });
+
+  it('reads the capability from the same snapshot as everything else it gates on', () => {
+    const transactions = readCode(path.join(dbSrc, 'transactions/a8-reminder-transactions.ts'));
+    const snapshot = extractFunction(transactions, 'readReminderPreSendSnapshot');
+    expect(snapshot).toMatch(/isolationLevel:\s*'RepeatableRead'/);
+    expect(snapshot).toContain('taskCapability.findFirst');
+    // One transaction, so the capability cannot be true of a different instant than the schedule.
+    expect((snapshot.match(/\$transaction\(/g) ?? []).length).toBe(1);
   });
 });
 

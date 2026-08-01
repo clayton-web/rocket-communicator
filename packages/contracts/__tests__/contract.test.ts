@@ -283,8 +283,10 @@ describe('contracts package', () => {
       'schedulesScanned',
       'settlementsDeferred',
       'skipped',
-      // Distinguishes "flag off" from "no transport injected" (A8.4a audit H3), which are two very
-      // different reasons for a zero-work response.
+      // Three different reasons for a zero-work response, reported apart: the flag is off, no
+      // transport was available (A8.4a audit H3), or authorization failed before the first claim
+      // (A8.4b.1). An operator seeing zeros needs to know which.
+      'transportAuthorized',
       'transportConfigured',
       'unsettledOccurrencesSettled',
     ]);

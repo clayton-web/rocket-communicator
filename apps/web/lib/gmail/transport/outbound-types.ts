@@ -33,7 +33,19 @@ export interface OutboundAttachment {
   contentId?: string;
 }
 
-export interface OutboundMessage {
+/**
+ * Everything MIME construction actually reads to emit one RFC 5322 message.
+ *
+ * Split out from {@link OutboundMessage} in A8.4b.1. `deliveryPath` is A7 handoff metadata that
+ * `buildMimeMessage` has never looked at — it exists so the Gmail transport can echo it back on an
+ * acceptance — and requiring it forced any non-handoff sender to either widen the A7 delivery-path
+ * union or claim to be an assignment email. A reminder is neither, and lying about which it was in
+ * order to reuse the MIME builder would put a false value into A7's own acceptance record.
+ *
+ * Narrowing the MIME parameter to this type removes a requirement rather than adding a value, so
+ * every existing A7 call site passes an `OutboundMessage` and compiles unchanged.
+ */
+export interface OutboundMimeMessage {
   from: OutboundAddress;
   to: OutboundAddress;
   subject: string;
@@ -45,6 +57,9 @@ export interface OutboundMessage {
   attachments?: OutboundAttachment[];
   /** Inline images (Content-Disposition: inline) referenced by cid: in htmlBody. */
   inlineImages?: OutboundAttachment[];
+}
+
+export interface OutboundMessage extends OutboundMimeMessage {
   /** Server-selected delivery path — for logs/metadata only; never emitted as a header. */
   deliveryPath: HandoffDeliveryPath;
 }

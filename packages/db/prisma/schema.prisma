@@ -838,4 +838,7 @@ enum ReminderSkipReason {
   no_active_assignment
   task_not_eligible
   schedule_superseded
+  /// D130: assigned, eligible, armed — and the original assignment email's capability is revoked,
+  /// expired, or never activated. The reminder has no working link to point at (A8.4b.1).
+  no_actionable_capability
 }

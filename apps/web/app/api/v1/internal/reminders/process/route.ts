@@ -2,8 +2,15 @@ import { NextResponse } from 'next/server';
 import { jsonErrorResponse } from '@/lib/auth/http';
 import { logDatabaseRuntimeFailure } from '@/lib/db/diagnostics';
 import { getDb } from '@/lib/db/server';
+import { loadDbRuntime } from '@/lib/db/runtime-db';
 import { authorizeCronRequest } from '@/lib/gmail/cron-auth';
+import { createGmailReminderTransportProvider } from '@/lib/gmail/reminder-transport-provider';
+import {
+  getReminderDeliveryOrganizationId,
+  isReminderDeliveryEnabled,
+} from '@/lib/reminders/process-config';
 import { runInternalReminderProcess } from '@/lib/reminders/process-service';
+import type { ReminderTransportProvider } from '@/lib/reminders/transport';
 import {
   createRequestId,
   getRequestId,
@@ -28,15 +35,49 @@ function noStore(response: Response): Response {
 }
 
 /**
- * Internal reminder occurrence processing (A8.4a).
+ * Compose the production reminder transport, or nothing at all (A8.4b.1).
  *
- * **Built dark, and never deployed.** No deployment of this milestone has happened, so this route
- * does not exist in any running environment. Even if it did, three independent things would each be
- * enough to stop it doing anything: `ENABLE_REMINDER_DELIVERY` is not set to `"true"` anywhere; no
- * transport is injected, and the processing service fails closed without one; and no real transport
- * has been implemented to inject. With delivery off it scans nothing, claims nothing, writes
- * nothing, and calls no transport — it returns zero aggregates and `deliveryEnabled: false`. No cron
- * job invokes it, and the only transport that exists at all is the A8.4a test fake.
+ * The flag is checked **here**, before any Gmail object is constructed, in addition to being checked
+ * inside the processing service. That is not redundancy for its own sake: it means that with
+ * `ENABLE_REMINDER_DELIVERY` unset, no Gmail provider is built, no access resolver exists, no refresh
+ * token is decrypted, and no token exchange is attempted. "Delivery disabled implies no Gmail contact"
+ * becomes a property of the composition rather than a promise made by code further down.
+ *
+ * A missing `OWNER_ORGANIZATION_ID` also yields nothing, so the invocation fails closed rather than
+ * guessing which Owner's Gmail account to send through.
+ */
+async function composeTransportProvider(
+  db: Awaited<ReturnType<typeof getDb>>,
+): Promise<ReminderTransportProvider | undefined> {
+  if (!isReminderDeliveryEnabled()) {
+    return undefined;
+  }
+  const organizationId = getReminderDeliveryOrganizationId();
+  if (!organizationId) {
+    return undefined;
+  }
+  return createGmailReminderTransportProvider({
+    db,
+    runtime: await loadDbRuntime(),
+    organizationId,
+  });
+}
+
+/**
+ * Internal reminder occurrence processing (A8.4a foundation, A8.4b.1 overdue Gmail delivery).
+ *
+ * **Built, and never deployed.** No deployment of this milestone has happened, so this route does not
+ * exist in any running environment. Even if it did, three independent things would each be enough to
+ * stop it sending anything: `ENABLE_REMINDER_DELIVERY` is not set to `"true"` in any environment, and
+ * with it unset no Gmail transport is even constructed; the processing service fails closed without a
+ * transport; and the once-per-invocation Gmail authorization has to succeed before a single occurrence
+ * can be claimed. With delivery off it scans nothing, claims nothing, writes nothing, and calls no
+ * transport — it returns zero aggregates and `deliveryEnabled: false`. No cron job invokes it.
+ *
+ * A8.4b.1 delivers **overdue** reminders only. Advance delivery is A8.4b.3 and has no scan predicate,
+ * so no advance occurrence can be claimed here; D129's consecutive-ambiguous stopping rule is
+ * A8.4b.2, and this slice records the terminal ambiguous outcomes it will count without enforcing the
+ * threshold.
  *
  * Invoked by an External Scheduler with `Authorization: Bearer <CRON_SECRET>`, on the same
  * approximately five-minute wake-up cadence as the other internal jobs. Nothing repeats every five
@@ -72,7 +113,11 @@ export async function POST(request: Request): Promise<Response> {
         }
 
         const db = await getDb();
-        const result = await runInternalReminderProcess({ db, requestId: requestId! });
+        const result = await runInternalReminderProcess({
+          db,
+          requestId: requestId!,
+          transportProvider: await composeTransportProvider(db),
+        });
         return NextResponse.json(result.response);
       } catch (error) {
         logDatabaseRuntimeFailure(error, { routePathname: routeTemplate, requestId });

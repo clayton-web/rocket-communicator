@@ -1,6 +1,6 @@
 import 'server-only';
 import { randomBytes } from 'node:crypto';
-import type { OutboundAddress, OutboundAttachment, OutboundMessage } from './outbound-types';
+import type { OutboundAddress, OutboundAttachment, OutboundMimeMessage } from './outbound-types';
 import { GMAIL_OUTBOUND_MAX_MESSAGE_BYTES } from './limits';
 
 /**
@@ -388,7 +388,7 @@ function serializeNode(node: MimeNode): string {
  *   html + inline images              → multipart/related( html, inline… ) [inside alternative]
  *   any attachments                   → multipart/mixed( <content>, attachment… )
  */
-function buildBodyTree(message: OutboundMessage, newBoundary: () => string): MimeNode {
+function buildBodyTree(message: OutboundMimeMessage, newBoundary: () => string): MimeNode {
   const hasHtml = typeof message.htmlBody === 'string' && message.htmlBody.length > 0;
   const inline = message.inlineImages ?? [];
   const attachments = message.attachments ?? [];
@@ -445,7 +445,10 @@ function buildBodyTree(message: OutboundMessage, newBoundary: () => string): Mim
  * Build the complete RFC 5322 message string (CRLF-terminated headers + MIME body). Enforces the
  * conservative outbound size ceiling. Returns the raw string; callers base64url-encode it.
  */
-export function buildMimeMessage(message: OutboundMessage, options: MimeBuildOptions = {}): string {
+export function buildMimeMessage(
+  message: OutboundMimeMessage,
+  options: MimeBuildOptions = {},
+): string {
   const newBoundary = options.boundaryFactory ?? defaultBoundary;
   const now = options.now ?? new Date();
 

@@ -1,0 +1,28 @@
+-- A8.4b.1: the reminder skip that D130 makes possible.
+--
+-- D130 decided that a reminder email carries no capability link and instead tells the Recipient to
+-- use the original assignment email. That decision creates a state the overdue worker must be able
+-- to record truthfully: the assignment is alive, the Task is eligible, the schedule is armed -- and
+-- the capability the original assignment email carried has been revoked, has expired, or was never
+-- activated. The only link the reminder can point at is dead.
+--
+-- Sending anyway would be worse than silence. It spends the occurrence's local calendar day (D106),
+-- consumes the Recipient's attention, and instructs them to follow a link that cannot work. So the
+-- occurrence is skipped, and this value is why.
+--
+-- Deliberately not 'no_active_assignment', which must stay distinguishable: that value says nobody
+-- is assigned, and the Owner's remedy is to assign somebody. This value says somebody is assigned
+-- and cannot act, and the Owner's remedy is to re-send the assignment. Collapsing them would leave
+-- the history unable to tell the Owner which of two different actions to take.
+--
+-- Additive only: adding an enum value rewrites no row and invalidates no existing value. The
+-- reminder skip-reason CHECK (`reminder_delivery_attempts_skip_reason_matches_outcome`) tests only
+-- that a reason is present exactly when the outcome is `skipped`, so it enumerates no value and
+-- needs no amendment or revalidation.
+--
+-- This file deliberately contains one statement and uses the new value nowhere. PostgreSQL permits
+-- ALTER TYPE ... ADD VALUE inside a transaction block, but forbids *using* the new value in that
+-- same transaction, and Prisma wraps each migration file in one transaction. A file that added the
+-- value and then referenced it -- in an index predicate, a CHECK, or a backfill -- would pass a
+-- from-empty test and fail on apply.
+ALTER TYPE "ReminderSkipReason" ADD VALUE IF NOT EXISTS 'no_actionable_capability';

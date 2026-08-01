@@ -82,9 +82,24 @@ Gates for the due-date-driven Follow-up Engine (D102–D110). These record **exp
 - [ ] Pre-send re-validation happens **immediately before** the transport call, not only at claim time — a claim proves exclusivity, not eligibility
 - [ ] A global scan is still an organization-scoped write: every mutation derives its organization from the row, never from a caller argument
 - [ ] Structural fixes carry a **structural guard** that fails with no database; race suites are supporting evidence, not the regression mechanism ([ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW.md))
-- [ ] Processing modules import **no** Gmail client or real provider transport, and the delivery flag defaults disabled by exact-string match
+- [ ] Processing modules (`apps/web/lib/reminders/`) import **no** Gmail client or real provider transport; the transport is injected, and the delivery flag defaults disabled by exact-string match
 - [ ] Internal endpoint responses and logs carry aggregates only — no Recipient identity, address, provider payload, failure detail, lease, or row identifier
 - [ ] Additive migrations are tested **from the existing migration state with live rows present**, not only from empty; any new constraint over existing data carries a backfill
+
+### Reminder delivery (A8.4b; apply to any change that can reach a provider)
+
+- [ ] Provider authorization is resolved **once per invocation, before the first claim**; a failure claims nothing, writes nothing, calls no provider, and is **not** recorded as an occurrence-level reminder failure (D129/D130 slice law)
+- [ ] Capability state is read from the **canonical row in the same snapshot** as the Task, assignment, due date, and schedule — not by a second query, and not reconstructed
+- [ ] A non-actionable capability produces a truthful `no_actionable_capability` **skip** with zero provider calls, and is distinguishable from `no_active_assignment`
+- [ ] No reminder mints, rotates, or re-sends a capability, and none modifies an expiry or revocation rule
+- [ ] Both MIME bodies are **asserted link-free** before emission; content arriving from the database (summary points) is redacted rather than trusted (D130)
+- [ ] Forbidden email content is absent from **text and HTML**: capability URL, token, `/c/`, Task URL, redirect, communication excerpts, reminder counts, escalation or "final reminder" wording, internal identifiers, threading headers, CC, BCC
+- [ ] Provider outcomes stay four-valued — confirmed, retryable, permanent, terminal ambiguous — and an **ambiguous outcome is never reported as sent** or counted toward the overdue ceiling
+- [ ] A send failure carrying **no HTTP status from the provider is ambiguous, never retryable** — a connection failure does not prove the message was not accepted, and an unattended retry of a message the provider may hold is a duplicate reminder to a real Recipient
+- [ ] Only privacy-safe provider metadata is stored: no raw response, access token, MIME body, message content, or recipient address
+- [ ] The real transport is **unreachable from tests**: it refuses construction under a test runner, and the flag gates construction in the composition root so no token is decrypted or exchanged when off
+- [ ] Reminder transport changes touch **no** A7 handoff, assignment-email, forwarding, or capability-link behaviour, and add no threading, CC, or BCC
+- [ ] An ambiguous-outcome **counter is not stored**; D129's threshold is derived from history, and nothing auto-resumes a schedule stopped for repeated ambiguity
 
 ## Owner web experience foundation (P1; apply when P1 work is in scope)
 

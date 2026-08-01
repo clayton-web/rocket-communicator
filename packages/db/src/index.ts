@@ -310,6 +310,8 @@ export {
   type EstablishReminderScheduleInput,
   type CoherentReminderProjection,
   type EstablishReminderScheduleResult,
+  type ReminderCapabilityState,
+  type ReminderDeliveryTarget,
   type ReminderPreSendSnapshot,
 } from './transactions/a8-reminder-transactions.js';
 

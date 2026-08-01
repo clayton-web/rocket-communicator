@@ -171,20 +171,25 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Internal reminder occurrence processing (built dark, not deployed)
-         * @description Claims and finalizes due reminder occurrences for a bounded batch of schedules (A8.4a;
-         *     D104-D107, D109). Recovers abandoned occurrence claims, validates Task and schedule
-         *     eligibility immediately before sending, invokes an injected transport, and records the
+         * Internal reminder occurrence processing (built, not deployed)
+         * @description Claims and finalizes due **overdue** reminder occurrences for a bounded batch of schedules
+         *     (A8.4a, A8.4b.1; D104-D107, D109, D129, D130). Recovers abandoned occurrence claims, resolves
+         *     transport authorization once before claiming anything, validates Task, schedule, and
+         *     capability eligibility immediately before sending, invokes the transport, and records the
          *     outcome through the safe occurrence transaction.
          *
-         *     **Built dark and never deployed.** The code is merged; no deployment carrying it has been
-         *     made. Delivery is off unless `ENABLE_REMINDER_DELIVERY` is exactly `"true"`, which is set in
-         *     no environment. With it off this endpoint scans nothing, claims nothing, writes nothing, and
-         *     calls no transport: it returns zero aggregates with `deliveryEnabled: false`. Delivery also
-         *     requires an injected transport, and nothing injects one, so an enabled flag alone still
-         *     performs no work and reports `transportConfigured: false`. The only transport implemented in
-         *     this milestone is a deterministic fake — no Gmail account, credential, or provider API is
-         *     reachable from this path, and no cron job invokes it.
+         *     **Built and never deployed.** The code is merged; no deployment carrying it has been made.
+         *     Delivery is off unless `ENABLE_REMINDER_DELIVERY` is exactly `"true"`, which is set in no
+         *     environment. With it off no transport is constructed at all, so no Gmail credential is read
+         *     and no provider is contacted: the endpoint scans nothing, claims nothing, writes nothing, and
+         *     returns zero aggregates with `deliveryEnabled: false`. With it on, delivery still requires
+         *     that the once-per-invocation Gmail authorization succeed before the first claim; a missing
+         *     connection or ungranted send scope returns zero aggregates with `transportAuthorized: false`.
+         *     No cron job invokes this endpoint.
+         *
+         *     Advance reminder delivery is A8.4b.3 and has no scan predicate here, so no advance occurrence
+         *     can be claimed. D129's consecutive-ambiguous stopping rule is A8.4b.2; this milestone records
+         *     terminal ambiguous outcomes truthfully but enforces no threshold.
          *
          *     Requires `InternalCronBearer` (`CRON_SECRET`). Not an Owner session. Empty body. Safe to
          *     invoke repeatedly and safe to overlap: occurrence identity is unique in the database, so two
@@ -1463,22 +1468,39 @@ export interface components {
              *      */
             occurrence?: components["schemas"]["TaskReminderOccurrence"] | null;
         };
-        /** @description Aggregate outcome of one internal reminder-processing invocation (A8.4a). Counts only:
-         *     never a Task summary, Recipient identity, address, provider payload, failure detail, or
-         *     claim internal. When `deliveryEnabled` or `transportConfigured` is false every count is
-         *     zero, because the invocation scanned nothing, claimed nothing, wrote nothing, and called no
-         *     transport.
+        /** @description Aggregate outcome of one internal reminder-processing invocation (A8.4a, A8.4b.1). Counts
+         *     only: never a Task summary, Recipient identity, address, provider payload, failure detail, or
+         *     claim internal. When `deliveryEnabled`, `transportConfigured`, or `transportAuthorized` is
+         *     false every count is zero, because the invocation scanned nothing, claimed nothing, wrote
+         *     nothing, and called no transport.
          *      */
         ReminderProcessResponse: {
             /** @description Whether `ENABLE_REMINDER_DELIVERY` was exactly "true". False in every environment in
              *     this milestone.
              *      */
             deliveryEnabled: boolean;
-            /** @description Whether a transport was injected. False means the invocation failed closed and did no
-             *     work at all: no real transport exists in this milestone, and processing refuses to run
-             *     rather than manufacturing a fake that would report deliveries it never made.
+            /** @description Whether a transport was available to send through. False means the invocation failed
+             *     closed and did no work at all: processing refuses to run rather than manufacturing a
+             *     transport that would report deliveries it never made. Also false whenever delivery is
+             *     disabled, because no transport is constructed at all in that case.
              *      */
             transportConfigured: boolean;
+            /** @description Whether this invocation held a usable provider authorization when it began scanning.
+             *
+             *     Only meaningful when `deliveryEnabled` and `transportConfigured` are both true. It is
+             *     false by default in the other two cases, where authorization was never attempted at all,
+             *     so the three flags must be read as a triple: (false, false, false) is delivery disabled,
+             *     (true, false, false) is delivery enabled with nothing to send through, (true, true,
+             *     false) is authorization unusable, and (true, true, true) is an invocation that scanned.
+             *
+             *     False with the first two true means the Owner's Gmail connection is missing, has not
+             *     granted the send scope, or could not produce an access token, and the invocation stopped
+             *     before its first claim: no occurrence was created, no schedule moved, and no provider was
+             *     contacted. Authorization is resolved once per invocation and always before any claim, so
+             *     an unusable connection is never charged to a Task as a delivery failure. Which of those
+             *     causes applied is deliberately not reported here.
+             *      */
+            transportAuthorized: boolean;
             schedulesScanned: number;
             occurrencesClaimed: number;
             /** @description Occurrences a claim was refused for — held by another worker, already terminal, or out
@@ -1486,7 +1508,9 @@ export interface components {
              *     claims is the signature of a stuck occurrence.
              *      */
             claimRefusals: number;
-            /** @description Occurrences a transport accepted. Counts fake-transport acceptances only. */
+            /** @description Occurrences a transport confirmed it accepted. Never an ambiguous outcome: a send whose
+             *     result could not be determined is counted under `ambiguous` and is never reported here.
+             *      */
             delivered: number;
             /** @description Occurrences a pre-send eligibility check truthfully refused. */
             skipped: number;
