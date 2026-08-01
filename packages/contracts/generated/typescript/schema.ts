@@ -171,18 +171,20 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Internal reminder occurrence processing (deployed dark)
+         * Internal reminder occurrence processing (built dark, not deployed)
          * @description Claims and finalizes due reminder occurrences for a bounded batch of schedules (A8.4a;
          *     D104-D107, D109). Recovers abandoned occurrence claims, validates Task and schedule
          *     eligibility immediately before sending, invokes an injected transport, and records the
          *     outcome through the safe occurrence transaction.
          *
-         *     **Deployed dark.** Delivery is off unless `ENABLE_REMINDER_DELIVERY` is exactly `"true"`,
-         *     which is set in no environment. With it off this endpoint scans nothing, claims nothing,
-         *     writes nothing, and calls no transport: it returns zero aggregates with
-         *     `deliveryEnabled: false`. The only transport implemented in this milestone is a deterministic
-         *     fake — no Gmail account, credential, or provider API is reachable from this path, and no cron
-         *     job invokes it.
+         *     **Built dark and never deployed.** The code is merged; no deployment carrying it has been
+         *     made. Delivery is off unless `ENABLE_REMINDER_DELIVERY` is exactly `"true"`, which is set in
+         *     no environment. With it off this endpoint scans nothing, claims nothing, writes nothing, and
+         *     calls no transport: it returns zero aggregates with `deliveryEnabled: false`. Delivery also
+         *     requires an injected transport, and nothing injects one, so an enabled flag alone still
+         *     performs no work and reports `transportConfigured: false`. The only transport implemented in
+         *     this milestone is a deterministic fake — no Gmail account, credential, or provider API is
+         *     reachable from this path, and no cron job invokes it.
          *
          *     Requires `InternalCronBearer` (`CRON_SECRET`). Not an Owner session. Empty body. Safe to
          *     invoke repeatedly and safe to overlap: occurrence identity is unique in the database, so two
@@ -192,7 +194,8 @@ export interface paths {
          *
          *     Returns aggregate counts only — never a Task summary, Recipient identity, address, provider
          *     payload, or claim internals.
-         *     **Status: Contracted for A8.4a** (POST only; no GET handler).
+         *     **Status: Contracted for A8.4a, implemented and awaiting approval** (POST only; no GET
+         *     handler).
          *
          */
         post: operations["processRemindersInternal"];

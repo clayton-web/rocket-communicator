@@ -1440,6 +1440,147 @@ describe('A8.4a occurrence lifecycle (PGlite)', () => {
       expect(mine?.schedulingTimeZone).toBe(zone);
     });
 
+    /**
+     * The orchestrator itself, not the two phases separately (remediation re-audit T2).
+     *
+     * Every other test in this block drives `terminalizeReminderOccurrence` and
+     * `settleReminderOccurrenceSchedule` by hand, which proves the phases are correct but says
+     * nothing about the function that composes them — and `finalizeReminderOccurrence` is what the
+     * worker actually calls. The re-audit demonstrated the gap by mutating its `catch` to undo phase
+     * A and watching every database test still pass. This is the test that fails on that mutation.
+     *
+     * The fault is injected in the *second* `$transaction` of the call, which is phase B: phase A has
+     * already committed by then, so this reproduces the exact crash window the H1 split created
+     * rather than an abort of the whole operation.
+     */
+    function phaseBFailingClient(): TestDatabase['prisma'] {
+      let transactions = 0;
+      return new Proxy(db.prisma, {
+        get(target, property, receiver) {
+          if (property === '$transaction') {
+            return async (...args: unknown[]) => {
+              transactions += 1;
+              if (transactions === 2) {
+                throw new Error('injected phase B failure');
+              }
+              return (
+                target.$transaction as unknown as (...a: unknown[]) => Promise<unknown>
+              ).apply(target, args);
+            };
+          }
+          return Reflect.get(target, property, receiver);
+        },
+      }) as TestDatabase['prisma'];
+    }
+
+    it('keeps phase A, reports the deferral, and settles exactly once on retry', async () => {
+      const seeded = await seedSchedule('h1_orchestrator');
+      const claim = await claimOverdue('h1_orchestrator', seeded);
+      if (!claim.claimed) throw new Error('claim failed');
+      await markProviderCallStarted(db.prisma, {
+        organizationId: org,
+        attemptId: claim.attempt.id,
+        claimSequence: claim.claimSequence,
+        startedAt: '2026-08-11T16:00:02.000Z',
+      });
+
+      const next = nextFrom(seeded.schedule, '2026-08-11T16:00:05.000Z');
+      const finalized = await finalizeReminderOccurrence({
+        db: phaseBFailingClient(),
+        organizationId: org,
+        attemptId: claim.attempt.id,
+        scheduleId: seeded.schedule.id,
+        claimSequence: claim.claimSequence,
+        outcome: 'success',
+        completedAt: '2026-08-11T16:00:05.000Z',
+        expectedGeneration: seeded.schedule.generation,
+        providerAcceptedAt: '2026-08-11T16:00:04.000Z',
+        providerMessageRef: 'ref_orchestrator',
+        nextOverdueOccurrence: next,
+      });
+
+      // The call reports the truth rather than raising: a settlement that did not happen is debt,
+      // not a failed send, and the caller must not treat it as one.
+      expect(finalized.settlementDeferred).toBe(true);
+      expect(finalized.counted).toBe(false);
+      expect(finalized.scheduleAdvanced).toBe(false);
+
+      // Phase A survived the phase B failure. This is the assertion the whole H1 split exists for.
+      expect(finalized.attempt.outcome).toBe('success');
+      expect(finalized.attempt.providerAcceptedAt).toBe('2026-08-11T16:00:04.000Z');
+      expect(finalized.attempt.providerMessageRef).toBe('ref_orchestrator');
+
+      // And it survived in the database, not merely in the returned object.
+      const stored = await db.prisma.reminderDeliveryAttempt.findUniqueOrThrow({
+        where: { id: claim.attempt.id },
+      });
+      expect(stored.outcome, 'a delivery a provider accepted is never rolled back').toBe('success');
+      expect(stored.providerAcceptedAt).not.toBeNull();
+      expect(stored.providerMessageRef).toBe('ref_orchestrator');
+      expect(stored.completedAt).not.toBeNull();
+      expect(stored.scheduleSettledAt, 'the debt must still be outstanding').toBeNull();
+
+      // The schedule received nothing, and says so.
+      const deferred = await readSchedule(seeded.schedule.id);
+      expect(deferred.overdueDeliveredCount).toBe(0);
+
+      // The debt is discoverable by the sweep that exists to discharge it.
+      expect(
+        (await listUnsettledTerminalOccurrences(db.prisma, { limit: 50 })).some(
+          (row) => row.id === claim.attempt.id,
+        ),
+      ).toBe(true);
+
+      // Nothing can send again: the occurrence is terminal, so a second claim on the same identity
+      // is refused. At this layer that refusal *is* "the transport is not called twice".
+      const reclaim = await claimReminderOccurrence(db.prisma, {
+        id: `att_h1_orchestrator_again`,
+        organizationId: org,
+        scheduleId: seeded.schedule.id,
+        generation: seeded.schedule.generation,
+        occurrenceKind: 'overdue',
+        occurrenceLocalDate: seeded.overdue.occurrenceLocalDate,
+        occurrenceAt: seeded.overdue.occurrenceAt,
+        claimedBy: 'worker_b',
+        claimedAt: '2026-08-11T16:20:00.000Z',
+        claimExpiresAt: FOREVER,
+        now: '2026-08-11T16:20:00.000Z',
+        maxAttempts: 3,
+      });
+      expect(reclaim.claimed, 'a terminal occurrence is never re-claimable').toBe(false);
+
+      // The retry discharges the debt, and discharging it twice still counts once.
+      const collected = await settleReminderOccurrenceSchedule({
+        db: db.prisma,
+        organizationId: org,
+        attemptId: claim.attempt.id,
+        settledAt: '2026-08-11T18:00:00.000Z',
+        nextOverdueOccurrence: next,
+      });
+      expect(collected.alreadySettled).toBe(false);
+      expect(collected.counted).toBe(true);
+
+      const again = await settleReminderOccurrenceSchedule({
+        db: db.prisma,
+        organizationId: org,
+        attemptId: claim.attempt.id,
+        settledAt: '2026-08-11T19:00:00.000Z',
+        nextOverdueOccurrence: next,
+      });
+      expect(again.alreadySettled).toBe(true);
+      expect(again.counted).toBe(false);
+
+      const settled = await readSchedule(seeded.schedule.id);
+      expect(settled.overdueDeliveredCount, 'late settlement counts exactly once').toBe(1);
+      expect(settled.nextOverdueOccurrenceAt?.toISOString()).toBe(next.occurrenceAt);
+      expect(
+        (await listUnsettledTerminalOccurrences(db.prisma, { limit: 50 })).some(
+          (row) => row.id === claim.attempt.id,
+        ),
+        'the debt is gone once it is discharged',
+      ).toBe(false);
+    });
+
     it('applies the effect exactly once no matter how often settlement is retried', async () => {
       const seeded = await seedSchedule('h1_idempotent');
       const claim = await claimOverdue('h1_idempotent', seeded);

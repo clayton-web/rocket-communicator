@@ -238,6 +238,20 @@ describeMaybe('A8.4a worker and Owner contention (real PostgreSQL 16)', () => {
    * Reaching outside this organization is only safe because `vitest.config.ts` serializes the
    * `.pg.test.ts` files whenever the concurrency URL is set. Without that, this would stop rows
    * another suite was still using — and it did, before the config change.
+   *
+   * It cannot be narrowed to this organization without losing what it is for, and the remediation
+   * re-audit checked: the suites deliberately never delete their rows (see `runId` above), so the
+   * database always holds another suite's armed schedules, and a global scanner asserting exact
+   * counters has to neutralize them. Scoping the write would leave those rows claimable, which does
+   * not weaken an assertion so much as invert it — the counters would go up for reasons the test
+   * did not arrange. The alternative, relative deltas instead of exact totals, is strictly less
+   * coverage.
+   *
+   * **The trap this sets.** After this file finishes, almost nothing in the database is `active`, so
+   * an *unscoped* "every active schedule is armed" sweep run afterwards is nearly vacuous and a
+   * poisoned row looks self-healed. The B1 invariant is therefore asserted where it means something:
+   * scoped to its own organization, inside `a8-4a-occurrence-concurrency.pg.test.ts`, which never
+   * quiesces. Do not move it here and do not read an unscoped post-run sweep as evidence.
    */
   async function quiesce(): Promise<void> {
     await prisma.taskReminderSchedule.updateMany({

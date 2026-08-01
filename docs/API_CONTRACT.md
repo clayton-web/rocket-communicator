@@ -222,7 +222,7 @@ Recipient **work requests** in A4 create pending suggestions in persistence with
 
 ### Internal reminder processing (A8.4a — contracted, built dark, never deployed)
 
-**Status: implemented and contracted, deliberately inert.** `operationId`: `processRemindersInternal`. No External Scheduler job invokes it, `ENABLE_REMINDER_DELIVERY` is set in no environment, no deployment has been made since it was merged, and the A8 migrations are not applied in Production — so this endpoint exists in the repository and does nothing anywhere. The A8.4a report called it "deployed dark"; nothing was deployed.
+**Status: implemented and contracted, deliberately inert.** `operationId`: `processRemindersInternal`. No External Scheduler job invokes it, `ENABLE_REMINDER_DELIVERY` is set in no environment, no deployment has been made since it was merged, and the A8 migrations are not applied in Production — so this endpoint exists in the repository and does nothing anywhere. An earlier A8.4a report described it as deployed; no deployment ever happened, and the wording has been corrected everywhere it appeared.
 
 | Method | Path                                 | Purpose                                                              |
 | ------ | ------------------------------------ | -------------------------------------------------------------------- |
