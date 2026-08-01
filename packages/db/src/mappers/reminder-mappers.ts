@@ -97,6 +97,14 @@ export interface PersistedReminderDeliveryAttempt {
   readonly providerCallStartedAt: string | null;
   readonly providerAcceptedAt: string | null;
   readonly providerMessageRef: string | null;
+  /**
+   * When schedule settlement completed for this terminal occurrence (A8.4a audit H1).
+   *
+   * Null on a terminal row means the occurrence is recorded but the schedule has not yet been
+   * counted, advanced, stopped, or had its advance disposition settled — settlement debt the next
+   * worker invocation discharges. Always null on a `claimed` row.
+   */
+  readonly scheduleSettledAt: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
@@ -238,6 +246,7 @@ export function mapReminderDeliveryAttempt(
     providerCallStartedAt: row.providerCallStartedAt ? toIso(row.providerCallStartedAt) : null,
     providerAcceptedAt: row.providerAcceptedAt ? toIso(row.providerAcceptedAt) : null,
     providerMessageRef: row.providerMessageRef,
+    scheduleSettledAt: row.scheduleSettledAt ? toIso(row.scheduleSettledAt) : null,
     createdAt: toIso(row.createdAt),
     updatedAt: toIso(row.updatedAt),
   };

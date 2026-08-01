@@ -16,6 +16,7 @@ import {
   type PersistedReminderDeliveryAttempt,
   type ReminderDeliveryOutcome,
   type ReminderOccurrenceKind,
+  type ReminderScheduleStatus,
   type ReminderSkipReason,
 } from '../mappers/reminder-mappers.js';
 import { requireScheduleScope } from './reminder-scope-guard.js';
@@ -302,6 +303,25 @@ async function takeOverOccurrence(
       claimExpiresAt: fromIso(input.claimExpiresAt)!,
       claimSequence: nextSequence,
       attemptCount: { increment: 1 },
+      // A8.4a audit H2. The takeover resets the provider boundary to "this attempt has not called
+      // anything yet", because that is the only thing the boundary is allowed to mean.
+      //
+      // The marker used to survive a retry takeover, so a reclaimed `retryable_failure` row started
+      // its new attempt already looking in-flight. If that attempt then crashed *before* reaching
+      // its own transport call — the case the marker exists to distinguish — recovery read the
+      // previous attempt's marker, concluded a provider might hold the message, and finalized an
+      // occurrence ambiguous that had provably never been sent. A reminder silently lost, recorded
+      // as "probably delivered", consuming its local day.
+      //
+      // Acceptance and the message reference are cleared for the same reason. They cannot be set on
+      // a reclaimable row today — only a `success` carries them and a success is terminal — so this
+      // is the constraint stated in the write rather than inferred from the ones around it.
+      providerCallStartedAt: null,
+      providerAcceptedAt: null,
+      providerMessageRef: null,
+      // A settled row that becomes owed again is no longer settled. The `settlement_only_when_terminal`
+      // CHECK would reject the write without this, which is the intended second lock on the door.
+      scheduleSettledAt: null,
     },
   });
 
@@ -361,6 +381,11 @@ export async function recordTerminalOccurrenceOutcomeUnsafe(
         // as the fence a resurrected predecessor is still measured against, but a settled row must
         // not advertise a countdown that is still running.
         claimExpiresAt: null,
+        // Phase A only (A8.4a audit H1). This transaction records what happened to the occurrence
+        // and stops. The schedule has not been counted, advanced, stopped, or had its advance
+        // disposition settled, and a null marker is the durable statement of exactly that — the
+        // debt the settlement sweep collects if this caller never gets to phase B.
+        scheduleSettledAt: null,
       },
     });
 
@@ -387,6 +412,76 @@ export async function recordTerminalOccurrenceOutcomeUnsafe(
     `Reminder delivery attempt ${input.attemptId} is already ${existing.outcome} and cannot be completed again.`,
   );
 }
+
+/**
+ * Terminalize an occurrence whose retry budget is spent, without holding a claim (A8.4a audit B2).
+ *
+ * **Not exported from `@aicaa/db` or `@aicaa/db/runtime`**, for the same reason
+ * `recordTerminalOccurrenceOutcomeUnsafe` is not: it writes a terminal outcome without settling the
+ * schedule. `terminalizeExhaustedRetryOccurrence` is the public path and runs both phases.
+ *
+ * Every other terminalization is fenced on a claim sequence, because every other terminalization is
+ * a claimant reporting its own result. This one is not: the occurrence's owner is gone and the
+ * budget refusal is a fact about the row rather than a report from anybody. The fence is replaced by
+ * a conditional update whose predicate *is* the exhaustion condition — still non-terminal, budget
+ * spent, no in-flight marker, no live lease — so it is idempotent by construction. The second
+ * worker to arrive matches zero rows and is told, truthfully, that there was nothing left to do.
+ *
+ * The provider marker must be absent rather than merely ignored. A row with one belongs to the
+ * ambiguous class, where the honest answer is "a provider may hold this message"; recording it as a
+ * permanent failure instead would assert something nobody can know.
+ */
+export async function terminalizeExhaustedOccurrenceUnsafe(
+  db: Client,
+  input: {
+    readonly organizationId: string;
+    readonly attemptId: string;
+    readonly maxAttempts: number;
+    readonly completedAt: string;
+    readonly now: string;
+  },
+): Promise<PersistedReminderDeliveryAttempt | null> {
+  const now = fromIso(input.now)!;
+  const updated = await db.reminderDeliveryAttempt.updateMany({
+    where: {
+      id: input.attemptId,
+      organizationId: input.organizationId,
+      outcome: { in: ['claimed', 'retryable_failure'] },
+      providerCallStartedAt: null,
+      attemptCount: { gte: input.maxAttempts },
+      OR: [{ claimExpiresAt: null }, { claimExpiresAt: { lte: now } }],
+    },
+    data: {
+      outcome: 'permanent_failure',
+      failureCode: RETRY_BUDGET_EXHAUSTED_FAILURE_CODE,
+      skipReason: null,
+      completedAt: fromIso(input.completedAt)!,
+      // The claim is not merely expired, it is over. Leaving a dead owner on a terminal row invites
+      // the next reader to wonder whether somebody is still working on it.
+      claimedBy: null,
+      claimedAt: null,
+      claimExpiresAt: null,
+      providerAcceptedAt: null,
+      providerMessageRef: null,
+      // Phase A. The schedule is settled by the caller's second transaction.
+      scheduleSettledAt: null,
+    },
+  });
+  if (updated.count !== 1) {
+    return null;
+  }
+  return requireAttemptById(db, input.organizationId, input.attemptId);
+}
+
+/**
+ * The failure code for an occurrence that ran out of attempts rather than being rejected (B2).
+ *
+ * Distinguishable from a provider's permanent rejection on purpose: one says the message was
+ * refused, the other says we stopped asking. The future Q8 Owner-attention threshold will want to
+ * tell those apart, and a shared constant means the worker and the recovery sweep cannot spell it
+ * two different ways.
+ */
+export const RETRY_BUDGET_EXHAUSTED_FAILURE_CODE = 'retry_budget_exhausted';
 
 /**
  * Record an occurrence that was never attempted, with its truthful reason (D105, D107).
@@ -421,6 +516,11 @@ export async function recordSkippedReminderOccurrence(
         outcome: 'skipped',
         skipReason: input.skipReason,
         completedAt: fromIso(input.recordedAt)!,
+        // Born settled (A8.4a audit H1). Every caller of this writer sets the schedule's advance
+        // disposition in the same transaction, so there is no settlement debt to discharge — and
+        // leaving it null would hand the settlement sweep a row whose schedule effect had already
+        // been applied by somebody else.
+        scheduleSettledAt: fromIso(input.recordedAt)!,
       },
     });
     return mapReminderDeliveryAttempt(row);
@@ -501,8 +601,25 @@ export async function hasTerminalAdvanceOccurrence(
   return count > 0;
 }
 
+/**
+ * The generation's due date and time zone, carried on every recovery row (A8.4a audit B1).
+ *
+ * Recovery has to be able to arm the *next* occurrence, and the next occurrence is a function of
+ * the due date rather than of the occurrence being recovered — re-anchoring on today would slide
+ * the series forward a day every time one was recovered. Persistence cannot compute it (D103), so
+ * the inputs the A8.2 domain needs travel with the row instead of costing the caller a second query
+ * per recovered occurrence.
+ */
+export interface RecoveryScheduleContext {
+  readonly dueLocalDate: string;
+  readonly schedulingTimeZone: string;
+  /** The schedule's *current* generation, which may already have moved past the occurrence's. */
+  readonly scheduleGeneration: number;
+  readonly scheduleStatus: ReminderScheduleStatus;
+}
+
 /** One occurrence's claim state, for the recovery sweep to classify. */
-export interface ExpiredOccurrenceClaim {
+export interface ExpiredOccurrenceClaim extends RecoveryScheduleContext {
   readonly id: string;
   readonly organizationId: string;
   readonly scheduleId: string;
@@ -513,6 +630,35 @@ export interface ExpiredOccurrenceClaim {
   readonly claimSequence: number;
   /** Null means no transport call was ever started, so the occurrence may be safely reclaimed. */
   readonly providerCallStartedAt: string | null;
+}
+
+const RECOVERY_SCHEDULE_SELECT = {
+  select: {
+    dueLocalDate: true,
+    schedulingTimeZone: true,
+    generation: true,
+    status: true,
+  },
+} as const;
+
+function toRecoveryContext(schedule: {
+  dueLocalDate: string;
+  schedulingTimeZone: string;
+  generation: number;
+  status: ReminderScheduleStatus;
+}): RecoveryScheduleContext {
+  return {
+    dueLocalDate: schedule.dueLocalDate,
+    schedulingTimeZone: schedule.schedulingTimeZone,
+    scheduleGeneration: schedule.generation,
+    scheduleStatus: schedule.status,
+  };
+}
+
+function assertRecoveryLimit(limit: number, what: string): void {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 500) {
+    throw persistenceValidation(`${what} limit must be between 1 and 500.`);
+  }
 }
 
 /**
@@ -527,9 +673,7 @@ export async function listExpiredOccurrenceClaims(
   db: Client,
   input: { readonly now: string; readonly limit: number },
 ): Promise<ExpiredOccurrenceClaim[]> {
-  if (!Number.isInteger(input.limit) || input.limit < 1 || input.limit > 500) {
-    throw persistenceValidation('Expired-claim recovery limit must be between 1 and 500.');
-  }
+  assertRecoveryLimit(input.limit, 'Expired-claim recovery');
   const rows = await db.reminderDeliveryAttempt.findMany({
     where: { outcome: 'claimed', claimExpiresAt: { lte: fromIso(input.now)! } },
     orderBy: [{ claimExpiresAt: 'asc' }, { id: 'asc' }],
@@ -544,14 +688,126 @@ export async function listExpiredOccurrenceClaims(
       occurrenceLocalDate: true,
       claimSequence: true,
       providerCallStartedAt: true,
+      schedule: RECOVERY_SCHEDULE_SELECT,
     },
   });
-  return rows.map((row) => ({
+  return rows.map(({ schedule, ...row }) => ({
     ...row,
     providerCallStartedAt: row.providerCallStartedAt
       ? row.providerCallStartedAt.toISOString()
       : null,
+    ...toRecoveryContext(schedule),
   }));
+}
+
+/** A terminal occurrence whose schedule effect has not been applied yet (A8.4a audit H1). */
+export interface UnsettledTerminalOccurrence extends RecoveryScheduleContext {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly scheduleId: string;
+  readonly generation: number;
+  readonly occurrenceKind: ReminderOccurrenceKind;
+  readonly outcome: TerminalReminderDeliveryOutcome;
+}
+
+/**
+ * Terminal occurrences still owed a schedule settlement, oldest completion first (audit H1).
+ *
+ * This is the query that makes splitting finalization into two transactions safe rather than
+ * merely different. The seam between them is a real crash point, and the only thing that separates
+ * "recoverable" from "silently divergent" is whether the state left behind can be *found*. It can:
+ * a terminal row with a null marker is settlement debt by definition, and this returns it.
+ *
+ * Global for the same reason the expired-claim sweep is, and reading the same shape of partial
+ * index — which in steady state contains nothing at all, because settlement normally happens
+ * milliseconds after terminalization on the same invocation.
+ */
+export async function listUnsettledTerminalOccurrences(
+  db: Client,
+  input: { readonly limit: number },
+): Promise<UnsettledTerminalOccurrence[]> {
+  assertRecoveryLimit(input.limit, 'Unsettled-occurrence recovery');
+  const rows = await db.reminderDeliveryAttempt.findMany({
+    where: { outcome: { not: 'claimed' }, scheduleSettledAt: null },
+    orderBy: [{ completedAt: 'asc' }, { id: 'asc' }],
+    take: input.limit,
+    select: {
+      id: true,
+      organizationId: true,
+      scheduleId: true,
+      generation: true,
+      occurrenceKind: true,
+      outcome: true,
+      schedule: RECOVERY_SCHEDULE_SELECT,
+    },
+  });
+  return rows.map(({ schedule, outcome, ...row }) => ({
+    ...row,
+    // Narrowing rather than casting: the `not: 'claimed'` filter is what makes this true, and
+    // stating it here means a future filter change fails the type check instead of the invariant.
+    outcome: outcome as TerminalReminderDeliveryOutcome,
+    ...toRecoveryContext(schedule),
+  }));
+}
+
+/** An occurrence that has spent its retry budget without ever reaching a terminal outcome (B2). */
+export interface ExhaustedRetryOccurrence extends RecoveryScheduleContext {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly scheduleId: string;
+  readonly generation: number;
+  readonly occurrenceKind: ReminderOccurrenceKind;
+  readonly attemptCount: number;
+}
+
+/**
+ * Occurrences that can never be claimed again and have not been terminalized (A8.4a audit B2).
+ *
+ * The audit's hot loop lives here. A worker that crashed on the last permitted attempt *before*
+ * marking its provider call left a `claimed` row at the budget ceiling; recovery released the dead
+ * lease, correctly, because nothing had left the building — and then the row sat there. The claim
+ * path refuses it with `retry_budget_exhausted`, so no worker could finish it, and the schedule
+ * stayed active and armed at an occurrence instant already in the past. Every later invocation
+ * scanned it, took the schedule lease, was refused the claim, released the lease, and moved on,
+ * forever, while the reminder series silently stopped.
+ *
+ * A refusal that no future invocation can turn into progress is not contention; it is a terminal
+ * fact that nobody wrote down. This finds those rows so the worker can write it down.
+ *
+ * Deliberately excludes rows with an in-flight marker: those belong to the ambiguous-recovery class,
+ * which is the stricter of the two and must not be pre-empted by a budget rule. Deliberately
+ * excludes rows with a live lease: a claimant still inside its lease may yet finish, and the last
+ * attempt is exactly the one it is entitled to make.
+ */
+export async function listRetryBudgetExhaustedOccurrences(
+  db: Client,
+  input: { readonly now: string; readonly maxAttempts: number; readonly limit: number },
+): Promise<ExhaustedRetryOccurrence[]> {
+  assertRecoveryLimit(input.limit, 'Retry-budget recovery');
+  if (!Number.isInteger(input.maxAttempts) || input.maxAttempts < 1) {
+    throw persistenceValidation('maxAttempts must be a positive integer.');
+  }
+  const now = fromIso(input.now)!;
+  const rows = await db.reminderDeliveryAttempt.findMany({
+    where: {
+      outcome: { in: ['claimed', 'retryable_failure'] },
+      providerCallStartedAt: null,
+      attemptCount: { gte: input.maxAttempts },
+      OR: [{ claimExpiresAt: null }, { claimExpiresAt: { lte: now } }],
+    },
+    orderBy: [{ attemptCount: 'desc' }, { id: 'asc' }],
+    take: input.limit,
+    select: {
+      id: true,
+      organizationId: true,
+      scheduleId: true,
+      generation: true,
+      occurrenceKind: true,
+      attemptCount: true,
+      schedule: RECOVERY_SCHEDULE_SELECT,
+    },
+  });
+  return rows.map(({ schedule, ...row }) => ({ ...row, ...toRecoveryContext(schedule) }));
 }
 
 /**

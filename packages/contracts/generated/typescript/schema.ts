@@ -1462,16 +1462,27 @@ export interface components {
         };
         /** @description Aggregate outcome of one internal reminder-processing invocation (A8.4a). Counts only:
          *     never a Task summary, Recipient identity, address, provider payload, failure detail, or
-         *     claim internal. When `deliveryEnabled` is false every count is zero, because the invocation
-         *     scanned nothing, claimed nothing, wrote nothing, and called no transport.
+         *     claim internal. When `deliveryEnabled` or `transportConfigured` is false every count is
+         *     zero, because the invocation scanned nothing, claimed nothing, wrote nothing, and called no
+         *     transport.
          *      */
         ReminderProcessResponse: {
             /** @description Whether `ENABLE_REMINDER_DELIVERY` was exactly "true". False in every environment in
              *     this milestone.
              *      */
             deliveryEnabled: boolean;
+            /** @description Whether a transport was injected. False means the invocation failed closed and did no
+             *     work at all: no real transport exists in this milestone, and processing refuses to run
+             *     rather than manufacturing a fake that would report deliveries it never made.
+             *      */
+            transportConfigured: boolean;
             schedulesScanned: number;
             occurrencesClaimed: number;
+            /** @description Occurrences a claim was refused for — held by another worker, already terminal, or out
+             *     of retry budget. Ordinary contention; a persistently non-zero value alongside zero
+             *     claims is the signature of a stuck occurrence.
+             *      */
+            claimRefusals: number;
             /** @description Occurrences a transport accepted. Counts fake-transport acceptances only. */
             delivered: number;
             /** @description Occurrences a pre-send eligibility check truthfully refused. */
@@ -1484,8 +1495,26 @@ export interface components {
             ambiguous: number;
             /** @description Abandoned occurrence claims released or finalized before this batch ran. */
             recoveredClaims: number;
+            /** @description Occurrences that had spent their retry budget without reaching a terminal outcome and
+             *     were terminalized as permanent failures. Non-zero means a worker died mid-attempt at
+             *     some point; a schedule left in that state would otherwise be re-scanned indefinitely.
+             *      */
+            retryBudgetTerminalizations: number;
+            /** @description Terminal occurrences whose schedule settlement had not completed, and was completed by
+             *     this invocation. Non-zero means a previous invocation died between recording an outcome
+             *     and applying it to the schedule.
+             *      */
+            unsettledOccurrencesSettled: number;
+            /** @description Schedule settlements this invocation could not complete. The occurrence outcomes are
+             *     recorded and durable regardless; the debt is picked up by a later invocation.
+             *      */
+            settlementsDeferred: number;
             /** @description Schedules stopped by reaching the D106 overdue delivery ceiling. */
             ceilingStops: number;
+            /** @description Whether the invocation stopped at its soft deadline with work still outstanding. The
+             *     remaining work is durable and picked up by the next invocation.
+             *      */
+            deadlineStopped: boolean;
             requestId: string;
         };
         /**

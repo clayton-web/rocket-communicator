@@ -87,6 +87,20 @@ const ROUNDS = 20;
 
 const ENABLED = { ...process.env, ENABLE_REMINDER_DELIVERY: 'true' } as NodeJS.ProcessEnv;
 
+/**
+ * A transport that accepts, stated explicitly (A8.4a audit H3).
+ *
+ * `new FakeReminderTransport()` used to mean "accepts everything", which is why the audit could
+ * point at production orchestration and show it would record fake deliveries against the D106
+ * ceiling if the flag were ever enabled without a script. The bare constructor now returns a
+ * permanent configuration failure, so a test that wants a send has to ask for one.
+ */
+function acceptingTransport(): FakeReminderTransport {
+  return new FakeReminderTransport({
+    defaultResult: { kind: 'accepted', providerMessageRef: 'ref_default' },
+  });
+}
+
 function params(taskId: string) {
   return { params: Promise.resolve({ taskId }) };
 }
@@ -410,7 +424,7 @@ describeMaybe('A8.4a worker and Owner contention (real PostgreSQL 16)', () => {
       for (let round = 0; round < ROUNDS; round += 1) {
         await quiesce();
         const { taskId } = await seed('two_workers');
-        const transport = new FakeReminderTransport();
+        const transport = acceptingTransport();
 
         const run = (requestId: string) =>
           runInternalReminderProcess({
@@ -448,7 +462,7 @@ describeMaybe('A8.4a worker and Owner contention (real PostgreSQL 16)', () => {
       for (let round = 0; round < ROUNDS; round += 1) {
         await quiesce();
         const { taskId } = await seed('worker_vs_owner');
-        const transport: ReminderTransport = new FakeReminderTransport();
+        const transport: ReminderTransport = acceptingTransport();
 
         await Promise.all([
           runInternalReminderProcess({
@@ -486,6 +500,405 @@ describeMaybe('A8.4a worker and Owner contention (real PostgreSQL 16)', () => {
         }
       }
       await quiesce();
+    });
+  });
+
+  // ---------------------------------------------------------------------------------------------
+  // A8.4a audit remediation, exercised through the whole worker rather than the transactions alone
+  // ---------------------------------------------------------------------------------------------
+
+  describe('remediation: the worker recovers its own wreckage', () => {
+    /**
+     * These rounds are slower than the ones above: each drives several full invocations and waits
+     * out a deliberately hanging transport, twenty times over. The default five-second timeout cuts
+     * a round in half, and a half-finished round leaves state the next test then inherits — which
+     * is how a timeout here first showed up as an unrelated failure two tests later.
+     */
+    const REMEDIATION_ROUND_TIMEOUT_MS = 180_000;
+
+    /** A worker that dies mid-call: the send is entered, the process never comes back. */
+    const hangingTransport: ReminderTransport = { send: () => new Promise(() => {}) };
+
+    /** Let an invocation reach its transport call, then abandon it where it stands. */
+    async function abandonMidSend(requestId: string, now: string): Promise<void> {
+      await Promise.race([
+        runInternalReminderProcess({
+          db: prisma,
+          requestId,
+          now,
+          env: ENABLED,
+          transport: hangingTransport,
+        }).catch(() => undefined),
+        new Promise((resolve) => setTimeout(resolve, 150)),
+      ]);
+    }
+
+    /** Kill the lease so the next invocation's recovery sweep picks the occurrence up. */
+    async function expireClaim(taskId: string): Promise<void> {
+      await prisma.reminderDeliveryAttempt.updateMany({
+        where: { organizationId: org, taskId, outcome: 'claimed' },
+        data: { claimExpiresAt: new Date('2026-08-20T18:00:00.000Z') },
+      });
+    }
+
+    async function scheduleFor(taskId: string) {
+      return prisma.taskReminderSchedule.findFirstOrThrow({
+        where: { organizationId: org, taskId },
+      });
+    }
+
+    it(
+      'B1: an in-flight crash leaves the series running, not silently ended',
+      async () => {
+        for (let round = 0; round < ROUNDS; round += 1) {
+          await quiesce();
+          const { taskId } = await seed('b1_worker');
+
+          // The crash this recovers from: the in-flight marker is committed, the worker dies inside
+          // the provider call, and the lease runs out with nobody able to say what the provider did.
+          await abandonMidSend('req_hang', '2026-08-20T18:00:00.000Z');
+          await expireClaim(taskId);
+
+          const recovery = await runInternalReminderProcess({
+            db: prisma,
+            requestId: 'req_recover',
+            now: '2026-08-20T19:00:00.000Z',
+            env: ENABLED,
+            transport: acceptingTransport(),
+          });
+
+          const attempts = await listReminderDeliveryAttemptsForTask(prisma, org, taskId);
+          const overdue = attempts.filter((row) => row.occurrenceKind === 'overdue');
+          expect(overdue, `round ${round}`).toHaveLength(1);
+          expect(overdue[0].outcome, `round ${round}`).toBe('ambiguous');
+          expect(overdue[0].failureCode, `round ${round}`).toBe('lease_expired_in_flight');
+          expect(overdue[0].providerAcceptedAt, `round ${round}`).toBeNull();
+          expect(recovery.response.recoveredClaims, `round ${round}`).toBeGreaterThanOrEqual(1);
+
+          // The point of B1: consuming one morning is not ending the series.
+          const schedule = await scheduleFor(taskId);
+          expect(schedule.status, `round ${round}`).toBe('active');
+          expect(schedule.stopReason, `round ${round}`).toBeNull();
+          expect(schedule.nextOverdueOccurrenceAt, `round ${round}`).not.toBeNull();
+          expect(
+            schedule.nextOverdueOccurrenceAt!.toISOString() > '2026-08-20T19:00:00.000Z',
+            `round ${round}: the armed occurrence must be in the future`,
+          ).toBe(true);
+          expect(schedule.overdueDeliveredCount, `round ${round}`).toBe(0);
+        }
+        await quiesce();
+      },
+      REMEDIATION_ROUND_TIMEOUT_MS,
+    );
+
+    it(
+      'B2: a final-attempt crash terminalizes instead of looping forever',
+      async () => {
+        for (let round = 0; round < ROUNDS; round += 1) {
+          await quiesce();
+          const { taskId } = await seed('b2_worker');
+
+          // Two retryable rejections spend the budget down to its last attempt.
+          const retrying = new FakeReminderTransport({
+            defaultResult: { kind: 'retryable', failureCode: 'provider_unavailable' },
+          });
+          for (const requestId of ['req_r1', 'req_r2']) {
+            await runInternalReminderProcess({
+              db: prisma,
+              requestId,
+              now: '2026-08-20T18:00:00.000Z',
+              env: ENABLED,
+              transport: retrying,
+            });
+          }
+
+          // The third and last permitted attempt claims, and the worker dies before its transport
+          // call. Clearing the marker afterwards is what makes this the B2 case rather than the B1
+          // one: nothing left the building, so recovery releases the lease instead of assuming a
+          // send — and then no worker can ever claim the occurrence again.
+          await abandonMidSend('req_die', '2026-08-20T18:00:00.000Z');
+          await prisma.reminderDeliveryAttempt.updateMany({
+            where: { organizationId: org, taskId, outcome: 'claimed' },
+            data: {
+              claimExpiresAt: new Date('2026-08-20T18:00:00.000Z'),
+              providerCallStartedAt: null,
+            },
+          });
+
+          const later = acceptingTransport();
+          const runs = [];
+          for (const requestId of ['req_after1', 'req_after2', 'req_after3']) {
+            runs.push(
+              (
+                await runInternalReminderProcess({
+                  db: prisma,
+                  requestId,
+                  now: '2026-08-20T20:00:00.000Z',
+                  env: ENABLED,
+                  transport: later,
+                })
+              ).response,
+            );
+          }
+
+          const attempts = await listReminderDeliveryAttemptsForTask(prisma, org, taskId);
+          const overdue = attempts.filter((row) => row.occurrenceKind === 'overdue');
+          expect(overdue, `round ${round}`).toHaveLength(1);
+          expect(overdue[0].outcome, `round ${round}`).toBe('permanent_failure');
+          expect(overdue[0].failureCode, `round ${round}`).toBe('retry_budget_exhausted');
+          expect(overdue[0].claimExpiresAt, `round ${round}`).toBeNull();
+
+          // Exactly one invocation did the terminalizing; the two after it found nothing to do, which
+          // is the difference between a recovery and the hot loop the audit found.
+          expect(
+            runs.reduce((sum, response) => sum + response.retryBudgetTerminalizations, 0),
+            `round ${round}`,
+          ).toBe(1);
+          expect(
+            runs[1].schedulesScanned + runs[2].schedulesScanned,
+            `round ${round}: the stopped schedule is gone from the scan, which is what ends the loop`,
+          ).toBe(0);
+          expect(
+            later.calls.filter((call) => call.taskId === taskId),
+            `round ${round}`,
+          ).toHaveLength(0);
+
+          const schedule = await scheduleFor(taskId);
+          expect(schedule.status, `round ${round}`).toBe('stopped');
+          expect(schedule.stopReason, `round ${round}`).toBe('permanent_delivery_failure');
+          expect(schedule.requiresOwnerAttention, `round ${round}`).toBe(true);
+          expect(schedule.nextOverdueOccurrenceAt, `round ${round}`).toBeNull();
+        }
+        await quiesce();
+      },
+      REMEDIATION_ROUND_TIMEOUT_MS,
+    );
+
+    it(
+      'H1: settlement debt from a crashed worker is collected without a second send',
+      async () => {
+        for (let round = 0; round < ROUNDS; round += 1) {
+          await quiesce();
+          const { taskId } = await seed('h1_worker');
+
+          const sender = acceptingTransport();
+          await runInternalReminderProcess({
+            db: prisma,
+            requestId: 'req_send',
+            now: '2026-08-20T18:00:00.000Z',
+            env: ENABLED,
+            transport: sender,
+          });
+
+          // Rewind settlement to reproduce a crash between the two phases. The occurrence keeps its
+          // success and its acceptance proof; the schedule is put back to owing them.
+          await prisma.reminderDeliveryAttempt.updateMany({
+            where: { organizationId: org, taskId, outcome: 'success' },
+            data: { scheduleSettledAt: null },
+          });
+          await prisma.taskReminderSchedule.updateMany({
+            where: { organizationId: org, taskId },
+            data: { overdueDeliveredCount: 0 },
+          });
+
+          const collector = acceptingTransport();
+          const [first, second] = await Promise.all([
+            runInternalReminderProcess({
+              db: prisma,
+              requestId: 'req_settle_a',
+              now: '2026-08-20T19:00:00.000Z',
+              env: ENABLED,
+              transport: collector,
+            }).catch(() => ({ response: null })),
+            runInternalReminderProcess({
+              db: prisma,
+              requestId: 'req_settle_b',
+              now: '2026-08-20T19:00:00.000Z',
+              env: ENABLED,
+              transport: collector,
+            }).catch(() => ({ response: null })),
+          ]);
+
+          const attempts = await listReminderDeliveryAttemptsForTask(prisma, org, taskId);
+          const overdue = attempts.filter((row) => row.occurrenceKind === 'overdue');
+          expect(overdue, `round ${round}: no second occurrence`).toHaveLength(1);
+          expect(overdue[0].outcome, `round ${round}`).toBe('success');
+          expect(overdue[0].providerAcceptedAt, `round ${round}`).not.toBeNull();
+          expect(overdue[0].scheduleSettledAt, `round ${round}`).not.toBeNull();
+
+          // Settlement needs nothing from a provider, so collecting the debt cannot send anything.
+          expect(
+            collector.calls.filter((call) => call.taskId === taskId),
+            `round ${round}: settlement must never re-send`,
+          ).toHaveLength(0);
+
+          const settled =
+            (first.response?.unsettledOccurrencesSettled ?? 0) +
+            (second.response?.unsettledOccurrencesSettled ?? 0);
+          expect(settled, `round ${round}: collected once`).toBe(1);
+
+          const schedule = await scheduleFor(taskId);
+          expect(schedule.overdueDeliveredCount, `round ${round}: counted once`).toBe(1);
+        }
+        await quiesce();
+      },
+      REMEDIATION_ROUND_TIMEOUT_MS,
+    );
+
+    it(
+      'H2: a retried occurrence never inherits the previous provider marker',
+      async () => {
+        for (let round = 0; round < ROUNDS; round += 1) {
+          await quiesce();
+          const { taskId } = await seed('h2_worker');
+
+          await runInternalReminderProcess({
+            db: prisma,
+            requestId: 'req_fail',
+            now: '2026-08-20T18:00:00.000Z',
+            env: ENABLED,
+            transport: new FakeReminderTransport({
+              defaultResult: { kind: 'retryable', failureCode: 'provider_unavailable' },
+            }),
+          });
+
+          const failed = await prisma.reminderDeliveryAttempt.findFirstOrThrow({
+            where: { organizationId: org, taskId, occurrenceKind: 'overdue' },
+          });
+          expect(failed.outcome, `round ${round}`).toBe('retryable_failure');
+          expect(failed.providerCallStartedAt, `round ${round}`).not.toBeNull();
+
+          // The retry crashes before reaching its own transport call.
+          await abandonMidSend('req_retry', '2026-08-20T19:00:00.000Z');
+
+          const retried = await prisma.reminderDeliveryAttempt.findFirstOrThrow({
+            where: { organizationId: org, taskId, occurrenceKind: 'overdue' },
+          });
+          expect(retried.attemptCount, `round ${round}`).toBe(2);
+          expect(retried.scheduleSettledAt, `round ${round}`).toBeNull();
+          // Before the fix the inherited marker was still set here, so the recovery below finalized
+          // this ambiguous — a reminder provably never sent on this attempt, recorded as maybe-sent
+          // and its morning consumed.
+          expect(
+            retried.providerCallStartedAt === null ||
+              retried.providerCallStartedAt.toISOString() >= retried.claimedAt!.toISOString(),
+            `round ${round}: the marker must belong to this attempt`,
+          ).toBe(true);
+        }
+        await quiesce();
+      },
+      REMEDIATION_ROUND_TIMEOUT_MS,
+    );
+  });
+
+  // ---------------------------------------------------------------------------------------------
+  // Unscoped invariants over everything every round above produced
+  // ---------------------------------------------------------------------------------------------
+
+  describe('invariants, queried directly and deliberately unscoped', () => {
+    async function rows(sql: string): Promise<unknown[]> {
+      return prisma.$queryRawUnsafe(sql);
+    }
+
+    it('has no active schedule without an armed next occurrence (audit B1)', async () => {
+      expect(
+        await rows(`
+          SELECT id FROM task_reminder_schedules
+          WHERE status = 'active'
+            AND (next_overdue_occurrence_at IS NULL OR next_overdue_occurrence_local_date IS NULL)
+        `),
+      ).toEqual([]);
+    });
+
+    it('has no non-active schedule holding an armed next occurrence', async () => {
+      expect(
+        await rows(`
+          SELECT id FROM task_reminder_schedules
+          WHERE status <> 'active'
+            AND (next_overdue_occurrence_at IS NOT NULL
+              OR next_overdue_occurrence_local_date IS NOT NULL)
+        `),
+      ).toEqual([]);
+    });
+
+    it('has no terminal occurrence holding a live claim', async () => {
+      expect(
+        await rows(`
+          SELECT id FROM reminder_delivery_attempts
+          WHERE outcome <> 'claimed' AND claim_expires_at IS NOT NULL
+        `),
+      ).toEqual([]);
+    });
+
+    it('has no successful delivery without acceptance proof, or the reverse', async () => {
+      expect(
+        await rows(`
+          SELECT id FROM reminder_delivery_attempts
+          WHERE (outcome = 'success' AND provider_accepted_at IS NULL)
+             OR (provider_accepted_at IS NOT NULL AND outcome <> 'success')
+        `),
+      ).toEqual([]);
+    });
+
+    it('has no occurrence past its retry budget still waiting to be finished (audit B2)', async () => {
+      expect(
+        await rows(`
+          SELECT id FROM reminder_delivery_attempts
+          WHERE outcome IN ('claimed', 'retryable_failure')
+            AND attempt_count >= 3
+            AND provider_call_started_at IS NULL
+            AND (claim_expires_at IS NULL OR claim_expires_at < NOW())
+        `),
+      ).toEqual([]);
+    });
+
+    it('has no terminal occurrence left permanently unsettled (audit H1)', async () => {
+      expect(
+        await rows(`
+          SELECT id FROM reminder_delivery_attempts
+          WHERE outcome <> 'claimed' AND schedule_settled_at IS NULL
+        `),
+      ).toEqual([]);
+    });
+
+    it('has no claim carrying a provider marker from a previous attempt (audit H2)', async () => {
+      expect(
+        await rows(`
+          SELECT id FROM reminder_delivery_attempts
+          WHERE outcome = 'claimed'
+            AND provider_call_started_at IS NOT NULL
+            AND claimed_at IS NOT NULL
+            AND provider_call_started_at < claimed_at
+        `),
+      ).toEqual([]);
+    });
+
+    it('has no duplicate successful delivery for one schedule on one local day', async () => {
+      expect(
+        await rows(`
+          SELECT schedule_id FROM reminder_delivery_attempts
+          WHERE outcome = 'success'
+          GROUP BY schedule_id, occurrence_local_date
+          HAVING COUNT(*) > 1
+        `),
+      ).toEqual([]);
+    });
+
+    it('has no count that disagrees with the recorded successful overdue deliveries', async () => {
+      expect(
+        await rows(`
+          SELECT s.id
+          FROM task_reminder_schedules s
+          WHERE s.status = 'active'
+            AND s.overdue_delivered_count <> (
+              SELECT COUNT(*) FROM reminder_delivery_attempts att
+              WHERE att.schedule_id = s.id
+                AND att.generation = s.generation
+                AND att.occurrence_kind = 'overdue'
+                AND att.outcome = 'success'
+            )
+        `),
+      ).toEqual([]);
     });
   });
 });

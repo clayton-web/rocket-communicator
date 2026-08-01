@@ -1,4 +1,4 @@
-import type { LocalDate } from '@aicaa/domain';
+import type { LocalDate, TaskStatus } from '@aicaa/domain';
 import type { DbClient, DbTransaction } from '../client/create-prisma-client.js';
 import {
   mapReminderSchedule,
@@ -207,6 +207,77 @@ export async function readCoherentReminderProjection(
       ];
       return {
         dueLocalDate: task?.dueLocalDate ?? null,
+        schedule: schedule ? mapReminderSchedule(schedule) : null,
+      };
+    },
+    { isolationLevel: 'RepeatableRead' },
+  );
+}
+
+/**
+ * Everything the worker must re-check immediately before a send, as one snapshot (A8.4a audit).
+ *
+ * `hasActiveAssignment` rather than the assignment itself: the worker's only question is whether
+ * one exists, and returning the row would put a Recipient identity into a structure the aggregate
+ * telemetry path also touches.
+ */
+export interface ReminderPreSendSnapshot {
+  readonly taskStatus: TaskStatus;
+  readonly hasActiveAssignment: boolean;
+  readonly dueLocalDate: string | null;
+  readonly schedule: PersistedReminderSchedule | null;
+}
+
+/**
+ * Read the Task, its assignment, its canonical due date, and its schedule from one snapshot.
+ *
+ * The pre-send guard used to issue three independent statements on three pooled connections and
+ * then reason across their results. Every individual read was true; the conclusion drawn from them
+ * was of no single moment, and the A8.4a audit flagged the same shape H-A had already found in the
+ * Owner `GET`. The failure it permits is narrow — the guard could see an eligible Task beside a
+ * schedule that a concurrent generation change had already superseded, or the reverse — but the
+ * decision it feeds is "send an email to a real person", which is the wrong place to be reasoning
+ * across two moments.
+ *
+ * `RepeatableRead` for the same reason and at the same cost as `readCoherentReminderProjection`:
+ * PostgreSQL takes the snapshot at the first statement and holds it, so the four reads describe one
+ * instant that existed. Read-only by declaration, because a guard that wrote anything would be
+ * holding a transaction open at exactly the moment the worker must not be.
+ *
+ * This closes the *incoherent read*. It does not, and cannot, close the race between the guard and
+ * the provider call: an Owner may complete the Task in the microsecond after this returns. Nothing
+ * short of holding a lock across the network call would close that, which is forbidden for much
+ * better reasons — so the final authority stays where it belongs, on the immutable occurrence row
+ * and on conditional settlement, which together mean a send racing a lifecycle change is recorded
+ * truthfully and changes nothing about the schedule that moved.
+ */
+export async function readReminderPreSendSnapshot(
+  db: DbClient,
+  organizationId: string,
+  taskId: string,
+): Promise<ReminderPreSendSnapshot | null> {
+  return db.$transaction(
+    async (tx) => {
+      const task = await tx.task.findFirst({
+        where: { id: taskId, organizationId },
+        select: { status: true, dueLocalDate: true },
+      });
+      if (!task) {
+        return null;
+      }
+      // "Active" is `cleared_at IS NULL`, the same predicate `getTaskById` uses. Cleared rows are
+      // immutable history and a returned assignment must not keep a reminder addressable.
+      const activeAssignment = await tx.taskAssignment.findFirst({
+        where: { taskId, organizationId, clearedAt: null },
+        select: { id: true },
+      });
+      const schedule = await tx.taskReminderSchedule.findFirst({
+        where: { taskId, organizationId },
+      });
+      return {
+        taskStatus: task.status,
+        hasActiveAssignment: activeAssignment !== null,
+        dueLocalDate: task.dueLocalDate ?? null,
         schedule: schedule ? mapReminderSchedule(schedule) : null,
       };
     },

@@ -220,23 +220,27 @@ Recipient **work requests** in A4 create pending suggestions in persistence with
 
 **Credentials (names only):** application auth uses `CRON_SECRET`. The External Scheduler management credential (for example cron-job.org’s API key env name `CRON_JOB_ORG_API_KEY`) is never stored in the repository and is not used by the application endpoint.
 
-### Internal reminder processing (A8.4a — contracted, deployed dark)
+### Internal reminder processing (A8.4a — contracted, built dark, never deployed)
 
-**Status: implemented and contracted, deliberately inert.** `operationId`: `processRemindersInternal`. No External Scheduler job invokes it, `ENABLE_REMINDER_DELIVERY` is set in no environment, and the A8 migrations are not applied in Production — so this endpoint is reachable in the repository and does nothing anywhere.
+**Status: implemented and contracted, deliberately inert.** `operationId`: `processRemindersInternal`. No External Scheduler job invokes it, `ENABLE_REMINDER_DELIVERY` is set in no environment, no deployment has been made since it was merged, and the A8 migrations are not applied in Production — so this endpoint exists in the repository and does nothing anywhere. The A8.4a report called it "deployed dark"; nothing was deployed.
 
 | Method | Path                                 | Purpose                                                              |
 | ------ | ------------------------------------ | -------------------------------------------------------------------- |
 | POST   | `/api/v1/internal/reminders/process` | External Scheduler invocation (`InternalCronBearer` / `CRON_SECRET`) |
 
-**POST only, and deliberately no `GET` handler** — unlike the Gmail poll, which accepts both. Empty body, Node runtime, 60-second maximum, bounded batch with a soft time budget, `Cache-Control: no-store`. Not an Owner session; a valid Owner cookie is not authorization here.
+**POST only, and deliberately no `GET` handler** — unlike the Gmail poll, which accepts both. Empty body, Node runtime, 60-second maximum, bounded batch with a soft time budget. `Cache-Control: no-store` is applied by a single response finalizer, so it is present on `200`, `401`, and both `500` shapes rather than on whichever branches remembered it. Not an Owner session; a valid Owner cookie is not authorization here.
 
-**Disabled behaviour is a contract, not an implementation detail.** With `ENABLE_REMINDER_DELIVERY` absent or anything other than the exact string `"true"`, the endpoint returns `200` with `deliveryEnabled: false` and every count zero, having scanned nothing, claimed nothing, written nothing, and called no transport. The match is exact — `"1"`, `"TRUE"`, and `"yes"` all leave delivery off, because the cost of a lenient parse is mail nobody approved.
+**Disabled behaviour is a contract, not an implementation detail.** With `ENABLE_REMINDER_DELIVERY` absent or anything other than the exact string `"true"`, the endpoint returns `200` with `deliveryEnabled: false` and every count zero, having scanned nothing, claimed nothing, written nothing, and called no transport. The match is exact — `"1"`, `"TRUE"`, `"yes"`, `"false"`, `"0"`, and `"true "` with a trailing space all leave delivery off, because the cost of a lenient parse is mail nobody approved.
 
-**Response is aggregate counts only:** `deliveryEnabled`, `schedulesScanned`, `occurrencesClaimed`, `delivered`, `skipped`, `failedRetryable`, `failedPermanent`, `ambiguous`, `recoveredClaims`, `ceilingStops`, `requestId`. No Task summary, Recipient identity, email address, provider payload, failure detail, claim owner, lease, or row identifier appears in the body or in the structured logs, which carry the same aggregates plus operation timing. A caller learns how much work happened, never whose.
+**An unconfigured transport is reported separately from a disabled flag (A8.4a audit H3).** `transportConfigured: false` means processing fell closed because no transport was injected — which is the state of every build, since A8.4a has no real transport and the service constructs none. The two zero-work responses are distinguishable because an operator who turned the flag on and got nothing deserves to know which of the two reasons applied.
+
+**Response is aggregate counts only:** `deliveryEnabled`, `transportConfigured`, `schedulesScanned`, `occurrencesClaimed`, `claimRefusals`, `delivered`, `skipped`, `failedRetryable`, `failedPermanent`, `ambiguous`, `recoveredClaims`, `retryBudgetTerminalizations`, `unsettledOccurrencesSettled`, `settlementsDeferred`, `ceilingStops`, `deadlineStopped`, `requestId`. No Task summary, Recipient identity, email address, provider payload, failure detail, claim owner, lease, or row identifier appears in the body or in the structured logs, which carry the same aggregates plus operation timing. A caller learns how much work happened, never whose.
 
 **Safe to invoke repeatedly and safe to overlap.** Two concurrent invocations cannot both process the same occurrence, because occurrence identity is unique in the database and every state change is fenced on a claim sequence — not because the invocations are prevented from overlapping. A missed invocation is recovered by a later one: persisted occurrence instants are the scheduling authority, so an approximately five-minute wake-up asks which have arrived rather than causing anything to happen every five minutes.
 
-**Nothing here sends.** The only transport implemented in A8.4a is a deterministic fake used by tests. No Gmail account, credential, or provider API is reachable from any processing module, and a source guard fails the build if one is imported.
+**Nothing here sends.** The only transport implemented in A8.4a is a deterministic fake used by tests, it must be injected by the caller, and an unscripted one returns a permanent configuration failure rather than acceptance. No Gmail account, credential, or provider API is reachable from any processing module, and a source guard fails the build if one is imported.
+
+**Only overdue occurrences are processed.** Advance reminders have persistence and terminalization support but no scan predicate, so no worker path claims one. Delivering them is A8.4b.
 
 ### Recipient capability routes and pages
 

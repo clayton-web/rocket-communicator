@@ -184,22 +184,34 @@ export {
   countSuccessfulOverdueDeliveriesForGeneration,
   hasTerminalAdvanceOccurrence,
   listExpiredOccurrenceClaims,
+  listRetryBudgetExhaustedOccurrences,
+  listUnsettledTerminalOccurrences,
   markProviderCallStarted,
+  RETRY_BUDGET_EXHAUSTED_FAILURE_CODE,
   type ClaimReminderOccurrenceInput,
   type ClaimReminderOccurrenceResult,
   type ClaimRefusalReason,
+  type ExhaustedRetryOccurrence,
   type ExpiredOccurrenceClaim,
+  type RecoveryScheduleContext,
   type RecordTerminalOutcomeInput,
   type RecordSkippedOccurrenceInput,
   type TerminalReminderDeliveryOutcome,
+  type UnsettledTerminalOccurrence,
 } from './repositories/reminder-delivery-attempt-repository.js';
-// A8.4a occurrence lifecycle: the safe success path and the claim-recovery primitives.
+// A8.4a occurrence lifecycle: the safe success path, the two settlement phases, and the recovery
+// primitives that discharge whatever the seam between them left behind (A8.4a audit B1, B2, H1).
 export {
   finalizeReminderOccurrence,
   finalizeAbandonedInFlightOccurrence,
   releaseReminderOccurrenceClaim,
+  settleReminderOccurrenceSchedule,
+  terminalizeExhaustedRetryOccurrence,
   type FinalizeReminderOccurrenceInput,
   type FinalizeReminderOccurrenceResult,
+  type NextOverdueOccurrenceInput,
+  type ReminderScheduleSettlementResult,
+  type SettleReminderOccurrenceScheduleInput,
 } from './transactions/a8-4a-occurrence-transactions.js';
 
 export {
@@ -294,9 +306,11 @@ export {
   persistCanonicalDueLocalDate,
   getTaskDueLocalDate,
   readCoherentReminderProjection,
+  readReminderPreSendSnapshot,
   type EstablishReminderScheduleInput,
   type CoherentReminderProjection,
   type EstablishReminderScheduleResult,
+  type ReminderPreSendSnapshot,
 } from './transactions/a8-reminder-transactions.js';
 
 // A8.3b Owner-facing reminder units of work: the A8.3a primitives plus an audit event in the same

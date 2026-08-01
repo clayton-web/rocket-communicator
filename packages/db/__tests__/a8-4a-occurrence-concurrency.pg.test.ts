@@ -48,15 +48,23 @@ import {
   finalizeReminderOccurrence,
   listDueReminderSchedulesGlobally,
   listExpiredOccurrenceClaims,
+  listRetryBudgetExhaustedOccurrences,
+  listUnsettledTerminalOccurrences,
   markProviderCallStarted,
   openNextReminderGeneration,
   persistEstablishedReminderSchedule,
   releaseReminderOccurrenceClaim,
+  RETRY_BUDGET_EXHAUSTED_FAILURE_CODE,
+  settleReminderOccurrenceSchedule,
   stopReminderSchedule,
   suspendReminderScheduleForWaiting,
+  terminalizeExhaustedRetryOccurrence,
   upsertRecipient,
   type DbClient,
 } from '../src/index.js';
+// Phase A alone is deliberately off both barrels (A8.4a audit H1). These tests import it directly
+// to manufacture the state the split exists to survive: a committed delivery with unsettled debt.
+import { terminalizeReminderOccurrence } from '../src/transactions/a8-4a-occurrence-transactions.js';
 
 const RAW_URL = process.env.AICAA_PG_CONCURRENCY_URL;
 
@@ -386,6 +394,10 @@ describeMaybe('A8.4a occurrence lifecycle under contention (real PostgreSQL 16)'
         startedAt: '2026-08-11T16:00:02.000Z',
       });
 
+      const nextAfterRecovery = selectNextOverdueOccurrence({
+        dueLocalDate: seeded.dueLocalDate,
+        now: '2026-08-11T17:00:00.000Z',
+      });
       const recover = (db: DbClient) =>
         settle(
           finalizeAbandonedInFlightOccurrence({
@@ -396,6 +408,7 @@ describeMaybe('A8.4a occurrence lifecycle under contention (real PostgreSQL 16)'
             claimSequence: 1,
             completedAt: '2026-08-11T17:00:00.000Z',
             expectedGeneration: 1,
+            nextOverdueOccurrence: nextAfterRecovery,
           }),
         );
       const [first, second] = await Promise.all([recover(a), recover(b)]);
@@ -414,6 +427,17 @@ describeMaybe('A8.4a occurrence lifecycle under contention (real PostgreSQL 16)'
         now: '2026-08-11T18:00:00.000Z',
       });
       expect(retry.claimed).toBe(false);
+
+      // B1: exactly one recoverer applied the effect, and the effect is *not* "end the series".
+      // Two recoverers racing must not double-arm or leave the schedule armed at nothing.
+      const schedule = await a.taskReminderSchedule.findUniqueOrThrow({
+        where: { id: seeded.scheduleId },
+      });
+      expect(schedule.status, `round ${round}`).toBe('active');
+      expect(schedule.overdueDeliveredCount, `round ${round}`).toBe(0);
+      expect(schedule.nextOverdueOccurrenceAt?.toISOString(), `round ${round}`).toBe(
+        nextAfterRecovery.occurrenceAt,
+      );
     }
   });
 
@@ -555,6 +579,13 @@ describeMaybe('A8.4a occurrence lifecycle under contention (real PostgreSQL 16)'
         startedAt: '2026-08-11T16:00:02.000Z',
       });
 
+      // The next occurrence is supplied because a worker always supplies one for a delivery that
+      // leaves the schedule active. Passing null here used to be harmless shorthand; it is now the
+      // B1 defect written by hand, and the invariant at the bottom of this file rejects it.
+      const next = selectNextOverdueOccurrence({
+        dueLocalDate: seeded.dueLocalDate,
+        now: '2026-08-11T16:00:05.000Z',
+      });
       const finalize = (db: DbClient) =>
         settle(
           finalizeReminderOccurrence({
@@ -567,7 +598,7 @@ describeMaybe('A8.4a occurrence lifecycle under contention (real PostgreSQL 16)'
             outcome: 'success',
             completedAt: '2026-08-11T16:00:05.000Z',
             providerAcceptedAt: '2026-08-11T16:00:04.000Z',
-            nextOverdueOccurrence: null,
+            nextOverdueOccurrence: next,
           }),
         );
       const results = await Promise.all([finalize(a), finalize(b)]);
@@ -580,6 +611,9 @@ describeMaybe('A8.4a occurrence lifecycle under contention (real PostgreSQL 16)'
         where: { id: seeded.scheduleId },
       });
       expect(schedule.overdueDeliveredCount, `round ${round}`).toBe(1);
+      expect(schedule.nextOverdueOccurrenceAt?.toISOString(), `round ${round}`).toBe(
+        next.occurrenceAt,
+      );
     }
   });
 
@@ -778,6 +812,10 @@ describeMaybe('A8.4a occurrence lifecycle under contention (real PostgreSQL 16)'
             claimSequence: 1,
             completedAt: '2026-08-11T17:00:00.000Z',
             expectedGeneration: 1,
+            nextOverdueOccurrence: selectNextOverdueOccurrence({
+              dueLocalDate: seeded.dueLocalDate,
+              now: '2026-08-11T17:00:00.000Z',
+            }),
           }),
         ),
         settle(
@@ -807,6 +845,416 @@ describeMaybe('A8.4a occurrence lifecycle under contention (real PostgreSQL 16)'
   // ---------------------------------------------------------------------------------------------
   // Direct invariant queries over everything the rounds above produced
   // ---------------------------------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------------------------------
+  // A8.4a audit remediation — recovery and settlement under contention
+  // ---------------------------------------------------------------------------------------------
+
+  describe('remediation: recovery debt and settlement debt, raced', () => {
+    /** The state B2 found: last permitted attempt claimed, worker dead before the marker. */
+    async function seedExhausted(prefix: string) {
+      const seeded = await seed(prefix);
+      const claim = await claimReminderOccurrence(a, {
+        ...claimInput(seeded, 'last'),
+        claimExpiresAt: '2026-08-11T16:05:00.000Z',
+      });
+      await a.reminderDeliveryAttempt.update({
+        where: { id: claim.attempt.id },
+        data: { attemptCount: 3 },
+      });
+      return { seeded, attemptId: claim.attempt.id };
+    }
+
+    /** Phase A committed, phase B never ran: a delivery nobody has counted yet. */
+    async function seedUnsettledSuccess(prefix: string) {
+      const seeded = await seed(prefix);
+      const claim = await claimReminderOccurrence(a, claimInput(seeded, 'sender'));
+      await markProviderCallStarted(a, {
+        organizationId: org,
+        attemptId: claim.attempt.id,
+        claimSequence: 1,
+        startedAt: '2026-08-11T16:00:02.000Z',
+      });
+      await terminalizeReminderOccurrence({
+        db: a,
+        organizationId: org,
+        attemptId: claim.attempt.id,
+        scheduleId: seeded.scheduleId,
+        claimSequence: 1,
+        outcome: 'success',
+        completedAt: '2026-08-11T16:00:05.000Z',
+        expectedGeneration: 1,
+        providerAcceptedAt: '2026-08-11T16:00:04.000Z',
+        providerMessageRef: 'ref_unsettled',
+        nextOverdueOccurrence: null,
+      });
+      return { seeded, attemptId: claim.attempt.id };
+    }
+
+    function nextAfter(seeded: Awaited<ReturnType<typeof seed>>, now: string) {
+      return selectNextOverdueOccurrence({ dueLocalDate: seeded.dueLocalDate, now });
+    }
+
+    it('B2: two workers meeting an exhausted occurrence terminalize it exactly once', async () => {
+      for (let round = 0; round < ROUNDS; round += 1) {
+        const { seeded, attemptId } = await seedExhausted('b2_race');
+
+        const terminalize = (db: DbClient) =>
+          settle(
+            terminalizeExhaustedRetryOccurrence({
+              db,
+              organizationId: org,
+              attemptId,
+              maxAttempts: 3,
+              completedAt: '2026-08-11T17:00:00.000Z',
+              now: FOREVER,
+              nextOverdueOccurrence: null,
+            }),
+          );
+        const results = await Promise.all([terminalize(a), terminalize(b), terminalize(c)]);
+
+        // Whoever loses the race sees the terminal row and returns null, which is what "a second
+        // worker does nothing" has to mean concretely.
+        const applied = results.filter((result) => result.ok && result.value !== null);
+        expect(applied, `round ${round}: ${JSON.stringify(results)}`).toHaveLength(1);
+
+        const row = await a.reminderDeliveryAttempt.findUniqueOrThrow({ where: { id: attemptId } });
+        expect(row.outcome, `round ${round}`).toBe('permanent_failure');
+        expect(row.failureCode, `round ${round}`).toBe(RETRY_BUDGET_EXHAUSTED_FAILURE_CODE);
+        expect(row.claimExpiresAt, `round ${round}`).toBeNull();
+        expect(row.providerCallStartedAt, `round ${round}`).toBeNull();
+        expect(row.scheduleSettledAt, `round ${round}`).not.toBeNull();
+
+        // The loop the audit found ends here: the schedule is no longer scannable.
+        const schedule = await a.taskReminderSchedule.findUniqueOrThrow({
+          where: { id: seeded.scheduleId },
+        });
+        expect(schedule.status, `round ${round}`).toBe('stopped');
+        expect(schedule.stopReason, `round ${round}`).toBe('permanent_delivery_failure');
+        expect(schedule.nextOverdueOccurrenceAt, `round ${round}`).toBeNull();
+        const stranded = await listRetryBudgetExhaustedOccurrences(a, {
+          now: FOREVER,
+          maxAttempts: 3,
+          limit: 500,
+        });
+        expect(
+          stranded.some((candidate) => candidate.id === attemptId),
+          `round ${round}: an exhausted occurrence must leave the sweep once terminalized`,
+        ).toBe(false);
+      }
+    });
+
+    it('H1: a forced phase B failure leaves the delivery recorded and the debt collectible', async () => {
+      for (let round = 0; round < ROUNDS; round += 1) {
+        const { seeded, attemptId } = await seedUnsettledSuccess('h1_fault');
+
+        // Phase A is committed. Nothing after this point may take it away.
+        const afterPhaseA = await a.reminderDeliveryAttempt.findUniqueOrThrow({
+          where: { id: attemptId },
+        });
+        expect(afterPhaseA.outcome, `round ${round}`).toBe('success');
+        expect(afterPhaseA.providerAcceptedAt, `round ${round}`).not.toBeNull();
+        expect(afterPhaseA.scheduleSettledAt, `round ${round}`).toBeNull();
+
+        // The fault: the occurrence's Task disappears from under settlement. Any unexpected error
+        // raised inside phase B does the same thing; this one is deterministic and reproducible.
+        const broken = await settle(
+          settleReminderOccurrenceSchedule({
+            db: b,
+            organizationId: 'org_wrong_scope',
+            attemptId,
+            settledAt: '2026-08-11T16:10:00.000Z',
+            nextOverdueOccurrence: nextAfter(seeded, '2026-08-11T16:10:00.000Z'),
+          }),
+        );
+        expect(broken.ok, `round ${round}`).toBe(false);
+
+        const survived = await a.reminderDeliveryAttempt.findUniqueOrThrow({
+          where: { id: attemptId },
+        });
+        expect(survived.outcome, `round ${round}: the send is a fact`).toBe('success');
+        expect(survived.providerAcceptedAt, `round ${round}`).not.toBeNull();
+        expect(survived.providerMessageRef, `round ${round}`).toBe('ref_unsettled');
+
+        // And the debt is still there to collect, which is the whole justification for splitting.
+        const owed = await listUnsettledTerminalOccurrences(a, { limit: 500 });
+        expect(
+          owed.some((candidate) => candidate.id === attemptId),
+          `round ${round}`,
+        ).toBe(true);
+
+        const collected = await settleReminderOccurrenceSchedule({
+          db: c,
+          organizationId: org,
+          attemptId,
+          settledAt: '2026-08-11T18:00:00.000Z',
+          nextOverdueOccurrence: nextAfter(seeded, '2026-08-11T18:00:00.000Z'),
+        });
+        expect(collected.counted, `round ${round}`).toBe(true);
+        expect(
+          (await a.taskReminderSchedule.findUniqueOrThrow({ where: { id: seeded.scheduleId } }))
+            .overdueDeliveredCount,
+          `round ${round}`,
+        ).toBe(1);
+      }
+    });
+
+    it('H1: three settlement workers on one debt count it once', async () => {
+      for (let round = 0; round < ROUNDS; round += 1) {
+        const { seeded, attemptId } = await seedUnsettledSuccess('h1_settle_race');
+        const next = nextAfter(seeded, '2026-08-11T18:00:00.000Z');
+
+        const results = await Promise.all(
+          [a, b, c].map((db) =>
+            settle(
+              settleReminderOccurrenceSchedule({
+                db,
+                organizationId: org,
+                attemptId,
+                settledAt: '2026-08-11T18:00:00.000Z',
+                nextOverdueOccurrence: next,
+              }),
+            ),
+          ),
+        );
+
+        const counted = results.filter((result) => result.ok && result.value.counted);
+        expect(counted, `round ${round}: ${JSON.stringify(results)}`).toHaveLength(1);
+
+        const schedule = await a.taskReminderSchedule.findUniqueOrThrow({
+          where: { id: seeded.scheduleId },
+        });
+        expect(schedule.overdueDeliveredCount, `round ${round}`).toBe(1);
+        expect(schedule.nextOverdueOccurrenceAt?.toISOString(), `round ${round}`).toBe(
+          next.occurrenceAt,
+        );
+      }
+    });
+
+    it('H1: settlement retried against a schedule that moved records without mutating it', async () => {
+      for (let round = 0; round < ROUNDS; round += 1) {
+        const { seeded, attemptId } = await seedUnsettledSuccess('h1_moved');
+        const next = nextAfter(seeded, '2026-08-11T18:00:00.000Z');
+
+        // Settlement and a lifecycle change arrive together, in whichever order the database picks.
+        const [settlement, lifecycle] = await Promise.all([
+          settle(
+            settleReminderOccurrenceSchedule({
+              db: a,
+              organizationId: org,
+              attemptId,
+              settledAt: '2026-08-11T18:00:00.000Z',
+              nextOverdueOccurrence: next,
+            }),
+          ),
+          settle(
+            suspendReminderScheduleForWaiting(b, {
+              organizationId: org,
+              scheduleId: seeded.scheduleId,
+              suspendedAt: '2026-08-11T18:00:00.500Z',
+            }),
+          ),
+        ]);
+
+        expect(
+          settlement.ok,
+          `round ${round}: settlement must not fail for a lifecycle change`,
+        ).toBe(true);
+        const row = await a.reminderDeliveryAttempt.findUniqueOrThrow({ where: { id: attemptId } });
+        expect(row.outcome, `round ${round}`).toBe('success');
+        expect(row.scheduleSettledAt, `round ${round}: settled either way`).not.toBeNull();
+
+        const schedule = await a.taskReminderSchedule.findUniqueOrThrow({
+          where: { id: seeded.scheduleId },
+        });
+        if (lifecycle.ok && schedule.status === 'suspended_waiting') {
+          // Suspension won. The delivery is recorded and counted against nothing, and a suspended
+          // schedule may hold no armed occurrence.
+          expect(schedule.nextOverdueOccurrenceAt, `round ${round}`).toBeNull();
+        } else {
+          expect(schedule.overdueDeliveredCount, `round ${round}`).toBe(1);
+        }
+      }
+    });
+
+    it('H2: a reclaimed occurrence never carries the previous attempt provider marker', async () => {
+      for (let round = 0; round < ROUNDS; round += 1) {
+        const seeded = await seed('h2_race');
+        const claim = await claimReminderOccurrence(a, {
+          ...claimInput(seeded, 'first'),
+          claimExpiresAt: '2026-08-11T16:05:00.000Z',
+        });
+        await markProviderCallStarted(a, {
+          organizationId: org,
+          attemptId: claim.attempt.id,
+          claimSequence: 1,
+          startedAt: '2026-08-11T16:00:02.000Z',
+        });
+        await finalizeReminderOccurrence({
+          db: a,
+          organizationId: org,
+          attemptId: claim.attempt.id,
+          scheduleId: seeded.scheduleId,
+          claimSequence: 1,
+          outcome: 'retryable_failure',
+          completedAt: '2026-08-11T16:00:06.000Z',
+          expectedGeneration: 1,
+          failureCode: 'provider_unavailable',
+          nextOverdueOccurrence: null,
+        });
+
+        // Two workers reclaim it at once, while the dead first worker tries to reassert itself.
+        const retake = (db: DbClient, worker: string) =>
+          settle(
+            claimReminderOccurrence(db, {
+              ...claimInput(seeded, worker, { now: '2026-08-11T17:00:00.000Z' }),
+              id: claim.attempt.id,
+              claimExpiresAt: '2026-08-11T17:05:00.000Z',
+            }),
+          );
+        const [second, third, stale] = await Promise.all([
+          retake(b, 'second'),
+          retake(c, 'third'),
+          settle(
+            markProviderCallStarted(a, {
+              organizationId: org,
+              attemptId: claim.attempt.id,
+              claimSequence: 1,
+              startedAt: '2026-08-11T17:00:00.500Z',
+            }),
+          ),
+        ]);
+
+        const granted = [second, third].filter((result) => result.ok && result.value.claimed);
+        expect(granted, `round ${round}`).toHaveLength(1);
+        expect(stale.ok, `round ${round}: fence 1 is spent and cannot mark anything`).toBe(false);
+
+        const row = await a.reminderDeliveryAttempt.findUniqueOrThrow({
+          where: { id: claim.attempt.id },
+        });
+        expect(row.outcome, `round ${round}`).toBe('claimed');
+        expect(row.claimSequence, `round ${round}`).toBe(2);
+        expect(row.attemptCount, `round ${round}`).toBe(2);
+        // The marker the audit found inherited. A crash now must be recoverable as "never called",
+        // not misread as ambiguous.
+        expect(row.providerCallStartedAt, `round ${round}`).toBeNull();
+        expect(row.providerAcceptedAt, `round ${round}`).toBeNull();
+        expect(row.providerMessageRef, `round ${round}`).toBeNull();
+        expect(row.scheduleSettledAt, `round ${round}`).toBeNull();
+
+        const expired = await listExpiredOccurrenceClaims(a, { now: FOREVER, limit: 500 });
+        const mine = expired.find((candidate) => candidate.id === claim.attempt.id);
+        expect(
+          mine?.providerCallStartedAt,
+          `round ${round}: recovery must classify this as pre-provider`,
+        ).toBeNull();
+        await releaseReminderOccurrenceClaim({
+          db: a,
+          organizationId: org,
+          attemptId: claim.attempt.id,
+          claimSequence: 2,
+        });
+      }
+    });
+
+    it('the ceiling still lands exactly once when the last success settles late', async () => {
+      for (let round = 0; round < ROUNDS; round += 1) {
+        const seeded = await seed('ceiling_late');
+        // Pre-record the first thirteen successful overdue deliveries as settled history.
+        for (let day = 0; day < OVERDUE_SUCCESSFUL_DELIVERY_CEILING - 1; day += 1) {
+          const localDate = addLocalDays(seeded.overdue.occurrenceLocalDate, day);
+          const at = `2026-08-${String(11 + day).padStart(2, '0')}T16:00:00.000Z`;
+          const priorClaim = await claimReminderOccurrence(a, {
+            ...claimInput(seeded, `d${day}`),
+            id: `att_${seeded.key}_d${day}`,
+            occurrenceLocalDate: localDate,
+            occurrenceAt: at,
+            now: at,
+          });
+          await markProviderCallStarted(a, {
+            organizationId: org,
+            attemptId: priorClaim.attempt.id,
+            claimSequence: 1,
+            startedAt: at,
+          });
+          await finalizeReminderOccurrence({
+            db: a,
+            organizationId: org,
+            attemptId: priorClaim.attempt.id,
+            scheduleId: seeded.scheduleId,
+            claimSequence: 1,
+            outcome: 'success',
+            completedAt: at,
+            expectedGeneration: 1,
+            providerAcceptedAt: at,
+            nextOverdueOccurrence: {
+              occurrenceLocalDate: addLocalDays(localDate, 1),
+              occurrenceAt: `2026-08-${String(12 + day).padStart(2, '0')}T16:00:00.000Z`,
+            },
+          });
+        }
+
+        const finalDate = addLocalDays(
+          seeded.overdue.occurrenceLocalDate,
+          OVERDUE_SUCCESSFUL_DELIVERY_CEILING - 1,
+        );
+        const finalAt = '2026-08-24T16:00:00.000Z';
+        const lastClaim = await claimReminderOccurrence(a, {
+          ...claimInput(seeded, 'final'),
+          occurrenceLocalDate: finalDate,
+          occurrenceAt: finalAt,
+          now: finalAt,
+        });
+        await markProviderCallStarted(a, {
+          organizationId: org,
+          attemptId: lastClaim.attempt.id,
+          claimSequence: 1,
+          startedAt: finalAt,
+        });
+        // Phase A only: the fourteenth send happened, and the worker died before settling it.
+        await terminalizeReminderOccurrence({
+          db: a,
+          organizationId: org,
+          attemptId: lastClaim.attempt.id,
+          scheduleId: seeded.scheduleId,
+          claimSequence: 1,
+          outcome: 'success',
+          completedAt: finalAt,
+          expectedGeneration: 1,
+          providerAcceptedAt: finalAt,
+          nextOverdueOccurrence: null,
+        });
+
+        const late = (db: DbClient) =>
+          settle(
+            settleReminderOccurrenceSchedule({
+              db,
+              organizationId: org,
+              attemptId: lastClaim.attempt.id,
+              settledAt: '2026-08-24T18:00:00.000Z',
+              nextOverdueOccurrence: {
+                occurrenceLocalDate: addLocalDays(finalDate, 1),
+                occurrenceAt: '2026-08-25T16:00:00.000Z',
+              },
+            }),
+          );
+        const results = await Promise.all([late(a), late(b), late(c)]);
+        const reached = results.filter((result) => result.ok && result.value.ceilingReached);
+        expect(reached, `round ${round}: ${JSON.stringify(results)}`).toHaveLength(1);
+
+        const schedule = await a.taskReminderSchedule.findUniqueOrThrow({
+          where: { id: seeded.scheduleId },
+        });
+        expect(schedule.overdueDeliveredCount, `round ${round}`).toBe(
+          OVERDUE_SUCCESSFUL_DELIVERY_CEILING,
+        );
+        expect(schedule.status, `round ${round}`).toBe('stopped');
+        expect(schedule.stopReason, `round ${round}`).toBe('overdue_ceiling_reached');
+        // The supplied fifteenth occurrence is discarded rather than armed on a stopped schedule.
+        expect(schedule.nextOverdueOccurrenceAt, `round ${round}`).toBeNull();
+      }
+    });
+  });
 
   describe('invariants, queried directly rather than through the repository', () => {
     async function rows<T>(sql: string): Promise<T[]> {
@@ -930,6 +1378,62 @@ describeMaybe('A8.4a occurrence lifecycle under contention (real PostgreSQL 16)'
           AND s.advance_disposition::text NOT LIKE 'skipped%'
       `);
       expect(contradictions).toEqual([]);
+    });
+
+    it('has no active schedule without an armed next occurrence (audit B1)', async () => {
+      // The direction the original invariant did not assert, and the one B1 violated: recovery
+      // finalized an occurrence, armed nothing, and left the schedule `active` with a null next
+      // instant. Nothing was wrong with any single row; the series had simply stopped existing.
+      //
+      // A ceiling-reached or permanently-failed schedule is `stopped`, not `active`, so there is no
+      // approved exception to carve out here — an active schedule with nothing armed is a bug.
+      const stalled = await rows(`
+        SELECT id FROM task_reminder_schedules
+        WHERE organization_id = '${org}'
+          AND status = 'active'
+          AND (next_overdue_occurrence_at IS NULL
+            OR next_overdue_occurrence_local_date IS NULL)
+      `);
+      expect(stalled).toEqual([]);
+    });
+
+    it('has no occurrence past its retry budget still waiting to be finished (audit B2)', async () => {
+      const stranded = await rows(`
+        SELECT id FROM reminder_delivery_attempts
+        WHERE organization_id = '${org}'
+          AND outcome IN ('claimed', 'retryable_failure')
+          AND attempt_count >= 3
+          AND provider_call_started_at IS NULL
+          AND (claim_expires_at IS NULL OR claim_expires_at < NOW())
+      `);
+      expect(stranded).toEqual([]);
+    });
+
+    it('has no terminal occurrence left permanently unsettled (audit H1)', async () => {
+      // Settlement debt is legitimate for as long as it takes the next invocation to collect it,
+      // and every test here collects its own. Anything left is debt nothing will ever discharge.
+      const owed = await rows(`
+        SELECT id FROM reminder_delivery_attempts
+        WHERE organization_id = '${org}'
+          AND outcome <> 'claimed'
+          AND schedule_settled_at IS NULL
+      `);
+      expect(owed).toEqual([]);
+    });
+
+    it('has no claim carrying a provider marker from a previous attempt (audit H2)', async () => {
+      // A marker older than the claim that owns it is, by definition, somebody else's. That is the
+      // exact shape of the inherited marker: it made a crash before this attempt's transport call
+      // indistinguishable from a crash during it.
+      const inherited = await rows(`
+        SELECT id FROM reminder_delivery_attempts
+        WHERE organization_id = '${org}'
+          AND outcome = 'claimed'
+          AND provider_call_started_at IS NOT NULL
+          AND claimed_at IS NOT NULL
+          AND provider_call_started_at < claimed_at
+      `);
+      expect(inherited).toEqual([]);
     });
 
     it('has no live expired claim left behind after recovery', async () => {

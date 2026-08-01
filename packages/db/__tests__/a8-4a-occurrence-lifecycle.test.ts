@@ -24,15 +24,25 @@ import {
   hasTerminalAdvanceOccurrence,
   listExpiredOccurrenceClaims,
   listDueReminderSchedulesGlobally,
+  listRetryBudgetExhaustedOccurrences,
+  listUnsettledTerminalOccurrences,
   markProviderCallStarted,
   openNextReminderGeneration,
   persistEstablishedReminderSchedule,
+  recordSkippedReminderOccurrence,
   releaseReminderOccurrenceClaim,
+  RETRY_BUDGET_EXHAUSTED_FAILURE_CODE,
+  settleReminderOccurrenceSchedule,
   stopReminderSchedule,
   suspendReminderScheduleForWaiting,
+  terminalizeExhaustedRetryOccurrence,
   upsertRecipient,
   type PersistedReminderSchedule,
 } from '../src/index.js';
+// Phase A on its own is deliberately absent from the barrel (A8.4a audit H1): a caller that ran it
+// and stopped would leave settlement debt only the sweep would notice. These tests reach into the
+// module directly, precisely to prove the phases are separable.
+import { terminalizeReminderOccurrence } from '../src/transactions/a8-4a-occurrence-transactions.js';
 import { createTestDatabase, type TestDatabase } from '../src/client/create-test-database.js';
 
 /**
@@ -634,6 +644,10 @@ describe('A8.4a occurrence lifecycle (PGlite)', () => {
         startedAt: '2026-08-11T16:00:02.000Z',
       });
 
+      const nextAfterRecovery = selectNextOverdueOccurrence({
+        dueLocalDate: seeded.schedule.dueLocalDate,
+        now: '2026-08-11T16:30:00.000Z',
+      });
       const finalized = await finalizeAbandonedInFlightOccurrence({
         db: db.prisma,
         organizationId: org,
@@ -642,6 +656,7 @@ describe('A8.4a occurrence lifecycle (PGlite)', () => {
         claimSequence: 1,
         completedAt: '2026-08-11T16:30:00.000Z',
         expectedGeneration: seeded.schedule.generation,
+        nextOverdueOccurrence: nextAfterRecovery,
       });
 
       expect(finalized.attempt.outcome).toBe('ambiguous');
@@ -650,7 +665,15 @@ describe('A8.4a occurrence lifecycle (PGlite)', () => {
       // precisely what is unknown, and the D106 count stays untouched.
       expect(finalized.attempt.providerAcceptedAt).toBeNull();
       expect(finalized.counted).toBe(false);
-      expect((await readSchedule(seeded.schedule.id)).overdueDeliveredCount).toBe(0);
+      const afterRecovery = await readSchedule(seeded.schedule.id);
+      expect(afterRecovery.overdueDeliveredCount).toBe(0);
+      // B1: consuming this occurrence is not the same act as ending the series. The schedule stays
+      // active *and* armed, which is what the audit found recovery silently failed to do.
+      expect(afterRecovery.status).toBe('active');
+      expect(afterRecovery.stopReason).toBeNull();
+      expect(afterRecovery.nextOverdueOccurrenceAt?.toISOString()).toBe(
+        nextAfterRecovery.occurrenceAt,
+      );
 
       // And the local day is consumed: no further claim of this occurrence is possible.
       const retry = await claimReminderOccurrence(db.prisma, {
@@ -1353,6 +1376,494 @@ describe('A8.4a occurrence lifecycle (PGlite)', () => {
         limit: 200,
       });
       expect(early).toEqual([]);
+    });
+  });
+
+  // ---------------------------------------------------------------------------------------------
+  // H1 — terminalization and settlement are two transactions
+  // ---------------------------------------------------------------------------------------------
+
+  /**
+   * The audit disproved "phase two cannot abort phase one". Every phase-two write was a conditional
+   * update whose zero-row result is a no-op, which is true and insufficient: a CHECK violation, a
+   * unique collision, or any unexpected error raised anywhere in phase two aborts the transaction
+   * and takes the recorded delivery with it. That is the original F1 defect, narrowed.
+   *
+   * These prove the phases are genuinely separable, that the seam is queryable, and that crossing
+   * it twice produces the same schedule as crossing it once.
+   */
+  describe('H1: phase A survives phase B, and phase B is repeatable', () => {
+    function nextFrom(schedule: PersistedReminderSchedule, now: string) {
+      return selectNextOverdueOccurrence({ dueLocalDate: schedule.dueLocalDate, now });
+    }
+
+    it('leaves settlement debt that is visible and findable', async () => {
+      const seeded = await seedSchedule('h1_debt');
+      const claim = await claimOverdue('h1_debt', seeded);
+      if (!claim.claimed) throw new Error('claim failed');
+      await markProviderCallStarted(db.prisma, {
+        organizationId: org,
+        attemptId: claim.attempt.id,
+        claimSequence: claim.claimSequence,
+        startedAt: '2026-08-11T16:00:02.000Z',
+      });
+
+      const attempt = await terminalizeReminderOccurrence({
+        db: db.prisma,
+        organizationId: org,
+        attemptId: claim.attempt.id,
+        scheduleId: seeded.schedule.id,
+        claimSequence: claim.claimSequence,
+        outcome: 'success',
+        completedAt: '2026-08-11T16:00:05.000Z',
+        expectedGeneration: seeded.schedule.generation,
+        providerAcceptedAt: '2026-08-11T16:00:04.000Z',
+        providerMessageRef: 'ref_debt',
+        nextOverdueOccurrence: null,
+      });
+
+      // Phase A is complete and unconditional: the send is a fact.
+      expect(attempt.outcome).toBe('success');
+      expect(attempt.providerAcceptedAt).toBe('2026-08-11T16:00:04.000Z');
+      expect(attempt.scheduleSettledAt).toBeNull();
+
+      // Phase B has not run, and the schedule says so rather than pretending.
+      const before = await readSchedule(seeded.schedule.id);
+      expect(before.overdueDeliveredCount).toBe(0);
+
+      const unsettled = await listUnsettledTerminalOccurrences(db.prisma, { limit: 50 });
+      const mine = unsettled.find((row) => row.id === claim.attempt.id);
+      expect(mine, 'settlement debt must be discoverable, not merely representable').toBeDefined();
+      expect(mine?.outcome).toBe('success');
+      // The sweep carries what the domain needs to compute the next occurrence itself.
+      expect(mine?.dueLocalDate).toBe(seeded.schedule.dueLocalDate);
+      expect(mine?.schedulingTimeZone).toBe(zone);
+    });
+
+    it('applies the effect exactly once no matter how often settlement is retried', async () => {
+      const seeded = await seedSchedule('h1_idempotent');
+      const claim = await claimOverdue('h1_idempotent', seeded);
+      if (!claim.claimed) throw new Error('claim failed');
+      await markProviderCallStarted(db.prisma, {
+        organizationId: org,
+        attemptId: claim.attempt.id,
+        claimSequence: claim.claimSequence,
+        startedAt: '2026-08-11T16:00:02.000Z',
+      });
+      await terminalizeReminderOccurrence({
+        db: db.prisma,
+        organizationId: org,
+        attemptId: claim.attempt.id,
+        scheduleId: seeded.schedule.id,
+        claimSequence: claim.claimSequence,
+        outcome: 'success',
+        completedAt: '2026-08-11T16:00:05.000Z',
+        expectedGeneration: seeded.schedule.generation,
+        providerAcceptedAt: '2026-08-11T16:00:04.000Z',
+        nextOverdueOccurrence: null,
+      });
+
+      const next = nextFrom(seeded.schedule, '2026-08-11T16:00:05.000Z');
+      const settleOnce = () =>
+        settleReminderOccurrenceSchedule({
+          db: db.prisma,
+          organizationId: org,
+          attemptId: claim.attempt.id,
+          settledAt: '2026-08-11T16:10:00.000Z',
+          nextOverdueOccurrence: next,
+        });
+
+      const first = await settleOnce();
+      expect(first.alreadySettled).toBe(false);
+      expect(first.counted).toBe(true);
+      expect(first.scheduleAdvanced).toBe(true);
+
+      for (const attempt of [2, 3, 4]) {
+        const repeat = await settleOnce();
+        expect(repeat.alreadySettled, `settlement ${attempt}`).toBe(true);
+        expect(repeat.counted, `settlement ${attempt}`).toBe(false);
+      }
+
+      const schedule = await readSchedule(seeded.schedule.id);
+      expect(schedule.overdueDeliveredCount, 'the count increments at most once').toBe(1);
+      expect(schedule.nextOverdueOccurrenceAt?.toISOString()).toBe(next.occurrenceAt);
+      expect(
+        (await listUnsettledTerminalOccurrences(db.prisma, { limit: 50 })).some(
+          (row) => row.id === claim.attempt.id,
+        ),
+      ).toBe(false);
+    });
+
+    it('refuses to settle an occurrence that is still claimed', async () => {
+      const seeded = await seedSchedule('h1_claimed');
+      const claim = await claimOverdue('h1_claimed', seeded);
+      if (!claim.claimed) throw new Error('claim failed');
+
+      await expect(
+        settleReminderOccurrenceSchedule({
+          db: db.prisma,
+          organizationId: org,
+          attemptId: claim.attempt.id,
+          settledAt: '2026-08-11T16:10:00.000Z',
+          nextOverdueOccurrence: null,
+        }),
+      ).rejects.toThrow(PersistenceError);
+      // A lease is not a result, so there was nothing to settle and nothing was marked settled.
+      const row = await db.prisma.reminderDeliveryAttempt.findUniqueOrThrow({
+        where: { id: claim.attempt.id },
+      });
+      expect(row.scheduleSettledAt).toBeNull();
+    });
+
+    it('settles a stale-generation success into history without touching the current schedule', async () => {
+      const seeded = await seedSchedule('h1_stale');
+      const claim = await claimOverdue('h1_stale', seeded);
+      if (!claim.claimed) throw new Error('claim failed');
+      await markProviderCallStarted(db.prisma, {
+        organizationId: org,
+        attemptId: claim.attempt.id,
+        claimSequence: claim.claimSequence,
+        startedAt: '2026-08-11T16:00:02.000Z',
+      });
+      await terminalizeReminderOccurrence({
+        db: db.prisma,
+        organizationId: org,
+        attemptId: claim.attempt.id,
+        scheduleId: seeded.schedule.id,
+        claimSequence: claim.claimSequence,
+        outcome: 'success',
+        completedAt: '2026-08-11T16:00:05.000Z',
+        expectedGeneration: seeded.schedule.generation,
+        providerAcceptedAt: '2026-08-11T16:00:04.000Z',
+        nextOverdueOccurrence: null,
+      });
+
+      // The Owner changes the due date before the debt is collected.
+      const newDue = addLocalDays(seeded.schedule.dueLocalDate, 7);
+      const reopened = selectNextOverdueOccurrence({
+        dueLocalDate: newDue,
+        now: '2026-08-11T17:00:00.000Z',
+      });
+      await openNextReminderGeneration(db.prisma, {
+        organizationId: org,
+        taskId: seeded.taskId,
+        expectedGeneration: seeded.schedule.generation,
+        dueLocalDate: newDue,
+        schedulingTimeZone: zone,
+        establishedAt: '2026-08-11T17:00:00.000Z',
+        advanceDisposition: 'skipped_window_elapsed',
+        advanceOccurrence: {
+          occurrenceLocalDate: addLocalDays(newDue, -1),
+          occurrenceAt: reopened.occurrenceAt,
+        },
+        nextOverdueOccurrence: reopened,
+      });
+
+      const settled = await settleReminderOccurrenceSchedule({
+        db: db.prisma,
+        organizationId: org,
+        attemptId: claim.attempt.id,
+        settledAt: '2026-08-11T18:00:00.000Z',
+        nextOverdueOccurrence: reopened,
+      });
+
+      expect(settled.counted).toBe(false);
+      expect(settled.scheduleAdvanced).toBe(false);
+      // Recorded, marked settled, and counted against nothing — the F1 rule, applied late.
+      const row = await db.prisma.reminderDeliveryAttempt.findUniqueOrThrow({
+        where: { id: claim.attempt.id },
+      });
+      expect(row.outcome).toBe('success');
+      expect(row.scheduleSettledAt).not.toBeNull();
+      const schedule = await readSchedule(seeded.schedule.id);
+      expect(schedule.generation).toBe(2);
+      expect(schedule.overdueDeliveredCount).toBe(0);
+      expect(schedule.nextOverdueOccurrenceAt?.toISOString()).toBe(reopened.occurrenceAt);
+    });
+
+    it('marks skips settled at birth, so the sweep never sees them', async () => {
+      // A skip is written by the caller that is already setting the schedule's advance disposition
+      // in the same transaction, so it carries no settlement debt. Leaving it unsettled would hand
+      // the sweep a row whose schedule effect somebody else had already applied, and the sweep
+      // would apply it a second time.
+      const seeded = await seedSchedule('h1_born');
+      const skipped = await recordSkippedReminderOccurrence(db.prisma, {
+        id: 'att_h1_born',
+        organizationId: org,
+        scheduleId: seeded.schedule.id,
+        generation: seeded.schedule.generation,
+        occurrenceKind: 'advance',
+        occurrenceLocalDate: seeded.advance!.occurrenceLocalDate,
+        occurrenceAt: seeded.advance!.occurrenceAt,
+        skipReason: 'advance_window_elapsed',
+        recordedAt: '2026-08-09T12:00:00.000Z',
+      });
+
+      expect(skipped.outcome).toBe('skipped');
+      expect(skipped.scheduleSettledAt).not.toBeNull();
+      expect(
+        (await listUnsettledTerminalOccurrences(db.prisma, { limit: 200 })).some(
+          (row) => row.id === skipped.id,
+        ),
+      ).toBe(false);
+    });
+  });
+
+  // ---------------------------------------------------------------------------------------------
+  // B2 — an exhausted retry budget is a terminal fact, not a permanent refusal
+  // ---------------------------------------------------------------------------------------------
+
+  describe('B2: the retry budget terminalizes rather than hot-looping', () => {
+    /** The exact state the audit reproduced: last attempt claimed, then the worker died. */
+    async function seedCrashedFinalAttempt(key: string) {
+      const seeded = await seedSchedule(key);
+      const claim = await claimOverdue(key, seeded, {
+        claimedAt: '2026-08-11T16:00:00.000Z',
+        claimExpiresAt: '2026-08-11T16:05:00.000Z',
+      });
+      if (!claim.claimed) throw new Error('claim failed');
+      // Fast-forward the attempt counter to the ceiling without inventing a second occurrence.
+      await db.prisma.reminderDeliveryAttempt.update({
+        where: { id: claim.attempt.id },
+        data: { attemptCount: 3 },
+      });
+      return { seeded, attemptId: claim.attempt.id };
+    }
+
+    it('finds an occurrence no worker can claim and no worker has finished', async () => {
+      const { attemptId } = await seedCrashedFinalAttempt('b2_find');
+
+      // Still leased: the current claimant is entitled to its last attempt.
+      const leaseLive = await listRetryBudgetExhaustedOccurrences(db.prisma, {
+        now: '2026-08-11T16:01:00.000Z',
+        maxAttempts: 3,
+        limit: 50,
+      });
+      expect(leaseLive.some((row) => row.id === attemptId)).toBe(false);
+
+      // Lease expired, budget spent, nothing in flight: nobody can ever finish this.
+      const stranded = await listRetryBudgetExhaustedOccurrences(db.prisma, {
+        now: FOREVER,
+        maxAttempts: 3,
+        limit: 50,
+      });
+      expect(stranded.some((row) => row.id === attemptId)).toBe(true);
+    });
+
+    it('never treats an in-flight occurrence as merely out of budget', async () => {
+      const { attemptId } = await seedCrashedFinalAttempt('b2_inflight');
+      await markProviderCallStarted(db.prisma, {
+        organizationId: org,
+        attemptId,
+        claimSequence: 1,
+        startedAt: '2026-08-11T16:00:02.000Z',
+      });
+
+      const stranded = await listRetryBudgetExhaustedOccurrences(db.prisma, {
+        now: FOREVER,
+        maxAttempts: 3,
+        limit: 50,
+      });
+      // A provider may hold this message. "We ran out of attempts" would assert something nobody
+      // can know; the ambiguous class is the stricter and correct reading.
+      expect(stranded.some((row) => row.id === attemptId)).toBe(false);
+    });
+
+    it('terminalizes it as a permanent failure and stops the schedule', async () => {
+      const { seeded, attemptId } = await seedCrashedFinalAttempt('b2_terminal');
+
+      const result = await terminalizeExhaustedRetryOccurrence({
+        db: db.prisma,
+        organizationId: org,
+        attemptId,
+        maxAttempts: 3,
+        completedAt: '2026-08-11T17:00:00.000Z',
+        now: FOREVER,
+        nextOverdueOccurrence: null,
+      });
+
+      expect(result).not.toBeNull();
+      expect(result?.attempt.outcome).toBe('permanent_failure');
+      expect(result?.attempt.failureCode).toBe(RETRY_BUDGET_EXHAUSTED_FAILURE_CODE);
+      expect(result?.attempt.claimedBy).toBeNull();
+      expect(result?.attempt.claimExpiresAt).toBeNull();
+      expect(result?.attempt.providerCallStartedAt).toBeNull();
+      expect(result?.attempt.providerAcceptedAt).toBeNull();
+      expect(result?.attempt.scheduleSettledAt).not.toBeNull();
+
+      const schedule = await readSchedule(seeded.schedule.id);
+      expect(schedule.status).toBe('stopped');
+      expect(schedule.stopReason).toBe('permanent_delivery_failure');
+      expect(schedule.requiresOwnerAttention).toBe(true);
+      expect(schedule.nextOverdueOccurrenceAt).toBeNull();
+
+      // And it is gone from the scan, which is what ends the loop.
+      const due = await listDueReminderSchedulesGlobally(db.prisma, {
+        dueAtOrBefore: FOREVER,
+        limit: 200,
+      });
+      expect(due.map((row) => row.id)).not.toContain(seeded.schedule.id);
+    });
+
+    it('is a no-op for a second worker, and for an occurrence still within budget', async () => {
+      const { seeded, attemptId } = await seedCrashedFinalAttempt('b2_second');
+      await terminalizeExhaustedRetryOccurrence({
+        db: db.prisma,
+        organizationId: org,
+        attemptId,
+        maxAttempts: 3,
+        completedAt: '2026-08-11T17:00:00.000Z',
+        now: FOREVER,
+        nextOverdueOccurrence: null,
+      });
+      const versionAfterFirst = (await readSchedule(seeded.schedule.id)).reminderVersion;
+
+      const second = await terminalizeExhaustedRetryOccurrence({
+        db: db.prisma,
+        organizationId: org,
+        attemptId,
+        maxAttempts: 3,
+        completedAt: '2026-08-11T18:00:00.000Z',
+        now: FOREVER,
+        nextOverdueOccurrence: null,
+      });
+      expect(second).toBeNull();
+      expect((await readSchedule(seeded.schedule.id)).reminderVersion).toBe(versionAfterFirst);
+
+      // A budget of four means this occurrence still has an attempt left, so nothing may close it.
+      const withinBudget = await seedCrashedFinalAttempt('b2_within');
+      expect(
+        await terminalizeExhaustedRetryOccurrence({
+          db: db.prisma,
+          organizationId: org,
+          attemptId: withinBudget.attemptId,
+          maxAttempts: 4,
+          completedAt: '2026-08-11T17:00:00.000Z',
+          now: FOREVER,
+          nextOverdueOccurrence: null,
+        }),
+      ).toBeNull();
+    });
+  });
+
+  // ---------------------------------------------------------------------------------------------
+  // H2 — a retry takeover resets the provider boundary
+  // ---------------------------------------------------------------------------------------------
+
+  describe('H2: taking over a retryable occurrence clears the previous attempt provider state', () => {
+    it('clears the marker, the acceptance fields, and the settlement marker', async () => {
+      const seeded = await seedSchedule('h2_clear');
+      const claim = await claimOverdue('h2_clear', seeded, {
+        claimedAt: '2026-08-11T16:00:00.000Z',
+        claimExpiresAt: '2026-08-11T16:05:00.000Z',
+      });
+      if (!claim.claimed) throw new Error('claim failed');
+      await markProviderCallStarted(db.prisma, {
+        organizationId: org,
+        attemptId: claim.attempt.id,
+        claimSequence: 1,
+        startedAt: '2026-08-11T16:00:02.000Z',
+      });
+      const failed = await finalizeReminderOccurrence({
+        db: db.prisma,
+        organizationId: org,
+        attemptId: claim.attempt.id,
+        scheduleId: seeded.schedule.id,
+        claimSequence: 1,
+        outcome: 'retryable_failure',
+        completedAt: '2026-08-11T16:00:06.000Z',
+        expectedGeneration: seeded.schedule.generation,
+        failureCode: 'provider_unavailable',
+        nextOverdueOccurrence: null,
+      });
+      expect(failed.attempt.providerCallStartedAt).not.toBeNull();
+      expect(failed.attempt.scheduleSettledAt).not.toBeNull();
+
+      const retaken = await claimReminderOccurrence(db.prisma, {
+        id: 'att_h2_clear_ignored',
+        organizationId: org,
+        scheduleId: seeded.schedule.id,
+        generation: seeded.schedule.generation,
+        occurrenceKind: 'overdue',
+        occurrenceLocalDate: seeded.overdue.occurrenceLocalDate,
+        occurrenceAt: seeded.overdue.occurrenceAt,
+        claimedBy: 'worker_b',
+        claimedAt: '2026-08-11T17:00:00.000Z',
+        claimExpiresAt: '2026-08-11T17:05:00.000Z',
+        now: '2026-08-11T17:00:00.000Z',
+        maxAttempts: 3,
+      });
+
+      expect(retaken.claimed).toBe(true);
+      if (!retaken.claimed) return;
+      expect(retaken.claimSequence).toBe(2);
+      expect(retaken.attempt.attemptCount).toBe(2);
+      // The marker describes *this* attempt, which has not called anything yet. Inheriting the
+      // previous answer made a crash before the new call look like a crash during it, so a reminder
+      // provably never sent was finalized ambiguous and its local day consumed (audit H2).
+      expect(retaken.attempt.providerCallStartedAt).toBeNull();
+      expect(retaken.attempt.providerAcceptedAt).toBeNull();
+      expect(retaken.attempt.providerMessageRef).toBeNull();
+      expect(retaken.attempt.scheduleSettledAt).toBeNull();
+      expect(retaken.attempt.failureCode).toBeNull();
+      expect(retaken.attempt.completedAt).toBeNull();
+    });
+
+    it('makes the reclaimed occurrence safely releasable rather than ambiguous', async () => {
+      const seeded = await seedSchedule('h2_release');
+      const claim = await claimOverdue('h2_release', seeded, {
+        claimedAt: '2026-08-11T16:00:00.000Z',
+        claimExpiresAt: '2026-08-11T16:05:00.000Z',
+      });
+      if (!claim.claimed) throw new Error('claim failed');
+      await markProviderCallStarted(db.prisma, {
+        organizationId: org,
+        attemptId: claim.attempt.id,
+        claimSequence: 1,
+        startedAt: '2026-08-11T16:00:02.000Z',
+      });
+      await finalizeReminderOccurrence({
+        db: db.prisma,
+        organizationId: org,
+        attemptId: claim.attempt.id,
+        scheduleId: seeded.schedule.id,
+        claimSequence: 1,
+        outcome: 'retryable_failure',
+        completedAt: '2026-08-11T16:00:06.000Z',
+        expectedGeneration: seeded.schedule.generation,
+        failureCode: 'provider_unavailable',
+        nextOverdueOccurrence: null,
+      });
+      await claimReminderOccurrence(db.prisma, {
+        id: 'att_h2_release_ignored',
+        organizationId: org,
+        scheduleId: seeded.schedule.id,
+        generation: seeded.schedule.generation,
+        occurrenceKind: 'overdue',
+        occurrenceLocalDate: seeded.overdue.occurrenceLocalDate,
+        occurrenceAt: seeded.overdue.occurrenceAt,
+        claimedBy: 'worker_b',
+        claimedAt: '2026-08-11T17:00:00.000Z',
+        claimExpiresAt: '2026-08-11T17:05:00.000Z',
+        now: '2026-08-11T17:00:00.000Z',
+        maxAttempts: 3,
+      });
+
+      // The recovery sweep classifies purely on the marker, and the marker is now truthful.
+      const expired = await listExpiredOccurrenceClaims(db.prisma, { now: FOREVER, limit: 50 });
+      const mine = expired.find((row) => row.id === claim.attempt.id);
+      expect(mine?.providerCallStartedAt).toBeNull();
+      await releaseReminderOccurrenceClaim({
+        db: db.prisma,
+        organizationId: org,
+        attemptId: claim.attempt.id,
+        claimSequence: 2,
+      });
+      const released = await db.prisma.reminderDeliveryAttempt.findUniqueOrThrow({
+        where: { id: claim.attempt.id },
+      });
+      expect(released.outcome).toBe('claimed');
+      expect(released.claimedBy).toBeNull();
     });
   });
 });

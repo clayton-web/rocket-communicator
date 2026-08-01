@@ -14,15 +14,29 @@ import {
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
-const NO_STORE = { 'Cache-Control': 'no-store' } as const;
+/**
+ * Every response leaves through here (A8.4a audit L2).
+ *
+ * `no-store` used to be attached to the success branch only, so a 401 and a 500 — the two responses
+ * most likely to be produced in bulk by a misconfigured scheduler — were cacheable by anything
+ * between here and the caller. Applying it at the single exit is a stronger guarantee than
+ * remembering to repeat the header on every branch, because there is no branch left to forget.
+ */
+function noStore(response: Response): Response {
+  response.headers.set('Cache-Control', 'no-store');
+  return response;
+}
 
 /**
  * Internal reminder occurrence processing (A8.4a).
  *
- * **Deployed dark.** Delivery is off unless `ENABLE_REMINDER_DELIVERY` is exactly `"true"`, which is
- * set nowhere. With it off this endpoint scans nothing, claims nothing, writes nothing, and calls no
- * transport; it returns zero aggregates and `deliveryEnabled: false`. No cron job invokes it, and no
- * real provider exists behind it — the only transport implemented is the A8.4a fake.
+ * **Built dark, and never deployed.** No deployment of this milestone has happened, so this route
+ * does not exist in any running environment. Even if it did, three independent things would each be
+ * enough to stop it doing anything: `ENABLE_REMINDER_DELIVERY` is not set to `"true"` anywhere; no
+ * transport is injected, and the processing service fails closed without one; and no real transport
+ * has been implemented to inject. With delivery off it scans nothing, claims nothing, writes
+ * nothing, and calls no transport — it returns zero aggregates and `deliveryEnabled: false`. No cron
+ * job invokes it, and the only transport that exists at all is the A8.4a test fake.
  *
  * Invoked by an External Scheduler with `Authorization: Bearer <CRON_SECRET>`, on the same
  * approximately five-minute wake-up cadence as the other internal jobs. Nothing repeats every five
@@ -38,7 +52,7 @@ const NO_STORE = { 'Cache-Control': 'no-store' } as const;
  */
 export async function POST(request: Request): Promise<Response> {
   const routeTemplate = '/api/v1/internal/reminders/process';
-  return runWithRequestContext(
+  const response = await runWithRequestContext(
     {
       requestId: createRequestId(),
       routeTemplate,
@@ -59,7 +73,7 @@ export async function POST(request: Request): Promise<Response> {
 
         const db = await getDb();
         const result = await runInternalReminderProcess({ db, requestId: requestId! });
-        return NextResponse.json(result.response, { headers: NO_STORE });
+        return NextResponse.json(result.response);
       } catch (error) {
         logDatabaseRuntimeFailure(error, { routePathname: routeTemplate, requestId });
         logOperationalFailure(error, {
@@ -71,4 +85,5 @@ export async function POST(request: Request): Promise<Response> {
       }
     },
   );
+  return noStore(response);
 }

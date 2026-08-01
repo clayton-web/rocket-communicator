@@ -53,11 +53,35 @@ export type FakeTransportScript =
   | { readonly kind: 'slow'; readonly delayMs: number; readonly then: ReminderTransportResult };
 
 export interface FakeReminderTransportOptions {
-  /** Outcome for Tasks with no explicit script. Defaults to `accepted`. */
+  /**
+   * Outcome for Tasks with no explicit script.
+   *
+   * Defaults to a permanent configuration failure, never to acceptance (A8.4a audit H3).
+   */
   readonly defaultResult?: ReminderTransportResult;
   /** Keyed by Task id, because occurrence ids are minted by the service at claim time. */
   readonly scripts?: ReadonlyMap<string, FakeTransportScript>;
 }
+
+/**
+ * What an unscripted fake reports (A8.4a audit H3).
+ *
+ * The default used to be `accepted`. Nothing constructed one in production — the flag is off and
+ * the endpoint is undeployed — but the *default* was the wrong shape for a safety foundation: a
+ * single environment variable away from a system that recorded successful deliveries, incremented
+ * the D106 count toward its ceiling of fourteen, and advanced every schedule, while sending
+ * absolutely nothing. An unconfigured transport claiming success is the one failure a delivery
+ * system must not be able to have, because there is no downstream check that would catch it.
+ *
+ * `permanent` rather than `retryable`: an unconfigured deployment does not become configured by
+ * being asked again, and three attempts against a missing transport would burn an occurrence's
+ * budget for no reason. Permanent stops the schedule and raises Owner attention, which is the
+ * truthful outcome — somebody has to go and configure a transport.
+ */
+const UNCONFIGURED_TRANSPORT_RESULT: ReminderTransportResult = {
+  kind: 'permanent',
+  failureCode: 'transport_not_configured',
+};
 
 /**
  * A transport that sends nothing and does exactly what the test told it to (A8.4a).
@@ -70,6 +94,11 @@ export interface FakeReminderTransportOptions {
  *
  * `slow` exists so a call can be made to outlive its own lease deliberately, which is the only way
  * to exercise the late-finalization fence without sleeping for the real lease duration.
+ *
+ * The processing service cannot construct one of these. It has no import of this class and refuses
+ * to run without an injected transport, so the only way a fake reaches the occurrence lifecycle is
+ * a test handing it one deliberately — which is the guarantee `a8-4a-worker-safety-guards.test.ts`
+ * checks structurally rather than trusting.
  */
 export class FakeReminderTransport implements ReminderTransport {
   private readonly defaultResult: ReminderTransportResult;
@@ -78,10 +107,7 @@ export class FakeReminderTransport implements ReminderTransport {
   readonly calls: ReminderTransportRequest[] = [];
 
   constructor(options: FakeReminderTransportOptions = {}) {
-    this.defaultResult = options.defaultResult ?? {
-      kind: 'accepted',
-      providerMessageRef: 'fake-accepted',
-    };
+    this.defaultResult = options.defaultResult ?? UNCONFIGURED_TRANSPORT_RESULT;
     this.scripts = options.scripts ?? new Map();
   }
 

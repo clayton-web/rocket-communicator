@@ -20,19 +20,15 @@ import {
   SCHEDULE_CLAIM_LEASE_MS,
   isReminderDeliveryEnabled,
 } from './process-config';
-import {
-  FakeReminderTransport,
-  type ReminderTransport,
-  type ReminderTransportResult,
-} from './transport';
+import type { ReminderTransport, ReminderTransportResult } from './transport';
 
 /**
  * A8.4a reminder occurrence processing.
  *
  * This is the worker-safety foundation, not a worker that sends reminders. It claims occurrences,
  * validates eligibility, invokes an **injected transport**, and finalizes results through the safe
- * occurrence transaction. The only transport that exists is the fake one, delivery is disabled by
- * default, and nothing here imports Gmail or any provider.
+ * occurrence transactions. Delivery is disabled by default, no transport is injected anywhere
+ * outside tests, and nothing here imports Gmail, a provider, or even the fake transport.
  *
  * ## The ordering that makes it safe
  *
@@ -46,8 +42,23 @@ import {
  * 2. **Commit the in-flight marker before calling the transport.** A crash then leaves durable
  *    evidence that a provider may hold the message, so recovery finalizes ambiguous instead of
  *    resending. Marking afterwards would make a crash mid-call look like a crash before it.
- * 3. **Never hold a database transaction across the transport call.** The claim, the marker, and the
- *    finalization are three separate transactions with the network call between the second and third.
+ * 3. **Never hold a database transaction across the transport call.** The claim, the marker, the
+ *    terminalization, and the settlement are four separate transactions, with the network call
+ *    between the second and third.
+ *
+ * ## Recovery debt comes before new work (A8.4a audit B1, B2, H1)
+ *
+ * Every crash point in the list above leaves a specific, findable residue, and each one blocks
+ * something. The audit found two that blocked a schedule *permanently* because nothing swept them,
+ * so the invocation order now discharges all four classes of debt before scanning for new work:
+ *
+ * 1. terminal occurrences whose schedule settlement never ran;
+ * 2. expired leases with no provider marker — released, and retried normally;
+ * 3. expired leases *with* a provider marker — finalized ambiguous, and the series advanced;
+ * 4. occurrences that spent their retry budget without ever terminalizing.
+ *
+ * Each class is bounded independently. A hundred rows of one kind of wreckage must not consume the
+ * whole invocation and starve the other three, and none of them may starve the due scan.
  *
  * ## Five-minute wake-up semantics
  *
@@ -55,27 +66,54 @@ import {
  * authority; this service asks which of them have arrived. A missed invocation is recovered by the
  * next one, overlapping invocations are made safe by the unique occurrence identity rather than by
  * not overlapping, and a backlog drains a bounded batch at a time. No in-memory timer is load-bearing.
+ *
+ * ## Overdue only
+ *
+ * The due scan selects on `next_overdue_occurrence_at`, so the only occurrences this service ever
+ * claims are `overdue` ones. The advance terminalization and settlement paths exist in persistence
+ * and are exercised by tests, but no worker code path reaches them: delivering advance reminders is
+ * A8.4b work and needs its own scan predicate and index before it can claim anything.
  */
 
 /** Aggregate counters. Counts only — never a Task summary, recipient, address, or provider body. */
 export interface ReminderProcessAggregate {
   readonly deliveryEnabled: boolean;
+  /**
+   * Whether a transport was injected. False means the invocation fell closed and did nothing: no
+   * scan, no claim, no write (A8.4a audit H3).
+   */
+  readonly transportConfigured: boolean;
   readonly schedulesScanned: number;
   readonly occurrencesClaimed: number;
+  /** Occurrences another worker held, or that no worker may claim again. */
+  readonly claimRefusals: number;
   readonly delivered: number;
   readonly skipped: number;
   readonly failedRetryable: number;
   readonly failedPermanent: number;
   readonly ambiguous: number;
   readonly recoveredClaims: number;
+  /** Occurrences that spent their retry budget without terminalizing, and were terminalized here. */
+  readonly retryBudgetTerminalizations: number;
+  /** Terminal occurrences whose schedule settlement was completed by this invocation's sweep. */
+  readonly unsettledOccurrencesSettled: number;
+  /** Settlements this invocation could not complete, leaving durable debt for the next one. */
+  readonly settlementsDeferred: number;
   readonly ceilingStops: number;
+  /** True when the soft deadline cut the invocation short before its work was exhausted. */
+  readonly deadlineStopped: boolean;
   readonly requestId: string;
 }
 
 export interface RunReminderProcessInput {
   readonly db: DbClient;
   readonly requestId: string;
-  /** Injected so tests can script outcomes. Production has no real transport in this slice. */
+  /**
+   * The transport to send through. **Required for any work to happen** (A8.4a audit H3).
+   *
+   * Nothing in production supplies one. That is the point: A8.4a has no real transport, and a
+   * worker that quietly manufactured a fake would record deliveries it never made.
+   */
   readonly transport?: ReminderTransport;
   readonly now?: string;
   readonly startedAtMs?: number;
@@ -84,68 +122,175 @@ export interface RunReminderProcessInput {
   readonly env?: NodeJS.ProcessEnv;
 }
 
-type Counters = {
-  -readonly [K in Exclude<keyof ReminderProcessAggregate, 'deliveryEnabled' | 'requestId'>]: number;
-};
+type CountKeys = Exclude<
+  keyof ReminderProcessAggregate,
+  'deliveryEnabled' | 'transportConfigured' | 'deadlineStopped' | 'requestId'
+>;
+type Counters = { -readonly [K in CountKeys]: number } & { deadlineStopped: boolean };
 
 const ZERO_AGGREGATE: Counters = {
   schedulesScanned: 0,
   occurrencesClaimed: 0,
+  claimRefusals: 0,
   delivered: 0,
   skipped: 0,
   failedRetryable: 0,
   failedPermanent: 0,
   ambiguous: 0,
   recoveredClaims: 0,
+  retryBudgetTerminalizations: 0,
+  unsettledOccurrencesSettled: 0,
+  settlementsDeferred: 0,
   ceilingStops: 0,
+  deadlineStopped: false,
 };
 
 export async function runInternalReminderProcess(
   input: RunReminderProcessInput,
 ): Promise<{ response: ReminderProcessAggregate }> {
   const deliveryEnabled = isReminderDeliveryEnabled(input.env ?? process.env);
-  if (!deliveryEnabled) {
-    // Dark deployment. No scan, no claim, no write, no transport — the endpoint exists and answers,
-    // and that is all it does until an Owner-approved decision turns it on.
+  const transport = input.transport;
+
+  if (!deliveryEnabled || !transport) {
+    // Two ways to do nothing, reported apart so an operator can tell them apart.
+    //
+    // Delivery off is the dark default and needs no explanation. No transport is the fail-closed
+    // path: the flag was turned on in an environment that has nothing to send with, and the only
+    // safe response is to scan nothing, claim nothing, write nothing, and say so. Returning before
+    // `loadDbRuntime` means the disabled invocation does not even open the database.
     return {
-      response: { deliveryEnabled: false, ...ZERO_AGGREGATE, requestId: input.requestId },
+      response: {
+        deliveryEnabled,
+        transportConfigured: transport !== undefined,
+        ...ZERO_AGGREGATE,
+        requestId: input.requestId,
+      },
     };
   }
 
   const startedAtMs = input.startedAtMs ?? Date.now();
   const deadlineMs = input.deadlineMs ?? startedAtMs + PROCESS_MAX_DURATION_MS;
   const now = input.now ?? new Date(startedAtMs).toISOString();
-  const transport = input.transport ?? new FakeReminderTransport();
   const runtime = await loadDbRuntime();
   const counters = { ...ZERO_AGGREGATE };
 
-  const outOfTime = () => Date.now() > deadlineMs - PROCESS_STOP_MARGIN_MS;
+  const outOfTime = () => {
+    if (Date.now() > deadlineMs - PROCESS_STOP_MARGIN_MS) {
+      counters.deadlineStopped = true;
+      return true;
+    }
+    return false;
+  };
+  const context = { runtime, db: input.db, now, counters };
 
-  // Recovery first. An abandoned occurrence blocks its own identity, so a schedule with one is
-  // unprocessable until it is settled — clearing them before scanning means the same invocation
-  // that finds the wreckage can also make progress past it.
-  counters.recoveredClaims = await recoverAbandonedClaims(runtime, input.db, now, outOfTime);
+  // ---- Recovery debt, oldest wound first, each class bounded on its own. ----
+  await settleUnsettledOccurrences(context, outOfTime);
+  await recoverAbandonedClaims(context, outOfTime);
+  await terminalizeExhaustedOccurrences(context, outOfTime);
 
-  const due = await runtime.listDueReminderSchedulesGlobally(input.db, {
-    dueAtOrBefore: now,
-    limit: input.maxSchedules ?? MAX_SCHEDULES_PER_PROCESS,
-  });
+  const due = outOfTime()
+    ? []
+    : await runtime.listDueReminderSchedulesGlobally(input.db, {
+        dueAtOrBefore: now,
+        limit: input.maxSchedules ?? MAX_SCHEDULES_PER_PROCESS,
+      });
 
   for (const schedule of due) {
     if (outOfTime()) {
       break;
     }
     counters.schedulesScanned += 1;
-    await processOneSchedule({ runtime, db: input.db, schedule, now, transport, counters });
+    await processOneSchedule({ ...context, schedule, transport });
   }
 
   return {
-    response: { deliveryEnabled: true, ...counters, requestId: input.requestId },
+    response: {
+      deliveryEnabled: true,
+      transportConfigured: true,
+      ...counters,
+      requestId: input.requestId,
+    },
   };
 }
 
 type DbRuntime = Awaited<ReturnType<typeof loadDbRuntime>>;
 type DueSchedule = Awaited<ReturnType<DbRuntime['listDueReminderSchedulesGlobally']>>[number];
+type ProcessContext = {
+  runtime: DbRuntime;
+  db: DbClient;
+  now: string;
+  counters: Counters;
+};
+
+/**
+ * The next occurrence in a generation's series, computed once, the same way, everywhere.
+ *
+ * Anchored on the generation's due date rather than on the occurrence being settled: D106 defines
+ * the series from the due date, and re-deriving it from today would slide the series forward a day
+ * every time one was delivered or recovered.
+ *
+ * Recovery paths call this with the schedule's *current* due date and time zone. That is correct
+ * even when the schedule has moved on, because settlement arms the result only while the generation
+ * still matches — a moved schedule discards it untouched.
+ */
+function nextOccurrenceFor(
+  schedule: { dueLocalDate: string; schedulingTimeZone: string },
+  now: string,
+): { occurrenceLocalDate: LocalDate; occurrenceAt: string } {
+  const next = selectNextOverdueOccurrence({
+    dueLocalDate: schedule.dueLocalDate as LocalDate,
+    now: now as UtcInstant,
+    timeZone: schedule.schedulingTimeZone || REMINDER_SCHEDULING_TIME_ZONE,
+  });
+  return { occurrenceLocalDate: next.occurrenceLocalDate, occurrenceAt: next.occurrenceAt };
+}
+
+/**
+ * Discharge settlement debt left by a crash between the two finalization phases (audit H1).
+ *
+ * Splitting terminalization from settlement is what makes a recorded delivery survive a settlement
+ * failure, and this is the other half of that bargain: the seam between them is a crash point, and
+ * a crash point without a sweep is a silent divergence. A terminal occurrence with no settlement
+ * marker means the message is recorded and the schedule has not been told — not counted, not
+ * advanced, not stopped, its advance disposition not settled.
+ *
+ * The transport is not involved and cannot be: everything needed is already durable on the row.
+ * Settlement is idempotent, so a row two workers both pick up is settled exactly once.
+ */
+async function settleUnsettledOccurrences(
+  context: ProcessContext,
+  outOfTime: () => boolean,
+): Promise<void> {
+  const { runtime, db, now, counters } = context;
+  const unsettled = await runtime.listUnsettledTerminalOccurrences(db, {
+    limit: MAX_RECOVERIES_PER_PROCESS,
+  });
+
+  for (const occurrence of unsettled) {
+    if (outOfTime()) {
+      return;
+    }
+    try {
+      const settled = await runtime.settleReminderOccurrenceSchedule({
+        db,
+        organizationId: occurrence.organizationId,
+        attemptId: occurrence.id,
+        settledAt: now,
+        nextOverdueOccurrence: nextOccurrenceFor(occurrence, now),
+      });
+      if (!settled.alreadySettled) {
+        counters.unsettledOccurrencesSettled += 1;
+        if (settled.ceilingReached) {
+          counters.ceilingStops += 1;
+        }
+      }
+    } catch {
+      // Still owed, still findable, still bounded. A row that fails settlement repeatedly consumes
+      // one slot of this sweep's budget and nothing else — it cannot starve the due scan below.
+      counters.settlementsDeferred += 1;
+    }
+  }
+}
 
 /**
  * Settle occurrences whose claimant vanished (A8.3a audit F2).
@@ -154,22 +299,25 @@ type DueSchedule = Awaited<ReturnType<DbRuntime['listDueReminderSchedulesGloball
  * so the lease is simply released and the occurrence returns to the pool for an ordinary retry. Set
  * means a provider may hold the message, and no amount of reasoning recovers the truth — so the
  * occurrence is finalized ambiguous, consumes its local day, and is never retried.
+ *
+ * The ambiguous branch supplies the next occurrence (audit B1). It used to supply nothing, which
+ * settlement faithfully wrote through as `next_overdue_occurrence_at = NULL` on a schedule left
+ * `active`, with no stop reason and no attention flag: the series ended and no row said so.
+ * Consuming today's occurrence is not the same act as ending the series.
  */
 async function recoverAbandonedClaims(
-  runtime: DbRuntime,
-  db: DbClient,
-  now: string,
+  context: ProcessContext,
   outOfTime: () => boolean,
-): Promise<number> {
+): Promise<void> {
+  const { runtime, db, now, counters } = context;
   const expired = await runtime.listExpiredOccurrenceClaims(db, {
     now,
     limit: MAX_RECOVERIES_PER_PROCESS,
   });
 
-  let recovered = 0;
   for (const claim of expired) {
     if (outOfTime()) {
-      break;
+      return;
     }
     try {
       if (claim.providerCallStartedAt === null) {
@@ -180,7 +328,7 @@ async function recoverAbandonedClaims(
           claimSequence: claim.claimSequence,
         });
       } else {
-        await runtime.finalizeAbandonedInFlightOccurrence({
+        const finalized = await runtime.finalizeAbandonedInFlightOccurrence({
           db,
           organizationId: claim.organizationId,
           attemptId: claim.id,
@@ -188,25 +336,81 @@ async function recoverAbandonedClaims(
           claimSequence: claim.claimSequence,
           completedAt: now,
           expectedGeneration: claim.generation,
+          nextOverdueOccurrence: nextOccurrenceFor(claim, now),
         });
+        if (finalized.settlementDeferred) {
+          counters.settlementsDeferred += 1;
+        }
       }
-      recovered += 1;
+      counters.recoveredClaims += 1;
     } catch {
       // A concurrent recoverer won the fence. Its work is this work; nothing is owed here.
     }
   }
-  return recovered;
 }
 
-async function processOneSchedule(args: {
-  runtime: DbRuntime;
-  db: DbClient;
-  schedule: DueSchedule;
-  now: string;
-  transport: ReminderTransport;
-  counters: Counters;
-}): Promise<void> {
-  const { runtime, db, schedule, now, transport, counters } = args;
+/**
+ * Terminalize occurrences no worker can ever claim again (A8.4a audit B2).
+ *
+ * The hot loop the audit reproduced: a crash on the last permitted attempt, before the provider
+ * marker, leaves a non-terminal row at the attempt ceiling. Recovery releases the dead lease —
+ * correctly, because nothing had been sent — and then nothing else can happen to it. The claim path
+ * refuses it with `retry_budget_exhausted`, so the schedule stays active and armed at an instant
+ * already in the past, and every invocation for the rest of the deployment's life scans it, takes
+ * its lease, is refused, and releases the lease again.
+ *
+ * A refusal no future invocation can turn into progress is a terminal fact nobody wrote down.
+ * Writing it down stops the schedule under the ordinary permanent-failure policy, which also takes
+ * it out of the scan.
+ *
+ * Runs after the two claim-recovery sweeps deliberately: a crashed final attempt is released by
+ * `recoverAbandonedClaims` and becomes eligible here in the *same* invocation, so the loop is
+ * closed on the first run that sees it rather than the second.
+ */
+async function terminalizeExhaustedOccurrences(
+  context: ProcessContext,
+  outOfTime: () => boolean,
+): Promise<void> {
+  const { runtime, db, now, counters } = context;
+  const exhausted = await runtime.listRetryBudgetExhaustedOccurrences(db, {
+    now,
+    maxAttempts: MAX_OCCURRENCE_ATTEMPTS,
+    limit: MAX_RECOVERIES_PER_PROCESS,
+  });
+
+  for (const occurrence of exhausted) {
+    if (outOfTime()) {
+      return;
+    }
+    try {
+      const terminalized = await runtime.terminalizeExhaustedRetryOccurrence({
+        db,
+        organizationId: occurrence.organizationId,
+        attemptId: occurrence.id,
+        maxAttempts: MAX_OCCURRENCE_ATTEMPTS,
+        completedAt: now,
+        now,
+        nextOverdueOccurrence: nextOccurrenceFor(occurrence, now),
+      });
+      if (terminalized === null) {
+        // Another worker got there first, or the row stopped qualifying. Both are fine.
+        continue;
+      }
+      counters.retryBudgetTerminalizations += 1;
+      counters.failedPermanent += 1;
+      if (terminalized.settlementDeferred) {
+        counters.settlementsDeferred += 1;
+      }
+    } catch {
+      // Bounded like every other recovery class; the next invocation finds the row unchanged.
+    }
+  }
+}
+
+async function processOneSchedule(
+  args: ProcessContext & { schedule: DueSchedule; transport: ReminderTransport },
+): Promise<void> {
+  const { runtime, db, schedule, now } = args;
   const claimedAt = now;
 
   // Advisory scan lease. A refusal means another invocation is already looking at this schedule, so
@@ -224,7 +428,7 @@ async function processOneSchedule(args: {
   }
 
   try {
-    await processOneOccurrence({ runtime, db, schedule, now, transport, counters });
+    await processOneOccurrence(args);
   } finally {
     await runtime
       .releaseReminderScheduleClaim(db, {
@@ -237,14 +441,9 @@ async function processOneSchedule(args: {
   }
 }
 
-async function processOneOccurrence(args: {
-  runtime: DbRuntime;
-  db: DbClient;
-  schedule: DueSchedule;
-  now: string;
-  transport: ReminderTransport;
-  counters: Counters;
-}): Promise<void> {
+async function processOneOccurrence(
+  args: ProcessContext & { schedule: DueSchedule; transport: ReminderTransport },
+): Promise<void> {
   const { runtime, db, schedule, now, transport, counters } = args;
 
   const claim = await runtime.claimReminderOccurrence(db, {
@@ -264,8 +463,10 @@ async function processOneOccurrence(args: {
 
   if (!claim.claimed) {
     // Every refusal is another worker's business or settled history. `retry_budget_exhausted` is
-    // reachable only if the budget was lowered between attempts, because the branch below spends
-    // the last attempt permanently rather than leaving a retryable row nobody may claim.
+    // the one that used to be neither: it is now swept into a terminal outcome before the scan
+    // runs, so reaching it here means the sweep is one invocation behind, not that anything is
+    // stuck. The counter is what would make a genuine stall visible.
+    counters.claimRefusals += 1;
     return;
   }
   counters.occurrencesClaimed += 1;
@@ -276,13 +477,13 @@ async function processOneOccurrence(args: {
    * Whether this is the last attempt this occurrence will ever get.
    *
    * A retryable failure recorded here would be the final word while still being labelled
-   * "try again": no worker could claim it, so the schedule would keep scanning an occurrence it can
-   * never finish and would never arm the next one. Spending the last attempt as a permanent failure
-   * settles the occurrence truthfully and stops the schedule for the Owner to look at.
+   * "try again": no worker could claim it, so the occurrence would need the exhaustion sweep to
+   * finish it on a later invocation. Spending the last attempt as a permanent failure settles it
+   * truthfully now and stops the schedule for the Owner to look at.
    */
   const lastAttempt = claim.attempt.attemptCount >= MAX_OCCURRENCE_ATTEMPTS;
 
-  // ---- Pre-send guards: re-read everything, immediately before the call. ----
+  // ---- Pre-send guards: re-read everything, from one snapshot, immediately before the call. ----
   const refusal = await evaluatePreSendGuards(runtime, db, schedule, now);
   if (refusal) {
     await settle(args, attemptId, claimSequence, { outcome: 'skipped', skipReason: refusal });
@@ -359,19 +560,17 @@ async function processOneOccurrence(args: {
 }
 
 /**
- * Finalize one occurrence through the safe transaction, computing the next occurrence first.
+ * Finalize one occurrence through the safe two-phase transaction pair.
  *
  * The next occurrence is always computed with the A8.2 domain and always supplied optimistically;
- * the transaction decides whether the schedule is still in a state that may receive it.
+ * settlement decides whether the schedule is still in a state that may receive it.
+ *
+ * A deferred settlement is counted rather than thrown. The occurrence is terminal and correct — the
+ * whole point of phase A committing alone — and the sweep at the top of the next invocation applies
+ * the schedule effect. Treating it as a send failure here would be the F1 inversion in miniature.
  */
 async function settle(
-  args: {
-    runtime: DbRuntime;
-    db: DbClient;
-    schedule: DueSchedule;
-    now: string;
-    counters: Counters;
-  },
+  args: ProcessContext & { schedule: DueSchedule },
   attemptId: string,
   claimSequence: number,
   outcome: {
@@ -383,15 +582,6 @@ async function settle(
   },
 ): Promise<void> {
   const { runtime, db, schedule, now, counters } = args;
-
-  // Anchored on the generation's due date, never on the occurrence just processed: D106 defines the
-  // series from the due date, and re-deriving it from today would slide the series forward a day
-  // every time one was delivered.
-  const next = selectNextOverdueOccurrence({
-    dueLocalDate: schedule.dueLocalDate as LocalDate,
-    now: now as UtcInstant,
-    timeZone: schedule.schedulingTimeZone || REMINDER_SCHEDULING_TIME_ZONE,
-  });
 
   const finalized = await runtime.finalizeReminderOccurrence({
     db,
@@ -406,22 +596,33 @@ async function settle(
     failureCode: outcome.failureCode ?? null,
     providerAcceptedAt: outcome.providerAcceptedAt ?? null,
     providerMessageRef: outcome.providerMessageRef ?? null,
-    nextOverdueOccurrence: {
-      occurrenceLocalDate: next.occurrenceLocalDate,
-      occurrenceAt: next.occurrenceAt,
-    },
+    nextOverdueOccurrence: nextOccurrenceFor(schedule, now),
   });
 
   if (finalized.ceilingReached) {
     counters.ceilingStops += 1;
   }
+  if (finalized.settlementDeferred) {
+    counters.settlementsDeferred += 1;
+  }
 }
 
 /**
- * Everything that must still be true at the moment of sending, re-read rather than remembered.
+ * Everything that must still be true at the moment of sending, re-read as one snapshot.
  *
  * The schedule was read by a scan that may be seconds old, and an Owner can complete a Task in that
  * interval. Returns the truthful skip reason, or null when the send may proceed.
+ *
+ * The Task, its assignment, its canonical due date, and its schedule now arrive from a single
+ * `RepeatableRead` read rather than from three independent statements the caller compared across.
+ * Individually true reads of three different moments can compose into a conclusion that was never
+ * true of any of them, and "send an email to a real person" is the wrong decision to reach that way.
+ *
+ * What this cannot close is the race between the guard and the call itself — an Owner may complete
+ * the Task microseconds later. Nothing short of holding a lock across the network call would, and
+ * that is forbidden for much better reasons. The final authority is the immutable occurrence row
+ * plus conditional settlement: a send racing a lifecycle change is recorded truthfully and changes
+ * nothing about the schedule that moved.
  *
  * Capability and recipient-link requirements beyond "an active assignment exists" are deliberately
  * not checked: the A8.4b envelope question decides what a reminder is addressed to, and inventing
@@ -433,22 +634,28 @@ async function evaluatePreSendGuards(
   schedule: DueSchedule,
   now: string,
 ): Promise<'no_active_assignment' | 'task_not_eligible' | 'schedule_superseded' | null> {
-  const task = await runtime.getTaskById(db, schedule.organizationId, schedule.taskId);
-
-  // Completed, dismissed, and Waiting all resolve to "not now", and the A8.2 policy says which is
-  // which — the worker does not restate D107.
-  if (decideReminderScheduling(task.status).kind !== 'schedule_active') {
-    return 'task_not_eligible';
-  }
-  if (!task.assignment) {
-    return 'no_active_assignment';
-  }
-
-  const current = await runtime.findReminderScheduleByTaskId(
+  const snapshot = await runtime.readReminderPreSendSnapshot(
     db,
     schedule.organizationId,
     schedule.taskId,
   );
+  if (!snapshot) {
+    return 'task_not_eligible';
+  }
+
+  // Completed, dismissed, and Waiting all resolve to "not now", and the A8.2 policy says which is
+  // which — the worker does not restate D107.
+  if (decideReminderScheduling(snapshot.taskStatus).kind !== 'schedule_active') {
+    return 'task_not_eligible';
+  }
+  if (!snapshot.hasActiveAssignment) {
+    return 'no_active_assignment';
+  }
+  if (snapshot.dueLocalDate === null) {
+    return 'schedule_superseded';
+  }
+
+  const current = snapshot.schedule;
   if (
     !current ||
     current.id !== schedule.id ||
@@ -460,14 +667,6 @@ async function evaluatePreSendGuards(
     return 'schedule_superseded';
   }
 
-  const dueLocalDate = await runtime.getTaskDueLocalDate(
-    db,
-    schedule.organizationId,
-    schedule.taskId,
-  );
-  if (dueLocalDate === null) {
-    return 'schedule_superseded';
-  }
   // The armed occurrence must genuinely have arrived. A scan reading `lte: now` and a guard reading
   // the row again cannot disagree unless the schedule moved, which the checks above already caught;
   // this is the belt on those braces, and it costs one comparison.

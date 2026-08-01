@@ -597,6 +597,19 @@ model ReminderDeliveryAttempt {
   /// Short normalized provider reference. Never a body, address, subject, or capability value.
   providerMessageRef    String?   @map("provider_message_ref") @db.VarChar(128)
 
+  /// When phase B — schedule settlement — completed for this terminal occurrence (A8.4a audit H1).
+  ///
+  /// Terminalizing the occurrence and settling the schedule are two transactions, because a
+  /// settlement failure must never roll back the record of a message that already left the
+  /// building. This column is the durable seam between them: a terminal row with it null is
+  /// settlement debt, and the worker's first act is to discharge that debt before doing new work.
+  ///
+  /// Rows that were never worker-processed — the establishment and Waiting-resume skips — are born
+  /// settled, because the transaction that wrote them settled the schedule in the same breath. A
+  /// `claimed` row always has it null, which a CHECK enforces, so a retry takeover necessarily
+  /// clears it and the row cannot claim to be settled while it is still owed.
+  scheduleSettledAt DateTime? @map("schedule_settled_at") @db.Timestamptz(3)
+
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -609,6 +622,13 @@ model ReminderDeliveryAttempt {
   @@index([organizationId, outcome, occurrenceAt])
   /// Expired-claim recovery sweep (A8.4a). Partial in migration SQL: only `claimed` rows can expire.
   @@index([claimExpiresAt])
+  /// Settlement-debt sweep (A8.4a audit H1). Partial in migration SQL on unsettled terminal rows,
+  /// so it stays empty in steady state no matter how much terminal history accumulates.
+  @@index([scheduleSettledAt, completedAt])
+  /// Retry-budget-exhaustion sweep (A8.4a audit B2). Partial in migration SQL on non-terminal rows
+  /// with no in-flight marker; the budget itself is a runtime policy number, so it is compared in
+  /// the query rather than baked into the predicate.
+  @@index([attemptCount])
   @@map("reminder_delivery_attempts")
 }
 

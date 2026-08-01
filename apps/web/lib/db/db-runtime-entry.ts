@@ -133,15 +133,20 @@ export type TracedRuntimeModule = {
   listGmailSyncRuns: typeof TracedRuntimeBindings.listGmailSyncRuns;
   persistGmailHistoryPageTransaction: typeof TracedRuntimeBindings.persistGmailHistoryPageTransaction;
   readCoherentReminderProjection: typeof TracedRuntimeBindings.readCoherentReminderProjection;
+  readReminderPreSendSnapshot: typeof TracedRuntimeBindings.readReminderPreSendSnapshot;
   claimReminderScheduleForProcessing: typeof TracedRuntimeBindings.claimReminderScheduleForProcessing;
   releaseReminderScheduleClaim: typeof TracedRuntimeBindings.releaseReminderScheduleClaim;
   listDueReminderSchedulesGlobally: typeof TracedRuntimeBindings.listDueReminderSchedulesGlobally;
   claimReminderOccurrence: typeof TracedRuntimeBindings.claimReminderOccurrence;
   listExpiredOccurrenceClaims: typeof TracedRuntimeBindings.listExpiredOccurrenceClaims;
+  listRetryBudgetExhaustedOccurrences: typeof TracedRuntimeBindings.listRetryBudgetExhaustedOccurrences;
+  listUnsettledTerminalOccurrences: typeof TracedRuntimeBindings.listUnsettledTerminalOccurrences;
   markProviderCallStarted: typeof TracedRuntimeBindings.markProviderCallStarted;
   finalizeReminderOccurrence: typeof TracedRuntimeBindings.finalizeReminderOccurrence;
   finalizeAbandonedInFlightOccurrence: typeof TracedRuntimeBindings.finalizeAbandonedInFlightOccurrence;
   releaseReminderOccurrenceClaim: typeof TracedRuntimeBindings.releaseReminderOccurrenceClaim;
+  settleReminderOccurrenceSchedule: typeof TracedRuntimeBindings.settleReminderOccurrenceSchedule;
+  terminalizeExhaustedRetryOccurrence: typeof TracedRuntimeBindings.terminalizeExhaustedRetryOccurrence;
 };
 
 export async function loadTracedRuntimeModule(): Promise<TracedRuntimeModule> {
@@ -228,14 +233,19 @@ export async function loadTracedRuntimeModule(): Promise<TracedRuntimeModule> {
     listGmailSyncRuns: tracedRuntime.listGmailSyncRuns,
     persistGmailHistoryPageTransaction: tracedRuntime.persistGmailHistoryPageTransaction,
     readCoherentReminderProjection: tracedRuntime.readCoherentReminderProjection,
+    readReminderPreSendSnapshot: tracedRuntime.readReminderPreSendSnapshot,
     claimReminderScheduleForProcessing: tracedRuntime.claimReminderScheduleForProcessing,
     releaseReminderScheduleClaim: tracedRuntime.releaseReminderScheduleClaim,
     listDueReminderSchedulesGlobally: tracedRuntime.listDueReminderSchedulesGlobally,
     claimReminderOccurrence: tracedRuntime.claimReminderOccurrence,
     listExpiredOccurrenceClaims: tracedRuntime.listExpiredOccurrenceClaims,
+    listRetryBudgetExhaustedOccurrences: tracedRuntime.listRetryBudgetExhaustedOccurrences,
+    listUnsettledTerminalOccurrences: tracedRuntime.listUnsettledTerminalOccurrences,
     markProviderCallStarted: tracedRuntime.markProviderCallStarted,
     finalizeReminderOccurrence: tracedRuntime.finalizeReminderOccurrence,
     finalizeAbandonedInFlightOccurrence: tracedRuntime.finalizeAbandonedInFlightOccurrence,
     releaseReminderOccurrenceClaim: tracedRuntime.releaseReminderOccurrenceClaim,
+    settleReminderOccurrenceSchedule: tracedRuntime.settleReminderOccurrenceSchedule,
+    terminalizeExhaustedRetryOccurrence: tracedRuntime.terminalizeExhaustedRetryOccurrence,
   };
 }

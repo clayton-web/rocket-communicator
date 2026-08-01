@@ -21,18 +21,24 @@ import com.squareup.moshi.JsonClass
 import java.io.Serializable
 
 /**
- * Aggregate outcome of one internal reminder-processing invocation (A8.4a). Counts only: never a Task summary, Recipient identity, address, provider payload, failure detail, or claim internal. When `deliveryEnabled` is false every count is zero, because the invocation scanned nothing, claimed nothing, wrote nothing, and called no transport. 
+ * Aggregate outcome of one internal reminder-processing invocation (A8.4a). Counts only: never a Task summary, Recipient identity, address, provider payload, failure detail, or claim internal. When `deliveryEnabled` or `transportConfigured` is false every count is zero, because the invocation scanned nothing, claimed nothing, wrote nothing, and called no transport. 
  *
  * @param deliveryEnabled Whether `ENABLE_REMINDER_DELIVERY` was exactly \"true\". False in every environment in this milestone. 
+ * @param transportConfigured Whether a transport was injected. False means the invocation failed closed and did no work at all: no real transport exists in this milestone, and processing refuses to run rather than manufacturing a fake that would report deliveries it never made. 
  * @param schedulesScanned 
  * @param occurrencesClaimed 
+ * @param claimRefusals Occurrences a claim was refused for — held by another worker, already terminal, or out of retry budget. Ordinary contention; a persistently non-zero value alongside zero claims is the signature of a stuck occurrence. 
  * @param delivered Occurrences a transport accepted. Counts fake-transport acceptances only.
  * @param skipped Occurrences a pre-send eligibility check truthfully refused.
  * @param failedRetryable Definite rejections that leave the occurrence owed and retryable.
  * @param failedPermanent 
  * @param ambiguous Occurrences whose result could not be determined. Terminal and never retried. 
  * @param recoveredClaims Abandoned occurrence claims released or finalized before this batch ran.
+ * @param retryBudgetTerminalizations Occurrences that had spent their retry budget without reaching a terminal outcome and were terminalized as permanent failures. Non-zero means a worker died mid-attempt at some point; a schedule left in that state would otherwise be re-scanned indefinitely. 
+ * @param unsettledOccurrencesSettled Terminal occurrences whose schedule settlement had not completed, and was completed by this invocation. Non-zero means a previous invocation died between recording an outcome and applying it to the schedule. 
+ * @param settlementsDeferred Schedule settlements this invocation could not complete. The occurrence outcomes are recorded and durable regardless; the debt is picked up by a later invocation. 
  * @param ceilingStops Schedules stopped by reaching the D106 overdue delivery ceiling.
+ * @param deadlineStopped Whether the invocation stopped at its soft deadline with work still outstanding. The remaining work is durable and picked up by the next invocation. 
  * @param requestId 
  */
 
@@ -43,11 +49,19 @@ data class ReminderProcessResponse (
     @Json(name = "deliveryEnabled")
     val deliveryEnabled: kotlin.Boolean,
 
+    /* Whether a transport was injected. False means the invocation failed closed and did no work at all: no real transport exists in this milestone, and processing refuses to run rather than manufacturing a fake that would report deliveries it never made.  */
+    @Json(name = "transportConfigured")
+    val transportConfigured: kotlin.Boolean,
+
     @Json(name = "schedulesScanned")
     val schedulesScanned: kotlin.Int,
 
     @Json(name = "occurrencesClaimed")
     val occurrencesClaimed: kotlin.Int,
+
+    /* Occurrences a claim was refused for — held by another worker, already terminal, or out of retry budget. Ordinary contention; a persistently non-zero value alongside zero claims is the signature of a stuck occurrence.  */
+    @Json(name = "claimRefusals")
+    val claimRefusals: kotlin.Int,
 
     /* Occurrences a transport accepted. Counts fake-transport acceptances only. */
     @Json(name = "delivered")
@@ -72,9 +86,25 @@ data class ReminderProcessResponse (
     @Json(name = "recoveredClaims")
     val recoveredClaims: kotlin.Int,
 
+    /* Occurrences that had spent their retry budget without reaching a terminal outcome and were terminalized as permanent failures. Non-zero means a worker died mid-attempt at some point; a schedule left in that state would otherwise be re-scanned indefinitely.  */
+    @Json(name = "retryBudgetTerminalizations")
+    val retryBudgetTerminalizations: kotlin.Int,
+
+    /* Terminal occurrences whose schedule settlement had not completed, and was completed by this invocation. Non-zero means a previous invocation died between recording an outcome and applying it to the schedule.  */
+    @Json(name = "unsettledOccurrencesSettled")
+    val unsettledOccurrencesSettled: kotlin.Int,
+
+    /* Schedule settlements this invocation could not complete. The occurrence outcomes are recorded and durable regardless; the debt is picked up by a later invocation.  */
+    @Json(name = "settlementsDeferred")
+    val settlementsDeferred: kotlin.Int,
+
     /* Schedules stopped by reaching the D106 overdue delivery ceiling. */
     @Json(name = "ceilingStops")
     val ceilingStops: kotlin.Int,
+
+    /* Whether the invocation stopped at its soft deadline with work still outstanding. The remaining work is durable and picked up by the next invocation.  */
+    @Json(name = "deadlineStopped")
+    val deadlineStopped: kotlin.Boolean,
 
     @Json(name = "requestId")
     val requestId: kotlin.String

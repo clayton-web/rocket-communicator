@@ -266,6 +266,10 @@ describe('contracts package', () => {
     expect(Object.keys(response.properties ?? {}).sort()).toEqual([
       'ambiguous',
       'ceilingStops',
+      // Occurrences another worker held, or that no worker may claim again (A8.4a audit B2).
+      'claimRefusals',
+      // Whether the soft deadline cut the run short, so a persistently truncated run is visible.
+      'deadlineStopped',
       'delivered',
       'deliveryEnabled',
       'failedPermanent',
@@ -273,8 +277,16 @@ describe('contracts package', () => {
       'occurrencesClaimed',
       'recoveredClaims',
       'requestId',
+      // The three settlement counters (A8.4a audit H1). Between them an operator can tell a healthy
+      // run from one repeatedly picking up debt it cannot discharge.
+      'retryBudgetTerminalizations',
       'schedulesScanned',
+      'settlementsDeferred',
       'skipped',
+      // Distinguishes "flag off" from "no transport injected" (A8.4a audit H3), which are two very
+      // different reasons for a zero-work response.
+      'transportConfigured',
+      'unsettledOccurrencesSettled',
     ]);
     // Every field is required, so a caller can never be handed a partial picture of a run.
     expect([...(response.required ?? [])].sort()).toEqual(

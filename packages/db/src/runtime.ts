@@ -185,10 +185,13 @@ export {
 // A8.3b Owner reminder API surface plus the A8.4a worker-safety foundation.
 //
 // The worker primitives are present from A8.4a because the internal processing endpoint calls them,
-// but the endpoint is deployed dark and the only transport that exists is a fake — nothing in the
-// deployed application can reach a provider. `recordTerminalOccurrenceOutcomeUnsafe` remains absent
-// deliberately (A8.3a audit F8): `finalizeReminderOccurrence` is the only success path, and
-// `apps/web/__tests__/a8-4a-worker-safety-guards.test.ts` fails if the raw writer appears here.
+// but the endpoint is built dark and unreachable — it has never been deployed, delivery is off, and
+// the processing service refuses to run at all unless a transport is injected, which nothing in
+// production does. `recordTerminalOccurrenceOutcomeUnsafe` and `terminalizeExhaustedOccurrenceUnsafe`
+// remain absent deliberately (A8.3a audit F8, A8.4a audit B2): both write a terminal outcome without
+// settling the schedule, `finalizeReminderOccurrence` and `terminalizeExhaustedRetryOccurrence` are
+// the public paths that run both phases, and
+// `apps/web/__tests__/a8-4a-worker-safety-guards.test.ts` fails if either raw writer appears here.
 export {
   findReminderScheduleByTaskId,
   claimReminderScheduleForProcessing,
@@ -202,20 +205,30 @@ export {
 export {
   claimReminderOccurrence,
   listExpiredOccurrenceClaims,
+  listRetryBudgetExhaustedOccurrences,
+  listUnsettledTerminalOccurrences,
   markProviderCallStarted,
+  RETRY_BUDGET_EXHAUSTED_FAILURE_CODE,
   type ClaimReminderOccurrenceResult,
+  type ExhaustedRetryOccurrence,
   type ExpiredOccurrenceClaim,
+  type UnsettledTerminalOccurrence,
 } from './repositories/reminder-delivery-attempt-repository.js';
 export {
   finalizeReminderOccurrence,
   finalizeAbandonedInFlightOccurrence,
   releaseReminderOccurrenceClaim,
+  settleReminderOccurrenceSchedule,
+  terminalizeExhaustedRetryOccurrence,
   type FinalizeReminderOccurrenceResult,
+  type ReminderScheduleSettlementResult,
 } from './transactions/a8-4a-occurrence-transactions.js';
 export {
   getTaskDueLocalDate,
   readCoherentReminderProjection,
+  readReminderPreSendSnapshot,
   type CoherentReminderProjection,
+  type ReminderPreSendSnapshot,
 } from './transactions/a8-reminder-transactions.js';
 export {
   persistOwnerReminderEstablishment,
