@@ -64,9 +64,9 @@ model Task {
   handoffAttempts        HandoffAttempt[]
   reminderSchedule       TaskReminderSchedule?
   reminderAttempts       ReminderDeliveryAttempt[]
-  suggestionsMerged      TaskSuggestion[] @relation("MergedIntoTask")
+  suggestionsMerged      TaskSuggestion[]          @relation("MergedIntoTask")
   /// Suggestion that created this Task via Owner approve (D080/D082). At most one.
-  approvedFromSuggestion TaskSuggestion?  @relation("ApprovedTask")
+  approvedFromSuggestion TaskSuggestion?           @relation("ApprovedTask")
 
   @@index([organizationId, status])
   @@index([organizationId, updatedAt])
@@ -94,9 +94,9 @@ model TaskAssignment {
   createdAt                DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt                DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  task         Task             @relation(fields: [taskId], references: [id], onDelete: Restrict)
-  recipient    Recipient        @relation(fields: [recipientId], references: [id], onDelete: Restrict)
-  capabilities TaskCapability[]
+  task            Task             @relation(fields: [taskId], references: [id], onDelete: Restrict)
+  recipient       Recipient        @relation(fields: [recipientId], references: [id], onDelete: Restrict)
+  capabilities    TaskCapability[]
   handoffAttempts HandoffAttempt[]
 
   @@index([taskId])
@@ -157,32 +157,32 @@ model TaskSuggestion {
 /// index in migration SQL (Prisma cannot express it). Actionability for A7 handoff uses
 /// `actionableAt` (null until Gmail send acceptance); legacy A4 rows backfilled to issuedAt.
 model TaskCapability {
-  id                     String                       @id @db.VarChar(64)
-  organizationId         String                       @map("organization_id") @db.VarChar(64)
-  taskId                 String                       @map("task_id") @db.VarChar(64)
-  assignmentId           String                       @map("assignment_id") @db.VarChar(64)
-  recipientId            String?                      @map("recipient_id") @db.VarChar(64)
-  intendedRecipientEmail String                       @map("intended_recipient_email") @db.VarChar(320)
+  id                     String                      @id @db.VarChar(64)
+  organizationId         String                      @map("organization_id") @db.VarChar(64)
+  taskId                 String                      @map("task_id") @db.VarChar(64)
+  assignmentId           String                      @map("assignment_id") @db.VarChar(64)
+  recipientId            String?                     @map("recipient_id") @db.VarChar(64)
+  intendedRecipientEmail String                      @map("intended_recipient_email") @db.VarChar(320)
   scope                  Json
   status                 CapabilityStatus
   /// SHA-256 (or stronger) hex/base64url fingerprint of the raw secret. Unique.
-  tokenHash              String                       @unique @map("token_hash") @db.VarChar(128)
-  issuedAt               DateTime                     @map("issued_at") @db.Timestamptz(3)
+  tokenHash              String                      @unique @map("token_hash") @db.VarChar(128)
+  issuedAt               DateTime                    @map("issued_at") @db.Timestamptz(3)
   /// Explicit persisted expiry (D055).
-  expiresAt              DateTime                     @map("expires_at") @db.Timestamptz(3)
+  expiresAt              DateTime                    @map("expires_at") @db.Timestamptz(3)
   /// Null until the capability becomes Recipient-actionable (A7: after send acceptance).
-  actionableAt           DateTime?                    @map("actionable_at") @db.Timestamptz(3)
-  revokedAt              DateTime?                    @map("revoked_at") @db.Timestamptz(3)
+  actionableAt           DateTime?                   @map("actionable_at") @db.Timestamptz(3)
+  revokedAt              DateTime?                   @map("revoked_at") @db.Timestamptz(3)
   /// Internal D086 reason. Only `superseded` maps publicly to CAPABILITY_NO_LONGER_ACTIVE.
-  revocationReason       CapabilityRevocationReason?  @map("revocation_reason")
+  revocationReason       CapabilityRevocationReason? @map("revocation_reason")
   /// Optional activity stamp; does not imply CapabilityStatus.used (D056).
-  lastUsedAt             DateTime?                    @map("last_used_at") @db.Timestamptz(3)
-  createdAt              DateTime                     @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt              DateTime                     @updatedAt @map("updated_at") @db.Timestamptz(3)
+  lastUsedAt             DateTime?                   @map("last_used_at") @db.Timestamptz(3)
+  createdAt              DateTime                    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt              DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  task            Task            @relation(fields: [taskId], references: [id], onDelete: Restrict)
-  assignment      TaskAssignment  @relation(fields: [assignmentId], references: [id], onDelete: Restrict)
-  recipient       Recipient?      @relation(fields: [recipientId], references: [id], onDelete: SetNull)
+  task            Task             @relation(fields: [taskId], references: [id], onDelete: Restrict)
+  assignment      TaskAssignment   @relation(fields: [assignmentId], references: [id], onDelete: Restrict)
+  recipient       Recipient?       @relation(fields: [recipientId], references: [id], onDelete: SetNull)
   handoffAttempts HandoffAttempt[]
 
   @@index([organizationId, taskId])
@@ -470,14 +470,14 @@ model TaskReminderSchedule {
   schedulingTimeZone String @map("scheduling_time_zone") @db.VarChar(64)
 
   /// Monotonically increasing per Task; a material due-date change opens the next one (D104).
-  generation Int                        @default(1)
-  status     ReminderScheduleStatus     @default(active)
-  stopReason ReminderScheduleStopReason? @map("stop_reason")
-  stoppedAt  DateTime?                  @map("stopped_at") @db.Timestamptz(3)
+  generation             Int                         @default(1)
+  status                 ReminderScheduleStatus      @default(active)
+  stopReason             ReminderScheduleStopReason? @map("stop_reason")
+  stoppedAt              DateTime?                   @map("stopped_at") @db.Timestamptz(3)
   /// When Waiting suspended this schedule (D107). Cleared on resume.
-  suspendedAt DateTime?                 @map("suspended_at") @db.Timestamptz(3)
+  suspendedAt            DateTime?                   @map("suspended_at") @db.Timestamptz(3)
   /// Raised when the overdue ceiling is reached or a permanent failure occurs (D106, D108).
-  requiresOwnerAttention Boolean        @default(false) @map("requires_owner_attention")
+  requiresOwnerAttention Boolean                     @default(false) @map("requires_owner_attention")
 
   /// Optimistic-concurrency version for the *reminder* resource (A8.3b audit F5).
   ///
@@ -561,18 +561,18 @@ model ReminderDeliveryAttempt {
   taskId         String @map("task_id") @db.VarChar(64)
 
   /// Generation identity — part of the idempotency tuple (D104, D109).
-  generation           Int
-  occurrenceKind       ReminderOccurrenceKind @map("occurrence_kind")
+  generation          Int
+  occurrenceKind      ReminderOccurrenceKind @map("occurrence_kind")
   /// The organization-local calendar day this occurrence belongs to. Encoded in the idempotency
   /// identity exactly as D109 requires.
-  occurrenceLocalDate  String                 @map("occurrence_local_date") @db.VarChar(10)
+  occurrenceLocalDate String                 @map("occurrence_local_date") @db.VarChar(10)
   /// The resolved 09:00-local instant, computed by the A8.2 domain and stored for audit.
-  occurrenceAt         DateTime               @map("occurrence_at") @db.Timestamptz(3)
+  occurrenceAt        DateTime               @map("occurrence_at") @db.Timestamptz(3)
 
-  outcome    ReminderDeliveryOutcome
-  skipReason ReminderSkipReason?     @map("skip_reason")
+  outcome     ReminderDeliveryOutcome
+  skipReason  ReminderSkipReason?     @map("skip_reason")
   /// Short normalized failure code. Never a provider body, recipient address, or capability value.
-  failureCode String?                @map("failure_code") @db.VarChar(64)
+  failureCode String?                 @map("failure_code") @db.VarChar(64)
 
   /// Retry bookkeeping for a future worker; a retry reuses the row rather than forging a new
   /// identity, which is what keeps the per-day guarantee intact.
@@ -637,6 +637,159 @@ model ReminderDeliveryAttempt {
   /// the query rather than baked into the predicate.
   @@index([attemptCount])
   @@map("reminder_delivery_attempts")
+}
+
+/// One notifiable Owner event that has occurred and has not yet been delivered (A8.5a; D133–D135).
+///
+/// **Written in the triggering mutation's own transaction, never derived from the audit log.**
+/// `AuditEvent` is the record of what happened; it cannot say what is still *owed*, because
+/// `action` is a free-form string with no enum, the table carries no monotonic ordering column, and
+/// several paths write it outside the mutation transaction. Overloading it would also put delivery
+/// workflow state inside the record of truth. So intent is its own durable concept, inserted
+/// alongside `createAuditEvent` in the same transaction: a mutation cannot commit without its
+/// intent, and a rolled-back mutation cannot leave one behind.
+///
+/// **Identity is server-derived and enforced by the database** (D133, following D109). There is
+/// deliberately no caller-supplied idempotency key: identity *is*
+/// `(organizationId, eventType, subjectKind, subjectId, occurrenceKey)`. For Task lifecycle events
+/// the `occurrenceKey` is the post-mutation `Task.version`, which the domain bumps on every
+/// transition — so a retried mutation cannot forge a second row for the same transition, while a
+/// legitimate repeat (a Recipient asking for clarification twice) lands on a different version and
+/// is correctly a second row.
+///
+/// **No foreign key to `Task`, deliberately.** An event is a statement that something happened, and
+/// it has to stay true and deliverable if its subject is later purged under retention. `subjectKind`
+/// and `subjectId` are a descriptive reference, not a constraint.
+///
+/// **Not a reminder occurrence.** Reminder policy does not reach this table (D135): no generation,
+/// no local calendar day, no per-day uniqueness, no delivery ceiling, no consecutive-ambiguity stop,
+/// and no Waiting suspension. An Owner notification is one message about one event.
+///
+/// **No destination is stored** (D134). The address is resolved at delivery time from the
+/// organization's connected `CommunicationAccount`, so a mailbox disconnected since the event cannot
+/// be mailed from a stale copy. No message body, subject, capability token, or excerpt is stored
+/// here either (D109, D114).
+model OwnerNotificationIntent {
+  id             String @id @db.VarChar(64)
+  organizationId String @map("organization_id") @db.VarChar(64)
+
+  /// Canonical event type. The database stores the ratified dotted name (D133); the Prisma member
+  /// name is its identifier-safe spelling.
+  eventType     OwnerNotificationEventType   @map("event_type")
+  /// What the event is about. Descriptive only — see the no-foreign-key note above.
+  subjectKind   OwnerNotificationSubjectKind @map("subject_kind")
+  subjectId     String                       @map("subject_id") @db.VarChar(64)
+  /// Completes the identity so a legitimate repeat is representable and a retry is not.
+  occurrenceKey String                       @map("occurrence_key") @db.VarChar(128)
+
+  /// Delivery state. Only `pending` is reachable in A8.5a — nothing claims or delivers yet. The rest
+  /// of the machine is declared now, with its CHECK constraints, so A8.5b adds behaviour rather than
+  /// a second migration; the reminder claim-lease columns were added ahead of their worker for the
+  /// same reason.
+  state             OwnerNotificationState              @default(pending)
+  /// Set if and only if `state = 'suppressed'` (CHECK in migration SQL). D135's staleness horizon
+  /// and the unavailable-channel case are the two reasons; neither is implemented in A8.5a.
+  suppressionReason OwnerNotificationSuppressionReason? @map("suppression_reason")
+  /// Short normalized code. Never a provider body, address, MIME fragment, or capability value.
+  failureCode       String?                             @map("failure_code") @db.VarChar(64)
+
+  /// Provider attempts spent so far. Bounded at three by D135 as runtime policy, not by a CHECK,
+  /// because the number is a delivery decision rather than a storage invariant.
+  attemptCount Int @default(0) @map("attempt_count")
+
+  /// Claim lease for the A8.5b worker. All three are null together or set together, and non-null
+  /// only while `state = 'claimed'` (CHECKs in migration SQL).
+  claimedBy      String?   @map("claimed_by") @db.VarChar(64)
+  claimedAt      DateTime? @map("claimed_at") @db.Timestamptz(3)
+  claimExpiresAt DateTime? @map("claim_expires_at") @db.Timestamptz(3)
+  /// Fencing token, incremented by every claim and reclaim, so a resurrected predecessor cannot
+  /// finalize an intent its successor now owns. Mirrors `ReminderDeliveryAttempt.claimSequence`.
+  claimSequence  Int       @default(0) @map("claim_sequence")
+
+  /// When the event happened — the triggering mutation's own instant, not when it was noticed.
+  /// This is what D135's 24-hour staleness horizon is measured against, and the order the worker
+  /// takes work in.
+  occurredAt DateTime  @map("occurred_at") @db.Timestamptz(3)
+  /// When the intent became terminal. Null for `pending`, `claimed`, and `failed_retryable`; set for
+  /// every terminal state (CHECK in migration SQL).
+  settledAt  DateTime? @map("settled_at") @db.Timestamptz(3)
+
+  /// Truthful attribution of the **triggering event**, copied from the audit row written in the same
+  /// transaction so the two can never disagree. A Recipient action stays capability-attributed: the
+  /// Owner is the audience, not the actor. Delivery itself is a separate `system` action recorded in
+  /// `owner_notification_attempts` and in audit, not here.
+  actorKind        AuditActorKind @map("actor_kind")
+  ownerId          String?        @map("owner_id") @db.VarChar(64)
+  capabilityId     String?        @map("capability_id") @db.VarChar(64)
+  systemId         String?        @map("system_id") @db.VarChar(64)
+  assignmentId     String?        @map("assignment_id") @db.VarChar(64)
+  attributionLabel String?        @map("attribution_label") @db.VarChar(256)
+
+  /// The audit row this intent was written beside. A plain reference with no foreign key, because
+  /// audit retention must never be able to block or cascade into an undelivered notification.
+  auditEventId String? @map("audit_event_id") @db.VarChar(64)
+
+  /// D115 observability seam. Already minted per request by route context; carried so a notification
+  /// can be traced back to the request that caused it without a new identifier scheme.
+  requestId     String? @map("request_id") @db.VarChar(64)
+  correlationId String? @map("correlation_id") @db.VarChar(64)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  attempts OwnerNotificationAttempt[]
+
+  /// The deduplication identity (D133). Named explicitly because the generated name would be
+  /// truncated mid-word at PostgreSQL's 63-character identifier limit, and a constraint whose name
+  /// cannot be read is a constraint nobody diagnoses.
+  @@unique([organizationId, eventType, subjectKind, subjectId, occurrenceKey], map: "owner_notification_intents_identity_key")
+  /// Ordering support for the A8.5b claimable-work scan. The migration additionally creates
+  /// `owner_notification_intents_pending_idx`, partial on `state = 'pending'`, which is the index
+  /// that scan actually uses; Prisma cannot express a partial index, so it lives in SQL only — the
+  /// same split the reminder due-scan indexes use.
+  @@index([occurredAt, id], map: "owner_notification_intents_occurred_at_idx")
+  /// "What has this Task produced" for the A8.6 Owner surface.
+  @@index([organizationId, subjectKind, subjectId], map: "owner_notification_intents_subject_idx")
+  @@map("owner_notification_intents")
+}
+
+/// One provider attempt against one Owner notification intent (A8.5a; D135).
+///
+/// **Append-only.** A retry adds a row rather than rewriting one, so the history can say how many
+/// times a provider was contacted and what each contact returned. Nothing writes to this table in
+/// A8.5a — it exists now so A8.5b and A8.5c add behaviour without a second migration.
+///
+/// **No message content.** `providerMessageRef` is a short normalized reference; there is no body,
+/// subject, address, header, capability value, or provider response payload here (D109, D114, D134).
+model OwnerNotificationAttempt {
+  id             String @id @db.VarChar(64)
+  organizationId String @map("organization_id") @db.VarChar(64)
+  intentId       String @map("intent_id") @db.VarChar(64)
+
+  /// 1-based, unique within the intent, so a duplicate attempt collides rather than double-counting.
+  attemptNumber Int @map("attempt_number")
+
+  outcome     OwnerNotificationAttemptOutcome
+  /// Short normalized failure code. Never a provider body or raw OAuth/Gmail error payload.
+  failureCode String?                         @map("failure_code") @db.VarChar(64)
+
+  /// Committed immediately before the transport is invoked and never cleared. An attempt still
+  /// `in_flight` when its lease expires may already have been accepted, which is what makes the
+  /// outcome `ambiguous` rather than retryable.
+  providerCallStartedAt DateTime? @map("provider_call_started_at") @db.Timestamptz(3)
+  /// Durable proof the provider accepted. Required for `sent` and forbidden otherwise (CHECK in
+  /// migration SQL), mirroring the reminder F1 invariant.
+  providerAcceptedAt    DateTime? @map("provider_accepted_at") @db.Timestamptz(3)
+  providerMessageRef    String?   @map("provider_message_ref") @db.VarChar(128)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  intent OwnerNotificationIntent @relation(fields: [intentId], references: [id], onDelete: Restrict)
+
+  @@unique([intentId, attemptNumber], map: "owner_notification_attempts_intent_attempt_key")
+  @@index([organizationId, intentId], map: "owner_notification_attempts_org_intent_idx")
+  @@map("owner_notification_attempts")
 }
 
 enum TaskStatus {
@@ -854,4 +1007,81 @@ enum ReminderSkipReason {
   /// D130: assigned, eligible, armed — and the original assignment email's capability is revoked,
   /// expired, or never activated. The reminder has no working link to point at (A8.4b.1).
   no_actionable_capability
+}
+
+/// The ten canonical Owner-notifiable event types, closed by D133. The database stores the ratified
+/// dotted names; Prisma members carry the identifier-safe spelling and `@map` the real value.
+///
+/// The list is exhaustive on purpose. There is no `task.updated`, and an audit row is not a reason
+/// to send mail: every Owner-initiated action is excluded, because telling the Owner what the Owner
+/// just did is noise, and operational detail belongs to the D118 attention surface. Only
+/// `task.completed_by_recipient` has a producer in A8.5a; the rest are added in A8.5d, and the
+/// enum is complete now so that slice adds producers rather than enum values.
+enum OwnerNotificationEventType {
+  task_completed_by_recipient                  @map("task.completed_by_recipient")
+  task_clarification_requested                 @map("task.clarification_requested")
+  task_returned_to_owner                       @map("task.returned_to_owner")
+  handoff_delivery_failed                      @map("handoff.delivery_failed")
+  gmail_disconnected                           @map("gmail.disconnected")
+  capability_expired                           @map("capability.expired")
+  reminder_schedule_stopped_ceiling_reached    @map("reminder.schedule.stopped.ceiling_reached")
+  reminder_schedule_stopped_permanent_failure  @map("reminder.schedule.stopped.permanent_failure")
+  reminder_schedule_stopped_repeated_ambiguous @map("reminder.schedule.stopped.repeated_ambiguous")
+  reminder_no_active_assignment                @map("reminder.no_active_assignment")
+}
+
+/// What an intent is about. Descriptive only — `OwnerNotificationIntent` holds no foreign key to its
+/// subject, so an event survives the deletion or retention purge of the thing it describes (D133).
+enum OwnerNotificationSubjectKind {
+  task
+  task_capability
+  task_reminder_schedule
+  handoff_attempt
+  communication_account
+}
+
+/// Delivery state of one Owner notification (D135). Only `pending` is reachable in A8.5a.
+///
+/// Terminal states are `sent`, `failed_permanent`, `ambiguous`, `suppressed`, and
+/// `requires_owner_attention`; each requires `settled_at`, and the non-terminal states forbid it
+/// (CHECKs in migration SQL).
+///
+/// `ambiguous` is terminal on first occurrence rather than retryable, and that is the deliberate
+/// difference from D129: the provider may already have accepted the message, and a duplicate Owner
+/// email about an event is a worse untruth than a late one. `requires_owner_attention` is where a
+/// notification lands when its three-attempt budget is spent — it is a durable state rather than a
+/// derived view, so the A8.6 surface reads a fact instead of recomputing a policy.
+enum OwnerNotificationState {
+  pending
+  claimed
+  sent
+  failed_retryable
+  failed_permanent
+  ambiguous
+  suppressed
+  requires_owner_attention
+}
+
+/// Why a notification was terminalized without being delivered. Set if and only if the state is
+/// `suppressed` (CHECK in migration SQL). Neither reason is implemented in A8.5a.
+enum OwnerNotificationSuppressionReason {
+  /// D135's 24-hour horizon: older than the horizon at processing time, so terminalized with a
+  /// truthful reason and no provider call. This is what stops a backlog flushing when delivery is
+  /// first enabled.
+  stale
+  /// No connected Gmail account satisfied D134 at delivery time, so there was nowhere truthful to
+  /// send. Distinct from a transport failure: nothing was attempted.
+  channel_unavailable
+}
+
+/// Outcome of one provider attempt (D135). Distinct from `OwnerNotificationState` because an attempt
+/// can be `in_flight` and can never be `pending` or `suppressed`.
+enum OwnerNotificationAttemptOutcome {
+  /// Committed before the transport call. A row left here by a crash is what an expired lease finds,
+  /// and it resolves to `ambiguous` rather than to a retry.
+  in_flight
+  sent
+  failed_retryable
+  failed_permanent
+  ambiguous
 }

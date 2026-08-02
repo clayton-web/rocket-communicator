@@ -173,6 +173,26 @@ export {
   type AuthoritativeTaskScope,
   type AuthoritativeScheduleScope,
 } from './repositories/reminder-scope-guard.js';
+// A8.5a Owner Event Notification intent (D133). Read and write helpers only: nothing here claims,
+// delivers, retries, or terminalizes, because A8.5a has no worker.
+export {
+  mapOwnerNotificationIntent,
+  mapOwnerNotificationAttempt,
+  type OwnerNotificationActor,
+  type OwnerNotificationAttemptOutcomeValue,
+  type OwnerNotificationAttemptRecord,
+  type OwnerNotificationEventTypeValue,
+  type OwnerNotificationIntentRecord,
+  type OwnerNotificationStateValue,
+  type OwnerNotificationSubjectKindValue,
+  type OwnerNotificationSuppressionReasonValue,
+} from './mappers/owner-notification-mappers.js';
+export {
+  createOwnerNotificationIntent,
+  findOwnerNotificationIntentByIdentity,
+  listOwnerNotificationIntentsForSubject,
+  type CreateOwnerNotificationIntentInput,
+} from './repositories/owner-notification-repository.js';
 // `recordTerminalOccurrenceOutcomeUnsafe` is deliberately absent (A8.3a audit F8). It can write a
 // `success` without counting it, without evaluating the D106 ceiling, and without settling an
 // advance disposition. `finalizeReminderOccurrence` below is the only public success path, and

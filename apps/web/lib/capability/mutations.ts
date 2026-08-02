@@ -12,8 +12,12 @@ import {
   type TaskOutcomeType,
   type UtcInstant,
 } from '@aicaa/domain';
-import type { AuditEventRecord, DbClient } from '@aicaa/db';
+import type { AuditEventRecord, DbClient, OwnerNotificationEventTypeValue } from '@aicaa/db';
 import { loadDbRuntime } from '@/lib/db/runtime-db';
+import {
+  isOwnerEventCaptureEnabled,
+  OWNER_NOTIFICATION_INTENT_ID_PREFIX,
+} from '@/lib/notifications/capture-config';
 import {
   buildCapabilityAudit,
   ifMatchFromExpectedVersion,
@@ -51,8 +55,18 @@ export interface RecipientCapabilityMutationBase {
   correlationId?: string | null;
   auditId?: string;
   noteId?: string;
+  notificationIntentId?: string;
 }
 
+/**
+ * A8.5a: the single funnel for every Recipient capability mutation, and therefore the single place
+ * that decides whether one is Owner-notifiable (D133).
+ *
+ * `ownerEventType` is supplied by the individual mutation rather than inferred from `auditAction`,
+ * because the taxonomy is closed and deliberately does not cover every audited action. An action
+ * with no event type here produces no intent, which is the correct default for the seven capability
+ * mutations A8.5a leaves uninstrumented.
+ */
 async function runRecipientMutation(
   command: RecipientCapabilityMutationBase,
   action: CapabilityAction,
@@ -65,6 +79,7 @@ async function runRecipientMutation(
     note?: TaskNote;
     auditNote?: string;
   },
+  ownerEventType?: OwnerNotificationEventTypeValue,
 ): Promise<RecipientCapabilityMutationResult> {
   try {
     const dbRuntime = await loadDbRuntime();
@@ -93,12 +108,25 @@ async function runRecipientMutation(
         ? result.note
         : undefined;
 
+    // Decided here, before `persistCapabilityAction` opens its transaction (D135). With capture off
+    // there is no `ownerNotification` argument, so the transaction issues no statement against an
+    // A8.5 table — which is what keeps this path working in Production, where the A8.5 migration is
+    // unapplied.
+    const ownerNotification =
+      ownerEventType && isOwnerEventCaptureEnabled()
+        ? {
+            id: command.notificationIntentId ?? newEntityId(OWNER_NOTIFICATION_INTENT_ID_PREFIX),
+            eventType: ownerEventType,
+          }
+        : undefined;
+
     const persisted = await dbRuntime.persistCapabilityAction({
       db: command.db,
       organizationId: ctx.organizationId,
       expectedVersion: ctx.task.version,
       task: result.task,
       note: newNote,
+      ownerNotification,
       audit: buildCapabilityAudit({
         id: command.auditId ?? newEntityId('audit'),
         actor: ctx.actor,
@@ -163,17 +191,27 @@ export async function completeCapabilityTask(
     note?: string;
   },
 ): Promise<RecipientCapabilityMutationResult> {
-  return runRecipientMutation(command, 'complete_task', 'complete_task', (ctx, ifMatch) => ({
-    task: domainCompleteTask(ctx.task, {
-      actor: ctx.actor,
-      ifMatch,
-      now: command.now,
-      requestId: command.requestId,
-      outcomeType: command.outcomeType,
-      note: command.note,
+  return runRecipientMutation(
+    command,
+    'complete_task',
+    'complete_task',
+    (ctx, ifMatch) => ({
+      task: domainCompleteTask(ctx.task, {
+        actor: ctx.actor,
+        ifMatch,
+        now: command.now,
+        requestId: command.requestId,
+        outcomeType: command.outcomeType,
+        note: command.note,
+      }),
+      auditNote: command.note,
     }),
-    auditNote: command.note,
-  }));
+    // D133's first event and A8.5a's only producer. The Owner delegated this work and the person
+    // they delegated it to says it is done, which is the one thing they cannot find out by having
+    // done it themselves. The Owner-attributed completion of the same Task is not notifiable and
+    // cannot be: `persistOwnerTaskMutation` has no parameter to pass one.
+    'task_completed_by_recipient',
+  );
 }
 
 export async function addCapabilityTaskNote(

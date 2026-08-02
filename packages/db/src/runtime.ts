@@ -249,3 +249,20 @@ export type {
   ReminderScheduleStatus,
   ReminderScheduleStopReason,
 } from './mappers/reminder-mappers.js';
+// A8.5a Owner Event Notification intent (D133). `createOwnerNotificationIntent` is exported for the
+// A8.5d producers that write from their own transactions; the A8.5a producer reaches it through
+// `persistCapabilityAction`, which derives the identity rather than accepting one.
+export {
+  createOwnerNotificationIntent,
+  findOwnerNotificationIntentByIdentity,
+  listOwnerNotificationIntentsForSubject,
+  type CreateOwnerNotificationIntentInput,
+} from './repositories/owner-notification-repository.js';
+export type {
+  OwnerNotificationActor,
+  OwnerNotificationAttemptRecord,
+  OwnerNotificationEventTypeValue,
+  OwnerNotificationIntentRecord,
+  OwnerNotificationStateValue,
+  OwnerNotificationSubjectKindValue,
+} from './mappers/owner-notification-mappers.js';

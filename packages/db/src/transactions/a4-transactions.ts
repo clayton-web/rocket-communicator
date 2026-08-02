@@ -2,6 +2,8 @@ import type { ActionAttribution, Task, TaskNote, TaskSuggestion } from '@aicaa/d
 import { computeExcerptPurgeAt } from '../../../domain/dist/index.js';
 import type { DbClient, DbTransaction } from '../client/create-prisma-client.js';
 import { createAuditEvent, type CreateAuditEventInput } from '../repositories/audit-repository.js';
+import { createOwnerNotificationIntent } from '../repositories/owner-notification-repository.js';
+import type { OwnerNotificationEventTypeValue } from '../mappers/owner-notification-mappers.js';
 import { revokeCapabilityRecord } from '../repositories/capability-repository.js';
 import { createTaskSuggestion } from '../repositories/suggestion-repository.js';
 import { updateExcerptPurgeAtIfPresent } from '../repositories/communication-event-repository.js';
@@ -136,6 +138,24 @@ export async function persistCapabilityAction(input: {
    * `recordedAt`, so the lifecycle event and the reminder event it caused agree on when it happened.
    */
   reminderTransitionAt?: string;
+  /**
+   * A8.5a Owner Event Notification capture (D133, D135).
+   *
+   * Present only when the caller has already decided this transition is notifiable **and** that
+   * `ENABLE_OWNER_EVENT_CAPTURE` is on. Absent means absent: no statement is issued against either
+   * A8.5 table, which is what lets this function keep running in Production while the A8.5 migration
+   * is unapplied there.
+   *
+   * The caller supplies only the identifier and the event type. Everything that makes the intent
+   * *coherent* — which organization, which subject, which occurrence, and who acted — is derived
+   * here from state this transaction already holds, so a caller cannot name a different Task, a
+   * different organization, or a stale version. Inside this function every notifiable event is about
+   * the Task being mutated, at the version being written.
+   */
+  ownerNotification?: {
+    id: string;
+    eventType: OwnerNotificationEventTypeValue;
+  };
 }): Promise<{
   task: Task;
   audit: AuditEventRecord;
@@ -180,6 +200,34 @@ export async function persistCapabilityAction(input: {
       );
     }
 
+    // A8.5a: the notification intent commits with the mutation that caused it, or not at all.
+    //
+    // Its attribution is copied from the audit input rather than rebuilt, so the intent and the
+    // audit row can never disagree about who acted — a Recipient action stays capability-attributed
+    // even though the Owner is who will be told about it (D133).
+    if (input.ownerNotification) {
+      await createOwnerNotificationIntent(tx, {
+        id: input.ownerNotification.id,
+        organizationId: input.organizationId,
+        eventType: input.ownerNotification.eventType,
+        subjectKind: 'task',
+        subjectId: input.task.id,
+        // The post-mutation version. The domain bumps it on every transition, so a retry of this
+        // same transition collides and a genuine later event does not.
+        occurrenceKey: String(input.task.version),
+        occurredAt: input.audit.recordedAt,
+        actorKind: input.audit.actorKind,
+        ownerId: input.audit.ownerId ?? null,
+        capabilityId: input.audit.capabilityId ?? null,
+        systemId: input.audit.systemId ?? null,
+        assignmentId: input.audit.assignmentId ?? null,
+        attributionLabel: input.audit.attributionLabel ?? null,
+        auditEventId: audit.id,
+        requestId: input.audit.requestId ?? null,
+        correlationId: input.audit.correlationId ?? null,
+      });
+    }
+
     const task = await getTaskById(tx, input.organizationId, input.task.id);
     return { task, audit, excerptUpdated, reminderEffect };
   });
@@ -188,9 +236,15 @@ export async function persistCapabilityAction(input: {
 /**
  * Owner session mutation unit of work (task + optional new note + audit).
  * Same persistence shape as capability-driven mutations; named for Owner task services.
+ *
+ * **`ownerNotification` is omitted from the parameter type on purpose (D133).** Owner-initiated
+ * actions are excluded from the taxonomy — telling the Owner what the Owner just did is noise — so
+ * the Owner path is not merely expected to pass no intent, it is unable to. That makes "an Owner
+ * completion creates no notification" a property of the types rather than of a test, and it will
+ * still hold when A8.5d adds the remaining producers.
  */
 export async function persistOwnerTaskMutation(
-  input: Parameters<typeof persistCapabilityAction>[0],
+  input: Omit<Parameters<typeof persistCapabilityAction>[0], 'ownerNotification'>,
 ): Promise<Awaited<ReturnType<typeof persistCapabilityAction>>> {
   return persistCapabilityAction(input);
 }
