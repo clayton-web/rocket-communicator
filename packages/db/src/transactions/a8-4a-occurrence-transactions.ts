@@ -83,6 +83,8 @@ const ADVANCE_DISPOSITION_FOR_OUTCOME: Record<
   ReminderAdvanceDisposition | null
 > = {
   success: 'delivered',
+  // The reason refines this one: see `advanceDispositionFor`. Everything that is genuinely about
+  // eligibility — completed, dismissed, unassigned, no actionable capability — lands here.
   skipped: 'skipped_not_eligible',
   permanent_failure: 'failed_permanent',
   ambiguous: 'ambiguous',
@@ -90,6 +92,29 @@ const ADVANCE_DISPOSITION_FOR_OUTCOME: Record<
   // invocation, so the schedule must keep saying the advance reminder is scheduled.
   retryable_failure: null,
 };
+
+/**
+ * The advance disposition a settled occurrence writes, refined by its skip reason (A8.4b.3).
+ *
+ * `skipped` covers two different facts and the Owner's remedy differs between them. "Not eligible"
+ * means the Task moved — completed, dismissed, unassigned, or its capability died — and the answer
+ * is that nothing was owed. `advance_window_elapsed` means the reminder *was* owed and the morning
+ * it belonged to went by before any worker reached it, which is a delivery gap and the same fact
+ * that establishment records when a schedule is created too late to have an advance morning at all.
+ *
+ * Recording both as `skipped_not_eligible` would put an outage and a completed Task in the same
+ * bucket on the one surface an Owner has for asking what happened, so the reason is read from the
+ * immutable occurrence row rather than inferred.
+ */
+function advanceDispositionFor(
+  outcome: TerminalReminderDeliveryOutcome,
+  skipReason: ReminderSkipReason | null,
+): ReminderAdvanceDisposition | null {
+  if (outcome === 'skipped' && skipReason === 'advance_window_elapsed') {
+    return 'skipped_window_elapsed';
+  }
+  return ADVANCE_DISPOSITION_FOR_OUTCOME[outcome];
+}
 
 /**
  * The next occurrence a caller computed with the A8.2 domain, supplied optimistically.
@@ -350,6 +375,7 @@ export async function settleReminderOccurrenceSchedule(
       occurrenceKind: occurrence.occurrenceKind,
       generation: occurrence.generation,
       outcome: occurrence.outcome,
+      skipReason: occurrence.skipReason,
       // The occurrence's own completion instant, not this settlement's. A schedule stopped by a
       // permanent failure was stopped when the failure happened, not when the sweep noticed.
       effectiveAt: occurrence.completedAt ?? input.settledAt,
@@ -390,6 +416,8 @@ type ScheduleEffectInput = {
   readonly occurrenceKind: 'advance' | 'overdue';
   readonly generation: number;
   readonly outcome: TerminalReminderDeliveryOutcome;
+  /** Read from the immutable occurrence row; refines an advance skip into its truthful disposition. */
+  readonly skipReason: ReminderSkipReason | null;
   readonly effectiveAt: string;
   readonly nextOverdueOccurrence: NextOverdueOccurrenceInput | null;
 };
@@ -420,7 +448,7 @@ async function applyScheduleEffect(
   } as const;
 
   if (input.occurrenceKind === 'advance') {
-    const disposition = ADVANCE_DISPOSITION_FOR_OUTCOME[input.outcome];
+    const disposition = advanceDispositionFor(input.outcome, input.skipReason);
     if (disposition === null) {
       return nothing;
     }

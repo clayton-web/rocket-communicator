@@ -26,7 +26,7 @@ import java.io.Serializable
  * @param deliveryEnabled Whether `ENABLE_REMINDER_DELIVERY` was exactly \"true\". False in every environment in this milestone. 
  * @param transportConfigured Whether a transport was available to send through. False means the invocation failed closed and did no work at all: processing refuses to run rather than manufacturing a transport that would report deliveries it never made. Also false whenever delivery is disabled, because no transport is constructed at all in that case. 
  * @param transportAuthorized Whether this invocation held a usable provider authorization when it began scanning.  Only meaningful when `deliveryEnabled` and `transportConfigured` are both true. It is false by default in the other two cases, where authorization was never attempted at all, so the three flags must be read as a triple: (false, false, false) is delivery disabled, (true, false, false) is delivery enabled with nothing to send through, (true, true, false) is authorization unusable, and (true, true, true) is an invocation that scanned.  False with the first two true means the Owner's Gmail connection is missing, has not granted the send scope, or could not produce an access token, and the invocation stopped before its first claim: no occurrence was created, no schedule moved, and no provider was contacted. Authorization is resolved once per invocation and always before any claim, so an unusable connection is never charged to a Task as a delivery failure. Which of those causes applied is deliberately not reported here. 
- * @param schedulesScanned 
+ * @param schedulesScanned Due occurrences the two scans returned, not distinct schedules (A8.4b.3). A schedule that owes both its advance morning and an overdue morning in the same invocation — which needs an outage long enough for the due date itself to pass — is counted once per occurrence, because each is claimed, guarded, and settled separately. 
  * @param occurrencesClaimed 
  * @param claimRefusals Occurrences a claim was refused for — held by another worker, already terminal, or out of retry budget. Ordinary contention; a persistently non-zero value alongside zero claims is the signature of a stuck occurrence. 
  * @param delivered Occurrences a transport confirmed it accepted. Never an ambiguous outcome: a send whose result could not be determined is counted under `ambiguous` and is never reported here. 
@@ -59,6 +59,7 @@ data class ReminderProcessResponse (
     @Json(name = "transportAuthorized")
     val transportAuthorized: kotlin.Boolean,
 
+    /* Due occurrences the two scans returned, not distinct schedules (A8.4b.3). A schedule that owes both its advance morning and an overdue morning in the same invocation — which needs an outage long enough for the due date itself to pass — is counted once per occurrence, because each is claimed, guarded, and settled separately.  */
     @Json(name = "schedulesScanned")
     val schedulesScanned: kotlin.Int,
 

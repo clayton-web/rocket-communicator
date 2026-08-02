@@ -756,6 +756,85 @@ export async function listDueReminderSchedulesGlobally(
   }));
 }
 
+/** One schedule whose single advance occurrence has arrived and has not yet been settled. */
+export interface DueAdvanceReminderScheduleRow {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly taskId: string;
+  readonly generation: number;
+  /** The generation's due date. The advance occurrence is the morning before it (D105). */
+  readonly dueLocalDate: LocalDate;
+  readonly advanceOccurrenceLocalDate: LocalDate;
+  readonly advanceOccurrenceAt: string;
+  readonly schedulingTimeZone: string;
+}
+
+/**
+ * Bounded global scan for schedules whose advance occurrence has arrived (A8.4b.3).
+ *
+ * The advance twin of {@link listDueReminderSchedulesGlobally}, and deliberately a separate
+ * function rather than a widened one. The two scans agree on organization spanning, on bounding,
+ * and on deterministic ordering, and agree on nothing else: overdue follows a nullable pointer that
+ * is re-armed after every occurrence and may return the same schedule tomorrow, while advance reads
+ * one immutable instant per generation whose disposition changes exactly once and never returns to
+ * `scheduled`. Merging them would mean a query that could not say which occurrence it had found.
+ *
+ * `advance_disposition = 'scheduled'` is the whole of the "not yet handled" test, and it is why this
+ * scan needs no anti-join against occurrence history. Every terminal outcome settles the disposition
+ * inside the same transaction that marks the occurrence settled, so a delivered, skipped, failed, or
+ * ambiguous advance occurrence has already left this scan by the time the next invocation runs. The
+ * two skips that happen without a worker — the window having already elapsed at establishment, and a
+ * Waiting period having spanned the morning — settle the same field through the same rule.
+ *
+ * Deliberately no lateness predicate. "Has arrived" is `dueAtOrBefore`, the caller's judgement, and
+ * how late is *too* late is a calendar-day question in the organization's zone that SQL should not
+ * be answering: the worker asks the domain, and records a truthful skip for an occurrence whose day
+ * has passed. Filtering it out here instead would leave those rows in the index forever, still
+ * claiming to be `scheduled`, with nothing left in the system that would ever say otherwise.
+ */
+export async function listDueAdvanceReminderSchedulesGlobally(
+  db: Client,
+  input: { readonly dueAtOrBefore: string; readonly limit: number },
+): Promise<DueAdvanceReminderScheduleRow[]> {
+  if (!Number.isInteger(input.limit) || input.limit < 1 || input.limit > 500) {
+    throw persistenceValidation('Reminder processing batch limit must be between 1 and 500.');
+  }
+
+  const rows = await db.taskReminderSchedule.findMany({
+    where: {
+      status: 'active',
+      advanceDisposition: 'scheduled',
+      advanceOccurrenceAt: { lte: fromIso(input.dueAtOrBefore)! },
+    },
+    orderBy: [{ advanceOccurrenceAt: 'asc' }, { id: 'asc' }],
+    take: input.limit,
+    select: {
+      id: true,
+      organizationId: true,
+      taskId: true,
+      generation: true,
+      dueLocalDate: true,
+      advanceOccurrenceLocalDate: true,
+      advanceOccurrenceAt: true,
+      schedulingTimeZone: true,
+    },
+  });
+
+  return rows.map((row) => ({
+    id: row.id,
+    organizationId: row.organizationId,
+    taskId: row.taskId,
+    generation: row.generation,
+    dueLocalDate: toStorableLocalDate(row.dueLocalDate, 'dueLocalDate'),
+    advanceOccurrenceLocalDate: toStorableLocalDate(
+      row.advanceOccurrenceLocalDate,
+      'advanceOccurrenceLocalDate',
+    ),
+    advanceOccurrenceAt: row.advanceOccurrenceAt.toISOString(),
+    schedulingTimeZone: row.schedulingTimeZone,
+  }));
+}
+
 /**
  * Bounded batch of schedules whose next overdue occurrence has arrived and that are not held under
  * a live lease.

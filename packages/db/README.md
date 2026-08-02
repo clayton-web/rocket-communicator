@@ -1,6 +1,6 @@
 # @aicaa/db
 
-Server-side Prisma persistence for A4–A7.3, the A8.3a reminder foundation, the A8.4a occurrence lifecycle, the A8.4b.1 capability pre-send snapshot, and the A8.4b.2 D129 repeated-ambiguity stop (D062, D006, D086–D094, D128, D129, D130). Domain rules live in `@aicaa/domain`; this package stores and retrieves records.
+Server-side Prisma persistence for A4–A7.3, the A8.3a reminder foundation, the A8.4a occurrence lifecycle, the A8.4b.1 capability pre-send snapshot, the A8.4b.2 D129 repeated-ambiguity stop, and the A8.4b.3 advance due scan (D062, D006, D086–D094, D128, D129, D130). Domain rules live in `@aicaa/domain`; this package stores and retrieves records.
 
 Operations: [../../docs/DEPLOYMENT.md](../../docs/DEPLOYMENT.md)
 
@@ -154,7 +154,7 @@ Phase B is not exported on its own from either barrel under a name that could be
 
 **`hasTerminalAdvanceOccurrence` replaces `hasProcessedAdvanceOccurrence`.** The old function counted a bare `claimed` lease as processed, so a worker that claimed an advance occurrence and died would have frozen that advance permanently — unreclaimable, because the unique occurrence identity refuses a second row. Only a terminal outcome settles the schedule's advance disposition, and settlement is the phase that writes both, so the attempt row and the schedule cannot describe different histories for longer than it takes to discharge the debt.
 
-**The advance-occurrence APIs are foundations, not a live path.** Nothing in A8.4a scans for or claims an advance occurrence: the due scan reads `next_overdue_occurrence_at` only. These functions handle `advance` correctly and tests exercise them directly, but delivering advance reminders is A8.4b.3 work and needs its own scan predicate and matching index first.
+**The advance-occurrence APIs were foundations before they were a live path.** Nothing in A8.4a scanned for or claimed an advance occurrence: the due scan read `next_overdue_occurrence_at` only. These functions handled `advance` correctly and tests exercised them directly; A8.4b.3 added the scan and index that finally reach them.
 
 ### A8.4b.1 additions
 
@@ -177,5 +177,19 @@ Migration: `20260802210000_a8_4b2_repeated_ambiguous_stop_reason` — one additi
 **Ordering is by `occurrence_at`, then `id`, never by `completed_at`.** `occurrence_at` is the 09:00-local instant an occurrence belongs to, fixed when it was armed and immutable afterwards; `completed_at` is whenever a worker finished it. Those diverge whenever settlement is late — a crashed occurrence swept hours afterwards, or recovery collecting debt out of order — and ordering by the latter would let the repair of an old occurrence appear as the newest event in the sequence. `id` makes the order total even if two rows shared an instant, which the one-occurrence-per-local-day identity already prevents.
 
 **No ambiguity counter column exists, and none should be added.** A stored count has to be incremented on ambiguity and reset on success, on permanent failure, and on a new generation; any path that misses one leaves a schedule that stops early or never stops. Derived from generation-scoped history, a new generation resets it by definition rather than by an operation. A guard asserts no such column appears on `TaskReminderSchedule` and that `ReminderScheduleStatus` still has exactly its three values.
+
+### A8.4b.3 additions
+
+Migration: `20260803090000_a8_4b3_advance_due_scan_index` — one additive `CREATE INDEX IF NOT EXISTS`, **unapplied in Production**. It creates no column, no constraint, and no enum value, touches no row, and would leave the scan correct if dropped.
+
+**`listDueAdvanceReminderSchedulesGlobally` is a second scan, not a widened first one.** Overdue follows `next_overdue_occurrence_at`, a nullable pointer re-armed after every occurrence, so a schedule reappears daily. Advance reads `advance_occurrence_at`, one immutable non-null instant per generation, gated on `advance_disposition = 'scheduled'` — a value that settles exactly once and never returns to `scheduled`. A merged query could not report which occurrence it had found, and a merged index would serve neither ordering. Both scans span organizations, bound their batch, and order by occurrence instant then id, for the same reasons.
+
+**The disposition is the whole of the "not yet handled" test, which is why there is no anti-join.** Every terminal outcome settles the disposition in the same transaction that marks the occurrence settled, and the two skips that happen without a worker — the establishment window having elapsed, and a Waiting period having spanned the morning — settle the same field. So a handled advance occurrence has already left the scan before the next invocation runs, and history never needs to be consulted to find out.
+
+**The index is partial on the disposition as well as on `active`.** Every generation leaves exactly one advance row behind forever; without the disposition predicate the index would grow with history rather than with work outstanding. Both predicate columns are `NOT NULL`, so no row is silently excluded by a null.
+
+**No lateness predicate in SQL.** How late is too late is a calendar-day question in the organization's zone, which the domain answers (`isAdvanceDeliveryWindowOpen`) and the worker asks. Filtering elapsed mornings out of the scan would leave them in the table saying `scheduled` forever, so they are claimed and settled as `skipped_window_elapsed` instead.
+
+**`applyScheduleEffect`'s advance branch now reads the skip reason.** `skipped` covers two facts with different remedies — the Task stopped needing a reminder, or the morning went by unsent — so `advance_window_elapsed` settles to `skipped_window_elapsed` and every other skip to `skipped_not_eligible`. The reason is read from the immutable occurrence row rather than passed in, so it cannot disagree with what the occurrence records. The branch still returns before the ceiling, the stop reasons, and D129, none of which apply to an advance occurrence.
 
 **Concurrency evidence:** `__tests__/a8-4a-occurrence-concurrency.pg.test.ts` on real PostgreSQL 16 with independent connections, plus direct SQL invariant queries. PGlite is one connection and cannot express any of it. Its D129 block proves two connections settling the third ambiguity produce exactly one stop transition, that no scanner finds the schedule afterwards, and that an Owner completion racing the third ambiguity leaves one reason recorded rather than two.

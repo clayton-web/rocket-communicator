@@ -152,10 +152,14 @@ async function stopForNewReason(
 describe('A8.4b.2 repeated-ambiguity stop-reason migration: the file itself', () => {
   const sql = migrationSql(MIGRATION_TWELVE);
 
-  it('is the last migration in the recorded sequence', () => {
+  it('is recorded after the A8.4b.1 capability-skip migration', () => {
     const directories = migrationDirectories();
     expect(directories).toContain(MIGRATION_TWELVE);
-    expect(directories.at(-1)).toBe(MIGRATION_TWELVE);
+    // No longer the last: A8.4b.3 added the advance due-scan index after it. What matters is that
+    // this one still follows the migration whose enum value it sits beside.
+    expect(directories.indexOf(MIGRATION_TWELVE)).toBeGreaterThan(
+      directories.indexOf('20260802173000_a8_4b1_capability_skip_reason'),
+    );
   });
 
   it('adds the value idempotently', () => {

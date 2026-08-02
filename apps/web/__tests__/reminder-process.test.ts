@@ -148,7 +148,11 @@ async function grantActionableCapability(
  */
 async function seedDueTask(
   key: string,
-  options: { dueLocalDate?: string; capability?: false } = {},
+  options: {
+    dueLocalDate?: string;
+    capability?: false;
+    advance?: 'scheduled' | 'settled';
+  } = {},
 ): Promise<{ taskId: string; scheduleId: string; occurrenceAt: string }> {
   const taskId = `task_${key}`;
   const establishedAt = '2026-08-01T12:00:00.000Z';
@@ -187,7 +191,35 @@ async function seedDueTask(
     },
   });
 
+  await settleSeededAdvanceOccurrence(schedule.id, options.advance);
+
   return { taskId, scheduleId: schedule.id, occurrenceAt: nextOverdue.occurrenceAt };
+}
+
+/**
+ * Resolve the advance occurrence these overdue fixtures are not about (A8.4b.3).
+ *
+ * Establishment schedules an advance morning whenever the due date is far enough ahead, and every
+ * fixture here then jumps `NOW` past it by a fortnight so the overdue series has something to
+ * process. In a running system that combination cannot exist: a schedule whose overdue reminders
+ * are being delivered has necessarily had its one advance morning resolved long ago, because the
+ * advance scan reaches it the same wake-up the occurrence falls.
+ *
+ * Leaving it `scheduled` would make every fixture below quietly test two occurrences instead of
+ * one, which is a real behaviour the A8.4b.3 suites cover directly rather than a thing to smuggle
+ * into assertions about overdue delivery. `skipped_window_elapsed` is what the worker itself would
+ * have written on the morning after that advance day.
+ */
+async function settleSeededAdvanceOccurrence(
+  scheduleId: string,
+  advance: 'scheduled' | 'settled' = 'settled',
+): Promise<void> {
+  if (advance === 'settled') {
+    await db.prisma.taskReminderSchedule.updateMany({
+      where: { id: scheduleId, advanceDisposition: 'scheduled' },
+      data: { advanceDisposition: 'skipped_window_elapsed' },
+    });
+  }
 }
 
 /** Long after every seeded occurrence, so the scan finds everything. */

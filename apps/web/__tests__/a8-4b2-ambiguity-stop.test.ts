@@ -146,6 +146,13 @@ async function seedDueTask(key: string): Promise<{ taskId: string; scheduleId: s
       },
     },
   });
+  // A8.4b.3: D129 counts overdue occurrences only, and `NOW` is well past the advance morning
+  // establishment scheduled. Resolving it keeps these sequences made of the occurrences the rule
+  // actually counts.
+  await db.prisma.taskReminderSchedule.updateMany({
+    where: { id: schedule.id, advanceDisposition: 'scheduled' },
+    data: { advanceDisposition: 'skipped_window_elapsed' },
+  });
   return { taskId, scheduleId: schedule.id };
 }
 

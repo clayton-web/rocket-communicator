@@ -172,8 +172,9 @@ export interface paths {
         put?: never;
         /**
          * Internal reminder occurrence processing (built, not deployed)
-         * @description Claims and finalizes due **overdue** reminder occurrences for a bounded batch of schedules
-         *     (A8.4a, A8.4b.1; D104-D107, D109, D129, D130). Recovers abandoned occurrence claims, resolves
+         * @description Claims and finalizes due reminder occurrences — **advance and overdue** — for a bounded batch
+         *     of schedules (A8.4a, A8.4b.1-A8.4b.3; D104-D107, D109, D129, D130). Recovers abandoned
+         *     occurrence claims, resolves
          *     transport authorization once before claiming anything, validates Task, schedule, and
          *     capability eligibility immediately before sending, invokes the transport, and records the
          *     outcome through the safe occurrence transaction.
@@ -187,9 +188,15 @@ export interface paths {
          *     connection or ungranted send scope returns zero aggregates with `transportAuthorized: false`.
          *     No cron job invokes this endpoint.
          *
-         *     Advance reminder delivery is A8.4b.3 and has no scan predicate here, so no advance occurrence
-         *     can be claimed. D129's consecutive-ambiguous stopping rule is A8.4b.2; this milestone records
-         *     terminal ambiguous outcomes truthfully but enforces no threshold.
+         *     Two bounded scans run per invocation, one per occurrence kind, and both feed the same claim,
+         *     guard, send, and settle path (A8.4b.3). Advance goes first: it is the older instant whenever
+         *     both are due. The one advance reminder a generation holds may only be delivered during its own
+         *     organization-local calendar day, the day before the due date (D105); a worker reaching it
+         *     after that day records a truthful `advance_window_elapsed` skip and makes no provider call,
+         *     because "this is due tomorrow" has stopped being true. Advance occurrences do not count toward
+         *     D106's fourteen successful overdue deliveries, and D129's consecutive-ambiguous stopping rule
+         *     counts overdue occurrences only — a generation holds one advance occurrence, so it can never
+         *     be part of a consecutive run.
          *
          *     Requires `InternalCronBearer` (`CRON_SECRET`). Not an Owner session. Empty body. Safe to
          *     invoke repeatedly and safe to overlap: occurrence identity is unique in the database, so two
@@ -1513,6 +1520,11 @@ export interface components {
              *     causes applied is deliberately not reported here.
              *      */
             transportAuthorized: boolean;
+            /** @description Due occurrences the two scans returned, not distinct schedules (A8.4b.3). A schedule that
+             *     owes both its advance morning and an overdue morning in the same invocation — which needs
+             *     an outage long enough for the due date itself to pass — is counted once per occurrence,
+             *     because each is claimed, guarded, and settled separately.
+             *      */
             schedulesScanned: number;
             occurrencesClaimed: number;
             /** @description Occurrences a claim was refused for — held by another worker, already terminal, or out
@@ -1583,11 +1595,15 @@ export interface components {
          *     - `skipped_waiting_elapsed` — the advance reminder was validly scheduled and the Task was
          *       Waiting when it came due. Permanently skipped for this generation, never replayed on resume.
          *
-         *     Decided by occurrence processing (A8.4a). Processing runs against a fake transport only, is
-         *     disabled by default, and reaches no real provider, so these values cannot occur in the
-         *     deployed application in this milestone:
+         *     Decided by occurrence processing (A8.4a, A8.4b.3). Processing is disabled by default and
+         *     reaches no real provider unless `ENABLE_REMINDER_DELIVERY` is set, which it is in no
+         *     environment, so these values cannot occur in the deployed application in this milestone:
          *
          *     - `delivered` — the occurrence reached a provider that accepted it.
+         *     - `skipped_window_elapsed` — also written here when the worker reached a validly scheduled
+         *       advance occurrence after its local calendar day had ended (A8.4b.3). The same fact as the
+         *       establishment-time value: the morning went by unsent. Distinct from `skipped_not_eligible`
+         *       because nothing was wrong with the Task, and the remedy differs.
          *     - `skipped_not_eligible` — a pre-send check found the Task or schedule no longer eligible.
          *     - `failed_permanent` — delivery failed in a way that retrying cannot fix, or the retry budget
          *       was exhausted.

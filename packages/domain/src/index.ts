@@ -203,6 +203,7 @@ export {
   hasReminderSchedule,
   decideAdvanceReminder,
   hasAdvanceOccurrenceElapsed,
+  isAdvanceDeliveryWindowOpen,
   selectNextOverdueOccurrence,
   isDueDateChangeMaterial,
   countSuccessfulOverdueDeliveries,

@@ -529,6 +529,13 @@ model TaskReminderSchedule {
   /// Global internal due-scan (A8.4a, A8.3a audit F11). Organization-leading indexes cannot serve a
   /// scan that deliberately spans organizations; the migration makes this one partial on `active`.
   @@index([nextOverdueOccurrenceAt, id])
+  /// Global internal advance due-scan (A8.4b.3). The advance scan is a different question from the
+  /// overdue one — one fixed occurrence per generation, gated on its disposition rather than on a
+  /// rolling pointer — so it gets its own index rather than sharing the overdue one. The migration
+  /// makes this partial on `active` *and* on `advance_disposition = 'scheduled'`, which is what keeps
+  /// it small: every generation leaves exactly one advance row behind, and all but the undelivered
+  /// ones drop out of the index the moment their disposition settles.
+  @@index([advanceOccurrenceAt, id])
   @@map("task_reminder_schedules")
 }
 

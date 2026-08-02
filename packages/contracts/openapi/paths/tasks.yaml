@@ -704,8 +704,9 @@ paths:
       tags: [Tasks]
       summary: Internal reminder occurrence processing (built, not deployed)
       description: |
-        Claims and finalizes due **overdue** reminder occurrences for a bounded batch of schedules
-        (A8.4a, A8.4b.1; D104-D107, D109, D129, D130). Recovers abandoned occurrence claims, resolves
+        Claims and finalizes due reminder occurrences — **advance and overdue** — for a bounded batch
+        of schedules (A8.4a, A8.4b.1-A8.4b.3; D104-D107, D109, D129, D130). Recovers abandoned
+        occurrence claims, resolves
         transport authorization once before claiming anything, validates Task, schedule, and
         capability eligibility immediately before sending, invokes the transport, and records the
         outcome through the safe occurrence transaction.
@@ -719,9 +720,15 @@ paths:
         connection or ungranted send scope returns zero aggregates with `transportAuthorized: false`.
         No cron job invokes this endpoint.
 
-        Advance reminder delivery is A8.4b.3 and has no scan predicate here, so no advance occurrence
-        can be claimed. D129's consecutive-ambiguous stopping rule is A8.4b.2; this milestone records
-        terminal ambiguous outcomes truthfully but enforces no threshold.
+        Two bounded scans run per invocation, one per occurrence kind, and both feed the same claim,
+        guard, send, and settle path (A8.4b.3). Advance goes first: it is the older instant whenever
+        both are due. The one advance reminder a generation holds may only be delivered during its own
+        organization-local calendar day, the day before the due date (D105); a worker reaching it
+        after that day records a truthful `advance_window_elapsed` skip and makes no provider call,
+        because "this is due tomorrow" has stopped being true. Advance occurrences do not count toward
+        D106's fourteen successful overdue deliveries, and D129's consecutive-ambiguous stopping rule
+        counts overdue occurrences only — a generation holds one advance occurrence, so it can never
+        be part of a consecutive run.
 
         Requires `InternalCronBearer` (`CRON_SECRET`). Not an Owner session. Empty body. Safe to
         invoke repeatedly and safe to overlap: occurrence identity is unique in the database, so two

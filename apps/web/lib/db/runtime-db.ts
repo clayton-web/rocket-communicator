@@ -24,6 +24,8 @@ const REQUIRED_EXPORTS = [
   'claimReminderScheduleForProcessing',
   'releaseReminderScheduleClaim',
   'listDueReminderSchedulesGlobally',
+  // A8.4b.3 advance due scan. Same shape, same bound, different predicate and index.
+  'listDueAdvanceReminderSchedulesGlobally',
   'claimReminderOccurrence',
   'listExpiredOccurrenceClaims',
   'listRetryBudgetExhaustedOccurrences',

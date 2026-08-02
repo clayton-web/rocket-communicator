@@ -205,14 +205,31 @@ describe('A8.4b.1: provider outcome classification', () => {
   });
 });
 
-describe('A8.4b.1: what the adapter refuses to send', () => {
-  it('refuses an advance occurrence, because advance delivery is A8.4b.3', async () => {
+describe('A8.4b.3: the adapter sends both occurrence kinds and distinguishes neither', () => {
+  it('sends an advance occurrence', async () => {
     const sendRaw = accepting();
     const result = await transportWith(sendRaw).send(request({ occurrenceKind: 'advance' }));
-    expect(result).toEqual({ kind: 'permanent', failureCode: 'reminder_kind_not_implemented' });
-    expect(sendRaw).not.toHaveBeenCalled();
+    expect(result).toEqual({ kind: 'accepted', providerMessageRef: 'gmail_msg_1' });
+    expect(sendRaw).toHaveBeenCalledTimes(1);
   });
 
+  /**
+   * D105 makes the advance reminder a difference in timing, not in content, so the two kinds must
+   * produce byte-identical MIME. If they ever diverge it will be because somebody added "due
+   * tomorrow" wording, which is a product decision this slice was told not to make — and the
+   * failure would be silent, since both kinds would still send.
+   */
+  it('builds the same message for either kind', async () => {
+    const advanceRaw = accepting();
+    await transportWith(advanceRaw).send(request({ occurrenceKind: 'advance' }));
+    const overdueRaw = accepting();
+    await transportWith(overdueRaw).send(request({ occurrenceKind: 'overdue' }));
+
+    expect(advanceRaw.mock.calls[0]?.[0]).toEqual(overdueRaw.mock.calls[0]?.[0]);
+  });
+});
+
+describe('A8.4b.1: what the adapter refuses to send', () => {
   it('refuses a request from an organization its authorization does not cover', async () => {
     const sendRaw = accepting();
     const result = await transportWith(sendRaw).send(

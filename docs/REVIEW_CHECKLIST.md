@@ -99,9 +99,13 @@ Gates for the due-date-driven Follow-up Engine (D102–D110). These record **exp
 - [ ] Only privacy-safe provider metadata is stored: no raw response, access token, MIME body, message content, or recipient address
 - [ ] The real transport is **unreachable from tests**: it refuses construction under a test runner, and the flag gates construction in the composition root so no token is decrypted or exchanged when off
 - [ ] Reminder transport changes touch **no** A7 handoff, assignment-email, forwarding, or capability-link behaviour, and add no threading, CC, or BCC
+- [ ] The advance reminder is deliverable **only during its own organization-local calendar day** (D105); the boundary is a calendar-date comparison in the organization's zone, never a fixed number of hours, so the 23- and 25-hour days the clocks shift neither lose an hour nor spill into the due date
+- [ ] A morning the worker reached too late is **claimed and settled**, not filtered out of the scan, so no schedule is left reporting `scheduled` for an occurrence that can never happen
+- [ ] `advance_window_elapsed` stays distinct from `skipped_not_eligible`: the first means the reminder was owed and missed, the second means the Task stopped needing one, and their remedies differ
+- [ ] Advance and overdue share **one** claim, guard, send, and settle path; a second pipeline is the failure mode, and the kind is read from the scanned candidate rather than written as a literal downstream
+- [ ] The advance reminder reuses the approved email **verbatim** — no "due tomorrow", no escalation, no capability link (D130), no counts, no schedule identifiers — because D105 is a difference in timing, not in content
+- [ ] Advance occurrences count toward **neither** D106's fourteen successful overdue deliveries nor D129's consecutive run; a generation holds one advance occurrence, so it can never form a sequence
 - [ ] An ambiguous-outcome **counter is not stored**; D129's threshold is derived from history, and nothing auto-resumes a schedule stopped for repeated ambiguity
-
-## Owner web experience foundation (P1; apply when P1 work is in scope)
 - [ ] D129's threshold is evaluated **inside the settlement transaction** that holds the Task lock and applies the schedule effect once — never in a provider adapter, never in the worker, and never from history read before the lock was taken
 - [ ] The sequence counts **final occurrence outcomes, not provider attempts**: one occurrence retried three times is one outcome, and `attempt_count` is not an input
 - [ ] A **skip neither counts toward nor breaks** the run (no provider was contacted), while a success or a permanent failure — retry-budget exhaustion included — breaks it
@@ -109,6 +113,8 @@ Gates for the due-date-driven Follow-up Engine (D102–D110). These record **exp
 - [ ] The stop is conditional on the schedule still being `active`, so an **earlier authoritative stop reason is never overwritten**, and the third occurrence stays recorded as ambiguous rather than being rewritten
 - [ ] A stop **disarms the next occurrence**, so no fourth reminder is reachable by the same invocation, a concurrent worker, or the next wake-up
 - [ ] No new schedule status is introduced: Waiting remains the only suspension mechanism (D097, D107), and D129 stops rather than pauses
+
+## Owner web experience foundation (P1; apply when P1 work is in scope)
 
 Gates for D111–D126. Record **expected behaviour and required proof**; no specific implementation is pre-approved.
 

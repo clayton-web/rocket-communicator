@@ -167,6 +167,13 @@ async function seedDueTask(
       },
     },
   });
+  // A8.4b.3: these fixtures are about overdue delivery, and `NOW` is a fortnight past the advance
+  // morning establishment scheduled. A running system would have resolved that morning the day it
+  // fell, so resolve it here rather than leave every test below processing two occurrences.
+  await db.prisma.taskReminderSchedule.updateMany({
+    where: { id: schedule.id, advanceDisposition: 'scheduled' },
+    data: { advanceDisposition: 'skipped_window_elapsed' },
+  });
   return { taskId, scheduleId: schedule.id };
 }
 
@@ -710,18 +717,20 @@ describe('A8.4b.1 real overdue reminder delivery', () => {
   // -------------------------------------------------------------------------------------------
 
   describe('a real transport does not widen what may be delivered', () => {
-    it('never claims an advance occurrence, because the scan selects only overdue ones', async () => {
-      await seedDueTask('advance_unreachable');
+    it('claims only the overdue occurrence when the advance morning is already resolved', async () => {
+      await seedDueTask('advance_resolved');
       const transport = acceptingTransport();
 
       await run({ transport });
 
+      // A8.4b.3 gave advance occurrences a scan of their own, so "one send" is now a claim about
+      // the schedule's state rather than about a missing code path: this generation's advance
+      // morning was settled before the worker ran, and a settled disposition leaves that scan.
       expect(transport.calls).toHaveLength(1);
-      // The one call is overdue. Advance delivery is A8.4b.3 and has no scan predicate.
       expect(transport.calls.every((call) => call.occurrenceKind === 'overdue')).toBe(true);
     });
 
-    it('refuses an advance request even if one somehow reached the adapter', async () => {
+    it('sends an advance request that reaches the adapter (A8.4b.3)', async () => {
       const sendRaw = vi.fn().mockResolvedValue({ status: 200, id: 'gmail_msg_45' });
       const adapter = createGmailReminderTransport({
         organizationId: org,
@@ -744,8 +753,8 @@ describe('A8.4b.1 real overdue reminder delivery', () => {
         },
       });
 
-      expect(result).toEqual({ kind: 'permanent', failureCode: 'reminder_kind_not_implemented' });
-      expect(sendRaw).not.toHaveBeenCalled();
+      expect(result).toEqual({ kind: 'accepted', providerMessageRef: 'gmail_msg_45' });
+      expect(sendRaw).toHaveBeenCalledTimes(1);
     });
 
     for (const state of ['completed', 'dismissed'] as const) {

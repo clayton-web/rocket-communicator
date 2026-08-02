@@ -124,7 +124,7 @@ The **Task-scoped** scheduling state derived from a Task's due date: at most one
 
 ### Reminder occurrence
 
-A single scheduled reminder moment: **09:00 organization-local** on a specific local calendar date, resolved individually to an absolute instant for execution and audit (D103). Either the one **advance** occurrence on the day before the due date (D105) or an **overdue** occurrence on a calendar day after it (D106).
+A single scheduled reminder moment: **09:00 organization-local** on a specific local calendar date, resolved individually to an absolute instant for execution and audit (D103). Either the one **advance** occurrence on the day before the due date (D105) or an **overdue** occurrence on a calendar day after it (D106). The two differ in how much lateness they tolerate. An overdue occurrence stays owed however late a worker reaches it, because the Task is still late. The advance occurrence may be delivered only during its own local calendar day and is recorded as `advance_window_elapsed` afterwards, because its content is that the Task is due tomorrow and that stops being true at midnight (A8.4b.3).
 
 ### Schedule generation
 

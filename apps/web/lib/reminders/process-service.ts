@@ -2,6 +2,7 @@ import 'server-only';
 import {
   REMINDER_SCHEDULING_TIME_ZONE,
   decideReminderScheduling,
+  isAdvanceDeliveryWindowOpen,
   selectNextOverdueOccurrence,
   type LocalDate,
   type TaskSummaryPoint,
@@ -73,12 +74,26 @@ import type {
  * next one, overlapping invocations are made safe by the unique occurrence identity rather than by
  * not overlapping, and a backlog drains a bounded batch at a time. No in-memory timer is load-bearing.
  *
- * ## Overdue only
+ * ## Two scans, one pipeline (A8.4b.3)
  *
- * The due scan selects on `next_overdue_occurrence_at`, so the only occurrences this service ever
- * claims are `overdue` ones. The advance terminalization and settlement paths exist in persistence
- * and are exercised by tests, but no worker code path reaches them: delivering advance reminders is
- * A8.4b.3 work and needs its own scan predicate and index before it can claim anything.
+ * Advance and overdue reminders are found by two separate bounded scans and then processed by the
+ * same claim, guard, send, and settle path. Separate scans because the questions differ — overdue
+ * follows a pointer re-armed after every occurrence, advance reads one immutable instant per
+ * generation gated on a disposition that settles once — and a single query could not report which
+ * occurrence it had found. One pipeline because everything after "which occurrence" is identical:
+ * occurrence identity already includes the kind, so a claim, a lease, a retry budget, a crash, and a
+ * settlement behave the same whichever kind is being processed.
+ *
+ * Advance goes first. It is the older instant whenever both are due, and a schedule can hold both
+ * only after the worker has been down long enough for the due date itself to pass — the exact case
+ * where the advance occurrence needs to be settled as a missed morning rather than left claiming to
+ * be scheduled. Each scan carries its own batch bound, so a backlog of one kind cannot starve the
+ * other, the same reasoning the recovery classes above use.
+ *
+ * The kind changes exactly two things downstream: which guards apply, and which schedule field the
+ * settlement moves. It does not change the message. D105 makes the advance reminder a difference in
+ * *timing*, not in content, and the reminder body states the due date rather than asserting anything
+ * about lateness, so the same builder is truthful the morning before and every morning after.
  *
  * ## Authorization is an invocation-level fact (A8.4b.1)
  *
@@ -279,19 +294,52 @@ export async function runInternalReminderProcess(
   await recoverAbandonedClaims(context, outOfTime);
   await terminalizeExhaustedOccurrences(context, outOfTime);
 
-  const due = outOfTime()
+  const limit = input.maxSchedules ?? MAX_SCHEDULES_PER_PROCESS;
+
+  const advanceDue = outOfTime()
+    ? []
+    : await runtime.listDueAdvanceReminderSchedulesGlobally(input.db, {
+        dueAtOrBefore: now,
+        limit,
+      });
+  const overdueDue = outOfTime()
     ? []
     : await runtime.listDueReminderSchedulesGlobally(input.db, {
         dueAtOrBefore: now,
-        limit: input.maxSchedules ?? MAX_SCHEDULES_PER_PROCESS,
+        limit,
       });
 
-  for (const schedule of due) {
+  const candidates: DueOccurrenceCandidate[] = [
+    ...advanceDue.map((row): DueOccurrenceCandidate => ({
+      id: row.id,
+      organizationId: row.organizationId,
+      taskId: row.taskId,
+      generation: row.generation,
+      dueLocalDate: row.dueLocalDate,
+      schedulingTimeZone: row.schedulingTimeZone,
+      occurrenceKind: 'advance',
+      occurrenceLocalDate: row.advanceOccurrenceLocalDate,
+      occurrenceAt: row.advanceOccurrenceAt,
+    })),
+    ...overdueDue.map((row): DueOccurrenceCandidate => ({
+      id: row.id,
+      organizationId: row.organizationId,
+      taskId: row.taskId,
+      generation: row.generation,
+      dueLocalDate: row.dueLocalDate,
+      schedulingTimeZone: row.schedulingTimeZone,
+      occurrenceKind: 'overdue',
+      occurrenceLocalDate: row.nextOverdueOccurrenceLocalDate,
+      occurrenceAt: row.nextOverdueOccurrenceAt,
+    })),
+  ];
+
+  for (const candidate of candidates) {
     if (outOfTime()) {
       break;
     }
     counters.schedulesScanned += 1;
-    await processOneSchedule({ ...context, schedule, transport });
+    await processOneSchedule({ ...context, candidate, transport });
   }
 
   return {
@@ -306,7 +354,27 @@ export async function runInternalReminderProcess(
 }
 
 type DbRuntime = Awaited<ReturnType<typeof loadDbRuntime>>;
-type DueSchedule = Awaited<ReturnType<DbRuntime['listDueReminderSchedulesGlobally']>>[number];
+
+/**
+ * One occurrence the scans found, flattened so the pipeline below never asks which scan produced it.
+ *
+ * The schedule identity, the generation's due date, and the zone are the same questions for both
+ * kinds; the three `occurrence*` fields are the answer to "which occurrence", read from whichever
+ * pair of columns the scan selected on. Flattening here rather than branching in five later places
+ * is what keeps the claim, the lease, the retry budget, the crash paths, and the settlement written
+ * once — and it means occurrence identity in this file is exactly the tuple the database enforces.
+ */
+type DueOccurrenceCandidate = {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly taskId: string;
+  readonly generation: number;
+  readonly dueLocalDate: string;
+  readonly schedulingTimeZone: string;
+  readonly occurrenceKind: 'advance' | 'overdue';
+  readonly occurrenceLocalDate: LocalDate;
+  readonly occurrenceAt: string;
+};
 type ProcessContext = {
   runtime: DbRuntime;
   db: DbClient;
@@ -503,9 +571,9 @@ async function terminalizeExhaustedOccurrences(
 }
 
 async function processOneSchedule(
-  args: ProcessContext & { schedule: DueSchedule; transport: ReminderTransport },
+  args: ProcessContext & { candidate: DueOccurrenceCandidate; transport: ReminderTransport },
 ): Promise<void> {
-  const { runtime, db, schedule, now } = args;
+  const { runtime, db, candidate: schedule, now } = args;
   const claimedAt = now;
 
   // Advisory scan lease. A refusal means another invocation is already looking at this schedule, so
@@ -537,18 +605,18 @@ async function processOneSchedule(
 }
 
 async function processOneOccurrence(
-  args: ProcessContext & { schedule: DueSchedule; transport: ReminderTransport },
+  args: ProcessContext & { candidate: DueOccurrenceCandidate; transport: ReminderTransport },
 ): Promise<void> {
-  const { runtime, db, schedule, now, transport, counters } = args;
+  const { runtime, db, candidate: schedule, now, transport, counters } = args;
 
   const claim = await runtime.claimReminderOccurrence(db, {
     id: newEntityId('rocc'),
     organizationId: schedule.organizationId,
     scheduleId: schedule.id,
     generation: schedule.generation,
-    occurrenceKind: 'overdue',
-    occurrenceLocalDate: schedule.nextOverdueOccurrenceLocalDate,
-    occurrenceAt: schedule.nextOverdueOccurrenceAt,
+    occurrenceKind: schedule.occurrenceKind,
+    occurrenceLocalDate: schedule.occurrenceLocalDate,
+    occurrenceAt: schedule.occurrenceAt,
     claimedBy: REMINDER_PROCESS_SYSTEM_ID,
     claimedAt: now,
     claimExpiresAt: new Date(Date.parse(now) + OCCURRENCE_CLAIM_LEASE_MS).toISOString(),
@@ -603,8 +671,8 @@ async function processOneOccurrence(
       occurrenceId: attemptId,
       organizationId: schedule.organizationId,
       taskId: schedule.taskId,
-      occurrenceKind: 'overdue',
-      occurrenceLocalDate: schedule.nextOverdueOccurrenceLocalDate,
+      occurrenceKind: schedule.occurrenceKind,
+      occurrenceLocalDate: schedule.occurrenceLocalDate,
       delivery: verdict.delivery,
     });
   } catch {
@@ -670,7 +738,7 @@ async function processOneOccurrence(
  * the schedule effect. Treating it as a send failure here would be the F1 inversion in miniature.
  */
 async function settle(
-  args: ProcessContext & { schedule: DueSchedule },
+  args: ProcessContext & { candidate: DueOccurrenceCandidate },
   attemptId: string,
   claimSequence: number,
   outcome: {
@@ -681,7 +749,7 @@ async function settle(
     providerMessageRef?: string;
   },
 ): Promise<void> {
-  const { runtime, db, schedule, now, counters } = args;
+  const { runtime, db, candidate: schedule, now, counters } = args;
 
   const finalized = await runtime.finalizeReminderOccurrence({
     db,
@@ -755,7 +823,11 @@ type PreSendVerdict =
   | { readonly kind: 'proceed'; readonly delivery: ReminderDeliveryMaterial };
 
 type ReminderSkipDecision =
-  'no_active_assignment' | 'task_not_eligible' | 'schedule_superseded' | 'no_actionable_capability';
+  | 'no_active_assignment'
+  | 'task_not_eligible'
+  | 'schedule_superseded'
+  | 'no_actionable_capability'
+  | 'advance_window_elapsed';
 
 const SKIP = (reason: ReminderSkipDecision): PreSendVerdict => ({ kind: 'skip', reason });
 
@@ -779,7 +851,7 @@ function summaryLinesFor(points: readonly TaskSummaryPoint[]): string[] {
 async function evaluatePreSendGuards(
   runtime: DbRuntime,
   db: DbClient,
-  schedule: DueSchedule,
+  schedule: DueOccurrenceCandidate,
   now: string,
 ): Promise<PreSendVerdict> {
   const snapshot = await runtime.readReminderPreSendSnapshot(
@@ -809,9 +881,24 @@ async function evaluatePreSendGuards(
     !current ||
     current.id !== schedule.id ||
     current.status !== 'active' ||
-    current.generation !== schedule.generation ||
+    current.generation !== schedule.generation
+  ) {
+    return SKIP('schedule_superseded');
+  }
+
+  // Whichever occurrence this is, the row must still be offering it. Overdue reads a pointer that
+  // re-arms, advance reads a disposition that settles once, and both must still match the value the
+  // scan saw — a change to either means the schedule moved between the scan and here.
+  if (schedule.occurrenceKind === 'advance') {
+    if (
+      current.advanceDisposition !== 'scheduled' ||
+      current.advanceOccurrenceAt !== schedule.occurrenceAt
+    ) {
+      return SKIP('schedule_superseded');
+    }
+  } else if (
     current.nextOverdueOccurrenceAt === null ||
-    current.nextOverdueOccurrenceAt !== schedule.nextOverdueOccurrenceAt
+    current.nextOverdueOccurrenceAt !== schedule.occurrenceAt
   ) {
     return SKIP('schedule_superseded');
   }
@@ -819,8 +906,33 @@ async function evaluatePreSendGuards(
   // The armed occurrence must genuinely have arrived. A scan reading `lte: now` and a guard reading
   // the row again cannot disagree unless the schedule moved, which the checks above already caught;
   // this is the belt on those braces, and it costs one comparison.
-  if (Date.parse(schedule.nextOverdueOccurrenceAt) > Date.parse(now)) {
+  if (Date.parse(schedule.occurrenceAt) > Date.parse(now)) {
     return SKIP('schedule_superseded');
+  }
+
+  /**
+   * D105's calendar-day boundary, and the only guard that is genuinely about the advance kind.
+   *
+   * Overdue reminders tolerate arbitrary lateness: the armed occurrence is still owed however long
+   * the worker was away, and a late one is a late nudge about a Task that is still late. An advance
+   * reminder cannot be late at all, because its whole content is "this is due tomorrow" and a
+   * worker that reaches it the next morning would be sending a false statement about a Task that is
+   * due today. So the morning is missed rather than delivered, and the occurrence records that as
+   * the same `advance_window_elapsed` fact establishment records when a schedule is created too
+   * late to have an advance morning in the first place.
+   *
+   * A skip rather than a filter in the scan: leaving the row unclaimed would leave it in the index
+   * for good, still saying `scheduled`, with nothing in the system that would ever correct it.
+   */
+  if (
+    schedule.occurrenceKind === 'advance' &&
+    !isAdvanceDeliveryWindowOpen({
+      advanceOccurrenceLocalDate: schedule.occurrenceLocalDate,
+      at: now as UtcInstant,
+      timeZone: current.schedulingTimeZone || REMINDER_SCHEDULING_TIME_ZONE,
+    })
+  ) {
+    return SKIP('advance_window_elapsed');
   }
 
   // D130: no actionable original capability, no reminder, no provider call.

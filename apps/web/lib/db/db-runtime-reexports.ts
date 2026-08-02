@@ -84,6 +84,7 @@ export {
   claimReminderScheduleForProcessing,
   releaseReminderScheduleClaim,
   listDueReminderSchedulesGlobally,
+  listDueAdvanceReminderSchedulesGlobally,
   claimReminderOccurrence,
   listExpiredOccurrenceClaims,
   listRetryBudgetExhaustedOccurrences,

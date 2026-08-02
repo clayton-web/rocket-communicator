@@ -142,6 +142,33 @@ export function hasAdvanceOccurrenceElapsed(
 }
 
 /**
+ * Whether a scheduled advance occurrence may still be *delivered* at `at` (D105, A8.4b.3).
+ *
+ * A worker never reaches an occurrence at the instant it falls; it reaches it at the next wake-up,
+ * so `hasAdvanceOccurrenceElapsed` cannot be the delivery gate — it is true of every advance
+ * occurrence a worker could ever see. The question delivery has to answer is the opposite one: how
+ * late is too late.
+ *
+ * D105 answers it by naming a calendar day rather than an instant. The advance reminder belongs to
+ * the day before the due date, so it may be sent at any point during that local day and never
+ * afterwards. A worker that wakes at 09:05 sends; one that wakes at 23:50 the same evening still
+ * sends, because the message it delivers — this is due tomorrow — is still true; one that wakes the
+ * next morning does not, because that message has become false and the due date has arrived.
+ *
+ * Comparing calendar dates rather than subtracting hours is what makes this correct across a DST
+ * transition: the advance day is 23 or 25 hours long in the weeks that shift, and any fixed-duration
+ * lateness budget would either cut an hour off that day or spill an hour into the due date.
+ */
+export function isAdvanceDeliveryWindowOpen(input: {
+  readonly advanceOccurrenceLocalDate: LocalDate;
+  readonly at: UtcInstant;
+  readonly timeZone?: string;
+}): boolean {
+  const timeZone = input.timeZone ?? REMINDER_SCHEDULING_TIME_ZONE;
+  return localDateOfInstant(input.at, timeZone) === input.advanceOccurrenceLocalDate;
+}
+
+/**
  * Select the next overdue occurrence — always exactly one, always in the future (D106).
  *
  * Elapsed calendar days are skipped rather than accumulated: a due date years in the past

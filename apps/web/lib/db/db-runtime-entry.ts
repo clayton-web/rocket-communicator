@@ -137,6 +137,7 @@ export type TracedRuntimeModule = {
   claimReminderScheduleForProcessing: typeof TracedRuntimeBindings.claimReminderScheduleForProcessing;
   releaseReminderScheduleClaim: typeof TracedRuntimeBindings.releaseReminderScheduleClaim;
   listDueReminderSchedulesGlobally: typeof TracedRuntimeBindings.listDueReminderSchedulesGlobally;
+  listDueAdvanceReminderSchedulesGlobally: typeof TracedRuntimeBindings.listDueAdvanceReminderSchedulesGlobally;
   claimReminderOccurrence: typeof TracedRuntimeBindings.claimReminderOccurrence;
   listExpiredOccurrenceClaims: typeof TracedRuntimeBindings.listExpiredOccurrenceClaims;
   listRetryBudgetExhaustedOccurrences: typeof TracedRuntimeBindings.listRetryBudgetExhaustedOccurrences;
@@ -237,6 +238,7 @@ export async function loadTracedRuntimeModule(): Promise<TracedRuntimeModule> {
     claimReminderScheduleForProcessing: tracedRuntime.claimReminderScheduleForProcessing,
     releaseReminderScheduleClaim: tracedRuntime.releaseReminderScheduleClaim,
     listDueReminderSchedulesGlobally: tracedRuntime.listDueReminderSchedulesGlobally,
+    listDueAdvanceReminderSchedulesGlobally: tracedRuntime.listDueAdvanceReminderSchedulesGlobally,
     claimReminderOccurrence: tracedRuntime.claimReminderOccurrence,
     listExpiredOccurrenceClaims: tracedRuntime.listExpiredOccurrenceClaims,
     listRetryBudgetExhaustedOccurrences: tracedRuntime.listRetryBudgetExhaustedOccurrences,

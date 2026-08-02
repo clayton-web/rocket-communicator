@@ -775,16 +775,89 @@ describe('A8.4b.2: D129 is derived at settlement and stored nowhere', () => {
     expect(service).toContain('repeatedAmbiguityStop');
   });
 
-  /** A8.4b.3 has not happened. D129 is an overdue rule and must not have grown an advance path. */
-  it('leaves advance reminder delivery unimplemented', () => {
-    const service = readCode(path.join(webRoot, 'lib/reminders/process-service.ts'));
-    // The worker claims overdue occurrences only; nothing constructs an advance claim.
-    expect(service).not.toMatch(/occurrenceKind:\s*'advance'/);
+  /**
+   * A8.4b.3 made advance reminders deliverable, which is exactly when D129 could quietly acquire an
+   * advance path. It must not: the rule counts three *consecutive* occurrences and a generation
+   * holds one advance occurrence, so an advance ambiguity can never be the second of anything. A
+   * threshold fed by both kinds would not stop earlier or later — it would stop on a sequence that
+   * does not exist.
+   */
+  it('keeps D129 unreachable from the advance settlement path', () => {
     const effect = extractFunction(settlement, 'applyScheduleEffect');
-    // The advance branch settles a disposition and returns before any of this is reachable.
     const advanceBranch = effect.slice(0, effect.indexOf("if (input.outcome === 'ambiguous')"));
     expect(advanceBranch).toContain("input.occurrenceKind === 'advance'");
     expect(advanceBranch).not.toContain('hasReachedConsecutiveAmbiguousStop');
+    // The advance branch returns, so nothing below it — ceiling, stop reasons, D129 — is reachable.
+    expect(advanceBranch).toContain('return {');
+  });
+
+  /** The history the threshold reads is filtered in SQL, not in the caller that could forget to. */
+  it('keeps the D129 history query scoped to overdue occurrences', () => {
+    const attempts = readCode(
+      path.join(repoRoot, 'packages/db/src/repositories/reminder-delivery-attempt-repository.ts'),
+    );
+    const query = extractFunction(attempts, 'listRecentAmbiguitySequenceOutcomes');
+    expect(query).toMatch(/occurrenceKind:\s*'overdue'/);
+    const policy = readCode(
+      path.join(repoRoot, 'packages/domain/src/reminders/schedule-policy.ts'),
+    );
+    // And the domain predicate refuses to count anything else even if the query stopped filtering.
+    expect(extractFunction(policy, 'hasReachedConsecutiveAmbiguousStop')).toContain(
+      "occurrence === 'overdue'",
+    );
+  });
+});
+
+/**
+ * A8.4b.3 structural guards: advance delivery reuses the pipeline instead of copying it.
+ *
+ * The failure this slice could most plausibly have introduced is a second worker — a parallel scan,
+ * claim, guard, send, and settle path for advance occurrences, subtly different from the overdue
+ * one and missing whichever safety property was hardest to notice. These assert it did not.
+ */
+describe('A8.4b.3: advance delivery shares one pipeline', () => {
+  const service = () => readCode(path.join(webRoot, 'lib/reminders/process-service.ts'));
+
+  it('sends through exactly one transport call site', () => {
+    expect((service().match(/transport\.send\(/g) ?? []).length).toBe(1);
+  });
+
+  it('claims through exactly one claim call site, keyed by the candidate rather than a literal', () => {
+    const code = service();
+    expect((code.match(/claimReminderOccurrence\(/g) ?? []).length).toBe(1);
+    // The two scans name their own kind when they flatten a row into a candidate, and that is the
+    // last time a literal appears: everything downstream reads the candidate, so a claim and the
+    // send that follows it cannot describe different occurrences.
+    const downstream = extractFunction(code, 'processOneOccurrence');
+    expect(downstream).not.toMatch(/occurrenceKind:\s*'(advance|overdue)'/);
+    expect(downstream).toMatch(/occurrenceKind:\s*schedule\.occurrenceKind/);
+  });
+
+  it('marks the provider call before sending, for either kind', () => {
+    const occurrence = extractFunction(service(), 'processOneOccurrence');
+    expect(occurrence.indexOf('markProviderCallStarted')).toBeLessThan(
+      occurrence.indexOf('transport.send('),
+    );
+  });
+
+  /** D105's boundary is a calendar-day comparison in the domain, not hours subtracted in the worker. */
+  it('asks the domain where the advance window closes', () => {
+    expect(service()).toContain('isAdvanceDeliveryWindowOpen');
+    const policy = readCode(
+      path.join(repoRoot, 'packages/domain/src/reminders/schedule-policy.ts'),
+    );
+    const rule = extractFunction(policy, 'isAdvanceDeliveryWindowOpen');
+    expect(rule).toContain('localDateOfInstant');
+    // A fixed lateness budget would be wrong on the two days a year the advance day is not 24 hours.
+    expect(rule).not.toMatch(/24|hours|\* 60 \* 60/);
+  });
+
+  /** The reminder body is the same message either way (D105 is about timing, D130 about content). */
+  it('keeps the occurrence kind out of the email builder', () => {
+    const email = readCode(path.join(webRoot, 'lib/gmail/outbound/reminder-email.ts'));
+    expect(email).not.toContain('occurrenceKind');
+    expect(email).not.toMatch(/advance/i);
+    expect(email).not.toMatch(/tomorrow/i);
   });
 });
 

@@ -158,11 +158,13 @@ export {
   releaseReminderScheduleClaim,
   listReminderSchedulesDueForProcessing,
   listDueReminderSchedulesGlobally,
+  listDueAdvanceReminderSchedulesGlobally,
   type CreateReminderScheduleInput,
   type OpenNextReminderGenerationInput,
   type ClaimReminderScheduleInput,
   type ListSchedulesDueForProcessingInput,
   type DueReminderScheduleRow,
+  type DueAdvanceReminderScheduleRow,
   type ReminderOccurrenceInput,
 } from './repositories/reminder-schedule-repository.js';
 export {

@@ -263,6 +263,13 @@ describeMaybe('A8.4a worker and Owner contention (real PostgreSQL 16)', () => {
         },
       },
     });
+    // A8.4b.3: contention here is between workers racing one overdue occurrence. The advance
+    // morning establishment scheduled is long past at `NOW`, and a running system would have
+    // resolved it then, so resolve it rather than add a second occurrence to every race.
+    await prisma.taskReminderSchedule.updateMany({
+      where: { id: schedule.id, advanceDisposition: 'scheduled' },
+      data: { advanceDisposition: 'skipped_window_elapsed' },
+    });
     return { taskId, scheduleId: schedule.id };
   }
 

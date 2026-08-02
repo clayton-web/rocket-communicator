@@ -1,0 +1,36 @@
+-- ---------------------------------------------------------------------------
+-- A8.4b.3: global advance due-scan index
+-- ---------------------------------------------------------------------------
+--
+-- A8.4b.1 and A8.4b.2 delivered overdue reminders only, because the worker's due scan selects on
+-- `next_overdue_occurrence_at` and nothing else. Advance reminders have been fully persisted since
+-- A8.3a — every generation stores its one advance occurrence and its disposition on the schedule
+-- row — but no query ever asked for them, so no advance reminder could be claimed or sent. This
+-- migration adds the index that makes asking cheap; the scan itself lives in
+-- `listDueAdvanceReminderSchedulesGlobally`.
+--
+-- Why a second index rather than a wider first one
+--
+-- The two scans ask structurally different questions. The overdue scan follows a rolling pointer
+-- that is re-armed after every occurrence, so a schedule appears in it repeatedly. The advance scan
+-- reads one fixed instant per generation, gated on a disposition that changes exactly once, so a
+-- schedule appears in it at most once per generation and then leaves for good. A single composite
+-- index over both columns would serve neither ordering well and would keep every settled advance
+-- row resident forever.
+--
+-- Partial on `advance_disposition = 'scheduled'` as well as on `active` for that last reason. An
+-- advance occurrence that was delivered, skipped at establishment, skipped because a Waiting period
+-- spanned it, or failed is finished forever — no later transition returns it to `scheduled` — so
+-- excluding those rows keeps the index proportional to work outstanding rather than to history.
+-- Both predicate columns are `NOT NULL`, so no row is silently excluded by a null.
+--
+-- Ordered `(advance_occurrence_at, id)` to match the scan's own `ORDER BY` exactly, so the bounded
+-- batch is a real bound rather than a sort over the table, and so two concurrent workers see the
+-- same candidates in the same order.
+--
+-- Additive and reversible: creating an index changes no row, no column, no constraint, and no enum,
+-- and dropping it would leave the scan correct and merely slower. `IF NOT EXISTS` so re-running
+-- against a database that already has it is a no-op rather than an error.
+CREATE INDEX IF NOT EXISTS "task_reminder_schedules_advance_due_scan_idx"
+  ON "task_reminder_schedules"("advance_occurrence_at", "id")
+  WHERE "status" = 'active' AND "advance_disposition" = 'scheduled';

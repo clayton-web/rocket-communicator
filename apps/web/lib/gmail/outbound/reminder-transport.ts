@@ -147,13 +147,12 @@ export function createGmailReminderTransport(deps: GmailReminderTransportDeps): 
         return { kind: 'permanent', failureCode: 'reminder_authorization_organization_mismatch' };
       }
 
-      // Advance delivery is A8.4b.3. The due scan cannot produce an advance occurrence today, so
-      // this is unreachable — and it stays unreachable rather than becoming a silent send if a later
-      // slice adds an advance scan before adding the advance content rules it needs.
-      if (request.occurrenceKind !== 'overdue') {
-        return { kind: 'permanent', failureCode: 'reminder_kind_not_implemented' };
-      }
-
+      // No branch on `occurrenceKind` (A8.4b.3). A8.4b.1 refused anything but `overdue` here,
+      // because an advance scan that arrived before the advance content rules did would otherwise
+      // have started sending silently. D105 then settled what those rules are: the advance reminder
+      // differs in *timing* only, and the body states the due date rather than asserting lateness,
+      // so it is truthful the morning before and every morning after. The kind reaches the provider
+      // only as the occurrence identity the caller already decided, and changes nothing here.
       let rawBase64Url: string;
       try {
         const message = buildReminderEmail({
