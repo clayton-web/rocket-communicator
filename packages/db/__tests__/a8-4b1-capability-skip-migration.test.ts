@@ -10,12 +10,13 @@ import { describe, expect, it } from 'vitest';
  * One `ALTER TYPE ... ADD VALUE`, which is exactly the kind of migration that looks too small to test
  * and has two specific ways to be wrong.
  *
- * The first is ordering. `ALTER TYPE ... ADD VALUE` is permitted inside a transaction block, but
- * *using* the new value in the same transaction is not, and Prisma wraps each migration file in one
- * transaction. A file that added the value and then referenced it — in an index predicate, a CHECK, or
- * a backfill — would apply cleanly from empty in a test harness that runs statements outside a
- * transaction and fail on a real deployment. So this asserts the file contains that one statement and
- * nothing else, which is a property of the file rather than of the resulting schema.
+ * The first is ordering. PostgreSQL permits `ALTER TYPE ... ADD VALUE` inside a transaction block but
+ * restricts *using* the new value in that same transaction, so keeping enum introduction separate from
+ * anything that consumes it avoids enum-visibility and deployment-order hazards. A file that added the
+ * value and then referenced it — in an index predicate, a CHECK, or a backfill — can apply cleanly from
+ * empty in a test harness that runs statements outside a transaction and still fail on a real
+ * deployment. So this asserts the file contains that one statement and nothing else, which is a
+ * property of the file rather than of the resulting schema.
  *
  * The second is the CHECK. `reminder_delivery_attempts_skip_reason_matches_outcome` constrains skip
  * reasons, and a constraint that enumerated values would have to be dropped and rebuilt to accept a
@@ -159,9 +160,9 @@ describe('A8.4b.1 capability skip-reason migration: the file itself', () => {
   /**
    * The ordering hazard, checked on the file rather than on the outcome.
    *
-   * PostgreSQL rejects a *use* of a freshly added enum value in the same transaction. Prisma runs each
-   * migration file in one transaction, so a second statement referencing the value is a deployment
-   * failure that no from-empty schema assertion would catch.
+   * PostgreSQL rejects a *use* of a freshly added enum value in the same transaction that added it, so
+   * a second statement referencing the value is a deployment-order hazard that no from-empty schema
+   * assertion would catch. Keeping the file to the enum alteration alone removes the hazard entirely.
    */
   it('contains exactly one statement and never uses the value it adds', () => {
     const statements = sql

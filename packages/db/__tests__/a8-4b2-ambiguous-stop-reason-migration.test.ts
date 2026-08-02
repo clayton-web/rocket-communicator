@@ -11,11 +11,12 @@ import { describe, expect, it } from 'vitest';
  * One `ALTER TYPE ... ADD VALUE`, tested the same way A8.4b.1's was, because the two hazards are the
  * same and neither is visible in the resulting schema.
  *
- * The ordering hazard: `ALTER TYPE ... ADD VALUE` is permitted inside a transaction block, but
- * *using* the new value in that same transaction is not, and Prisma wraps each migration file in one
- * transaction. A file that added the value and then referenced it — in a CHECK, an index predicate,
- * a backfill — would apply cleanly in a harness that runs statements outside a transaction and fail
- * on a real deployment. That is a property of the file, so it is asserted on the file.
+ * The ordering hazard: PostgreSQL permits `ALTER TYPE ... ADD VALUE` inside a transaction block but
+ * restricts *using* the new value in that same transaction, so keeping enum introduction separate from
+ * anything that consumes it avoids enum-visibility and deployment-order hazards. A file that added the
+ * value and then referenced it — in a CHECK, an index predicate, a backfill — can apply cleanly in a
+ * harness that runs statements outside a transaction and still fail on a real deployment. That is a
+ * property of the file, so it is asserted on the file.
  *
  * The constraint hazard: `task_reminder_schedules_stop_reason_matches_status` governs stop reasons,
  * and if it enumerated them it would have to be dropped and rebuilt to accept a new one. It does
