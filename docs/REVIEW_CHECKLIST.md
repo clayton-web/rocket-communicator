@@ -128,11 +128,28 @@ Gates for the due-date-driven Follow-up Engine (D102–D110). These record **exp
 - [ ] A **stale intent** past the 24-hour horizon is suppressed with a durable reason, makes **zero** transport calls, creates **no** attempt row, and is never eligible again — enabling delivery must not flush a backlog (D135)
 - [ ] No attempt row is created for stale suppression, disabled delivery, a lost claim, or an already-terminal intent; a row asserting a provider call that never happened is the one thing this history must not say
 - [ ] `ENABLE_OWNER_EVENT_DELIVERY` is exact-string `"true"`, read **before** any database access, and an absent transport behaves identically; capture and delivery stay independent flags and neither implies the other
-- [ ] The worker imports **no** Gmail client, access-token resolver, MIME builder, or Owner email renderer, and adds no cron configuration; a source guard fails the build if one appears
+- [ ] The **processing service** imports no Gmail client, access-token resolver, MIME builder, or Owner email renderer, and no change adds cron configuration; a source guard fails the build if one appears. The adapter composes at the route, which is the only place allowed to name a provider
 - [ ] Terminal outcome audit events are **`system`-attributed** — never the Owner and never the Recipient — and are written in the same transaction that settles the intent; `note` carries a code from a closed set, never a provider response or exception message (D133)
 - [ ] Owner mail and worker responses carry **no** capability token, capability URL, `/c/` path, token hash, temporary excerpt, Recipient free text, quoted clarification, or address (D109, D114, D134)
 - [ ] Internal worker responses and logs are aggregates only, and a count expensive enough to need an unbounded scan is not promised
 - [ ] Concurrency claims are proven on **real PostgreSQL 16 with simultaneous connections**; PGlite proves deterministic transitions and is not concurrency evidence
+
+### Owner notification mail and the Gmail adapter (A8.5c; apply to rendering, destination, transport, or ingestion changes)
+
+- [ ] The destination is resolved server-side from `CommunicationAccount.emailAddress` for the **intent's** organization and addressed to that same mailbox; the transport still exposes **no destination parameter**, so no request, session, environment variable, Task field, Recipient row, or event metadata can select one (D134)
+- [ ] `OWNER_ORGANIZATION_ID` remains a **fail-closed assertion** and never a source: a disagreeing intent is refused, never redirected to another organization
+- [ ] Authorization and destination are resolved **per notification** with nothing cached between items, so one organization's intent cannot reach another's mailbox and a reconnected account changes the destination without mutating the intent
+- [ ] The destination appears in **no** intent row, attempt row, audit event, log line, worker response, or failure code; only a short normalized provider message reference is retained on success
+- [ ] Rendering is keyed by the ratified event enum with **exhaustive compile-time coverage**, uses only fields the intent schema and safe subject lookups guarantee, and **fails closed** when required data is absent rather than fabricating event detail
+- [ ] Attribution is the **historical actor from the intent**, never reconstructed from current Task state; a Recipient action is never rendered as "you completed" or as Rocket completing, and only privacy-safe actor kinds appear
+- [ ] Owner mail quotes **no** Recipient-authored text — note bodies, clarification text, and excerpts have no parameter to arrive through, and escaping does not satisfy the prohibition because it is semantic (D134)
+- [ ] Any Owner link points to an **authenticated** application surface on the canonical base URL with identifiers encoded, and the rendered body is refused if it contains a `/c/` path or any URL other than the one constructed
+- [ ] The D136 marker is emitted **only** by the controlled MIME builder, only for Owner Event Notifications, exactly once, with a fixed value; no arbitrary-header input, threading header, sender display name, tracking pixel, or remote image is introduced
+- [ ] Ingestion excludes **exactly one exact marker among top-level headers** — never all `SENT` mail, self-addressed mail, mail from the connected address, assignment mail, or reminder mail — and duplicate, empty, near-miss, and body-text markers all fail closed and stay ingestible
+- [ ] The ingestion skip happens **before** any temporary excerpt, `CommunicationEvent`, or suggestion candidate is created
+- [ ] Provider classification stays truthful: a confirmed message reference is accepted, a 2xx without one is **ambiguous**, thrown errors remain ambiguous, retryable is used only where the provider proved non-acceptance, and a durably unavailable channel is decided **before** any provider contact rather than retried to exhaustion
+- [ ] Real transport construction is behind exact delivery enablement, evaluated **before** any configuration read or credential access, and a test runner without an injected sender **throws** rather than returning something that could reach Gmail
+- [ ] No Gmail message is sent by tests, no live OAuth occurs, and no production credential is read
 
 ## Owner web experience foundation (P1; apply when P1 work is in scope)
 

@@ -1,5 +1,9 @@
 import 'server-only';
 import { randomBytes } from 'node:crypto';
+import {
+  ROCKET_GENERATED_HEADER_NAME,
+  ROCKET_GENERATED_OWNER_EVENT_NOTIFICATION,
+} from '@aicaa/domain';
 import type { OutboundAddress, OutboundAttachment, OutboundMimeMessage } from './outbound-types';
 import { GMAIL_OUTBOUND_MAX_MESSAGE_BYTES } from './limits';
 
@@ -15,7 +19,10 @@ import { GMAIL_OUTBOUND_MAX_MESSAGE_BYTES } from './limits';
  *   before any header is emitted, and non-ASCII header text is RFC 2047-encoded (no raw newlines
  *   ever reach the wire).
  * - Recipient/sender addresses are strictly validated.
- * - Callers cannot supply arbitrary headers — the header set is fixed by this module.
+ * - Callers cannot supply arbitrary headers — the header set is fixed by this module. A8.5c added
+ *   one optional header, `X-Rocket-Generated` (D136), and kept that property: the caller passes a
+ *   value from a closed union, and this module owns the header name, the emission, and the fact that
+ *   it appears at most once.
  * - No token/body/subject is logged here; this module returns a string and throws typed errors.
  */
 
@@ -475,6 +482,24 @@ export function buildMimeMessage(
     toHeader,
     subjectHeader,
   ];
+
+  if (message.rocketGenerated !== undefined) {
+    // One push from one scalar field, so a duplicate marker is not something this builder can emit
+    // even by mistake — which is what lets the ingestion side treat two markers as forgery (D136).
+    //
+    // The type already restricts the value to a single literal. Re-checking it here anyway is not
+    // redundant: `buildMimeMessage` is reachable from JavaScript and from `unknown`-typed data, and
+    // the whole point of a marker that grants an ingestion exclusion is that nothing arbitrary ever
+    // reaches the wire under its name. Short and ASCII by construction, so no folding or RFC 2047
+    // encoding can apply, and the value therefore survives serialization exactly as written.
+    if (message.rocketGenerated !== ROCKET_GENERATED_OWNER_EVENT_NOTIFICATION) {
+      throw new MimeConstructionError(
+        'INVALID_HEADER',
+        `${ROCKET_GENERATED_HEADER_NAME} value is not a recognized Rocket-generated marker.`,
+      );
+    }
+    topHeaders.push(`${ROCKET_GENERATED_HEADER_NAME}: ${message.rocketGenerated}`);
+  }
 
   const serializedBody = serializeNode(bodyTree);
   const raw = `${topHeaders.join(CRLF)}${CRLF}${serializedBody}${CRLF}`;

@@ -204,6 +204,62 @@ export function assertGmailMailboxMatchesWorkspaceDomain(
   }
 }
 
+/**
+ * The header Rocket stamps on mail it generates itself (D136).
+ *
+ * Owner Event Notifications are addressed from the connected mailbox **to that same mailbox**, so
+ * Gmail files one message under both `SENT` and `INBOX`. D068 ingestion admits `INBOX` unless the
+ * message is `DRAFT`, `SPAM`, or `TRASH`, which means every Owner notification would otherwise be
+ * ingested, excerpted, and offered to A6 as a Task Suggestion derived from Rocket's own mail.
+ *
+ * The marker is the narrowest fix available. The alternatives D136 considered and rejected —
+ * excluding all `SENT` mail, or all mail whose sender equals the connected address — would silently
+ * narrow D068 for genuine Owner mail: a Task the Owner mails to themselves, or a thread they replied
+ * into, is exactly the material A6 exists to notice.
+ */
+export const ROCKET_GENERATED_HEADER_NAME = 'X-Rocket-Generated';
+
+/**
+ * The only value that header may carry today.
+ *
+ * A closed union rather than a free string. A future Rocket-generated message class must be added
+ * here deliberately, which is also what stops the header from becoming a general-purpose channel for
+ * whatever a caller wants to say about a message.
+ */
+export const ROCKET_GENERATED_OWNER_EVENT_NOTIFICATION = 'owner-event-notification';
+export type RocketGeneratedMarker = typeof ROCKET_GENERATED_OWNER_EVENT_NOTIFICATION;
+
+/**
+ * Decide whether observed `X-Rocket-Generated` header values earn the D136 ingestion exclusion.
+ *
+ * Takes **every** value seen for that header name rather than the first, because "how many are
+ * there" is part of the answer.
+ *
+ * ## The exclusion is a privilege, and ambiguity denies it
+ *
+ * Skipping ingestion is the power to make one of the Owner's messages invisible to A6, so it is
+ * granted only to input that looks exactly like something Rocket's own MIME builder emitted:
+ * precisely one header, carrying precisely the ratified token. Two markers, an empty value, or a
+ * token that merely resembles the ratified one all fail closed — the message stays eligible and is
+ * governed by the ordinary D068 label rules. Rocket's builder cannot produce any of those shapes,
+ * so nothing legitimate is refused, and a forged near-miss buys its sender nothing.
+ *
+ * ## What is normalized, and why only that
+ *
+ * Surrounding whitespace is stripped, because unfolding a header legitimately leaves it, and the
+ * comparison is case-insensitive, because a fixed emitted token differing only in case is the same
+ * token and failing to recognize our own message is the D136 failure this exists to prevent.
+ * Nothing else is normalized: no prefix match, no substring search, no punctuation folding. A body
+ * quoting the marker is unreachable from here by construction, since only header values are ever
+ * passed in.
+ */
+export function isRocketGeneratedOwnerNotification(headerValues: readonly string[]): boolean {
+  if (headerValues.length !== 1) {
+    return false;
+  }
+  return headerValues[0].trim().toLowerCase() === ROCKET_GENERATED_OWNER_EVENT_NOTIFICATION;
+}
+
 /** Inbox-only eligibility (D068): requires INBOX; excludes Draft/Spam/Trash; Sent-only excluded. */
 export function isGmailInboxEligible(labelIds: readonly string[]): boolean {
   if (!labelIds.includes(GMAIL_INBOX_LABEL_ID)) {

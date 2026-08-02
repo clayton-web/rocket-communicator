@@ -47,6 +47,8 @@ const describeMaybe = RAW_URL ? describe : describe.skip;
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const org = `org_a85a_pg_${randomBytes(4).toString('hex')}`;
+/** Isolated from `org` so the planner backlog cannot perturb the deduplication counts above it. */
+const plannerOrg = `${org}_planner`;
 const occurredAt = new Date('2026-08-03T09:15:00.000Z');
 
 /** Rounds per race. One pass of a race that fails one time in ten looks like a fix. */
@@ -236,18 +238,71 @@ describeMaybe('A8.5a owner notification storage on PostgreSQL 16', () => {
   });
 
   describe('pending-work scan', () => {
-    it('plans the claimable-work query on the partial pending index', async () => {
-      const plan = await db.$queryRawUnsafe<{ 'QUERY PLAN': string }[]>(
-        `EXPLAIN SELECT "id" FROM "owner_notification_intents"
-          WHERE "state" = 'pending' ORDER BY "occurred_at", "id" LIMIT 25`,
-      );
-      const text = plan.map((row) => row['QUERY PLAN']).join('\n');
+    /**
+     * A pending backlog large enough that the planner has a real choice to make.
+     *
+     * As originally written this asserted index usage against the handful of rows the surrounding
+     * cases left behind, and PostgreSQL was right to refuse: on a table of four rows a sequential
+     * scan genuinely is cheaper, so the assertion passed or failed on whatever the preceding tests
+     * happened to leave in the table. It was failing at a clean checkout when A8.5c started.
+     *
+     * Seeding **pending** rows rather than a mostly-settled table is deliberate, and the first
+     * attempt at this fix got it wrong. A backlog with only a sprinkling of pending rows makes the
+     * partial index tiny in live entries while it stays large in *pages*, because this test database
+     * is long-lived and every previous run's churn left dead entries behind. The cost model reads
+     * pages, so the comparison it makes there is a statement about accumulated bloat in one
+     * developer's container, not about the index. Selectivity is not the property under test.
+     *
+     * What is under test is the shape the A8.5b worker scan issues against the backlog the index
+     * exists for: `state = 'pending'` ordered by `(occurred_at, id)` with a bounded `LIMIT`. The
+     * index must supply both the filter and the order, so twenty-five rows can be taken without
+     * reading and sorting the whole backlog — and that stays true regardless of how many settled
+     * rows or dead index entries the database happens to be carrying.
+     */
+    const PLANNER_ROWS = 2_000;
 
-      expect(
-        text,
-        `the A8.5b scan must reach owner_notification_intents_pending_idx, not a sequential scan:\n${text}`,
-      ).toContain('owner_notification_intents_pending_idx');
-      expect(text).not.toContain('Seq Scan');
+    it('plans the claimable-work query on the partial pending index', async () => {
+      await db.ownerNotificationIntent.deleteMany({ where: { organizationId: plannerOrg } });
+      await db.ownerNotificationIntent.createMany({
+        data: Array.from({ length: PLANNER_ROWS }, (_, index) => ({
+          // Scoped to this run's organization. A fixed id would collide with rows a previously
+          // failed run left behind, and the collision would be reported as a planner failure.
+          id: `${plannerOrg}_${index}`,
+          organizationId: plannerOrg,
+          eventType: 'task_completed_by_recipient' as const,
+          subjectKind: 'task' as const,
+          subjectId: `task_plan_${index}`,
+          occurrenceKey: String(index),
+          state: 'pending' as const,
+          actorKind: 'capability' as const,
+          // Distinct instants, so the ordering the scan asks for is one the index can satisfy
+          // rather than one a tie could hide.
+          occurredAt: new Date(Date.UTC(2026, 7, 1, 0, 0, 0) + index * 1_000),
+        })),
+      });
+      await db.$executeRawUnsafe('ANALYZE "owner_notification_intents"');
+
+      try {
+        const plan = await db.$queryRawUnsafe<{ 'QUERY PLAN': string }[]>(
+          `EXPLAIN SELECT "id" FROM "owner_notification_intents"
+            WHERE "state" = 'pending' ORDER BY "occurred_at", "id" LIMIT 25`,
+        );
+        const text = plan.map((row) => row['QUERY PLAN']).join('\n');
+
+        expect(
+          text,
+          `the A8.5b scan must reach owner_notification_intents_pending_idx, not a sequential scan:\n${text}`,
+        ).toContain('owner_notification_intents_pending_idx');
+        expect(text).not.toContain('Seq Scan');
+        // The index carries the ordering, so the worker's `LIMIT` stops early instead of sorting the
+        // whole backlog to discard all but twenty-five rows.
+        expect(text).not.toContain('Sort');
+      } finally {
+        // Always, including on failure: a backlog left behind would skew the statistics the next
+        // run reads, which is how a planner assertion becomes order-dependent in the first place.
+        await db.ownerNotificationIntent.deleteMany({ where: { organizationId: plannerOrg } });
+        await db.$executeRawUnsafe('ANALYZE "owner_notification_intents"');
+      }
     });
   });
 

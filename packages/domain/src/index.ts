@@ -75,6 +75,7 @@ export type {
   GmailSyncRun,
   AttachmentMetadataItem,
   ParsedGmailMessageFixture,
+  RocketGeneratedMarker,
 } from './value-objects/gmail.js';
 export {
   DEFAULT_GMAIL_POLL_INTERVAL_MINUTES,
@@ -92,8 +93,11 @@ export {
   GMAIL_EXCLUDED_LABEL_IDS,
   GMAIL_READONLY_SCOPE,
   GMAIL_SEND_SCOPE,
+  ROCKET_GENERATED_HEADER_NAME,
+  ROCKET_GENERATED_OWNER_EVENT_NOTIFICATION,
   assertGmailMailboxMatchesWorkspaceDomain,
   isGmailInboxEligible,
+  isRocketGeneratedOwnerNotification,
   computeDefaultGmailExcerptPurgeAt,
   truncateUtf8Bytes,
   assertExcerptWithinCap,

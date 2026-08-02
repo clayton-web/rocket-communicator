@@ -695,7 +695,9 @@ describeMaybe('A8.5b owner notification concurrency on PostgreSQL 16', () => {
     it('reaches for the partial pending index on the worker scan', async () => {
       await a.ownerNotificationIntent.createMany({
         data: Array.from({ length: PLANNER_ROWS }, (_, index) => ({
-          id: `onint_plan_${index}`,
+          // Scoped to this run's organization. A fixed id would collide with rows a previously
+          // failed run left behind, and the collision would be reported as a planner failure.
+          id: `${org}_plan_${index}`,
           organizationId: org,
           eventType: 'task_completed_by_recipient' as const,
           subjectKind: 'task' as const,

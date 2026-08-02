@@ -34,13 +34,22 @@ const ROUTE = path.join(webRoot, 'app/api/v1/internal/notifications/process/rout
 const DB_REPOSITORY = path.join(dbSrc, 'repositories/owner-notification-repository.ts');
 const DB_TRANSACTIONS = path.join(dbSrc, 'transactions/a8-5b-notification-transactions.ts');
 
-const A8_5B_MODULES = [SERVICE, CONFIG, TRANSPORT, ROUTE, DB_REPOSITORY, DB_TRANSACTIONS];
+/**
+ * The A8.5b processing core: everything that decides *what* is owed and *what happened*.
+ *
+ * The route is deliberately absent, and A8.5c is why. A real Gmail adapter now exists and has to be
+ * composed somewhere; the route is that seam, exactly as it is for the reminder worker. What matters
+ * is that the seam stays at the edge — the service, the config, the transport interface, and both
+ * persistence modules must still be unable to name a provider, so no policy decision in this engine
+ * can be made by anything that knows Gmail exists.
+ */
+const A8_5B_MODULES = [SERVICE, CONFIG, TRANSPORT, DB_REPOSITORY, DB_TRANSACTIONS];
 
 describe('A8.5b never reaches a real transport', () => {
   /**
-   * A8.5b's only implementation is a fake. If any of these appears, the slice has grown a Gmail
-   * adapter, an email renderer, or a token resolver, and the claim that no Gmail contact is possible
-   * has stopped being structural.
+   * The processing core delivers through an interface it cannot see behind. If any of these appears
+   * in it, a Gmail adapter, an email renderer, or a token resolver has crossed the seam, and the
+   * separation A8.5b was built around has stopped being structural.
    */
   const FORBIDDEN_DEPENDENCIES: readonly (readonly [RegExp, string])[] = [
     [/googleapis/, 'the Google API SDK'],
@@ -315,12 +324,19 @@ describe('A8.5b worker topology', () => {
     expect(code).not.toMatch(/export async function GET/);
   });
 
-  it('composes no transport, so the endpoint cannot deliver even if enabled', () => {
+  /**
+   * A8.5b asserted the route composed *no* transport, because its only implementation was a fake and
+   * a fake reaching a real invocation would be worse than delivering nothing. A8.5c replaced the
+   * missing implementation with a real one, so the promise moves rather than disappears: the route
+   * composes exactly one transport, it is the Gmail adapter, and the fake stays in tests.
+   */
+  it('composes exactly one transport, and it is never the fake', () => {
     const code = readCode(ROUTE);
+    expect(code).toContain('createGmailOwnerNotificationTransportProvider');
     expect(
-      /transport/i.test(code.slice(code.indexOf('export async function POST'))),
-      'The A8.5b route must pass no transport at all. A default here would let a fake reach a ' +
-        'real invocation, and there is no real implementation to pass instead until A8.5c.',
+      code.includes('FakeOwnerNotificationTransport'),
+      'The production route must not be able to name the fake. A fake that can reach a real ' +
+        'invocation makes a disabled system look like a working one.',
     ).toBe(false);
   });
 

@@ -32,6 +32,24 @@ export function isOwnerEventDeliveryEnabled(env: NodeJS.ProcessEnv = process.env
   return env[ENABLE_OWNER_EVENT_DELIVERY_ENV] === 'true';
 }
 
+/**
+ * The single configured Owner organization, when one is configured (A8.5c).
+ *
+ * Deliberately **not** the source of the delivery organization. Every intent names its own, and the
+ * transport resolves the connected mailbox for that one; this value is only an assertion, and an
+ * intent that disagrees with it is refused rather than redirected. Reading the destination from
+ * configuration instead of from the event is how one organization's notification would end up in
+ * another organization's inbox, and D134 rejected exactly that shape.
+ *
+ * Absent means no assertion, not a default organization.
+ */
+export function getOwnerNotificationExpectedOrganizationId(
+  env: NodeJS.ProcessEnv = process.env,
+): string | undefined {
+  const value = env.OWNER_ORGANIZATION_ID;
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
 /** Intents examined per invocation. Bounded so one wake-up cannot fan out without limit. */
 export const MAX_NOTIFICATIONS_PER_PROCESS = 25;
 

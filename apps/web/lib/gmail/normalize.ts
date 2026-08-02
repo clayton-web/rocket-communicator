@@ -4,6 +4,7 @@ import {
   MAX_GMAIL_ATTACHMENT_METADATA_ITEMS,
   MAX_GMAIL_EXCERPT_BYTES,
   MAX_GMAIL_TO_ADDRESSES,
+  ROCKET_GENERATED_HEADER_NAME,
   truncateGmailSnippet,
   truncateGmailSubject,
   type AttachmentMetadataItem,
@@ -28,6 +29,16 @@ export interface NormalizedGmailMessage {
   hasAttachments: boolean;
   attachmentMetadata: AttachmentMetadataItem[];
   excerptContent: string | null;
+  /**
+   * Every `X-Rocket-Generated` value on the **top-level** message headers (D136, A8.5c).
+   *
+   * Usually empty. Populated for mail Rocket generated itself, which the sync engine then declines
+   * to ingest rather than feeding its own Owner notifications back to A6 as Task Suggestions.
+   *
+   * All of them, not the first: `isRocketGeneratedOwnerNotification` treats a repeated marker as
+   * forgery, and it cannot do that if this field has already collapsed the duplicates away.
+   */
+  rocketGeneratedMarkers: string[];
 }
 
 /** Cap a string to at most `maxBytes` UTF-8 bytes without splitting a code point. */
@@ -92,6 +103,27 @@ function headerValue(headers: GmailMessageHeader[] | undefined, name: string): s
     }
   }
   return null;
+}
+
+/**
+ * Every value carried under one header name, in order.
+ *
+ * Separate from {@link headerValue} because the two answer different questions. A `From` has one
+ * meaningful value and taking the first is right. A marker that grants an ingestion exclusion needs
+ * the count as well as the content, so it collects rather than picks (D136).
+ */
+function headerValues(headers: GmailMessageHeader[] | undefined, name: string): string[] {
+  if (!headers) {
+    return [];
+  }
+  const target = name.toLowerCase();
+  const values: string[] = [];
+  for (const header of headers) {
+    if (header.name?.toLowerCase() === target && typeof header.value === 'string') {
+      values.push(header.value);
+    }
+  }
+  return values;
 }
 
 function decodeBase64Url(data: string): string {
@@ -263,5 +295,10 @@ export function normalizeGmailMessage(raw: GmailMessage): NormalizedGmailMessage
     hasAttachments: attachmentMetadata.length > 0,
     attachmentMetadata,
     excerptContent,
+    // Top-level headers only, deliberately. A `message/rfc822` attachment carries its own header
+    // block, and walking into those would let anyone grant their message the D136 exclusion by
+    // attaching a forwarded copy of one of Rocket's. Rocket stamps the marker on the message it
+    // sends, so the message's own headers are the only place it can legitimately appear.
+    rocketGeneratedMarkers: headerValues(headers, ROCKET_GENERATED_HEADER_NAME),
   };
 }

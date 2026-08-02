@@ -1,5 +1,5 @@
 import 'server-only';
-import type { HandoffDeliveryPath } from '@aicaa/domain';
+import type { HandoffDeliveryPath, RocketGeneratedMarker } from '@aicaa/domain';
 
 /**
  * A7.4 normalized outbound-message model.
@@ -57,6 +57,20 @@ export interface OutboundMimeMessage {
   attachments?: OutboundAttachment[];
   /** Inline images (Content-Disposition: inline) referenced by cid: in htmlBody. */
   inlineImages?: OutboundAttachment[];
+  /**
+   * Stamp this message with the fixed D136 Rocket-generated marker (A8.5c).
+   *
+   * Deliberately **not** a header map. A caller may state which kind of Rocket-generated message
+   * this is, chosen from a closed union; it cannot choose the header's name, add a second header, or
+   * supply arbitrary text. The name lives in `@aicaa/domain` and the emission lives in
+   * `buildMimeMessage`, so "no caller-controlled headers" survives this addition — which matters,
+   * because the property is what makes header injection unreachable rather than merely unlikely.
+   *
+   * Omitted by every existing sender. Assignment emails, Gmail forwards, and Recipient reminders are
+   * byte-identical to what they were before this field existed, and must stay that way: a reminder
+   * carrying this marker would be excluded from an ingestion path that has every reason to see it.
+   */
+  rocketGenerated?: RocketGeneratedMarker;
 }
 
 export interface OutboundMessage extends OutboundMimeMessage {

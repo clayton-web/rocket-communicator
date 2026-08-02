@@ -5,6 +5,7 @@ import {
   asTemporaryCommunicationExcerptId,
   computeDefaultGmailExcerptPurgeAt,
   isGmailInboxEligible,
+  isRocketGeneratedOwnerNotification,
   MAX_GMAIL_HISTORY_PAGES_PER_RUN,
   MAX_GMAIL_MESSAGES_PER_RUN,
   type CommunicationAccount,
@@ -650,6 +651,26 @@ async function runIncrementalHistory(
       messagesExamined += 1;
       try {
         const normalized = normalizeGmailMessage(raw);
+
+        // D136 self-ingestion protection, at the earliest point where the answer is knowable
+        // (A8.5c). Rocket's Owner Event Notifications are sent from the connected mailbox to
+        // itself, so Gmail labels them `INBOX` and D068 would otherwise admit them: the assistant
+        // would read its own mail, excerpt it, and offer the Owner a Task Suggestion derived from a
+        // notification about a Task they already have.
+        //
+        // Skipping here rather than at persistence is what makes the protection complete. No
+        // fixture is built, so no `TemporaryCommunicationExcerpt` is created; no
+        // `CommunicationEvent` exists, so A6 never has a suggestion candidate to claim. Nothing
+        // downstream has to remember to check again.
+        //
+        // The exclusion is exactly this marker. Sent-and-inboxed mail, self-addressed mail, and
+        // mail from the connected address are all still ingested under the ordinary D068 rules,
+        // because each is something the Owner might genuinely want noticed.
+        if (isRocketGeneratedOwnerNotification(normalized.rocketGeneratedMarkers)) {
+          messagesSkipped += 1;
+          continue;
+        }
+
         fixtures.push(toParsedFixture(normalized, ctx.now));
       } catch (error) {
         if (isGmailSyncError(error) && error.code === 'malformed_message') {

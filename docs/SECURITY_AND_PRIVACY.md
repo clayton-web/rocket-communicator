@@ -103,6 +103,20 @@ Also audit: suggestion decisions, assignment/forward/handoff approvals and deliv
 
 **No behavioural tracking.** P1 authorizes no commercial analytics vendor, session replay, or behavioural tracking (D115). Passive behaviour, inactivity, and the absence of a correction are never treated as approval or as a decision (D113).
 
+## Owner Event Notification mail (A8.5c; D134, D136)
+
+**Implemented and unreachable.** The renderer and the real Gmail adapter exist; `ENABLE_OWNER_EVENT_DELIVERY` is unset in every environment, and **no Gmail message has been sent by this engine in implementation or in any test**.
+
+**The destination cannot be influenced.** It is resolved server-side at delivery time from `CommunicationAccount.emailAddress` for the organization named on the notification intent, and the message is addressed to that same mailbox. The transport exposes **no destination parameter**, so no request, session, environment variable, Task field, Recipient row, event metadata, or audit metadata can select a recipient. The worker is cron-authenticated and has no Owner session; trusted persisted account state is the only input. Where `OWNER_ORGANIZATION_ID` is configured it is a fail-closed assertion — a disagreeing intent is refused, never redirected to another organization.
+
+**No address is persisted or logged.** The destination appears in no intent row, attempt row, audit event, log line, worker response, or failure code. Failure codes come from a closed set defined in code, so a provider error body or exception string cannot become one; only a short normalized provider message reference is retained on success.
+
+**Owner mail states the event; it never quotes untrusted input.** Permitted content is fixed Rocket copy, the canonical event meaning, the URL-redacted persisted Task summary, the historical actor kind, the occurrence instant, and one link to an authenticated Owner surface. Capability tokens, token hashes, capability URLs, `/c/` paths, temporary excerpts, raw incoming mail, Recipient note bodies, clarification text, OAuth data, provider error bodies, raw exception strings, tracking pixels, and remote images are all prohibited. **Escaping does not satisfy the prohibition on Recipient text** — the rule is semantic: a Recipient's words delivered to the Owner's inbox under Rocket's own `From` address are laundered regardless of encoding. Structurally, such text has no parameter through which to reach the renderer, and the renderer additionally refuses any rendered body containing a `/c/` path or any URL other than the single link it constructed.
+
+**An Owner link is not a credential (D134).** D130 governs the capability bearer secret in Recipient mail. Owner links point only to authenticated application surfaces on the canonical base URL, with identifiers path-encoded; an unauthenticated reader reaches sign-in rather than Task data.
+
+**Self-ingestion protection is narrow (D136).** Rocket's own Owner notifications carry a fixed `X-Rocket-Generated: owner-event-notification` header emitted by the controlled MIME builder, which owns the name and validates the value so callers still cannot supply arbitrary headers. Ingestion skips a message carrying exactly one exact marker in its **top-level** headers, before any excerpt or event is created; nested-part headers are ignored, since honouring them would let an attacker claim the exclusion by attaching a forwarded copy. Duplicate, empty, and near-miss markers fail closed and remain ingestible, and ordinary self-sent mail is untouched.
+
 ## Other controls
 
 - No unauthenticated one-click mutations (prefetch risk; D014/D050).
