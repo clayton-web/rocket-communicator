@@ -191,25 +191,62 @@ Preset reminder choices; Owner-created additional reminders and their routes and
 
 ### 10b. Event Notification Engine (event-driven)
 
+**Nothing in this section sends, and at the A8.5 Decision Lock nothing in it exists.** The taxonomy, destination, delivery policy, and gating below are ratified product law (D133–D136); the engine that implements them is built across A8.5a–A8.5e, and each slice states what is still absent in [MILESTONES.md](MILESTONES.md).
+
 **Purpose:** notify the **Owner** about meaningful domain events (D099). Separate from the Follow-up Engine—do not mix via CC/escalation.
 
-**Core A8 event list (minimum):**
+#### Ratified event taxonomy (D133)
 
-- Recipient completed the Task
-- Clarification requested
-- Assignment returned to Owner
-- Assignment delivery failed
-- Gmail disconnected
-- Capability expired
+Exactly **ten** canonical event types, each triggered by a committed state transition. There is no broad category such as “task updated”, and an audit row is not a reason to send mail.
 
-**Reminder-related Owner notifications (D106, D108) — required before production reminder delivery may be enabled:**
+| Canonical event type                           | Triggering transition                                                                        | Owner-facing meaning                                              |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `task.completed_by_recipient`                  | Capability-attributed completion                                                             | The person you delegated to says the work is done                 |
+| `task.clarification_requested`                 | Capability-attributed clarification request                                                  | The Recipient is blocked and needs an answer                      |
+| `task.returned_to_owner`                       | Capability-attributed return; Assignment cleared                                             | The work is back with you and nobody is assigned                  |
+| `handoff.delivery_failed`                      | Non-retryable handoff failure, or exhausted handoff retry budget                             | The assignment message did not reach the Recipient                |
+| `gmail.disconnected`                           | Connected account leaves the connected state                                                 | Ingestion and outbound mail have stopped                          |
+| `capability.expired`                           | Observed expiry of an active capability (A8.5d sweep)                                        | A Recipient's link has lapsed                                     |
+| `reminder.schedule.stopped.ceiling_reached`    | D106 stop                                                                                    | The schedule finished its fourteen deliveries and will not resume |
+| `reminder.schedule.stopped.permanent_failure`  | Permanent reminder-delivery failure stop                                                     | A provider refused something nameable                             |
+| `reminder.schedule.stopped.repeated_ambiguous` | D129 stop                                                                                    | Three mornings running, the sends could not be confirmed          |
+| `reminder.no_active_assignment`                | Occurrence skipped for no active assignment, schedule still active — **once per generation** | A reminder has nobody to reach and needs your action              |
 
-- Overdue reminder ceiling reached
-- Permanent reminder-delivery failure
-- No active assignment where Owner action is required
-- Reminder Schedule entered `requiresOwnerAttention`
+**Excluded from A8.5 (D133):** Task creation; ordinary assignment and reassignment; handoff prepared; handoff sent; standalone Recipient notes; Waiting entered; Waiting resumed; Task dismissed; Recipient deactivation; suggestion lifecycle events; digests; notification preferences; push. Owner-initiated actions are not notified back to the Owner, and operational detail belongs to the D118 attention destination rather than to email.
 
-**Channel (D099):** A8 delivers approved Owner Event Notifications by **email via the Owner’s connected Gmail account** (event lists above). Keep this engine separate from Recipient reminders — no CC, no escalation. **FCM/push remains deferred (D017)** and is an A9 concern.
+**How the taxonomy covers D099, D106, and D108.** D099's six core events map one-to-one onto the first six rows. D108 additionally requires overdue ceiling reached, permanent reminder-delivery failure, no active assignment where Owner action is required, and **schedule entering `requiresOwnerAttention`**. The first three are named rows. The fourth is not a separate row because `requiresOwnerAttention` is raised at exactly three call sites — the D106 ceiling stop, the permanent-failure stop, and the D129 ambiguity stop — so the three `reminder.schedule.stopped.*` events cover every way a schedule can enter that state. A future path that raised the flag anywhere else would need its own event, and the A8.5d coverage test is what makes that impossible to add silently.
+
+**Repetition is legitimate but bounded by identity.** A Recipient may request clarification twice, and a Task may be returned across successive assignment cycles. Identity is server-derived — `(organizationId, eventType, subjectKind, subjectId, occurrenceKey)` — and enforced by a database unique constraint rather than by application care (D133, following D109). `reminder.no_active_assignment` is limited to one notification per schedule generation by that identity, not by a counter anybody has to maintain.
+
+**Capability expiry needs a sweep (D133).** Expiry is presently observed only when somebody presents the token, so an untouched capability stays active past `expiresAt` indefinitely. A8.5d adds a narrow database-backed sweep that transitions the capability, appends the audit event, and creates the intent in one transaction, idempotent under overlapping invocations.
+
+#### Capture, destination, and content (D133, D134)
+
+**Capture:** notification intent is a distinct durable record written in the **same database transaction** as the triggering mutation. It is never derived from the audit log, and the audit log is not overloaded with delivery workflow state.
+
+**Destination:** the organization's connected Gmail account address (`CommunicationAccount.emailAddress`), provider `gmail`, connected, passing the existing mailbox-domain validation. Resolved from the account **at delivery time** and never persisted on the intent row. No Owner email column, no notification-address column, no destination environment variable, and no Task-derived or Recipient-derived destination (D134).
+
+**Links:** D130 governs Recipient reminder emails and their capability-link risk; it does **not** forbid links to authenticated Owner surfaces in Owner mail, because an Owner authenticates with a session rather than a bearer capability (D134).
+
+**Never in an Owner event email (D109, D114, D134):** capability tokens, capability URLs, `/c/` paths, token hashes, encrypted capability URLs, temporary Gmail excerpts, Recipient-controlled free-text note bodies, quoted clarification text, or assignment bearer credentials. An Owner notification states the event and identifies the Task; it does not quote untrusted Recipient input.
+
+**Attribution:** the intent carries the **triggering event's** truthful actor. A Recipient action stays capability-attributed and is never represented as an Owner action merely because the Owner is the audience. Delivery itself is a `system` action, recorded separately.
+
+#### Delivery policy (D135)
+
+One-shot per event, not a series. Retryable transport failures are retried to a maximum of **three total attempts**, then terminal and requiring Owner attention. An **ambiguous outcome is terminal on first occurrence and never retried**, because the provider may already have accepted it. **D129's ambiguity stop and D106's fourteen-delivery ceiling do not apply**, and neither do reminder generations as delivery policy, Waiting suspension, the one-per-local-calendar-day rule, nor the no-backlog rule — all of them govern a repeating Recipient series that does not exist here.
+
+**Staleness horizon:** an otherwise deliverable intent older than **24 hours** at processing time is terminalized as suppressed for staleness with a truthful reason and **no provider call**, so enabling delivery can never flush a backlog of stale mail.
+
+#### Self-ingestion protection (D136)
+
+The notification is sent from the connected mailbox to itself, so Gmail labels it both `SENT` and `INBOX` and D068 ingestion would otherwise admit it, excerpt it, and offer it to A6 as a Task Suggestion. Rocket marks its own generated mail with a fixed custom header — `X-Rocket-Generated: owner-event-notification` — emitted by the controlled MIME builder, and ingestion excludes marked messages. Excluding all `SENT` mail, or all mail whose sender equals the connected account, was rejected: both silently narrow D068 for genuine Owner mail.
+
+#### Gating (D135, D108)
+
+Two independent exact-string `true` flags, **both unset everywhere**: `ENABLE_OWNER_EVENT_CAPTURE` (evaluated **before** any mutation transaction opens) and `ENABLE_OWNER_EVENT_DELIVERY` (gates all worker database access and transport construction). Completing A8.5 authorizes no production delivery: D108 requires both this engine **and** the minimum Owner schedule-status UI.
+
+**Channel (D099):** A8 delivers approved Owner Event Notifications by **email via the Owner’s connected Gmail account** (event taxonomy above). Keep this engine separate from Recipient reminders — no CC, no escalation. **FCM/push remains deferred (D017)** and is an A9 concern.
 
 **Retired A8 models:** escalating reminder stages, Owner CC ladders, and any escalation ladder remain retired. **Note:** due-date-anchored Recipient overdue reminders are **restored** under D102 and D106; only the escalation-style overdue models remain prohibited (D099 superseded in part).
 
