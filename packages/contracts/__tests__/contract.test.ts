@@ -307,4 +307,65 @@ describe('contracts package', () => {
       'ReturnTaskToOwnerRequest',
     );
   });
+
+  it('contracts the A8.5b notification endpoint as POST-only aggregates and nothing more', () => {
+    execSync('pnpm bundle', { cwd: root, stdio: 'pipe' });
+    const bundled = parseYaml(readFileSync(path.join(root, 'dist/openapi.bundled.yaml'), 'utf8'));
+    const schemas = (bundled.components?.schemas ?? {}) as Record<string, unknown>;
+    const processPath = bundled.paths?.['/api/v1/internal/notifications/process'] as
+      Record<string, unknown> | undefined;
+
+    expect(processPath).toBeDefined();
+
+    // POST only, for the same reason the reminder worker is: a scheduler misconfigured onto `GET`
+    // would be a side-effecting read.
+    expect(Object.keys(processPath!).sort()).toEqual(['post']);
+
+    const post = processPath!.post as { security?: Array<Record<string, unknown>> };
+    expect(post.security?.map((entry) => Object.keys(entry)[0])).toEqual(['InternalCronBearer']);
+
+    // Counts and flags only. An Owner or Recipient address, Task summary, actor label, event
+    // subject, or provider payload appearing here would leak per-Task facts through an operational
+    // endpoint (D109, D130).
+    const response = schemas.NotificationProcessResponse as {
+      properties?: Record<string, unknown>;
+      required?: string[];
+    };
+    expect(Object.keys(response.properties ?? {}).sort()).toEqual([
+      // Terminal on the first occurrence and never counted as sent (D135). Includes a lease that
+      // lapsed after a provider call began.
+      'ambiguous',
+      // Whether the scan filled its batch. Not a count of remaining work, which would need an
+      // unbounded count over every pending row.
+      'batchFilled',
+      'claimed',
+      'deadlineStopped',
+      'deliveryEnabled',
+      'failedPermanent',
+      // Retryable with budget left; the intent returned to claimable work rather than settling.
+      'failedRetryable',
+      // Compare-and-set refusals. Expected under overlapping invocations, and not an error.
+      'lostClaims',
+      // Lapsed leases returned to claimable work because no provider call had started.
+      'recoveredClaims',
+      'requestId',
+      'retryExhausted',
+      'scanned',
+      'sent',
+      // The 24-hour horizon (D135), which is what stops a backlog from flushing.
+      'staleSuppressed',
+      // Two different reasons for a zero-work response, reported apart: the flag is off, or no
+      // transport exists to compose. In A8.5b the second is true in every environment.
+      'transportConfigured',
+    ]);
+    expect([...(response.required ?? [])].sort()).toEqual(
+      Object.keys(response.properties ?? {}).sort(),
+    );
+
+    // No Owner-facing notification surface exists yet, and A8.5b adds none.
+    const ownerFacing = Object.keys(bundled.paths ?? {}).filter(
+      (route) => route.includes('notification') && !route.startsWith('/api/v1/internal/'),
+    );
+    expect(ownerFacing).toEqual([]);
+  });
 });

@@ -40,6 +40,18 @@ const REQUIRED_EXPORTS = [
   'persistOwnerReminderEstablishment',
   'persistOwnerReminderGenerationChange',
   'persistOwnerReminderDueDateRemoval',
+  // A8.5b Owner notification delivery. Listed for the same reason the reminder worker functions
+  // are: the bundle losing one should fail loudly at load rather than at the first claim.
+  'listClaimableOwnerNotificationIntents',
+  'listExpiredOwnerNotificationClaims',
+  'listInFlightOwnerNotificationAttempts',
+  'listOwnerNotificationAttempts',
+  'findOwnerNotificationIntentById',
+  'claimOwnerNotificationIntent',
+  'beginOwnerNotificationAttempt',
+  'recoverExpiredOwnerNotificationClaim',
+  'settleOwnerNotificationAttempt',
+  'terminalizeOwnerNotificationWithoutDelivery',
   'findCapabilityByTokenHash',
   'createCapability',
   'findActiveCapabilitiesForAssignment',

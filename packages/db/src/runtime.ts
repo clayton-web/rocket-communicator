@@ -258,11 +258,38 @@ export {
   listOwnerNotificationIntentsForSubject,
   type CreateOwnerNotificationIntentInput,
 } from './repositories/owner-notification-repository.js';
+// A8.5b delivery workflow. The worker reaches persistence only through these, and only with
+// `ENABLE_OWNER_EVENT_DELIVERY` already established above it.
+export {
+  beginOwnerNotificationAttempt,
+  claimOwnerNotificationIntent,
+  findOwnerNotificationIntentById,
+  listClaimableOwnerNotificationIntents,
+  listExpiredOwnerNotificationClaims,
+  listInFlightOwnerNotificationAttempts,
+  listOwnerNotificationAttempts,
+  recoverExpiredOwnerNotificationClaim,
+  type BeginOwnerNotificationAttemptInput,
+  type BeginOwnerNotificationAttemptResult,
+  type ClaimOwnerNotificationIntentInput,
+  type ClaimOwnerNotificationResult,
+  type RecoverExpiredClaimResult,
+} from './repositories/owner-notification-repository.js';
+export {
+  settleOwnerNotificationAttempt,
+  terminalizeOwnerNotificationWithoutDelivery,
+  type OwnerNotificationSettlement,
+  type SettleOwnerNotificationAttemptInput,
+  type SettleOwnerNotificationAttemptResult,
+  type TerminalizeWithoutDeliveryInput,
+} from './transactions/a8-5b-notification-transactions.js';
 export type {
   OwnerNotificationActor,
+  OwnerNotificationAttemptOutcomeValue,
   OwnerNotificationAttemptRecord,
   OwnerNotificationEventTypeValue,
   OwnerNotificationIntentRecord,
   OwnerNotificationStateValue,
   OwnerNotificationSubjectKindValue,
+  OwnerNotificationSuppressionReasonValue,
 } from './mappers/owner-notification-mappers.js';

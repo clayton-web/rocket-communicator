@@ -173,8 +173,7 @@ export {
   type AuthoritativeTaskScope,
   type AuthoritativeScheduleScope,
 } from './repositories/reminder-scope-guard.js';
-// A8.5a Owner Event Notification intent (D133). Read and write helpers only: nothing here claims,
-// delivers, retries, or terminalizes, because A8.5a has no worker.
+// Owner Event Notification intent (A8.5a, D133) and its delivery workflow (A8.5b, D135).
 export {
   mapOwnerNotificationIntent,
   mapOwnerNotificationAttempt,
@@ -188,11 +187,34 @@ export {
   type OwnerNotificationSuppressionReasonValue,
 } from './mappers/owner-notification-mappers.js';
 export {
+  beginOwnerNotificationAttempt,
+  claimOwnerNotificationIntent,
   createOwnerNotificationIntent,
+  findOwnerNotificationIntentById,
   findOwnerNotificationIntentByIdentity,
+  listClaimableOwnerNotificationIntents,
+  listExpiredOwnerNotificationClaims,
+  listInFlightOwnerNotificationAttempts,
+  listOwnerNotificationAttempts,
   listOwnerNotificationIntentsForSubject,
+  recoverExpiredOwnerNotificationClaim,
+  type BeginOwnerNotificationAttemptInput,
+  type BeginOwnerNotificationAttemptResult,
+  type ClaimOwnerNotificationIntentInput,
+  type ClaimOwnerNotificationResult,
   type CreateOwnerNotificationIntentInput,
+  type RecoverExpiredClaimResult,
 } from './repositories/owner-notification-repository.js';
+// A8.5b settlement. The only way a delivery attempt ends: intent state, attempt outcome, and the
+// system-attributed audit event commit together, fenced on the claim (D133, D135).
+export {
+  settleOwnerNotificationAttempt,
+  terminalizeOwnerNotificationWithoutDelivery,
+  type OwnerNotificationSettlement,
+  type SettleOwnerNotificationAttemptInput,
+  type SettleOwnerNotificationAttemptResult,
+  type TerminalizeWithoutDeliveryInput,
+} from './transactions/a8-5b-notification-transactions.js';
 // `recordTerminalOccurrenceOutcomeUnsafe` is deliberately absent (A8.3a audit F8). It can write a
 // `success` without counting it, without evaluating the D106 ceiling, and without settling an
 // advance disposition. `finalizeReminderOccurrence` below is the only public success path, and

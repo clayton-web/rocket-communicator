@@ -191,7 +191,7 @@ Preset reminder choices; Owner-created additional reminders and their routes and
 
 ### 10b. Event Notification Engine (event-driven)
 
-**Nothing in this section sends, and at the A8.5 Decision Lock nothing in it exists.** The taxonomy, destination, delivery policy, and gating below are ratified product law (D133–D136); the engine that implements them is built across A8.5a–A8.5e, and each slice states what is still absent in [MILESTONES.md](MILESTONES.md).
+**Nothing in this section sends.** The taxonomy, destination, delivery policy, and gating below are ratified product law (D133–D136); the engine that implements them is built across A8.5a–A8.5e, and each slice states what is still absent in [MILESTONES.md](MILESTONES.md). **After A8.5b the intent store, one producer, and the delivery state machine exist and are inert:** both flags are unset, the only transport is a fail-closed fake used by tests, no Gmail adapter or Owner email renderer exists, no cron job invokes the worker, and no A8.5 migration is applied in Production.
 
 **Purpose:** notify the **Owner** about meaningful domain events (D099). Separate from the Follow-up Engine—do not mix via CC/escalation.
 
@@ -238,13 +238,17 @@ One-shot per event, not a series. Retryable transport failures are retried to a 
 
 **Staleness horizon:** an otherwise deliverable intent older than **24 hours** at processing time is terminalized as suppressed for staleness with a truthful reason and **no provider call**, so enabling delivery can never flush a backlog of stale mail.
 
+**Processing (A8.5b, implemented and inert).** One worker invocation recovers what a dead worker abandoned, then delivers what is owed, bounded by twenty-five intents and a soft deadline. Each notification is claimed by compare-and-set under a two-minute lease, its provider call is recorded durably **before** the transport is invoked, the transport is invoked with no database transaction open, and the outcome is settled under the claim's fencing token. Both terminal outcomes that a crash can produce stay truthful: a lease that lapsed before the provider call is reclaimed and retried, and one that lapsed after it is terminal as **ambiguous** and never resent. A retryable failure returns the intent to pending work and records the failure on its attempt row; three attempts exhausts the budget and requires Owner attention. Stale suppression, a lost claim, an already-terminal intent, and disabled delivery all invoke no transport and create no attempt row.
+
+**Terminal outcomes are audited (D133).** `sent`, `failed_permanent`, `ambiguous`, `retry_exhausted`, and `suppressed_stale` append a concise `system`-attributed audit event in the same transaction that settles the intent. Delivery is never attributed to the Owner or the Recipient; the intent keeps the triggering actor and the audit event records the worker. Stale suppression is recorded as `denied`, since nothing failed and nothing succeeded — the horizon refused it.
+
 #### Self-ingestion protection (D136)
 
 The notification is sent from the connected mailbox to itself, so Gmail labels it both `SENT` and `INBOX` and D068 ingestion would otherwise admit it, excerpt it, and offer it to A6 as a Task Suggestion. Rocket marks its own generated mail with a fixed custom header — `X-Rocket-Generated: owner-event-notification` — emitted by the controlled MIME builder, and ingestion excludes marked messages. Excluding all `SENT` mail, or all mail whose sender equals the connected account, was rejected: both silently narrow D068 for genuine Owner mail.
 
 #### Gating (D135, D108)
 
-Two independent exact-string `true` flags, **both unset everywhere**: `ENABLE_OWNER_EVENT_CAPTURE` (evaluated **before** any mutation transaction opens) and `ENABLE_OWNER_EVENT_DELIVERY` (gates all worker database access and transport construction). Completing A8.5 authorizes no production delivery: D108 requires both this engine **and** the minimum Owner schedule-status UI.
+Two independent exact-string `true` flags, **both unset everywhere**: `ENABLE_OWNER_EVENT_CAPTURE` (evaluated **before** any mutation transaction opens) and `ENABLE_OWNER_EVENT_DELIVERY` (gates all worker database access and transport construction). With delivery unset the worker route opens no database connection, claims nothing, writes no attempt row, and constructs no transport; the same is true when no transport is available, which in A8.5b is every environment. Completing A8.5 authorizes no production delivery: D108 requires both this engine **and** the minimum Owner schedule-status UI.
 
 **Channel (D099):** A8 delivers approved Owner Event Notifications by **email via the Owner’s connected Gmail account** (event taxonomy above). Keep this engine separate from Recipient reminders — no CC, no escalation. **FCM/push remains deferred (D017)** and is an A9 concern.
 

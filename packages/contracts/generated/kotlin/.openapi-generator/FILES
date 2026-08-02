@@ -55,6 +55,7 @@ docs/MarkTaskWaitingRequest.md
 docs/MergeTaskSuggestionRequest.md
 docs/MissingInformationSummaryPoint.md
 docs/NextActionSummaryPoint.md
+docs/NotificationProcessResponse.md
 docs/OwnerAuditContext.md
 docs/Recipient.md
 docs/RecipientReminderPreferences.md
@@ -157,6 +158,7 @@ src/main/kotlin/com/aicommunication/assistant/contracts/models/MarkTaskWaitingRe
 src/main/kotlin/com/aicommunication/assistant/contracts/models/MergeTaskSuggestionRequest.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/MissingInformationSummaryPoint.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/NextActionSummaryPoint.kt
+src/main/kotlin/com/aicommunication/assistant/contracts/models/NotificationProcessResponse.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/OwnerAuditContext.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/Recipient.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/RecipientReminderPreferences.kt

@@ -148,6 +148,17 @@ export type TracedRuntimeModule = {
   releaseReminderOccurrenceClaim: typeof TracedRuntimeBindings.releaseReminderOccurrenceClaim;
   settleReminderOccurrenceSchedule: typeof TracedRuntimeBindings.settleReminderOccurrenceSchedule;
   terminalizeExhaustedRetryOccurrence: typeof TracedRuntimeBindings.terminalizeExhaustedRetryOccurrence;
+  // A8.5b Owner notification delivery workflow (D133, D135).
+  listClaimableOwnerNotificationIntents: typeof TracedRuntimeBindings.listClaimableOwnerNotificationIntents;
+  listExpiredOwnerNotificationClaims: typeof TracedRuntimeBindings.listExpiredOwnerNotificationClaims;
+  listInFlightOwnerNotificationAttempts: typeof TracedRuntimeBindings.listInFlightOwnerNotificationAttempts;
+  listOwnerNotificationAttempts: typeof TracedRuntimeBindings.listOwnerNotificationAttempts;
+  findOwnerNotificationIntentById: typeof TracedRuntimeBindings.findOwnerNotificationIntentById;
+  claimOwnerNotificationIntent: typeof TracedRuntimeBindings.claimOwnerNotificationIntent;
+  beginOwnerNotificationAttempt: typeof TracedRuntimeBindings.beginOwnerNotificationAttempt;
+  recoverExpiredOwnerNotificationClaim: typeof TracedRuntimeBindings.recoverExpiredOwnerNotificationClaim;
+  settleOwnerNotificationAttempt: typeof TracedRuntimeBindings.settleOwnerNotificationAttempt;
+  terminalizeOwnerNotificationWithoutDelivery: typeof TracedRuntimeBindings.terminalizeOwnerNotificationWithoutDelivery;
 };
 
 export async function loadTracedRuntimeModule(): Promise<TracedRuntimeModule> {
@@ -249,5 +260,16 @@ export async function loadTracedRuntimeModule(): Promise<TracedRuntimeModule> {
     releaseReminderOccurrenceClaim: tracedRuntime.releaseReminderOccurrenceClaim,
     settleReminderOccurrenceSchedule: tracedRuntime.settleReminderOccurrenceSchedule,
     terminalizeExhaustedRetryOccurrence: tracedRuntime.terminalizeExhaustedRetryOccurrence,
+    listClaimableOwnerNotificationIntents: tracedRuntime.listClaimableOwnerNotificationIntents,
+    listExpiredOwnerNotificationClaims: tracedRuntime.listExpiredOwnerNotificationClaims,
+    listInFlightOwnerNotificationAttempts: tracedRuntime.listInFlightOwnerNotificationAttempts,
+    listOwnerNotificationAttempts: tracedRuntime.listOwnerNotificationAttempts,
+    findOwnerNotificationIntentById: tracedRuntime.findOwnerNotificationIntentById,
+    claimOwnerNotificationIntent: tracedRuntime.claimOwnerNotificationIntent,
+    beginOwnerNotificationAttempt: tracedRuntime.beginOwnerNotificationAttempt,
+    recoverExpiredOwnerNotificationClaim: tracedRuntime.recoverExpiredOwnerNotificationClaim,
+    settleOwnerNotificationAttempt: tracedRuntime.settleOwnerNotificationAttempt,
+    terminalizeOwnerNotificationWithoutDelivery:
+      tracedRuntime.terminalizeOwnerNotificationWithoutDelivery,
   };
 }

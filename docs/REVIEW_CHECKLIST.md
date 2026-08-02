@@ -116,6 +116,24 @@ Gates for the due-date-driven Follow-up Engine (D102–D110). These record **exp
 - [ ] A stop **disarms the next occurrence**, so no fourth reminder is reachable by the same invocation, a concurrent worker, or the next wake-up
 - [ ] No new schedule status is introduced: Waiting remains the only suspension mechanism (D097, D107), and D129 stops rather than pauses
 
+### Owner event notifications (A8.5; apply to any Event Notification Engine change)
+
+- [ ] The change stays on the Owner-notification side of the boundary: **no** reminder counter, generation, D129 sequence, D106 ceiling, daily occurrence rule, Waiting suspension, or reminder schedule settlement is read, imported, or reimplemented (D135)
+- [ ] Notification intent is written in the **triggering mutation's own transaction** and never derived from the audit log; the audit row and the intent row stay separate records answering separate questions (D133)
+- [ ] Event identity is **server-derived** and unique in the database — no caller-supplied idempotency key, and a legitimate repeat is representable while a retry collides (D133, D109)
+- [ ] `provider_call_started_at` and the `in_flight` attempt row are committed **before** the transport call; an expired claim without one is reclaimed, with one is terminal `ambiguous` and never retried
+- [ ] **No database transaction is open across the transport call**, and every state change afterwards is fenced on the claim sequence the caller observed
+- [ ] Beginning an attempt is a compare-and-set on the **attempt count as well as the claim sequence**, so two callers under one valid claim cannot both open a provider call or both take a number
+- [ ] An **ambiguous outcome is terminal on first occurrence**, never retried, never counted as sent, and requires Owner attention; retry exhaustion is terminal and cannot return to pending (D135)
+- [ ] A **stale intent** past the 24-hour horizon is suppressed with a durable reason, makes **zero** transport calls, creates **no** attempt row, and is never eligible again — enabling delivery must not flush a backlog (D135)
+- [ ] No attempt row is created for stale suppression, disabled delivery, a lost claim, or an already-terminal intent; a row asserting a provider call that never happened is the one thing this history must not say
+- [ ] `ENABLE_OWNER_EVENT_DELIVERY` is exact-string `"true"`, read **before** any database access, and an absent transport behaves identically; capture and delivery stay independent flags and neither implies the other
+- [ ] The worker imports **no** Gmail client, access-token resolver, MIME builder, or Owner email renderer, and adds no cron configuration; a source guard fails the build if one appears
+- [ ] Terminal outcome audit events are **`system`-attributed** — never the Owner and never the Recipient — and are written in the same transaction that settles the intent; `note` carries a code from a closed set, never a provider response or exception message (D133)
+- [ ] Owner mail and worker responses carry **no** capability token, capability URL, `/c/` path, token hash, temporary excerpt, Recipient free text, quoted clarification, or address (D109, D114, D134)
+- [ ] Internal worker responses and logs are aggregates only, and a count expensive enough to need an unbounded scan is not promised
+- [ ] Concurrency claims are proven on **real PostgreSQL 16 with simultaneous connections**; PGlite proves deterministic transitions and is not concurrency evidence
+
 ## Owner web experience foundation (P1; apply when P1 work is in scope)
 
 Gates for D111–D126. Record **expected behaviour and required proof**; no specific implementation is pre-approved.

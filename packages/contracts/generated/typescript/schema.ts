@@ -217,6 +217,65 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/internal/notifications/process": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Internal Owner Event Notification processing (built, inert)
+         * @description Claims and settles durable Owner notification intents for a bounded batch (A8.5b; D133,
+         *     D135). Recovers abandoned claims first, applies the 24-hour staleness horizon before
+         *     claiming anything, records a durable in-flight marker before every provider call, invokes the
+         *     transport outside all database transactions, and settles the intent, the attempt, and a
+         *     system-attributed audit event in one fenced transaction.
+         *
+         *     **Built, inert, and never deployed.** The code is merged; no deployment carrying it has been
+         *     made and no cron job invokes it.
+         *
+         *     It is inert in two independent ways. Delivery is off unless `ENABLE_OWNER_EVENT_DELIVERY` is
+         *     exactly `"true"`, which is set in no environment; with it off the invocation returns before
+         *     opening a database connection, so it scans nothing, claims nothing, and writes nothing, and
+         *     returns zero aggregates with `deliveryEnabled: false`. Independently, **no transport exists
+         *     to compose**: A8.5b's only implementation is a deterministic fake belonging to tests, and no
+         *     Owner email renderer or Gmail adapter has been written, so `transportConfigured` is false
+         *     even with the flag on and no provider can be contacted. A8.5c adds the real adapter.
+         *
+         *     Distinct from `/api/v1/internal/reminders/process` and deliberately not merged with it. The
+         *     two share a shape — cron bearer secret, Node runtime, 60-second cap, soft deadline, bounded
+         *     batch — and share no policy: that endpoint delivers a repeating series to a Recipient under
+         *     D106 and D129, this one delivers a single event to the Owner under D135. Neither invokes the
+         *     other.
+         *
+         *     Delivery policy is one-shot per event: at most three total provider attempts, after which the
+         *     notification is terminal and requires Owner attention. An ambiguous outcome is terminal on
+         *     the first occurrence and never retried, because the provider may already have accepted the
+         *     message and a duplicate Owner email is a worse untruth than a late one. An intent older than
+         *     24 hours is never delivered at all; it is terminalized as suppressed, which is what prevents
+         *     a backlog recorded while delivery was disabled from flushing when it is enabled.
+         *
+         *     Requires `InternalCronBearer` (`CRON_SECRET`). Not an Owner session. Empty body. Safe to
+         *     invoke repeatedly and safe to overlap: claiming is compare-and-set on the intent row and
+         *     every later write repeats the fencing token, so two concurrent invocations cannot both
+         *     deliver the same notification and a superseded worker cannot settle one.
+         *
+         *     Returns aggregate counts only — never an Owner or Recipient address, Task summary, actor
+         *     label, event subject, provider payload, or capability data.
+         *     **Status: Contracted and implemented in A8.5b, awaiting architecture review** (POST only; no
+         *     GET handler).
+         *
+         */
+        post: operations["processOwnerNotificationsInternal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/internal/suggestions/process": {
         parameters: {
             query?: never;
@@ -1577,6 +1636,86 @@ export interface components {
             deadlineStopped: boolean;
             requestId: string;
         };
+        /** @description Aggregate outcome of one internal Owner Event Notification processing invocation (A8.5b;
+         *     D133, D135). Counts only: never an Owner or Recipient address, Task summary, actor label,
+         *     event subject, provider payload, failure detail, capability data, or claim internal. Nothing
+         *     here can identify what any notification was about.
+         *
+         *     When `deliveryEnabled` or `transportConfigured` is false every count is zero, because the
+         *     invocation returned before opening a database connection — it scanned nothing, claimed
+         *     nothing, wrote no attempt, and constructed no transport.
+         *      */
+        NotificationProcessResponse: {
+            /** @description Whether `ENABLE_OWNER_EVENT_DELIVERY` was exactly "true". False in every environment in
+             *     this milestone. Independent of `ENABLE_OWNER_EVENT_CAPTURE`, which governs whether
+             *     intents are recorded at all and is also unset everywhere (D135).
+             *      */
+            deliveryEnabled: boolean;
+            /** @description Whether a transport was available to deliver through. False means the invocation failed
+             *     closed and did no work: processing refuses to run rather than manufacturing a transport
+             *     that would report deliveries it never made.
+             *
+             *     **False in every environment in A8.5b**, including with delivery enabled. The only
+             *     implementation in this milestone is a deterministic fake belonging to tests; no Owner
+             *     notification email renderer and no Gmail adapter exist yet, so there is nothing this
+             *     endpoint could compose. A8.5c adds the real adapter.
+             *      */
+            transportConfigured: boolean;
+            /** @description Claimable intents examined, including those terminalized without any delivery — a stale
+             *     suppression and an exhausted retry budget are both counted here and also in their own
+             *     field.
+             *      */
+            scanned: number;
+            /** @description Intents whose compare-and-set claim succeeded and whose lease this invocation held. */
+            claimed: number;
+            /** @description Deliveries the transport positively accepted. An ambiguous outcome is never counted here
+             *     (D135): the provider may have accepted it, and reporting a delivery that may not have
+             *     happened is the untruth this separation exists to prevent.
+             *      */
+            sent: number;
+            /** @description Retryable transport failures with budget remaining. The intent returned to claimable work
+             *     and will be attempted again on a later invocation, not within this one.
+             *      */
+            failedRetryable: number;
+            /** @description Definitive refusals. Terminal on the first occurrence and requiring Owner attention. */
+            failedPermanent: number;
+            /** @description Outcomes the transport could not resolve, including a lease that expired after a provider
+             *     call had begun and a transport that threw once the in-flight marker was durable. Terminal
+             *     on the first occurrence, never retried, and never reported as sent (D135). Requires Owner
+             *     attention.
+             *      */
+            ambiguous: number;
+            /** @description Intents older than the 24-hour delivery horizon, terminalized without contacting anything
+             *     (D135). This is what stops a backlog accumulated while delivery was disabled from ever
+             *     flushing: those intents expire rather than being drained.
+             *      */
+            staleSuppressed: number;
+            /** @description Intents that spent their three-attempt budget, terminalized as requiring Owner attention.
+             *     A budget against one event, not a delivery series: D106's fourteen-delivery ceiling and
+             *     D129's ambiguity stop govern Recipient reminders and do not apply here.
+             *      */
+            retryExhausted: number;
+            /** @description Lapsed leases returned to claimable work because no provider call had started. A lapsed
+             *     lease whose provider call had started is counted in `ambiguous` instead and is never
+             *     resent.
+             *      */
+            recoveredClaims: number;
+            /** @description Compare-and-set refusals: another worker moved first, or this one was superseded while
+             *     its call was in flight. Expected under overlapping invocations, and not an error.
+             *      */
+            lostClaims: number;
+            /** @description Whether the scan returned a full batch, so more work probably remains. Deliberately not a
+             *     count of what is left, which would require an unbounded count over every pending row.
+             *      */
+            batchFilled: boolean;
+            /** @description Whether the invocation stopped accepting new work to stay inside its runtime budget. Work
+             *     already claimed is settled before stopping, so nothing is abandoned mid-flight by a
+             *     deliberate stop.
+             *      */
+            deadlineStopped: boolean;
+            /** @description Correlates this invocation with its structured logs. */
+            requestId: string;
+        };
         /**
          * @description What happened to this generation's advance reminder (D105, D107). `scheduled` is the only
          *     value that means anything is still pending; every other value is terminal and settled.
@@ -2479,6 +2618,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReminderProcessResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    processOwnerNotificationsInternal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Aggregate processing counts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationProcessResponse"];
                 };
             };
             401: components["responses"]["Unauthorized"];

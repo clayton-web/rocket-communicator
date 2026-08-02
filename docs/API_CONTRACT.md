@@ -252,6 +252,26 @@ The one advance reminder a generation holds may be delivered only during its own
 
 **A8.4b.2 enforces D129 and adds one enum value and one counter.** `TaskReminderStopReason` gains `repeated_ambiguous_outcomes`: three consecutive terminal ambiguous overdue occurrences within one schedule generation stop the schedule, with `requiresOwnerAttention` set. It is deliberately distinct from `permanent_delivery_failure` — that one says a provider refused something and names what to fix, this one says the provider gave no answer three mornings running and the Recipient may or may not have been reminded, which is a different question for the Owner to answer. Consumers must treat the enum as open to additions rather than exhaustively matched. The aggregate gains `ambiguityStops`, reported apart from `ceilingStops` because a ceiling stop is a schedule finishing its work while an ambiguity stop is the system reporting it cannot confirm its own sends; it remains a count, and which Tasks were stopped is deliberately not reportable here. Nothing else about the endpoint changed: the sequence is derived from occurrence history inside the settlement transaction, no counter is stored, no new schedule status exists, and nothing auto-resumes.
 
+### Internal Owner notification processing (A8.5b — contracted, disabled, never deployed)
+
+**Status: implemented and contracted, deliberately inert.** `operationId`: `processOwnerNotificationsInternal`. No scheduler job invokes it, `ENABLE_OWNER_EVENT_DELIVERY` is set in no environment, the route injects no transport in any environment, no A8.5 migration is applied in Production, and nothing has been deployed. **No Gmail adapter or Owner email renderer exists for Owner notifications.**
+
+| Method | Path                                     | Purpose                                                  |
+| ------ | ---------------------------------------- | -------------------------------------------------------- |
+| POST   | `/api/v1/internal/notifications/process` | Worker invocation (`InternalCronBearer` / `CRON_SECRET`) |
+
+**Contracted rather than route-local, because the repository already contracts the reminder worker's aggregate.** The two internal workers are peers, and one of them having a schema while the other did not would make the contract a record of which slice remembered rather than of what the system exposes.
+
+**POST only, empty body, Node runtime, 60-second maximum, bounded batch with a soft deadline reserve.** `Cache-Control: no-store` from a single response finalizer, so it is present on every status rather than on whichever branches remembered it. Cron bearer, never an Owner session. **This is a separate endpoint from the reminder worker and is not a second verb on it.**
+
+**Disabled behaviour is a contract.** With `ENABLE_OWNER_EVENT_DELIVERY` absent or anything other than exactly `"true"`, the endpoint returns `200` with `deliveryEnabled: false` and every count zero, having opened no database connection, scanned nothing, claimed nothing, written nothing, and constructed no transport. `"1"`, `"TRUE"`, `"yes"`, `"false"`, and `"true "` all leave it off. `transportConfigured: false` is reported separately and is the state of **every** environment in A8.5b, because the only implementation is a test fake and the route injects none — an operator who enables the flag and sees no work needs to know which of the two reasons applied.
+
+**Response is aggregate counts and flags only:** `deliveryEnabled`, `transportConfigured`, `scanned`, `claimed`, `sent`, `failedRetryable`, `failedPermanent`, `ambiguous`, `retryExhausted`, `staleSuppressed`, `recoveredClaims`, `lostClaims`, `batchFilled`, `deadlineStopped`, `requestId`. No Owner or Recipient address, Task summary, actor label, event type, subject identifier, provider payload, failure detail, claim owner, or lease appears in the body or in the structured logs. `batchFilled` reports that the scan filled its batch rather than counting what remains, because an exact remainder needs an unbounded `COUNT` over every pending row.
+
+**`sent` means the transport confirmed acceptance, and `ambiguous` is never folded into it.** An ambiguous outcome is terminal on first occurrence, requires Owner attention, and is never retried, because the provider may hold the message and nobody can prove otherwise (D135). A lease that lapsed after a provider call began settles the same way. `failedRetryable` counts failures that returned the intent to pending work with budget remaining; `retryExhausted` counts the third one, which is terminal.
+
+**Safe to invoke repeatedly and safe to overlap.** Two concurrent invocations cannot process the same intent: every state change is a compare-and-set fenced on a claim sequence, and a refused change is counted in `lostClaims` rather than retried blindly. `lostClaims` above zero under overlapping invocations is expected and is not an error.
+
 ### Recipient capability routes and pages
 
 **Status: implemented and production-verified (A4 — `A4_FULL_E2E_PASS`).** A7.1 contracts matched-superseded behaviour (D086).
