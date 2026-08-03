@@ -92,11 +92,19 @@ export {
   findActiveCapabilitiesForAssignment,
   revokeCapabilityRecord,
   markCapabilityExpiredRecord,
+  listExpirableCapabilities,
+  expireCapabilityIfDue,
   activateCapabilityRecord,
   isPersistedCapabilityActionable,
   assertCapabilityRevocationReason,
+  type ExpirableCapabilityRow,
   type PersistedCapability,
 } from './repositories/capability-repository.js';
+export {
+  observeCapabilityExpiry,
+  type ObserveCapabilityExpiryInput,
+  type ObserveCapabilityExpiryResult,
+} from './transactions/a8-5d-capability-expiry.js';
 export {
   createHandoffAttempt,
   getHandoffAttemptById,
@@ -192,6 +200,7 @@ export {
   createOwnerNotificationIntent,
   findOwnerNotificationIntentById,
   findOwnerNotificationIntentByIdentity,
+  findOwnerNotificationSubjectTaskId,
   listClaimableOwnerNotificationIntents,
   listExpiredOwnerNotificationClaims,
   listInFlightOwnerNotificationAttempts,
@@ -203,6 +212,8 @@ export {
   type ClaimOwnerNotificationIntentInput,
   type ClaimOwnerNotificationResult,
   type CreateOwnerNotificationIntentInput,
+  type OwnerNotificationCapture,
+  type OwnerNotificationSystemCapture,
   type RecoverExpiredClaimResult,
 } from './repositories/owner-notification-repository.js';
 // A8.5b settlement. The only way a delivery attempt ends: intent state, attempt outcome, and the
@@ -327,9 +338,12 @@ export {
   persistGmailHistoryPageTransaction,
   persistGmailConnectionTransaction,
   persistGmailDisconnectTransaction,
+  persistGmailChannelUnavailableTransaction,
   type PersistGmailHistoryPageResult,
   type PersistGmailConnectionResult,
   type PersistGmailDisconnectResult,
+  type PersistGmailChannelUnavailableResult,
+  type GmailChannelUnavailableTransition,
 } from './transactions/gmail-transactions.js';
 
 export {

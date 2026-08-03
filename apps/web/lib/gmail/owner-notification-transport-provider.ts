@@ -38,6 +38,7 @@ export interface GmailOwnerNotificationTransportDeps {
     | 'getCommunicationAccountByOrganization'
     | 'getGmailOAuthCredentialByAccountId'
     | 'findOwnerNotificationIntentById'
+    | 'findOwnerNotificationSubjectTaskId'
     | 'getTaskById'
   >;
   /**
@@ -66,17 +67,17 @@ export interface GmailOwnerNotificationTransportDeps {
  */
 export function buildOwnerNotificationLink(input: {
   readonly appUrl: string;
-  readonly subjectKind: string;
-  readonly subjectId: string;
+  /** The Task this event is about, or `undefined` when it is about no Task. */
+  readonly taskId: string | undefined;
 }): string | undefined {
-  if (input.subjectKind !== 'task') {
+  if (input.taskId === undefined) {
     return undefined;
   }
   const base = assertValidCapabilityAppUrl(input.appUrl, {
     requireHttps: (process.env.NODE_ENV ?? '').trim() === 'production',
   });
   // Path-segment encoding, so an identifier carrying anything path-shaped cannot escape `/tasks/`.
-  return `${base}/tasks/${encodeURIComponent(input.subjectId)}`;
+  return `${base}/tasks/${encodeURIComponent(input.taskId)}`;
 }
 
 /**
@@ -111,9 +112,20 @@ export async function resolveOwnerNotificationContext(
     return null;
   }
 
+  // A8.5d: the subject is often not the Task. A reminder stop is identified by its schedule and a
+  // capability expiry by the capability, because that is what makes a legitimate repeat
+  // distinguishable from a retry — but the Owner still has to be told which piece of work it was.
+  // One indexed lookup resolves the subject to its Task, selecting the identifier and nothing else.
+  const taskId = await deps.runtime.findOwnerNotificationSubjectTaskId(
+    deps.db,
+    intent.organizationId,
+    intent.subjectKind,
+    intent.subjectId,
+  );
+
   let summaryLines: string[] = [];
-  if (intent.subjectKind === 'task') {
-    const task = await deps.runtime.getTaskById(deps.db, intent.organizationId, intent.subjectId);
+  if (taskId !== null) {
+    const task = await deps.runtime.getTaskById(deps.db, intent.organizationId, taskId);
     if (!task) {
       // The Task is gone — purged under retention, most likely. The event stayed true, which is why
       // the intent holds no foreign key to it (D133), but a notification that can name no task is
@@ -126,6 +138,10 @@ export async function resolveOwnerNotificationContext(
       )
       .map((line) => redactUrls(line))
       .filter((line) => line.length > 0);
+  } else if (intent.subjectKind !== 'communication_account') {
+    // Every other subject kind resolves to a Task or has been purged. `gmail.disconnected` is the
+    // one event that is legitimately about no task at all, and its copy says so.
+    return null;
   }
 
   return {
@@ -135,8 +151,7 @@ export async function resolveOwnerNotificationContext(
     summaryLines,
     ownerLink: buildOwnerNotificationLink({
       appUrl: deps.appUrl,
-      subjectKind: intent.subjectKind,
-      subjectId: intent.subjectId,
+      taskId: taskId ?? undefined,
     }),
   };
 }

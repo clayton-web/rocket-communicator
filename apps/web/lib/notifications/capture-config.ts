@@ -34,3 +34,22 @@ export function isOwnerEventCaptureEnabled(env: NodeJS.ProcessEnv = process.env)
 
 /** Identifier prefix for notification intent rows, matching the repository's `newEntityId` shape. */
 export const OWNER_NOTIFICATION_INTENT_ID_PREFIX = 'onint' as const;
+
+/**
+ * Who the system was, for the events nobody performed (A8.5d, D133).
+ *
+ * Six of the ten ratified events are observations rather than actions — a provider refusing a
+ * handoff, a mail grant lapsing, a reminder schedule reaching its ceiling, a capability's time
+ * running out — and their intents are `system`-attributed rather than attributed to whoever happened
+ * to be holding the request.
+ *
+ * The identifiers themselves are declared by the subsystems that observe those events, not here.
+ * That is deliberate and the A8.5a boundary guard depends on it: this module is on the capture path
+ * of every Task mutation in Production, and a central registry naming every subsystem would make the
+ * capture path import — or at least mention — parts of the system it must stay ignorant of.
+ *
+ * All four are distinct from `REMINDER_PROCESS_SYSTEM_ID` and its siblings, which identify *claim
+ * holders* and are documented as never being actors. A lease owner and an actor are different
+ * things, and one shared constant would eventually make them look like the same thing.
+ */
+export type OwnerEventSystemId = string;

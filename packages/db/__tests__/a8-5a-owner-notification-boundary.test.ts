@@ -96,14 +96,24 @@ describe('A8.5a capture boundary', () => {
   });
 
   it('reaches an A8.5 table only when an intent was requested', () => {
-    const source = read(TRANSACTIONS);
-    const guard = source.indexOf('if (input.ownerNotification) {');
-    const write = source.indexOf('await createOwnerNotificationIntent(tx, {');
+    const source = code(TRANSACTIONS);
+    const writes = [...source.matchAll(/await createOwnerNotificationIntent\(tx, \{/g)];
 
-    expect(guard).toBeGreaterThan(-1);
-    expect(write).toBeGreaterThan(guard);
-    // Exactly one call site, so there is no second path that could write unguarded.
-    expect(code(TRANSACTIONS).match(/createOwnerNotificationIntent\(/g)).toHaveLength(1);
+    // A8.5d added `persistReturnToOwner` beside `persistCapabilityAction`, so counting call sites no
+    // longer says anything. What has to hold is that *every* one of them sits behind the guard, and
+    // that the guard is the immediately preceding one rather than some earlier branch.
+    expect(writes.length).toBeGreaterThan(0);
+    for (const write of writes) {
+      const preceding = source.lastIndexOf('if (input.ownerNotification', write.index);
+      expect(preceding).toBeGreaterThan(-1);
+      const between = source.slice(preceding, write.index);
+      expect(
+        between,
+        'A capture write must be the first thing its guard does, so a Production database ' +
+          'without the A8.5 tables is never reached.',
+      ).not.toContain('createOwnerNotificationIntent');
+      expect(between.length).toBeLessThan(200);
+    }
   });
 
   it('leaves the Owner mutation path unable to request an intent', () => {

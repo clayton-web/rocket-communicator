@@ -72,6 +72,17 @@ function deps(
           return row.id === id && row.organizationId === organizationId ? row : null;
         },
       ),
+      // A8.5d: the subject is resolved to its Task before the summary is read, so a reminder or a
+      // capability event can still name the work it is about. Mirrors the repository, which returns
+      // the identifier unchanged for a Task subject and null for a communication account.
+      findOwnerNotificationSubjectTaskId: vi.fn(
+        async (_db: unknown, _organizationId: string, subjectKind: string, subjectId: string) =>
+          subjectKind === 'task'
+            ? subjectId
+            : subjectKind === 'communication_account'
+              ? null
+              : null,
+      ),
       getTaskById: vi.fn(async (_db: unknown, organizationId: string, id: string) => {
         const task = rows.task === undefined ? taskRow() : rows.task;
         if (!task) {
@@ -89,38 +100,26 @@ function deps(
 
 describe('A8.5c: the authenticated Owner link', () => {
   it('points at the Owner Task surface on the canonical application origin', () => {
-    expect(
-      buildOwnerNotificationLink({ appUrl: APP_URL, subjectKind: 'task', subjectId: 'task_1' }),
-    ).toBe('https://app.example.com/tasks/task_1');
+    expect(buildOwnerNotificationLink({ appUrl: APP_URL, taskId: 'task_1' })).toBe(
+      'https://app.example.com/tasks/task_1',
+    );
   });
 
-  it('is omitted for subjects with no Owner surface rather than guessed at', () => {
-    for (const subjectKind of [
-      'task_capability',
-      'task_reminder_schedule',
-      'handoff_attempt',
-      'communication_account',
-    ]) {
-      expect(
-        buildOwnerNotificationLink({ appUrl: APP_URL, subjectKind, subjectId: 'x_1' }),
-      ).toBeUndefined();
-    }
+  it('is omitted for an event about no Task rather than guessed at', () => {
+    expect(buildOwnerNotificationLink({ appUrl: APP_URL, taskId: undefined })).toBeUndefined();
   });
 
   it('encodes the identifier so nothing path-shaped can escape /tasks/', () => {
     const link = buildOwnerNotificationLink({
       appUrl: APP_URL,
-      subjectKind: 'task',
-      subjectId: '../../c/tok_abc',
+      taskId: '../../c/tok_abc',
     });
     expect(link).toBe('https://app.example.com/tasks/..%2F..%2Fc%2Ftok_abc');
     expect(link).not.toContain('/c/');
   });
 
   it('refuses a base URL that is not a valid absolute origin', () => {
-    expect(() =>
-      buildOwnerNotificationLink({ appUrl: 'not-a-url', subjectKind: 'task', subjectId: 't' }),
-    ).toThrow();
+    expect(() => buildOwnerNotificationLink({ appUrl: 'not-a-url', taskId: 't' })).toThrow();
   });
 });
 
@@ -188,6 +187,7 @@ describe('A8.5c: render context comes from the intent and the Task, and nothing 
     // contains no Recipient, note, or excerpt accessor at all.
     expect(Object.keys(d.runtime).sort()).toEqual([
       'findOwnerNotificationIntentById',
+      'findOwnerNotificationSubjectTaskId',
       'getCommunicationAccountByOrganization',
       'getGmailOAuthCredentialByAccountId',
       'getTaskById',

@@ -28,6 +28,10 @@ import {
   type HandoffIdempotencyLookup,
 } from '../repositories/handoff-attempt-repository.js';
 import type { PersistedHandoffAttempt } from '../mappers/domain-mappers.js';
+import {
+  createOwnerNotificationIntent,
+  type OwnerNotificationSystemCapture,
+} from '../repositories/owner-notification-repository.js';
 import { PersistenceError } from '../errors/persistence-errors.js';
 import { requireActiveRecipientForHandoff } from '../repositories/recipient-repository.js';
 import {
@@ -333,6 +337,23 @@ export async function markHandoffSendAccepted(input: {
 
 /**
  * C. Mark delivery failed — capability is not superseded and remains non-actionable.
+ *
+ * ## A8.5d notification capture (D133)
+ *
+ * `handoff.delivery_failed` is produced here, and only for a failure Rocket will not itself retry.
+ * The taxonomy's trigger is "non-retryable handoff failure, or exhausted handoff retry budget", and
+ * there is no handoff retry budget in this repository: `attemptCount` is a send generation used to
+ * reject stale results, no worker re-sends a failed attempt, and the only way a failed handoff is
+ * tried again is an Owner re-submitting it — which `prepareHandoffAttemptRetry` permits solely when
+ * `retryable` is true. So `retryable === false` is exactly the set of failures that are terminal
+ * without further action, which is what the Owner is owed a message about.
+ *
+ * The guard is repeated here rather than trusted from the caller. A caller that decided wrongly
+ * would otherwise mail an Owner that delivery had failed for good about a rate-limit the next
+ * attempt would have cleared.
+ *
+ * Ambiguous sends never reach this function at all — the orchestrator leaves them `pending` — so no
+ * Owner is ever told a message failed when a provider may be holding it.
  */
 export async function markHandoffDeliveryFailed(input: {
   db: DbClient;
@@ -348,8 +369,18 @@ export async function markHandoffDeliveryFailed(input: {
    */
   expectedSendGeneration: number;
   audit?: CreateAuditEventInput;
+  ownerNotification?: OwnerNotificationSystemCapture;
 }): Promise<{ attempt: PersistedHandoffAttempt; audit?: AuditEventRecord }> {
   return input.db.$transaction(async (tx) => {
+    // Read before the transition, because after it every attempt looks equally failed. Re-recording
+    // an identical failure is a supported replay that returns the existing row unchanged, and a
+    // replay is not a second event: without this the intent insert would collide on its own
+    // identity and roll back a transaction whose whole purpose is to be safely repeatable.
+    const priorStatus = await tx.handoffAttempt.findFirst({
+      where: { id: input.attemptId, organizationId: input.organizationId },
+      select: { status: true },
+    });
+
     const attempt = await markHandoffAttemptFailed(tx, {
       organizationId: input.organizationId,
       attemptId: input.attemptId,
@@ -391,6 +422,38 @@ export async function markHandoffDeliveryFailed(input: {
     });
 
     const audit = input.audit ? await createAuditEvent(tx, input.audit) : undefined;
+
+    if (input.ownerNotification && input.retryable === false && priorStatus?.status === 'pending') {
+      await createOwnerNotificationIntent(tx, {
+        id: input.ownerNotification.id,
+        organizationId: input.organizationId,
+        // The Task, so the message can name the work whose assignment did not arrive. Identity is
+        // the attempt, which is why the two differ: one delivery failure per attempt, and a later
+        // re-forward is a new attempt and a legitimate second message.
+        eventType: 'handoff_delivery_failed',
+        subjectKind: 'handoff_attempt',
+        subjectId: attempt.id,
+        occurrenceKey: attempt.id,
+        occurredAt: input.audit?.recordedAt ?? attempt.updatedAt,
+        // System, deliberately, even though the audit row beside it is Owner-attributed. The audit
+        // records what the Owner did — they asked for a handoff, and it failed. The event records
+        // what happened to it, and nobody did that: a provider refused the message. Copying the
+        // Owner here would render as "Who acted: you, from your own account" on an email telling
+        // them their assignment never arrived, which is the untruth D133's attribution rule exists
+        // to prevent. The two rows still agree on organization, subject, instant, and meaning, and
+        // `auditEventId` keeps them joined.
+        actorKind: 'system',
+        ownerId: null,
+        capabilityId: null,
+        systemId: input.ownerNotification.systemId,
+        assignmentId: input.audit?.assignmentId ?? attempt.assignmentId,
+        attributionLabel: null,
+        auditEventId: audit?.id ?? null,
+        requestId: input.audit?.requestId ?? null,
+        correlationId: input.audit?.correlationId ?? null,
+      });
+    }
+
     return { attempt, audit };
   });
 }

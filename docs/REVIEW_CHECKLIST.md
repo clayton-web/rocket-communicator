@@ -151,6 +151,23 @@ Gates for the due-date-driven Follow-up Engine (D102–D110). These record **exp
 - [ ] Real transport construction is behind exact delivery enablement, evaluated **before** any configuration read or credential access, and a test runner without an injected sender **throws** rather than returning something that could reach Gmail
 - [ ] No Gmail message is sent by tests, no live OAuth occurs, and no production credential is read
 
+### Owner event producers and capability expiry (A8.5d; apply to any new or changed producer)
+
+- [ ] Every ratified event still has a **registered producer** and the taxonomy-coverage test passes; an event value outside the enum, a missing producer, or a renderer that lost exhaustive coverage fails the build
+- [ ] The intent is written from the transaction that **durably establishes the event** — not from a post-commit hook, not from an audit-log scan, and not from a second transaction that could commit alone
+- [ ] Capture is decided **before** the transaction opens for request-driven mutations, passed in explicitly, and a disabled decision issues **no statement** against either A8.5 table, so an unapplied migration stays harmless
+- [ ] The event's actor is the actor of the **event**, not of the request that surfaced it: an observation gets a `system` identifier naming the subsystem, and an Owner-attributed request audit beside it stays Owner-attributed
+- [ ] The occurrence key makes a **legitimate repeat representable and a retry impossible** — a post-mutation Task version, a durable attempt identity, a status transition and its instant, a schedule generation, or a one-time constant
+- [ ] Renderer truthfulness was assessed before implementation, and any claim that an event needs new persisted data identifies the **exact misleading statement** rather than asking for richer prose
+- [ ] No clarification text, note body, Gmail excerpt, provider response body, exception message, email address, capability token, or capability URL reaches an intent row
+- [ ] A **transient** failure the system still intends to retry produces no notification; only a durably terminal outcome does
+- [ ] A re-observation of an unchanged state produces nothing — the underlying write is compare-and-set on the state being left, so the loser writes no status change, no audit row, and no intent
+- [ ] Reminder settlement is unchanged apart from the conditional intent insert: no ceiling, ambiguity, ordering, count, outcome, stop-semantics, or claim behaviour reads the capture argument
+- [ ] Capability expiry goes through the **one shared transaction** that both the sweep and lazy validation call; a race produces one transition, one audit event, and one intent, and notification failure cannot affect authorization truth
+- [ ] `packages/db` reads **no clock** for expiry — the observation instant is an argument (D103) — and expiry does not depend on a Recipient presenting a token
+- [ ] Documentation does not describe the capability sweep as scheduled unless something actually invokes it
+- [ ] Concurrency claims for every new producer are proven on **real PostgreSQL 16 with simultaneous connections**
+
 ## Owner web experience foundation (P1; apply when P1 work is in scope)
 
 Gates for D111–D126. Record **expected behaviour and required proof**; no specific implementation is pre-approved.

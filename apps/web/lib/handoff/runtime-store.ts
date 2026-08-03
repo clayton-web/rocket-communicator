@@ -5,6 +5,7 @@ import type {
   BeginInitialHandoffResult,
   CreateAuditEventInput,
   DbClient,
+  OwnerNotificationSystemCapture,
   PersistedCapability,
   PersistedHandoffAttempt,
   PersistenceError,
@@ -22,6 +23,10 @@ import {
 } from '@aicaa/domain';
 import { generateCapabilityToken, hashCapabilityToken } from '@/lib/capability/token';
 import { buildCapabilityUrl } from '@/lib/capability/urls';
+import {
+  isOwnerEventCaptureEnabled,
+  OWNER_NOTIFICATION_INTENT_ID_PREFIX,
+} from '@/lib/notifications/capture-config';
 import { readAnyPersistenceErrorCode, persistedFailureCategory } from './outcomes';
 import type {
   BeginHandoffResult,
@@ -33,6 +38,12 @@ import type {
   RecordFailedInput,
   RetryHandoffCommand,
 } from './types';
+
+/**
+ * Who observed an assignment delivery failing for good (A8.5d, D133). The A7 audit for the handoff
+ * *request* stays Owner-attributed, truthfully; a provider's refusal is not something the Owner did.
+ */
+export const HANDOFF_DELIVERY_SYSTEM_ID = 'handoff_delivery' as const;
 
 /**
  * Structural subset of the A7.3 persistence runtime the store adapter depends on. Satisfied by the
@@ -60,6 +71,7 @@ export interface HandoffRuntime {
     retryable: boolean;
     expectedSendGeneration: number;
     audit?: CreateAuditEventInput;
+    ownerNotification?: OwnerNotificationSystemCapture;
   }): Promise<{ attempt: PersistedHandoffAttempt }>;
   prepareFailedHandoffRetry(input: {
     db: DbClient;
@@ -304,6 +316,16 @@ export function createRuntimeHandoffStore(deps: RuntimeHandoffStoreDeps): Handof
       failureFingerprint: input.failure.fingerprint,
       retryable: input.failure.retryable,
       expectedSendGeneration: input.expectedSendGeneration,
+      // A8.5d. Offered for every recorded failure and spent only by a terminal one: the transaction
+      // itself refuses to write an intent for a `retryable` failure or for a replayed record, so
+      // this caller cannot mail an Owner about a rate-limit the next attempt would have cleared.
+      // Evaluated before the transaction opens, so capture-off issues no A8.5 statement (D135).
+      ownerNotification: isOwnerEventCaptureEnabled()
+        ? {
+            id: newId(OWNER_NOTIFICATION_INTENT_ID_PREFIX),
+            systemId: HANDOFF_DELIVERY_SYSTEM_ID,
+          }
+        : undefined,
       audit: input.audit
         ? {
             id: newId('aud'),

@@ -43,6 +43,32 @@ type Client = DbClient | DbTransaction;
  * matches the row.
  */
 
+/**
+ * A caller's decision that one event is notifiable, and the identifier to record it under (A8.5d).
+ *
+ * Only the identifier crosses the boundary. Which event, which subject, which occurrence, and who
+ * acted are all derived inside the transaction from state it already holds, so a caller cannot name
+ * a different Task, a stale version, or an event that did not happen. `packages/db` reads no
+ * feature flag, so the presence of this object *is* the capture decision: absent means absent, and
+ * no statement is issued against an A8.5 table.
+ */
+export interface OwnerNotificationCapture {
+  readonly id: string;
+}
+
+/**
+ * Capture for an event nobody performed (A8.5d).
+ *
+ * A provider refusing a message, a lease of time running out, a reminder schedule reaching its
+ * ceiling: these are observations, not actions, and their truthful actor is the system that noticed.
+ * Producers of such events take this variant so the system identifier is an argument they cannot
+ * forget rather than a literal invented inside persistence, which reads no environment and knows the
+ * name of no worker.
+ */
+export interface OwnerNotificationSystemCapture extends OwnerNotificationCapture {
+  readonly systemId: string;
+}
+
 export interface CreateOwnerNotificationIntentInput extends OwnerNotificationActor {
   id: string;
   organizationId: string;
@@ -145,6 +171,57 @@ export async function listOwnerNotificationIntentsForSubject(
     orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }],
   });
   return rows.map(mapOwnerNotificationIntent);
+}
+
+/**
+ * The Task an intent's subject belongs to, or null when it has none (A8.5d).
+ *
+ * Six of the ten ratified events are recorded against something that is not a Task — a capability,
+ * a handoff attempt, a reminder schedule — because that is what their identity is derived from and
+ * what makes a repeat distinguishable from a retry. The Owner still needs to be told *which* task,
+ * and "this task" in an email that names none is the kind of true-but-useless sentence A8.5d's
+ * truthfulness review exists to catch.
+ *
+ * Every branch selects `taskId` and nothing else. That is deliberate rather than tidy: the
+ * capability row carries `intendedRecipientEmail`, and a rendering path has no business loading a
+ * Recipient address into memory at all (D134).
+ *
+ * `communication_account` has no Task and returns null. A Gmail channel failure is about the
+ * organization's mailbox, and its copy says so without naming any task.
+ */
+export async function findOwnerNotificationSubjectTaskId(
+  db: Client,
+  organizationId: string,
+  subjectKind: OwnerNotificationSubjectKindValue,
+  subjectId: string,
+): Promise<string | null> {
+  switch (subjectKind) {
+    case 'task':
+      return subjectId;
+    case 'task_capability': {
+      const row = await db.taskCapability.findFirst({
+        where: { id: subjectId, organizationId },
+        select: { taskId: true },
+      });
+      return row?.taskId ?? null;
+    }
+    case 'handoff_attempt': {
+      const row = await db.handoffAttempt.findFirst({
+        where: { id: subjectId, organizationId },
+        select: { taskId: true },
+      });
+      return row?.taskId ?? null;
+    }
+    case 'task_reminder_schedule': {
+      const row = await db.taskReminderSchedule.findFirst({
+        where: { id: subjectId, organizationId },
+        select: { taskId: true },
+      });
+      return row?.taskId ?? null;
+    }
+    case 'communication_account':
+      return null;
+  }
 }
 
 // ---------------------------------------------------------------------------

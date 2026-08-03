@@ -8,8 +8,12 @@ import {
   type TaskSummaryPoint,
   type UtcInstant,
 } from '@aicaa/domain';
-import type { DbClient } from '@aicaa/db';
+import type { DbClient, OwnerNotificationSystemCapture } from '@aicaa/db';
 import { loadDbRuntime } from '@/lib/db/runtime-db';
+import {
+  isOwnerEventCaptureEnabled,
+  OWNER_NOTIFICATION_INTENT_ID_PREFIX,
+} from '@/lib/notifications/capture-config';
 import { newEntityId } from '@/lib/tasks/internal';
 import {
   MAX_OCCURRENCE_ATTEMPTS,
@@ -28,6 +32,13 @@ import type {
   ReminderTransportProvider,
   ReminderTransportResult,
 } from './transport';
+
+/**
+ * Who observed a reminder schedule stopping or finding nobody assigned (A8.5d, D133). Distinct from
+ * `REMINDER_PROCESS_SYSTEM_ID`, which identifies the worker holding the claim and is documented as
+ * never being an actor.
+ */
+export const REMINDER_ENGINE_SYSTEM_ID = 'reminder_engine' as const;
 
 /**
  * A8.4a reminder occurrence processing.
@@ -406,6 +417,27 @@ function nextOccurrenceFor(
 }
 
 /**
+ * The A8.5d capture decision for one settlement (D133, D135).
+ *
+ * Offered to every settlement and spent by the few that turn out to establish a ratified event — a
+ * ceiling reached, a permanent failure, three unconfirmed sends, or a reminder with nobody to reach.
+ * The settlement transaction decides which, from the effect it just applied; this decides only
+ * whether capture is on at all, and does so before the transaction opens so a Production deployment
+ * with the A8.5 migration unapplied issues no statement against an A8.5 table.
+ *
+ * Minting an identifier that usually goes unused is the cheap half of that bargain. The alternative
+ * is persistence generating identifiers, which it does nowhere else.
+ */
+function ownerEventCapture(): OwnerNotificationSystemCapture | undefined {
+  return isOwnerEventCaptureEnabled()
+    ? {
+        id: newEntityId(OWNER_NOTIFICATION_INTENT_ID_PREFIX),
+        systemId: REMINDER_ENGINE_SYSTEM_ID,
+      }
+    : undefined;
+}
+
+/**
  * Discharge settlement debt left by a crash between the two finalization phases (audit H1).
  *
  * Splitting terminalization from settlement is what makes a recorded delivery survive a settlement
@@ -436,6 +468,7 @@ async function settleUnsettledOccurrences(
         organizationId: occurrence.organizationId,
         attemptId: occurrence.id,
         settledAt: now,
+        ownerNotification: ownerEventCapture(),
         nextOverdueOccurrence: nextOccurrenceFor(occurrence, now),
       });
       if (!settled.alreadySettled) {
@@ -553,6 +586,7 @@ async function terminalizeExhaustedOccurrences(
         maxAttempts: MAX_OCCURRENCE_ATTEMPTS,
         completedAt: now,
         now,
+        ownerNotification: ownerEventCapture(),
         nextOverdueOccurrence: nextOccurrenceFor(occurrence, now),
       });
       if (terminalized === null) {
@@ -764,6 +798,7 @@ async function settle(
     failureCode: outcome.failureCode ?? null,
     providerAcceptedAt: outcome.providerAcceptedAt ?? null,
     providerMessageRef: outcome.providerMessageRef ?? null,
+    ownerNotification: ownerEventCapture(),
     nextOverdueOccurrence: nextOccurrenceFor(schedule, now),
   });
 

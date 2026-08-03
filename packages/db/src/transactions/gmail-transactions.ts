@@ -20,6 +20,10 @@ import {
 import { persistEncryptedGmailCredential } from '../repositories/gmail-credential-repository.js';
 import { disconnectCommunicationAccount } from '../repositories/communication-account-repository.js';
 import { createAuditEvent, type CreateAuditEventInput } from '../repositories/audit-repository.js';
+import {
+  createOwnerNotificationIntent,
+  type OwnerNotificationSystemCapture,
+} from '../repositories/owner-notification-repository.js';
 import { organizationMismatch, persistenceValidation } from '../errors/persistence-errors.js';
 
 export type PersistGmailHistoryPageResult = {
@@ -289,5 +293,105 @@ export async function persistGmailDisconnectTransaction(input: {
     );
     const audit = await createAuditEvent(tx, input.audit);
     return { account, audit };
+  });
+}
+
+/** The two ways the connected channel stops being usable without the Owner asking for it. */
+export type GmailChannelUnavailableTransition = 'needs_reauth' | 'resync_required';
+
+export type PersistGmailChannelUnavailableResult = {
+  account: CommunicationAccount;
+  /** False when the account had already left `connected`, in which case nothing at all was written. */
+  transitioned: boolean;
+  audit?: AuditEventRecord;
+};
+
+/**
+ * Atomic "the Gmail channel became unusable" unit of work (A8.5d, D133).
+ *
+ * Both transitions this covers stop the same two things: A6 stops ingesting mail and A7 stops
+ * sending it, because every outbound path resolves an account that is not `connected` as
+ * `not_connected`. That is why `resync_required` is captured alongside `needs_reauth` rather than
+ * treated as a lesser operational state — the Owner's assistant has gone quiet either way, and the
+ * taxonomy's trigger is "connected account leaves the connected state".
+ *
+ * ## Why the status write is compare-and-set
+ *
+ * The repository's `markCommunicationAccountNeedsReauth` writes unconditionally, which was fine when
+ * a failing sync was its only caller and the sync engine had already refused to run on a degraded
+ * account. It is not fine as the trigger for a notification: "the channel went down" is an event
+ * about a *transition*, and an unconditional write cannot tell a transition from a re-observation.
+ * Requiring `status = 'connected'` makes "one notification per outage" a property of the row rather
+ * than of the guard sequence in the caller, and a second observer writes nothing and is told so.
+ *
+ * ## Why the notification is system-attributed even when the audit beside it is not
+ *
+ * The audit row is whatever the caller already wrote for this branch, unchanged: an Owner who
+ * pressed "sync now" gets an Owner-attributed row, and the cron gets a system-attributed one. That
+ * is truthful about the *request*. It is not truthful about the *event*: an Owner pressing sync is
+ * how a lapsed Google grant gets noticed, not how it lapsed. So the intent is `system` regardless,
+ * because the alternative renders as "Who acted: you, from your own account" on an email telling the
+ * Owner their mail connection died — an untruth D133's attribution rule exists to prevent.
+ */
+export async function persistGmailChannelUnavailableTransaction(input: {
+  db: DbClient;
+  organizationId: string;
+  accountId: string;
+  transition: GmailChannelUnavailableTransition;
+  errorCode: string;
+  at: string;
+  audit: CreateAuditEventInput;
+  ownerNotification?: OwnerNotificationSystemCapture;
+}): Promise<PersistGmailChannelUnavailableResult> {
+  return input.db.$transaction(async (tx) => {
+    const changed = await tx.communicationAccount.updateMany({
+      where: { id: input.accountId, organizationId: input.organizationId, status: 'connected' },
+      data: {
+        status: input.transition,
+        ...(input.transition === 'resync_required' ? { historyState: 'resync_required' } : {}),
+        lastErrorCode: input.errorCode,
+        lastErrorAt: fromIso(input.at)!,
+      },
+    });
+
+    const row = await tx.communicationAccount.findFirst({
+      where: { id: input.accountId, organizationId: input.organizationId },
+    });
+    if (!row) {
+      throw organizationMismatch('Communication account does not belong to this organization.');
+    }
+    const account = mapCommunicationAccount(row);
+
+    if (changed.count !== 1) {
+      return { account, transitioned: false };
+    }
+
+    const audit = await createAuditEvent(tx, input.audit);
+
+    if (input.ownerNotification) {
+      await createOwnerNotificationIntent(tx, {
+        id: input.ownerNotification.id,
+        organizationId: input.organizationId,
+        eventType: 'gmail_disconnected',
+        subjectKind: 'communication_account',
+        subjectId: input.accountId,
+        // Which state it entered, and when it entered it. An account that lapses, is reconnected,
+        // and lapses again is entitled to a second message; the same lapse observed twice is not,
+        // and cannot be, because the compare-and-set above already refused the second observer.
+        occurrenceKey: `${input.transition}:${input.at}`,
+        occurredAt: input.at,
+        actorKind: 'system',
+        ownerId: null,
+        capabilityId: null,
+        systemId: input.ownerNotification.systemId,
+        assignmentId: null,
+        attributionLabel: null,
+        auditEventId: audit.id,
+        requestId: input.audit.requestId ?? null,
+        correlationId: input.audit.correlationId ?? null,
+      });
+    }
+
+    return { account, transitioned: true, audit };
   });
 }

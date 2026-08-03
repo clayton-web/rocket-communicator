@@ -252,6 +252,11 @@ export async function requestCapabilityClarification(
       const note = next.notes[next.notes.length - 1];
       return { task: next, note, auditNote: command.message };
     },
+    // A8.5d. Capability-attributed only: this function is reachable solely through a validated
+    // capability token, so an Owner adding a note of their own cannot produce it. The question the
+    // Recipient asked is not carried anywhere near the intent — the notification says they asked
+    // one and points at the Task, and the Owner reads the question there (D134).
+    'task_clarification_requested',
   );
 }
 
@@ -305,6 +310,13 @@ export async function returnCapabilityTaskToOwner(
       note: newNote,
       capabilityId,
       revokedAt: command.now,
+      // Decided before the transaction opens, like every other producer (D135). The event type is
+      // the transaction's own, not this caller's: a return is the only notifiable thing it does.
+      ownerNotification: isOwnerEventCaptureEnabled()
+        ? {
+            id: command.notificationIntentId ?? newEntityId(OWNER_NOTIFICATION_INTENT_ID_PREFIX),
+          }
+        : undefined,
       audit: buildCapabilityAudit({
         id: command.auditId ?? newEntityId('audit'),
         actor: ctx.actor,

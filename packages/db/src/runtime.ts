@@ -75,10 +75,18 @@ export {
   findActiveCapabilitiesForAssignment,
   revokeCapabilityRecord,
   markCapabilityExpiredRecord,
+  listExpirableCapabilities,
+  expireCapabilityIfDue,
   activateCapabilityRecord,
   isPersistedCapabilityActionable,
+  type ExpirableCapabilityRow,
   type PersistedCapability,
 } from './repositories/capability-repository.js';
+export {
+  observeCapabilityExpiry,
+  type ObserveCapabilityExpiryInput,
+  type ObserveCapabilityExpiryResult,
+} from './transactions/a8-5d-capability-expiry.js';
 export {
   createHandoffAttempt,
   getHandoffAttemptById,
@@ -164,9 +172,12 @@ export {
   persistGmailConnectionTransaction,
   persistGmailDisconnectTransaction,
   persistGmailHistoryPageTransaction,
+  persistGmailChannelUnavailableTransaction,
   type PersistGmailConnectionResult,
   type PersistGmailDisconnectResult,
   type PersistGmailHistoryPageResult,
+  type PersistGmailChannelUnavailableResult,
+  type GmailChannelUnavailableTransition,
 } from './transactions/gmail-transactions.js';
 
 export {
@@ -255,8 +266,11 @@ export type {
 export {
   createOwnerNotificationIntent,
   findOwnerNotificationIntentByIdentity,
+  findOwnerNotificationSubjectTaskId,
   listOwnerNotificationIntentsForSubject,
   type CreateOwnerNotificationIntentInput,
+  type OwnerNotificationCapture,
+  type OwnerNotificationSystemCapture,
 } from './repositories/owner-notification-repository.js';
 // A8.5b delivery workflow. The worker reaches persistence only through these, and only with
 // `ENABLE_OWNER_EVENT_DELIVERY` already established above it.

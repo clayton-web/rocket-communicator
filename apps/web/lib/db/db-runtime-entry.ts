@@ -96,6 +96,9 @@ export type TracedRuntimeModule = {
   updateTaskWithExpectedVersion: typeof TracedRuntimeBindings.updateTaskWithExpectedVersion;
   getCapabilityById: typeof TracedRuntimeBindings.getCapabilityById;
   markCapabilityExpiredRecord: typeof TracedRuntimeBindings.markCapabilityExpiredRecord;
+  listExpirableCapabilities: typeof TracedRuntimeBindings.listExpirableCapabilities;
+  expireCapabilityIfDue: typeof TracedRuntimeBindings.expireCapabilityIfDue;
+  observeCapabilityExpiry: typeof TracedRuntimeBindings.observeCapabilityExpiry;
   persistCapabilityAction: typeof TracedRuntimeBindings.persistCapabilityAction;
   persistWorkRequest: typeof TracedRuntimeBindings.persistWorkRequest;
   listTaskSuggestions: typeof TracedRuntimeBindings.listTaskSuggestions;
@@ -124,6 +127,7 @@ export type TracedRuntimeModule = {
   deleteFinishedGmailOAuthStates: typeof TracedRuntimeBindings.deleteFinishedGmailOAuthStates;
   persistGmailConnectionTransaction: typeof TracedRuntimeBindings.persistGmailConnectionTransaction;
   persistGmailDisconnectTransaction: typeof TracedRuntimeBindings.persistGmailDisconnectTransaction;
+  persistGmailChannelUnavailableTransaction: typeof TracedRuntimeBindings.persistGmailChannelUnavailableTransaction;
   acquireGmailSyncLock: typeof TracedRuntimeBindings.acquireGmailSyncLock;
   releaseGmailSyncLock: typeof TracedRuntimeBindings.releaseGmailSyncLock;
   markCommunicationAccountNeedsReauth: typeof TracedRuntimeBindings.markCommunicationAccountNeedsReauth;
@@ -154,6 +158,7 @@ export type TracedRuntimeModule = {
   listInFlightOwnerNotificationAttempts: typeof TracedRuntimeBindings.listInFlightOwnerNotificationAttempts;
   listOwnerNotificationAttempts: typeof TracedRuntimeBindings.listOwnerNotificationAttempts;
   findOwnerNotificationIntentById: typeof TracedRuntimeBindings.findOwnerNotificationIntentById;
+  findOwnerNotificationSubjectTaskId: typeof TracedRuntimeBindings.findOwnerNotificationSubjectTaskId;
   claimOwnerNotificationIntent: typeof TracedRuntimeBindings.claimOwnerNotificationIntent;
   beginOwnerNotificationAttempt: typeof TracedRuntimeBindings.beginOwnerNotificationAttempt;
   recoverExpiredOwnerNotificationClaim: typeof TracedRuntimeBindings.recoverExpiredOwnerNotificationClaim;
@@ -206,6 +211,9 @@ export async function loadTracedRuntimeModule(): Promise<TracedRuntimeModule> {
     updateTaskWithExpectedVersion: tracedRuntime.updateTaskWithExpectedVersion,
     getCapabilityById: tracedRuntime.getCapabilityById,
     markCapabilityExpiredRecord: tracedRuntime.markCapabilityExpiredRecord,
+    listExpirableCapabilities: tracedRuntime.listExpirableCapabilities,
+    expireCapabilityIfDue: tracedRuntime.expireCapabilityIfDue,
+    observeCapabilityExpiry: tracedRuntime.observeCapabilityExpiry,
     persistCapabilityAction: tracedRuntime.persistCapabilityAction,
     persistWorkRequest: tracedRuntime.persistWorkRequest,
     listTaskSuggestions: tracedRuntime.listTaskSuggestions,
@@ -236,6 +244,8 @@ export async function loadTracedRuntimeModule(): Promise<TracedRuntimeModule> {
     deleteFinishedGmailOAuthStates: tracedRuntime.deleteFinishedGmailOAuthStates,
     persistGmailConnectionTransaction: tracedRuntime.persistGmailConnectionTransaction,
     persistGmailDisconnectTransaction: tracedRuntime.persistGmailDisconnectTransaction,
+    persistGmailChannelUnavailableTransaction:
+      tracedRuntime.persistGmailChannelUnavailableTransaction,
     acquireGmailSyncLock: tracedRuntime.acquireGmailSyncLock,
     releaseGmailSyncLock: tracedRuntime.releaseGmailSyncLock,
     markCommunicationAccountNeedsReauth: tracedRuntime.markCommunicationAccountNeedsReauth,
@@ -265,6 +275,7 @@ export async function loadTracedRuntimeModule(): Promise<TracedRuntimeModule> {
     listInFlightOwnerNotificationAttempts: tracedRuntime.listInFlightOwnerNotificationAttempts,
     listOwnerNotificationAttempts: tracedRuntime.listOwnerNotificationAttempts,
     findOwnerNotificationIntentById: tracedRuntime.findOwnerNotificationIntentById,
+    findOwnerNotificationSubjectTaskId: tracedRuntime.findOwnerNotificationSubjectTaskId,
     claimOwnerNotificationIntent: tracedRuntime.claimOwnerNotificationIntent,
     beginOwnerNotificationAttempt: tracedRuntime.beginOwnerNotificationAttempt,
     recoverExpiredOwnerNotificationClaim: tracedRuntime.recoverExpiredOwnerNotificationClaim,

@@ -11,6 +11,7 @@ import type { DbRuntimeModule } from '@/lib/db/runtime-db';
 import { loadDbRuntime } from '@/lib/db/runtime-db';
 import { readPersistenceErrorCode } from '@/lib/errors/safe-error-shapes';
 import { capabilityTokenError } from './errors';
+import { observeCapabilityExpiryForOrganization } from './expiry';
 import { omitTokenHash } from './validate';
 
 /**
@@ -80,6 +81,17 @@ export async function revokeCapabilityForOwner(input: {
 /**
  * Persist expired status when wall-clock has passed `expiresAt`.
  * Must not be called from GET validation (D059 non-mutating).
+ *
+ * ## A8.5d: the same transaction the sweep uses (D133)
+ *
+ * This used to read the row and then write it, which was adequate while expiry was a private detail
+ * of one request and inadequate the moment it became an event. Two problems, both fixed by routing
+ * through {@link observeCapabilityExpiryForOrganization}: a revocation landing between the read and
+ * the write could be overwritten by the clock, and an expiry observed here recorded no audit row at
+ * all, so half of the system's expiries would have been notifiable and the other half invisible.
+ *
+ * The compare-and-set inside that transaction is also what makes a Recipient's click racing the
+ * sweep produce one transition rather than two.
  */
 export async function persistCapabilityExpiryIfNeeded(input: {
   db: DbClient;
@@ -100,8 +112,21 @@ export async function persistCapabilityExpiryIfNeeded(input: {
   if (domain.expiresAt > input.now) {
     return null;
   }
+  // The domain transition still gates the persistence one, unchanged: it refuses a capability that
+  // has not reached `expiresAt`, and refusing here costs a throw instead of a transaction.
   markCapabilityExpired(domain, input.now);
-  const updated = await dbRuntime.markCapabilityExpiredRecord(
+
+  await observeCapabilityExpiryForOrganization({
+    db: input.db,
+    organizationId: input.organizationId,
+    capabilityId: existing.id,
+    taskId: existing.taskId,
+    assignmentId: existing.assignmentId,
+    expiredAt: existing.expiresAt,
+    observedAt: input.now,
+  });
+
+  const updated = await dbRuntime.getCapabilityById(
     input.db,
     input.organizationId,
     input.capabilityId,

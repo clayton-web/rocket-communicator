@@ -2,7 +2,10 @@ import type { ActionAttribution, Task, TaskNote, TaskSuggestion } from '@aicaa/d
 import { computeExcerptPurgeAt } from '../../../domain/dist/index.js';
 import type { DbClient, DbTransaction } from '../client/create-prisma-client.js';
 import { createAuditEvent, type CreateAuditEventInput } from '../repositories/audit-repository.js';
-import { createOwnerNotificationIntent } from '../repositories/owner-notification-repository.js';
+import {
+  createOwnerNotificationIntent,
+  type OwnerNotificationCapture,
+} from '../repositories/owner-notification-repository.js';
 import type { OwnerNotificationEventTypeValue } from '../mappers/owner-notification-mappers.js';
 import { revokeCapabilityRecord } from '../repositories/capability-repository.js';
 import { createTaskSuggestion } from '../repositories/suggestion-repository.js';
@@ -63,6 +66,21 @@ export async function applyApprovedSuggestionTerminalExcerptRetention(
 /**
  * Atomic return-to-Owner unit of work (Phase 2 invariant for Phase 3 orchestration):
  * update task (no assignment), optional note, revoke capability, audit event.
+ *
+ * ## A8.5d notification capture (D133)
+ *
+ * `task.returned_to_owner` is produced from here rather than from the service above, because this
+ * is the transaction that makes the return durable: the assignment is cleared, the capability is
+ * revoked, and the audit row is written in one commit, so the intent either joins all of that or
+ * none of it.
+ *
+ * The event type is fixed by this function rather than chosen by its caller. A return is the only
+ * notifiable thing this transaction does, and a parameter offering a choice would be a parameter
+ * offering a wrong answer.
+ *
+ * Attribution is copied from the audit input, which is the *capability* that returned the work —
+ * never the assignment, which this transaction has just cleared and which would read as null by the
+ * time anybody asked.
  */
 export async function persistReturnToOwner(input: {
   db: DbClient;
@@ -73,6 +91,7 @@ export async function persistReturnToOwner(input: {
   capabilityId: string | null;
   revokedAt: string;
   audit: CreateAuditEventInput;
+  ownerNotification?: OwnerNotificationCapture;
 }): Promise<{ task: Task; audit: AuditEventRecord }> {
   return input.db.$transaction(async (tx) => {
     await applyTaskUpdateWithExpectedVersion(
@@ -98,6 +117,31 @@ export async function persistReturnToOwner(input: {
     }
 
     const audit = await createAuditEvent(tx, input.audit);
+
+    if (input.ownerNotification) {
+      await createOwnerNotificationIntent(tx, {
+        id: input.ownerNotification.id,
+        organizationId: input.organizationId,
+        eventType: 'task_returned_to_owner',
+        subjectKind: 'task',
+        subjectId: input.task.id,
+        // The post-mutation version, as every Task-lifecycle event uses: a later return after a
+        // fresh assignment cycle is a different version and a legitimate second notification, while
+        // a retry of this same return is the same version and is refused by the unique index.
+        occurrenceKey: String(input.task.version),
+        occurredAt: input.audit.recordedAt,
+        actorKind: input.audit.actorKind,
+        ownerId: input.audit.ownerId ?? null,
+        capabilityId: input.audit.capabilityId ?? null,
+        systemId: input.audit.systemId ?? null,
+        assignmentId: input.audit.assignmentId ?? null,
+        attributionLabel: input.audit.attributionLabel ?? null,
+        auditEventId: audit.id,
+        requestId: input.audit.requestId ?? null,
+        correlationId: input.audit.correlationId ?? null,
+      });
+    }
+
     const reloaded = await getTaskById(tx, input.organizationId, input.task.id);
     return { task: reloaded, audit };
   });

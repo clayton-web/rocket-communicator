@@ -744,12 +744,14 @@ function extractLoadTracedRuntimeModuleBody(content) {
     content.match(
       /async function \w+\(\)\{(?:let \w+=await [^;]+;)?return\{createPrismaClient:(?:\w+\.)?createPrismaClient[^}]+\}\}/,
     ) ??
-    // Larger return objects (A5.3 Gmail runtime exports) exceed the prior 1200-char window.
+    // The return object grows with every runtime export, and the window has had to grow with it:
+    // 1200 characters before A5.3's Gmail exports, 6000 before A8.5d's expiry and capture bindings.
+    // Widening it changes nothing about what is asserted — the structure still has to be there.
     content.match(
-      /async function \w+\(\)\{let \w+=[\s\S]{0,6000}?createPrismaClient:\w+\.createPrismaClient[\s\S]{0,6000}?\}\}/,
+      /async function \w+\(\)\{let \w+=[\s\S]{0,16000}?createPrismaClient:\w+\.createPrismaClient[\s\S]{0,16000}?\}\}/,
     ) ??
     content.match(
-      /async function \w+\(\)\{[\s\S]{0,6000}?return\{createPrismaClient:\w+\.createPrismaClient[\s\S]{0,6000}?\}\}/,
+      /async function \w+\(\)\{[\s\S]{0,16000}?return\{createPrismaClient:\w+\.createPrismaClient[\s\S]{0,16000}?\}\}/,
     );
   return match?.[0];
 }

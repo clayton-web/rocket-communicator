@@ -24,6 +24,11 @@ import {
 } from '../repositories/reminder-delivery-attempt-repository.js';
 import { getReminderScheduleById } from '../repositories/reminder-schedule-repository.js';
 import { lockTaskScopeForReminderMutation } from '../repositories/reminder-scope-guard.js';
+import {
+  createOwnerNotificationIntent,
+  type OwnerNotificationSystemCapture,
+} from '../repositories/owner-notification-repository.js';
+import type { OwnerNotificationEventTypeValue } from '../mappers/owner-notification-mappers.js';
 
 /**
  * A8.4a occurrence finalization — the only safe way to record what happened to a reminder occurrence.
@@ -148,6 +153,8 @@ export interface FinalizeReminderOccurrenceInput {
   readonly providerAcceptedAt?: string | null;
   readonly providerMessageRef?: string | null;
   readonly nextOverdueOccurrence: NextOverdueOccurrenceInput | null;
+  /** A8.5d capture, forwarded to phase B. Phase A records no events. */
+  readonly ownerNotification?: OwnerNotificationSystemCapture;
 }
 
 /** What phase B did, or truthfully did not do. */
@@ -236,6 +243,7 @@ export async function finalizeReminderOccurrence(
       db: input.db,
       organizationId: input.organizationId,
       attemptId: input.attemptId,
+      ownerNotification: input.ownerNotification,
       settledAt: input.completedAt,
       nextOverdueOccurrence: input.nextOverdueOccurrence,
     });
@@ -312,6 +320,51 @@ export interface SettleReminderOccurrenceScheduleInput {
   /** When settlement is being recorded. May be much later than the occurrence's completion. */
   readonly settledAt: string;
   readonly nextOverdueOccurrence: NextOverdueOccurrenceInput | null;
+  /**
+   * A8.5d Owner Event Notification capture (D133).
+   *
+   * One identifier, used for whichever single event this settlement turns out to produce, and
+   * discarded when it produces none — which is the common case. At most one is possible: the three
+   * stop reasons are mutually exclusive branches, and a skip stops nothing.
+   *
+   * Notification capture is an extra fact recorded beside the settlement, never an input to it. No
+   * reminder decision below reads this field, and settlement with capture off is byte-for-byte the
+   * settlement A8.4b already performed.
+   */
+  readonly ownerNotification?: OwnerNotificationSystemCapture;
+}
+
+/**
+ * Which ratified event, if any, this settlement established (A8.5d).
+ *
+ * Derived from the effect the transaction just applied rather than from a new flag, so the notified
+ * event and the durable transition cannot drift apart. Each branch is true only when *this*
+ * settlement's conditional update was the one that stopped an active schedule at this generation, so
+ * a replayed settlement reports nothing and the caller's identifier goes unused.
+ *
+ * `scheduleAdvanced` carries the answer for a permanent failure, but only on an overdue occurrence.
+ * The same flag means something else entirely on an advance one — that a disposition was recorded on
+ * a schedule which is still running — and reading it there would announce a stop that never
+ * happened.
+ */
+function stopEventFor(
+  occurrenceKind: 'advance' | 'overdue',
+  outcome: TerminalReminderDeliveryOutcome,
+  effect: Pick<
+    ReminderScheduleSettlementResult,
+    'ceilingReached' | 'repeatedAmbiguityStop' | 'scheduleAdvanced'
+  >,
+): OwnerNotificationEventTypeValue | null {
+  if (effect.ceilingReached) {
+    return 'reminder_schedule_stopped_ceiling_reached';
+  }
+  if (effect.repeatedAmbiguityStop) {
+    return 'reminder_schedule_stopped_repeated_ambiguous';
+  }
+  if (occurrenceKind === 'overdue' && outcome === 'permanent_failure' && effect.scheduleAdvanced) {
+    return 'reminder_schedule_stopped_permanent_failure';
+  }
+  return null;
 }
 
 /**
@@ -401,6 +454,42 @@ export async function settleReminderOccurrenceSchedule(
     }
 
     const schedule = await getReminderScheduleById(tx, input.organizationId, occurrence.scheduleId);
+
+    if (input.ownerNotification) {
+      const eventType =
+        stopEventFor(occurrence.occurrenceKind, occurrence.outcome, effect) ??
+        (await noActiveAssignmentEventFor(tx, occurrence, schedule));
+      if (eventType !== null) {
+        await createOwnerNotificationIntent(tx, {
+          id: input.ownerNotification.id,
+          organizationId: input.organizationId,
+          eventType,
+          subjectKind: 'task_reminder_schedule',
+          subjectId: occurrence.scheduleId,
+          // The generation, which is what a stop is about: a generation stops once, and a schedule
+          // reopened by a material due-date change is a new generation entitled to its own history.
+          // The unique index is therefore what enforces "once", not a counter and not a caller.
+          occurrenceKey: String(occurrence.generation),
+          // The occurrence's own completion instant, matching `stoppedAt` — a schedule stopped by a
+          // failure stopped when the failure happened, not when a sweep noticed hours later.
+          occurredAt: occurrence.completedAt ?? input.settledAt,
+          // No audit row exists in this transaction to copy: A8.4a settlement writes none, and
+          // inventing reminder audit history here would be a reminder change dressed as a
+          // notification one. The attribution is the truthful one either way — a ceiling reached
+          // and a provider refusal are things the system observed, not things anybody did.
+          actorKind: 'system',
+          ownerId: null,
+          capabilityId: null,
+          systemId: input.ownerNotification.systemId,
+          assignmentId: null,
+          attributionLabel: null,
+          auditEventId: null,
+          requestId: null,
+          correlationId: null,
+        });
+      }
+    }
+
     return {
       ...effect,
       schedule,
@@ -408,6 +497,48 @@ export async function settleReminderOccurrenceSchedule(
       settledAttempt: { ...occurrence, scheduleSettledAt: input.settledAt },
     };
   });
+}
+
+/**
+ * Whether this skip is the one the Owner has to do something about (A8.5d, D133).
+ *
+ * The ratified event is "occurrence skipped for no active assignment, schedule still active — once
+ * per generation". Once per generation is the database's job, through the identity; the rest is
+ * decided here, from durable state read under the Task lock this transaction already holds:
+ *
+ *  - The skip reason must be exactly `no_active_assignment`. A Waiting or completed Task skips for
+ *    `task_not_eligible`, and a dead capability skips for `no_actionable_capability`; neither means
+ *    nobody is assigned, and neither is this event.
+ *  - The schedule must still be active at this generation. A stopped schedule owes no reminders, so
+ *    there is nothing for the Owner to unblock; a superseded generation's skip is old news.
+ *  - Nobody may be assigned *now*. A gap closed between the skip and its settlement needs no Owner,
+ *    and settlement holds the Task lock, so this reads a fact that cannot change under it.
+ *
+ * What deliberately is not attempted: distinguishing a Recipient being swapped out for ten minutes
+ * from a schedule abandoned for a week. No durable "unassigned since" state exists to tell them
+ * apart, and inventing one to soften a notification would be persisting mutable state for prose.
+ * The identity already bounds the cost of that ambiguity to one message per generation, which is
+ * the ratified answer to noise.
+ */
+async function noActiveAssignmentEventFor(
+  tx: Parameters<Parameters<DbClient['$transaction']>[0]>[0],
+  occurrence: PersistedReminderDeliveryAttempt,
+  schedule: PersistedReminderSchedule,
+): Promise<OwnerNotificationEventTypeValue | null> {
+  if (occurrence.outcome !== 'skipped' || occurrence.skipReason !== 'no_active_assignment') {
+    return null;
+  }
+  if (schedule.status !== 'active' || schedule.generation !== occurrence.generation) {
+    return null;
+  }
+  const assigned = await tx.taskAssignment.count({
+    where: {
+      organizationId: occurrence.organizationId,
+      taskId: occurrence.taskId,
+      clearedAt: null,
+    },
+  });
+  return assigned === 0 ? 'reminder_no_active_assignment' : null;
 }
 
 type ScheduleEffectInput = {
@@ -674,6 +805,8 @@ export async function terminalizeExhaustedRetryOccurrence(input: {
   readonly completedAt: string;
   readonly now: string;
   readonly nextOverdueOccurrence: NextOverdueOccurrenceInput | null;
+  /** A8.5d capture. The stop this produces is an ordinary permanent-failure stop and notifies as one. */
+  readonly ownerNotification?: OwnerNotificationSystemCapture;
 }): Promise<FinalizeReminderOccurrenceResult | null> {
   const attempt = await input.db.$transaction(async (tx) => {
     const identity = await tx.reminderDeliveryAttempt.findFirst({
@@ -702,6 +835,7 @@ export async function terminalizeExhaustedRetryOccurrence(input: {
       db: input.db,
       organizationId: input.organizationId,
       attemptId: input.attemptId,
+      ownerNotification: input.ownerNotification,
       settledAt: input.completedAt,
       nextOverdueOccurrence: input.nextOverdueOccurrence,
     });

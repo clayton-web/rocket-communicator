@@ -16,6 +16,10 @@ import {
 } from '@aicaa/domain';
 import type { CreateAuditEventInput, DbClient } from '@aicaa/db';
 import { loadDbRuntime } from '@/lib/db/runtime-db';
+import {
+  isOwnerEventCaptureEnabled,
+  OWNER_NOTIFICATION_INTENT_ID_PREFIX,
+} from '@/lib/notifications/capture-config';
 import { GmailConfigError } from './config';
 import { GmailRequestError } from './errors';
 import {
@@ -30,6 +34,14 @@ import { mapConnectionToDto, type GmailConnectionDto } from './connection-dto';
 import { CIPHERTEXT_PURPOSE, decryptToken } from './token-encryption';
 import { isGmailSyncError, GmailSyncError } from './sync-errors';
 import type { OwnerGmailContext } from './service';
+
+/**
+ * Who observed the Gmail channel going down, for the Owner notification that reports it
+ * (A8.5d, D133). Distinct from `GMAIL_POLL_SYSTEM_ID`, which names the worker holding a sync lock:
+ * an Owner pressing "sync now" is how a lapsed grant gets noticed, not how it lapsed, so the actor
+ * on the event is this either way.
+ */
+export const GMAIL_CHANNEL_SYSTEM_ID = 'gmail_channel' as const;
 
 /** Sync lock TTL — long enough for a bounded multi-page run. */
 export const SYNC_LOCK_TTL_MS = 5 * 60 * 1000;
@@ -119,6 +131,50 @@ function systemAudit(input: {
     requestId: input.requestId,
     recordedAt: input.now,
   };
+}
+
+/**
+ * Record the channel becoming unusable, atomically (A8.5d, D133).
+ *
+ * Replaces a status write followed by a separate audit write. Both facts now commit together, and
+ * the status write is compare-and-set on `status = 'connected'`, so this is a transition or it is
+ * nothing — which is what makes "one notification per outage" true even if a future caller reaches
+ * here twice for the same lapse.
+ *
+ * The audit is built by the caller and passed through unchanged, so an Owner's manual sync keeps
+ * recording an Owner-attributed failure and the cron keeps recording a system-attributed one, both
+ * with the action strings they have always used. Only the notification's own attribution is fixed at
+ * `system`: the transition is Google's doing, not the Owner's, whoever happened to notice it.
+ *
+ * The capture decision is taken before the transaction opens, so with capture off no statement is
+ * issued against an A8.5 table (D135).
+ */
+async function persistChannelUnavailable(
+  ctx: GmailAccountSyncContext,
+  runtime: DbRuntime,
+  input: {
+    account: CommunicationAccount;
+    transition: 'needs_reauth' | 'resync_required';
+    errorCode: string;
+    audit: CreateAuditEventInput;
+  },
+): Promise<CommunicationAccount> {
+  const result = await runtime.persistGmailChannelUnavailableTransaction({
+    db: ctx.db,
+    organizationId: ctx.organizationId,
+    accountId: input.account.id,
+    transition: input.transition,
+    errorCode: input.errorCode,
+    at: ctx.now,
+    audit: input.audit,
+    ownerNotification: isOwnerEventCaptureEnabled()
+      ? {
+          id: newId(OWNER_NOTIFICATION_INTENT_ID_PREFIX),
+          systemId: GMAIL_CHANNEL_SYSTEM_ID,
+        }
+      : undefined,
+  });
+  return result.account;
 }
 
 function toParsedFixture(
@@ -301,13 +357,31 @@ export async function runGmailAccountSync(
     } catch (error) {
       const syncError = toSyncError(error);
       if (syncError.code === 'needs_reauth') {
-        const marked = await runtime.markCommunicationAccountNeedsReauth(
-          ctx.db,
-          orgId,
-          account.id,
-          syncError.code,
-          ctx.now,
-        );
+        const marked = await persistChannelUnavailable(ctx, runtime, {
+          account,
+          transition: 'needs_reauth',
+          errorCode: syncError.code,
+          audit:
+            ctx.actor.kind === 'owner'
+              ? ownerAudit({
+                  action: 'gmail_manual_sync_failed',
+                  organizationId: orgId,
+                  ownerId: ctx.actor.ownerId,
+                  communicationAccountId: account.id,
+                  now: ctx.now,
+                  requestId: ctx.requestId,
+                  outcome: 'failed',
+                })
+              : systemAudit({
+                  action: 'gmail_needs_reauth',
+                  organizationId: orgId,
+                  systemId: ctx.actor.systemId,
+                  communicationAccountId: account.id,
+                  now: ctx.now,
+                  requestId: ctx.requestId,
+                  outcome: 'failed',
+                }),
+        });
         const finished = await runtime.finishGmailSyncRun(ctx.db, {
           organizationId: orgId,
           runId,
@@ -316,33 +390,6 @@ export async function runGmailAccountSync(
           retryable: false,
           errorCode: syncError.code,
         });
-        if (ctx.actor.kind === 'owner') {
-          await runtime.createAuditEvent(
-            ctx.db,
-            ownerAudit({
-              action: 'gmail_manual_sync_failed',
-              organizationId: orgId,
-              ownerId: ctx.actor.ownerId,
-              communicationAccountId: account.id,
-              now: ctx.now,
-              requestId: ctx.requestId,
-              outcome: 'failed',
-            }),
-          );
-        } else {
-          await runtime.createAuditEvent(
-            ctx.db,
-            systemAudit({
-              action: 'gmail_needs_reauth',
-              organizationId: orgId,
-              systemId: ctx.actor.systemId,
-              communicationAccountId: account.id,
-              now: ctx.now,
-              requestId: ctx.requestId,
-              outcome: 'failed',
-            }),
-          );
-        }
         completed = { run: finished, connection: mapConnectionToDto(marked) };
       } else {
         const finished = await finishFailure(runtime, ctx, runId, account.id, syncError);
@@ -373,13 +420,31 @@ export async function runGmailAccountSync(
 
     const syncError = toSyncError(error);
     if (syncError.code === 'invalid_history' && runCreated) {
-      const marked = await runtime.markCommunicationAccountResyncRequired(
-        ctx.db,
-        orgId,
-        account.id,
-        syncError.code,
-        ctx.now,
-      );
+      const marked = await persistChannelUnavailable(ctx, runtime, {
+        account,
+        transition: 'resync_required',
+        errorCode: syncError.code,
+        audit:
+          ctx.actor.kind === 'owner'
+            ? ownerAudit({
+                action: 'gmail_resync_required',
+                organizationId: orgId,
+                ownerId: ctx.actor.ownerId,
+                communicationAccountId: account.id,
+                now: ctx.now,
+                requestId: ctx.requestId,
+                outcome: 'failed',
+              })
+            : systemAudit({
+                action: 'gmail_resync_required',
+                organizationId: orgId,
+                systemId: ctx.actor.systemId,
+                communicationAccountId: account.id,
+                now: ctx.now,
+                requestId: ctx.requestId,
+                outcome: 'failed',
+              }),
+      });
       const finished = await runtime.finishGmailSyncRun(ctx.db, {
         organizationId: orgId,
         runId,
@@ -389,33 +454,6 @@ export async function runGmailAccountSync(
         errorCode: syncError.code,
         historyIdAfter: account.historyId,
       });
-      if (ctx.actor.kind === 'owner') {
-        await runtime.createAuditEvent(
-          ctx.db,
-          ownerAudit({
-            action: 'gmail_resync_required',
-            organizationId: orgId,
-            ownerId: ctx.actor.ownerId,
-            communicationAccountId: account.id,
-            now: ctx.now,
-            requestId: ctx.requestId,
-            outcome: 'failed',
-          }),
-        );
-      } else {
-        await runtime.createAuditEvent(
-          ctx.db,
-          systemAudit({
-            action: 'gmail_resync_required',
-            organizationId: orgId,
-            systemId: ctx.actor.systemId,
-            communicationAccountId: account.id,
-            now: ctx.now,
-            requestId: ctx.requestId,
-            outcome: 'failed',
-          }),
-        );
-      }
       completed = { run: finished, connection: mapConnectionToDto(marked) };
     } else if (runCreated) {
       const finished = await finishFailure(runtime, ctx, runId, account.id, syncError);

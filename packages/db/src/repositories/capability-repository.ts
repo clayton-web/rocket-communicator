@@ -189,6 +189,79 @@ export async function revokeCapabilityRecord(
   return mapCapability(row);
 }
 
+/** One expirable capability, with just enough identity to expire it and describe the event. */
+export interface ExpirableCapabilityRow {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly taskId: string;
+  readonly expiresAt: string;
+}
+
+/**
+ * Active capabilities whose expiry instant has passed, oldest first (A8.5d).
+ *
+ * The scan half of the expiry observation. `status = 'active'` plus `expires_at <=` the supplied
+ * instant is exactly the leading edge of `(organization_id, status, expires_at)`, and revoked,
+ * already-expired, and `used` rows are excluded by the predicate rather than by a later filter, so
+ * the sweep can never re-emit an expiry or overwrite a revocation it is not entitled to touch.
+ *
+ * Deliberately global across organizations, like the reminder due-scan and the notification scan:
+ * expiry is a property of the clock, not of a tenant, and scanning per organization would let one
+ * busy Owner starve another.
+ *
+ * The instant is an argument. Nothing here reads a clock (D103).
+ */
+export async function listExpirableCapabilities(
+  db: Client,
+  input: { readonly expiresAtOrBefore: string; readonly limit: number },
+): Promise<ExpirableCapabilityRow[]> {
+  if (!Number.isInteger(input.limit) || input.limit < 1 || input.limit > 500) {
+    throw persistenceValidation('Capability expiry scan limit must be between 1 and 500.');
+  }
+  const rows = await db.taskCapability.findMany({
+    where: { status: 'active', expiresAt: { lte: fromIso(input.expiresAtOrBefore)! } },
+    orderBy: [{ expiresAt: 'asc' }, { id: 'asc' }],
+    take: input.limit,
+    select: { id: true, organizationId: true, taskId: true, expiresAt: true },
+  });
+  return rows.map((row) => ({
+    id: row.id,
+    organizationId: row.organizationId,
+    taskId: row.taskId,
+    expiresAt: row.expiresAt.toISOString(),
+  }));
+}
+
+/**
+ * Transition one capability to expired, at most once, and say whether this call was the one that
+ * did it (A8.5d).
+ *
+ * Compare-and-set on `status = 'active'` **and** on the expiry actually having passed. The first
+ * predicate is what makes two observers of the same lapse produce one transition; the second is what
+ * stops a caller expiring a capability that has not expired, which the read-then-write
+ * {@link markCapabilityExpiredRecord} could be talked into by a stale read.
+ *
+ * A revoked or consumed capability matches neither predicate and is left exactly as it is. That
+ * ordering matters: revocation is a decision somebody made, expiry is only the clock arriving, and
+ * the clock must never overwrite a decision.
+ */
+export async function expireCapabilityIfDue(
+  db: Client,
+  input: { readonly organizationId: string; readonly capabilityId: string; readonly at: string },
+): Promise<{ readonly expired: boolean; readonly capability: PersistedCapability }> {
+  const changed = await db.taskCapability.updateMany({
+    where: {
+      id: input.capabilityId,
+      organizationId: input.organizationId,
+      status: 'active',
+      expiresAt: { lte: fromIso(input.at)! },
+    },
+    data: { status: 'expired', revocationReason: 'expired' },
+  });
+  const capability = await getCapabilityById(db, input.organizationId, input.capabilityId);
+  return { expired: changed.count === 1, capability };
+}
+
 export async function markCapabilityExpiredRecord(
   db: Client,
   organizationId: string,

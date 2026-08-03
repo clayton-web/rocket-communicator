@@ -103,7 +103,7 @@ Also audit: suggestion decisions, assignment/forward/handoff approvals and deliv
 
 **No behavioural tracking.** P1 authorizes no commercial analytics vendor, session replay, or behavioural tracking (D115). Passive behaviour, inactivity, and the absence of a correction are never treated as approval or as a decision (D113).
 
-## Owner Event Notification mail (A8.5c; D134, D136)
+## Owner Event Notification mail (A8.5c, A8.5d; D133, D134, D136)
 
 **Implemented and unreachable.** The renderer and the real Gmail adapter exist; `ENABLE_OWNER_EVENT_DELIVERY` is unset in every environment, and **no Gmail message has been sent by this engine in implementation or in any test**.
 
@@ -114,6 +114,10 @@ Also audit: suggestion decisions, assignment/forward/handoff approvals and deliv
 **Owner mail states the event; it never quotes untrusted input.** Permitted content is fixed Rocket copy, the canonical event meaning, the URL-redacted persisted Task summary, the historical actor kind, the occurrence instant, and one link to an authenticated Owner surface. Capability tokens, token hashes, capability URLs, `/c/` paths, temporary excerpts, raw incoming mail, Recipient note bodies, clarification text, OAuth data, provider error bodies, raw exception strings, tracking pixels, and remote images are all prohibited. **Escaping does not satisfy the prohibition on Recipient text** — the rule is semantic: a Recipient's words delivered to the Owner's inbox under Rocket's own `From` address are laundered regardless of encoding. Structurally, such text has no parameter through which to reach the renderer, and the renderer additionally refuses any rendered body containing a `/c/` path or any URL other than the single link it constructed.
 
 **An Owner link is not a credential (D134).** D130 governs the capability bearer secret in Recipient mail. Owner links point only to authenticated application surfaces on the canonical base URL, with identifiers path-encoded; an unauthenticated reader reaches sign-in rather than Task data.
+
+**Nine more producers store nothing new (A8.5d).** All ten ratified events now write intents, and the A8.5a columns were sufficient for every one of them. No clarification text, note body, Gmail excerpt, provider response body, exception message, email address, capability token, or capability URL reaches an intent row, and a source guard reads the producer transactions to keep that true. The four events whose copy is intentionally generic — a terminal handoff failure, a clarification request, a Gmail disconnection, a reminder stop — say what happened and point at the authenticated surface where the detail lives, rather than carrying the detail into the Owner's inbox. A subject-to-Task lookup at render time selects an identifier and nothing else.
+
+**Capability expiry observation reveals nothing to a Recipient.** The shared expiry transaction changes only the capability's status, and only from `active` and only once its instant has passed. It cannot make an expired token usable, it does not overwrite a newer revoked or consumed state, and a failure to record a notification cannot affect authorization truth — the notification is written after the transition and inside the same transaction, so either both facts hold or neither does.
 
 **Self-ingestion protection is narrow (D136).** Rocket's own Owner notifications carry a fixed `X-Rocket-Generated: owner-event-notification` header emitted by the controlled MIME builder, which owns the name and validates the value so callers still cannot supply arbitrary headers. Ingestion skips a message carrying exactly one exact marker in its **top-level** headers, before any excerpt or event is created; nested-part headers are ignored, since honouring them would let an attacker claim the exclusion by attaching a forwarded copy. Duplicate, empty, and near-miss markers fail closed and remain ingestible, and ordinary self-sent mail is untouched.
 
