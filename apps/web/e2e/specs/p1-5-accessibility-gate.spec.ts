@@ -1,6 +1,6 @@
 import { test, expect, signInAsOwner, uniqueLabel } from '../support/fixtures';
 import { seedCapabilityFixture } from '../support/capability-fixture';
-import { createRecipient, createTask } from '../support/owner-api';
+import { createRecipient, createTask, getTask } from '../support/owner-api';
 import { clearReminderSchedules, stopReminderScheduleForAttention } from '../support/db-fixtures';
 import { expectNoSeriousOrCriticalViolations } from '../support/accessibility';
 import { E2E_WORKSPACE_DOMAIN } from '../config/e2e-env';
@@ -35,6 +35,12 @@ export const SCANNED_STATES = [
   'Owner task list',
   'Owner task list (loading)',
   'Owner task detail',
+  'Owner reminder panel (no due date)',
+  'Owner reminder panel (active schedule)',
+  'Owner reminder panel (Waiting, suspended)',
+  'Owner reminder panel (stopped, needs attention)',
+  'Owner reminder panel (removal confirmation)',
+  'Owner reminder panel (stale state resolved)',
   'Owner attention list (empty)',
   'Owner attention list (populated)',
   'Owner handoff dialog (open)',
@@ -132,6 +138,129 @@ test.describe('D119 accessibility gate — Owner surfaces', () => {
     await ownerPage.goto('/attention');
     await expect(ownerPage.getByRole('main').getByRole('listitem')).toHaveCount(1);
     await expectNoSeriousOrCriticalViolations(ownerPage, 'Owner attention list (populated)');
+  });
+
+  /**
+   * The Task-level reminder panel in each state an Owner can land on (A8.6b).
+   *
+   * Scanned as separate states because they are structurally different: one has a form and no
+   * data, one has a form and a description list, one replaces the form with an explanation, one
+   * is a modal dialog, and one carries a live-region result. Scanning only the first would cover
+   * the emptiest version of the panel and skip every state that has something to get wrong.
+   *
+   * All five are reached the way an Owner reaches them. The only fixture is the seeded stopped
+   * schedule, which has no product path because the attention flag is raised by the reminder
+   * worker settling a real delivery — and delivery is disabled.
+   */
+  test('reminder panel with no due date and with an active schedule', async ({ ownerPage }) => {
+    const task = await createTask(
+      ownerPage.request,
+      'Accessibility fixture',
+      uniqueLabel('Reminder panel scan'),
+    );
+
+    await ownerPage.goto(`/tasks/${task.id}`);
+    const panel = ownerPage.getByRole('region', { name: 'Reminders' });
+    await expect(panel.getByText('No reminders are scheduled for this Task.')).toBeVisible();
+    await expectNoSeriousOrCriticalViolations(ownerPage, 'Owner reminder panel (no due date)');
+
+    await panel.getByLabel(/set a reminder due date/i).fill('2026-09-15');
+    await panel.getByRole('button', { name: 'Set reminder due date' }).click();
+    await expect(panel.getByText(/Due date saved/)).toBeVisible();
+    await expectNoSeriousOrCriticalViolations(ownerPage, 'Owner reminder panel (active schedule)');
+
+    // The destructive confirmation, scanned open with focus inside it.
+    await panel.getByRole('button', { name: 'Remove reminder due date' }).click();
+    await expect(ownerPage.getByRole('dialog')).toBeVisible();
+    await expectNoSeriousOrCriticalViolations(
+      ownerPage,
+      'Owner reminder panel (removal confirmation)',
+    );
+  });
+
+  test('reminder panel while the Task is Waiting', async ({ ownerPage }) => {
+    const task = await createTask(
+      ownerPage.request,
+      'Accessibility fixture',
+      uniqueLabel('Reminder panel waiting scan'),
+    );
+
+    await ownerPage.goto(`/tasks/${task.id}`);
+    const panel = ownerPage.getByRole('region', { name: 'Reminders' });
+    await panel.getByLabel(/set a reminder due date/i).fill('2026-09-15');
+    await panel.getByRole('button', { name: 'Set reminder due date' }).click();
+    await expect(panel.getByText(/Due date saved/)).toBeVisible();
+
+    const current = await getTask(ownerPage.request, task.id);
+    const waiting = await ownerPage.request.post(`/api/v1/tasks/${task.id}/waiting`, {
+      headers: { 'Content-Type': 'application/json', 'If-Match': current.etag },
+      data: { waitingUntil: '2026-09-10T16:00:00.000Z' },
+    });
+    expect(waiting.ok()).toBe(true);
+
+    await ownerPage.goto(`/tasks/${task.id}`);
+    await expect(
+      ownerPage
+        .getByRole('region', { name: 'Reminders' })
+        .getByText(/paused because this Task is Waiting/),
+    ).toBeVisible();
+    await expectNoSeriousOrCriticalViolations(
+      ownerPage,
+      'Owner reminder panel (Waiting, suspended)',
+    );
+  });
+
+  test('reminder panel for a stopped schedule, and after a concurrent change', async ({
+    ownerPage,
+  }) => {
+    clearReminderSchedules();
+
+    const task = await createTask(
+      ownerPage.request,
+      'Accessibility fixture',
+      uniqueLabel('Reminder panel stopped scan'),
+    );
+    stopReminderScheduleForAttention({
+      taskId: task.id,
+      dueLocalDate: '2026-08-10',
+      stopReason: 'repeated_ambiguous_outcomes',
+    });
+
+    await ownerPage.goto(`/tasks/${task.id}`);
+    const panel = ownerPage.getByRole('region', { name: 'Reminders' });
+    await expect(
+      panel.getByText(/could not confirm that recent reminders were delivered/),
+    ).toBeVisible();
+    await expectNoSeriousOrCriticalViolations(
+      ownerPage,
+      'Owner reminder panel (stopped, needs attention)',
+    );
+
+    /*
+     * A real stale-ETag resolution, produced rather than simulated.
+     *
+     * The panel is holding the token it was rendered with. Changing the reminder out of band moves
+     * the server's version, so the next submission from this page is refused by the real route with
+     * a genuine `412` and the panel resolves it by re-reading. No response is intercepted and no
+     * error is injected: the conflict is the one two clients would actually have.
+     */
+    const reminder = await ownerPage.request.get(`/api/v1/tasks/${task.id}/reminder`);
+    const outOfBand = await ownerPage.request.put(`/api/v1/tasks/${task.id}/reminder`, {
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': String(reminder.headers()['etag']),
+      },
+      data: { dueLocalDate: '2026-10-05' },
+    });
+    expect(outOfBand.ok()).toBe(true);
+
+    await panel.getByLabel(/reminder due date/i).fill('2026-11-01');
+    await panel.getByRole('button', { name: 'Save reminder due date' }).click();
+    await expect(panel.getByText(/changed somewhere else/)).toBeVisible();
+    await expectNoSeriousOrCriticalViolations(
+      ownerPage,
+      'Owner reminder panel (stale state resolved)',
+    );
   });
 
   /*

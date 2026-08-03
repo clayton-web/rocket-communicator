@@ -81,7 +81,13 @@ test('Task status and urgency render as human labels, never raw enum values', as
   await expect(row).not.toContainText('overdue');
 
   await ownerPage.goto(`/tasks/${task.id}`);
-  await expect(ownerPage.getByText('Due date')).toBeVisible();
+  /*
+   * Exact, because the Task carries two independent dates and the page now shows both. The row
+   * asserted here is the Task's own due date; the reminder panel's "Reminder due date" is a
+   * different field with a different meaning (D102, D109), and a substring match would accept
+   * either one and silently stop proving this row exists.
+   */
+  await expect(ownerPage.getByText('Due date', { exact: true })).toBeVisible();
   await expect(ownerPage.getByText('Overdue')).toBeVisible();
 });
 

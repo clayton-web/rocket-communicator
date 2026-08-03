@@ -15,11 +15,13 @@ import { EmptyState } from '../../_components/empty-state';
 import { PageHeader } from '../../_components/page-header';
 import { StatusBadge } from '../../_components/status-badge';
 import { HandoffPanel } from './handoff-panel';
+import { ReminderPanel } from './reminder-panel';
 import styles from '../tasks.module.css';
 
 type TaskDto = components['schemas']['Task'];
 type RecipientDto = components['schemas']['Recipient'];
 type GmailConnectionDto = components['schemas']['GmailConnection'];
+type TaskReminderStateDto = components['schemas']['TaskReminderState'];
 type TaskNoteDto = components['schemas']['TaskNote'];
 type ActionAttributionDto = components['schemas']['ActionAttribution'];
 
@@ -69,11 +71,13 @@ export function TaskDetail({
   initialRecipients,
   recipientsNextCursor,
   initialConnection,
+  initialReminder,
 }: {
   task: TaskDto;
   initialRecipients: RecipientDto[];
   recipientsNextCursor: string | null;
   initialConnection: GmailConnectionDto;
+  initialReminder: TaskReminderStateDto;
 }) {
   const outcome = task.outcome;
   const notes = task.notes ?? [];
@@ -166,6 +170,8 @@ export function TaskDetail({
           </>
         )}
       </section>
+
+      <ReminderPanel taskId={task.id} taskStatus={task.status} initialReminder={initialReminder} />
 
       <HandoffPanel
         initialTask={task}

@@ -18,6 +18,14 @@ vi.mock('@/lib/recipients', () => ({
 vi.mock('@/lib/gmail/service', () => ({
   getGmailConnection: vi.fn(),
 }));
+/*
+ * The Task detail page loads reminder state on the server since A8.6b, so this gate test has to
+ * stub it like every other read the page performs. Left unstubbed it reaches the real database
+ * runtime and the page fails before the assertions about the auth gate are ever evaluated.
+ */
+vi.mock('@/lib/reminders', () => ({
+  getOwnerTaskReminder: vi.fn(),
+}));
 vi.mock('@/app/(owner)/tasks/_components/handoff-panel', () => ({
   HandoffPanel: () => <div data-testid="handoff-panel-stub" />,
 }));
@@ -27,10 +35,28 @@ import { getDb } from '@/lib/db/server';
 import { getOwnerTask, listOwnerTasks } from '@/lib/tasks';
 import { listOwnerRecipients } from '@/lib/recipients';
 import { getGmailConnection } from '@/lib/gmail/service';
+import { getOwnerTaskReminder } from '@/lib/reminders';
 import TasksPage from '@/app/(owner)/tasks/page';
 import TaskDetailPage from '@/app/(owner)/tasks/[taskId]/page';
 import TasksError from '@/app/(owner)/tasks/error';
 import { TaskDetail } from '@/app/(owner)/tasks/_components/task-detail';
+
+/** A Task with no due date, the reminder state every fixture below starts from. */
+function noDueDateReminder(taskId: string) {
+  return {
+    taskId,
+    etag: `"task-reminder-${taskId}-v0"`,
+    dueLocalDate: null,
+    schedulingTimeZone: null,
+    state: 'no_due_date' as const,
+    generation: null,
+    advance: null,
+    nextOverdueOccurrence: null,
+    overdueDeliveredCount: null,
+    requiresOwnerAttention: false,
+    stopReason: null,
+  };
+}
 
 /** Shape of the production failure: Prisma could not reach the configured database host. */
 function unreachableDatabaseError(): Error {
@@ -55,6 +81,7 @@ describe('A7.8 Owner Task pages auth gate', () => {
       },
     });
     vi.mocked(getDb).mockResolvedValue({} as never);
+    vi.mocked(getOwnerTaskReminder).mockResolvedValue(noDueDateReminder('task_1'));
     vi.mocked(listOwnerRecipients).mockResolvedValue({ items: [], nextCursor: null });
     vi.mocked(getGmailConnection).mockResolvedValue({
       status: 'not_connected',
@@ -205,6 +232,7 @@ describe('A7.8 Owner Task pages auth gate', () => {
           canSend: true,
           requiresSendReconsent: false,
         }}
+        initialReminder={noDueDateReminder('task_notes_1')}
       />,
     );
 

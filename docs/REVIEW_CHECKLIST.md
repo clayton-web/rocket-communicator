@@ -197,9 +197,26 @@ Gates for the due-date-driven Follow-up Engine (D102–D110). These record **exp
 - [ ] Local calendar dates render as the day they name, through a local-date formatter rather than the instant formatter, which would shift them a day in the organization's zone
 - [ ] Empty, loading, and error states are **distinguishable**, and the error state cannot be read as an all-clear
 - [ ] A missing migration or database failure reaches the **error boundary**; it is never degraded into an empty state
-- [ ] Any claim about D108 is limited to what shipped: **A8.6a establishes the cross-Task discovery surface** and does not satisfy, close, or discharge the D108 Owner UI gate
+- [ ] Any claim about D108 is limited to what shipped: **A8.6a establishes the cross-Task discovery surface**, **A8.6b adds Task-level status and repair**, and the gate is discharged only by architecture approval of the complete minimum reminder UI — not by a passing test run
 - [ ] An E2E assertion about the **whole** list — "nothing needs attention", "exactly one item" — clears the organization's schedules first. The harness migrates the local database but never truncates it, so a row seeded by an earlier run would otherwise make the empty state unprovable forever
 - [ ] A loading-boundary scan holds the boundary open by **throttling the transport**, not by delaying a `page.route` handler. `page.route('**/x')` does not match the `/x?_rsc=<hash>` a client navigation actually requests, and blocking a response outright prevents the server from streaming the Suspense fallback at all — such a test passes only while the click keeps landing before hydration
+
+### Owner reminder mutation (A8.6b; apply to any surface that changes reminder configuration)
+
+- [ ] The **reminder** ETag is sent on every mutation and the **Task** ETag is never substituted — a reminder write does not bump `Task.version`, so a Task token cannot protect a reminder. A test proves the substitution is rejected
+- [ ] A `412` is a **resolution path**, not a failure: authoritative state is re-read and re-presented, the Owner is told the reminder changed elsewhere or the request may already have applied, and the mutation is **never silently retried** with a fresh token
+- [ ] `428 PRECONDITION_REQUIRED` is treated as an implementation defect and is **unreachable** from the UI
+- [ ] An unknown transport outcome (D132) is reported as **unknown** and resolved by re-reading, never assumed in either direction, and never auto-resubmitted. No offline queue, background sync, service-worker mutation cache, or local authoritative state
+- [ ] Confirmed success, validation failure, domain conflict, stale ETag, unknown outcome, and a failed re-read are **six distinct messages**; none collapses into "failed"
+- [ ] Local state is replaced **only** by a server-returned projection. HTTP status alone never counts as success, and double submission is blocked in memory
+- [ ] Editability is **derived from the domain rule**, not restated in the UI. A control that would predictably earn a `409 DOMAIN_CONFLICT` is disabled with the reason stated, and the reason is available to assistive technology rather than conveyed by the disabled state alone
+- [ ] **No resend control in any state** — no "send now", "retry", "restart", "force", or "reset". D129 stopped the schedule deliberately and no resend policy is ratified. A gap is reported, not papered over with a button
+- [ ] A material due-date change discloses the **cycle restart, count reset, and recalculation before submission** (D104), and stays silent on a first set and a same-date re-save so the disclosure keeps its meaning
+- [ ] Owner-facing copy uses **"reminder cycle"**; `generation`, occurrence-kind enums, raw stop-reason labels, claim/lease/fencing, retry counters, scheduler terms, and Prisma vocabulary appear nowhere
+- [ ] A calendar date is carried as the exact `YYYY-MM-DD` string end to end — no `Date` construction, no browser-local midnight, no timezone shift — and no time picker exists, because reminder timing is fixed by policy
+- [ ] Updating a schedule is **never described as sending anything**; configuration and delivery are separate facts and no copy claims an email on the strength of a saved date
+- [ ] A destructive removal is gated by the established confirmation pattern, states that sent email **cannot be recalled**, and moves focus in and restores it on close
+- [ ] A **value** imported from a `serverExternalPackages` package is a runtime hazard: the binding can arrive `undefined` in the server with no error, no failing unit test, and a plausible-looking result. Reach those packages through the established dynamic runtime loader, or own the constant locally with a test asserting the **product** parses, not merely that the two values match
 
 ## Owner web experience foundation (P1; apply when P1 work is in scope)
 

@@ -18,6 +18,7 @@ type RecipientDto = components['schemas']['Recipient'];
 type ListRecipientsResponse = components['schemas']['ListRecipientsResponse'];
 type HandoffTaskResponse = components['schemas']['HandoffTaskResponse'];
 type GmailConnectionDto = components['schemas']['GmailConnection'];
+type TaskReminderStateDto = components['schemas']['TaskReminderState'];
 
 export type OwnerApiError = ParsedPublicError;
 
@@ -208,6 +209,119 @@ export async function postTaskHandoff(input: {
   return {
     ok: true,
     data: body as HandoffTaskResponse,
+    etag: response.headers.get('etag'),
+  };
+}
+
+/*
+ * Reminder resource (A8.6b).
+ *
+ * Three deliberate differences from the handoff mutation above.
+ *
+ * `If-Match` carries the *reminder* ETag, never the Task's. A reminder write does not bump
+ * `Task.version`, so a Task ETag stays valid across a reminder change it cannot describe, and the
+ * route rejects one presented here with `412`.
+ *
+ * There is no `Idempotency-Key`. The reminder contract does not define one, and inventing a header
+ * the server ignores would suggest a replay guarantee that does not exist. Safety comes from the
+ * ETag: a replayed `PUT` either matches the current version and is the semantically idempotent
+ * same-date save, or it does not and is refused.
+ *
+ * The response ETag is read from the header rather than the body so the caller adopts the token the
+ * transport actually returned.
+ */
+
+export async function fetchTaskReminder(
+  taskId: string,
+): Promise<OwnerApiResult<TaskReminderStateDto>> {
+  const sent = await send(
+    `/api/v1/tasks/${encodeURIComponent(taskId)}/reminder`,
+    {
+      method: 'GET',
+      credentials: 'same-origin',
+      cache: 'no-store',
+      headers: { Accept: 'application/json' },
+    },
+    { mutation: false },
+  );
+  if (!sent.ok) {
+    return sent;
+  }
+  const response = sent.response;
+  const body = await readJson(response);
+  if (!response.ok) {
+    return fail(response.status, body);
+  }
+  return {
+    ok: true,
+    data: body as TaskReminderStateDto,
+    etag: response.headers.get('etag'),
+  };
+}
+
+export async function putTaskReminder(input: {
+  taskId: string;
+  dueLocalDate: string;
+  ifMatch: string;
+}): Promise<OwnerApiResult<TaskReminderStateDto>> {
+  const sent = await send(
+    `/api/v1/tasks/${encodeURIComponent(input.taskId)}/reminder`,
+    {
+      method: 'PUT',
+      credentials: 'same-origin',
+      cache: 'no-store',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'If-Match': input.ifMatch,
+      },
+      body: JSON.stringify({ dueLocalDate: input.dueLocalDate }),
+    },
+    { mutation: true },
+  );
+  if (!sent.ok) {
+    return sent;
+  }
+  const response = sent.response;
+  const body = await readJson(response);
+  if (!response.ok) {
+    return fail(response.status, body);
+  }
+  return {
+    ok: true,
+    data: body as TaskReminderStateDto,
+    etag: response.headers.get('etag'),
+  };
+}
+
+export async function deleteTaskReminder(input: {
+  taskId: string;
+  ifMatch: string;
+}): Promise<OwnerApiResult<TaskReminderStateDto>> {
+  const sent = await send(
+    `/api/v1/tasks/${encodeURIComponent(input.taskId)}/reminder`,
+    {
+      method: 'DELETE',
+      credentials: 'same-origin',
+      cache: 'no-store',
+      headers: {
+        Accept: 'application/json',
+        'If-Match': input.ifMatch,
+      },
+    },
+    { mutation: true },
+  );
+  if (!sent.ok) {
+    return sent;
+  }
+  const response = sent.response;
+  const body = await readJson(response);
+  if (!response.ok) {
+    return fail(response.status, body);
+  }
+  return {
+    ok: true,
+    data: body as TaskReminderStateDto,
     etag: response.headers.get('etag'),
   };
 }

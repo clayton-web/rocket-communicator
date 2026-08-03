@@ -1,5 +1,5 @@
 import { formatETag } from '@aicaa/domain';
-import { NO_SCHEDULE_REMINDER_VERSION, type PersistedReminderSchedule } from '@aicaa/db';
+import type { PersistedReminderSchedule } from '@aicaa/db';
 
 /**
  * The reminder resource's concurrency token (A8.3b audit F5).
@@ -45,7 +45,25 @@ import { NO_SCHEDULE_REMINDER_VERSION, type PersistedReminderSchedule } from '@a
  * is why worker occurrence and count updates must never increment the version.
  */
 
-export { NO_SCHEDULE_REMINDER_VERSION };
+/**
+ * The version a Task with no schedule reports, declared here rather than imported (A8.6b).
+ *
+ * `@aicaa/db` exports the same constant and is the authority for it, but it is listed in
+ * `serverExternalPackages`, so Next leaves it as a runtime external and a *value* imported from it
+ * statically arrives `undefined` in the running server. Nothing fails loudly when that happens: the
+ * token formats as `"task-reminder-<id>-vundefined"`, the GET route returns it with a `200`, and the
+ * only symptom is that every mutation presenting it is refused with `412` — an unparseable token
+ * reported as a concurrency conflict. It survived A8.3b because the unit tests resolve the package
+ * directly and no browser test had yet established a first due date; the A8.6b panel is the first
+ * caller to round-trip a no-schedule token through a real server, which is how it surfaced.
+ *
+ * The rest of the app already avoids this by reaching persistence only through `loadDbRuntime()`.
+ * That is a dynamic import returning async functions, and these two helpers are synchronous and
+ * called from synchronous projection code, so the narrow fix is to own the constant here. It is a
+ * single literal that has never changed, and `a8-6b-reminder-etag.test.ts` asserts it still equals
+ * the persistence value so the two cannot drift apart silently.
+ */
+export const NO_SCHEDULE_REMINDER_VERSION = 0;
 
 /** Format the strong ETag for a Task's reminder resource. */
 export function reminderETag(taskId: string, reminderVersion: number): string {

@@ -3,9 +3,13 @@ import type { OwnerAttentionReminderRow } from '@aicaa/db';
 import type { StatusTone } from '@/lib/presentation/task-status';
 import { formatOwnerLocalDate } from '@/lib/presentation/datetime';
 import { deriveTaskTitle } from '@/lib/presentation/task-title';
+import {
+  ATTENTION_STOP_REASON_COPY,
+  type ReminderStopReason,
+  type StopReasonCopy,
+} from './stop-reason-copy';
 
 type TaskSummaryPoint = components['schemas']['TaskSummaryPoint'];
-type ReminderStopReason = NonNullable<components['schemas']['TaskReminderState']['stopReason']>;
 
 /**
  * Owner attention projection for stopped reminder automation (A8.6a; D108, D112).
@@ -55,12 +59,7 @@ export interface OwnerAttentionView {
   readonly batchFilled: boolean;
 }
 
-interface AttentionCopy {
-  readonly badge: string;
-  readonly badgeTone: StatusTone;
-  readonly headline: string;
-  readonly explanation: string;
-}
+type AttentionCopy = StopReasonCopy;
 
 /**
  * Copy for a schedule that is flagged but whose stop reason this surface cannot explain.
@@ -82,37 +81,14 @@ const UNEXPLAINED: AttentionCopy = {
 /**
  * Stop reason to Owner-facing meaning, exhaustive over the contracted enum.
  *
- * Three reasons raise attention and get a specific sentence. The other three are ordinary endings —
- * the Task finished, the Task was dismissed, the Owner removed the due date — and a schedule
- * carrying one of them should never appear on this list at all; each maps to the generic copy so
- * that if one ever did, the page says something true rather than nothing.
- *
- * The ambiguity wording is load-bearing (D129). Rocket does not know the reminder was missed; it
- * knows it could not confirm delivery, and those are different facts. "The Recipient did not
- * receive it" would send an Owner to re-send something that may already have arrived twice.
+ * The three attention-raising reasons come from the shared constant the Task panel also reads, so
+ * the list and the Task cannot describe the same stop differently. The other three are ordinary
+ * endings — the Task finished, the Task was dismissed, the Owner removed the due date — and a
+ * schedule carrying one of them should never appear on this list at all; each maps to the generic
+ * copy so that if one ever did, the page says something true rather than nothing.
  */
 const STOP_REASON_COPY: Record<ReminderStopReason, AttentionCopy> = {
-  overdue_ceiling_reached: {
-    badge: 'Reminders finished',
-    badgeTone: 'caution',
-    headline: 'Reminders have finished for this Task.',
-    explanation:
-      'Rocket sent every daily reminder it will send for this due date and stopped. It will not start again on its own.',
-  },
-  permanent_delivery_failure: {
-    badge: 'Reminders stopped',
-    badgeTone: 'critical',
-    headline: 'Reminders stopped after a delivery failure.',
-    explanation:
-      'A reminder could not be delivered, so Rocket stopped rather than continuing to try. Nothing further will be sent for this Task.',
-  },
-  repeated_ambiguous_outcomes: {
-    badge: 'Reminders stopped',
-    badgeTone: 'critical',
-    headline: 'Reminders stopped because delivery could not be confirmed.',
-    explanation:
-      'Rocket could not confirm that recent reminders were delivered, so it stopped. The Recipient may or may not have received them.',
-  },
+  ...ATTENTION_STOP_REASON_COPY,
   task_completed: UNEXPLAINED,
   task_dismissed: UNEXPLAINED,
   due_date_removed: UNEXPLAINED,

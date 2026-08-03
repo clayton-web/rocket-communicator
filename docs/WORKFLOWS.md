@@ -334,8 +334,24 @@ The Owner shell provides one attention and operational-status destination (D118)
 
 The third row is the one worth reading twice. Rocket does not know the reminder was missed — it knows it could not confirm otherwise — and the copy must not collapse that into "not delivered", which would send an Owner to re-send something that may already have arrived.
 
-The page is a **read**: one bounded, organization-scoped query per navigation, no endpoint, no mutation, and no control. It states its own limits — it covers reminder automation only, and it does not monitor, queue, alert, or refresh itself. Acting on what it surfaces means opening the Task, and the Task-level status and repair controls are **A8.6b**. **D108 is not satisfied by A8.6a**; it is satisfied only once the complete minimum A8.6 reminder experience is reviewed and approved.
+The page is a **read**: one bounded, organization-scoped query per navigation, no endpoint, no mutation, and no control. It states its own limits — it covers reminder automation only, and it does not monitor, queue, alert, or refresh itself. Acting on what it surfaces means opening the Task.
 
-Nothing here changes §10a. No reminder has been sent in any environment, `ENABLE_REMINDER_DELIVERY` is unset, and no cron job exists, so in every current environment this list is empty.
+**A8.6b built the other half: the Task page the Attention item links to.** The reminder panel states the schedule's condition in the same words the list used, and offers the only three actions that are authorized — set a due date, change it, or remove it.
+
+| Reminder state      | What the Owner is told                                                                                                           | Controls                                         |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| `no_due_date`       | No reminders are scheduled; they begin only once a due date is set                                                               | Set a due date                                   |
+| `active`            | Due date and organization zone, advance reminder timing and disposition, next overdue occurrence, deliveries against the ceiling | Change or remove the due date                    |
+| `suspended_waiting` | Reminders are paused because the Task is Waiting; **no backlog** will be sent, and they resume when the Task leaves Waiting      | Change or remove the due date; no resume control |
+| `stopped`           | The specific reason, in the same words `/attention` used, plus what repair is available                                          | Set a new due date to start a new cycle          |
+| `not_scheduled`     | Handled safely; the current write path does not produce it                                                                       | As eligibility allows                            |
+
+There is **no resume control** for a Waiting Task: suspension follows Task state, and a separate control would imply reminders can be un-paused without the Task leaving Waiting. There is **no resend control** anywhere: D129 stopped the schedule deliberately, no resend policy is ratified, and the repair for a stopped schedule is a new due date — which the panel discloses will start a new cycle, reset the overdue count, and recalculate every date before the Owner submits (D104).
+
+Changing a schedule is **not** sending anything, and the panel never conflates the two. A saved due date is a configuration fact; whether an email left the building is a separate one, and no wording in the panel claims the latter on the strength of the former.
+
+**D108's minimum Owner UI is implemented across A8.6a and A8.6b, and is satisfied only once that work is architecture-approved.** A8.6c Owner notification visibility remains pending.
+
+Nothing here changes §10a. No reminder has been sent in any environment, `ENABLE_REMINDER_DELIVERY` is unset, and no cron job exists, so in every current environment the Attention list is empty and every panel reports a schedule no worker has ever touched.
 
 Owner dates and timestamps render in the organization timezone (`America/Vancouver`, D034), never silently the browser's (D117). This is **presentation only**: §10a and **D103** remain the sole authority for reminder occurrence arithmetic.

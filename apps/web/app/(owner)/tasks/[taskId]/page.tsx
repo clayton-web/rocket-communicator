@@ -3,6 +3,7 @@ import { getDb } from '@/lib/db/server';
 import { getOwnerTask } from '@/lib/tasks';
 import { listOwnerRecipients } from '@/lib/recipients';
 import { getGmailConnection } from '@/lib/gmail/service';
+import { getOwnerTaskReminder } from '@/lib/reminders';
 import { requireOwnerPage } from '@/lib/owner/require-owner-page';
 import { isTaskServiceError, readTaskServiceErrorCode } from '@/lib/errors/safe-error-shapes';
 import {
@@ -66,7 +67,20 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ tas
           throw error;
         }
 
-        const [recipientsPage, connection] = await Promise.all([
+        /*
+         * The reminder projection is loaded here, through the same service the API route uses,
+         * rather than fetched by the panel after mount (A8.6b).
+         *
+         * Two reasons. The panel is correct on first paint, so there is no flash of "no reminders"
+         * on a Task that has them — the state an Owner would most readily believe and act on. And it
+         * costs no extra round trip on a page that is already reading the database: the read joins
+         * the batch below instead of becoming a request the browser makes after the HTML arrives.
+         *
+         * A reminder read failure is deliberately not caught. It reaches the Task error boundary
+         * like any other load failure, because a Task page that quietly rendered "no reminders" when
+         * the schedule could not be read would be stating the one thing most likely to be wrong.
+         */
+        const [recipientsPage, connection, reminder] = await Promise.all([
           listOwnerRecipients({
             db,
             owner: authenticated.actor,
@@ -74,6 +88,7 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ tas
             limit: 25,
           }),
           getGmailConnection({ owner: authenticated.actor, db }),
+          getOwnerTaskReminder({ db, owner: authenticated.actor, taskId: task.id, now }),
         ]);
         emitOperationalLog({
           event: 'operation_timing',
@@ -99,6 +114,7 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ tas
             initialRecipients={recipientsPage.items}
             recipientsNextCursor={recipientsPage.nextCursor ?? null}
             initialConnection={connection}
+            initialReminder={reminder}
           />
         );
       } catch (error) {
