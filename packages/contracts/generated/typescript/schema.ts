@@ -228,28 +228,39 @@ export interface paths {
         put?: never;
         /**
          * Internal Owner Event Notification processing (built, inert)
-         * @description Claims and settles durable Owner notification intents for a bounded batch (A8.5b; D133,
-         *     D135). Recovers abandoned claims first, applies the 24-hour staleness horizon before
-         *     claiming anything, records a durable in-flight marker before every provider call, invokes the
-         *     transport outside all database transactions, and settles the intent, the attempt, and a
-         *     system-attributed audit event in one fenced transaction.
+         * @description Runs the two phases of the Owner Event Notification engine for one bounded invocation
+         *     (A8.5b/A8.5e; D133, D135). The phases are sequenced and independently gated, and no
+         *     transaction spans them.
          *
-         *     **Built, inert, and never deployed.** The code is merged; no deployment carrying it has been
-         *     made and no cron job invokes it.
+         *     **Capture phase**, when `ENABLE_OWNER_EVENT_CAPTURE` is exactly `"true"`: observes capability
+         *     expiry for a bounded batch, oldest first. Each observation is a compare-and-set from `active`
+         *     followed, in the same transaction, by an audit event and a notification intent. It contacts
+         *     no provider, claims no notification, and constructs no transport. Overlapping invocations are
+         *     safe — a losing observer writes nothing and is counted in `expiryLostRaces`.
          *
-         *     It is inert in two independent ways. Delivery is off unless `ENABLE_OWNER_EVENT_DELIVERY` is
-         *     exactly `"true"`, which is set in no environment; with it off the invocation returns before
-         *     opening a database connection, so it scans nothing, claims nothing, and writes nothing, and
-         *     returns zero aggregates with `deliveryEnabled: false`. Independently, **no transport exists
-         *     to compose**: A8.5b's only implementation is a deterministic fake belonging to tests, and no
-         *     Owner email renderer or Gmail adapter has been written, so `transportConfigured` is false
-         *     even with the flag on and no provider can be contacted. A8.5c adds the real adapter.
+         *     **Delivery phase**, when `ENABLE_OWNER_EVENT_DELIVERY` is exactly `"true"`: recovers abandoned
+         *     claims first, applies the 24-hour staleness horizon before claiming anything, records a
+         *     durable in-flight marker before every provider call, invokes the transport outside all
+         *     database transactions, and settles the intent, the attempt, and a system-attributed audit
+         *     event in one fenced transaction.
+         *
+         *     **Both flags off means zero database access and no transport** — the invocation authenticates,
+         *     reads two strings, and returns zero aggregates. Capture alone opens the database and composes
+         *     no transport, so no Gmail configuration is read and no credential is touched. Delivery alone
+         *     observes no expiry. If the capture phase runs out of budget, delivery does not begin and
+         *     `expiryDeadlineStopped` says so; the observed expiries stay committed, and their intents are
+         *     found by the next invocation.
+         *
+         *     **Built, inert, and never deployed.** The code is merged, both flags are unset in every
+         *     environment including Production, no cron job invokes this endpoint, and no Owner
+         *     notification has ever been sent. A real Gmail adapter has existed since A8.5c, so the flags
+         *     are the only thing holding delivery shut.
          *
          *     Distinct from `/api/v1/internal/reminders/process` and deliberately not merged with it. The
          *     two share a shape — cron bearer secret, Node runtime, 60-second cap, soft deadline, bounded
          *     batch — and share no policy: that endpoint delivers a repeating series to a Recipient under
          *     D106 and D129, this one delivers a single event to the Owner under D135. Neither invokes the
-         *     other.
+         *     other, and `ENABLE_REMINDER_DELIVERY` is not read here.
          *
          *     Delivery policy is one-shot per event: at most three total provider attempts, after which the
          *     notification is terminal and requires Owner attention. An ambiguous outcome is terminal on
@@ -264,8 +275,8 @@ export interface paths {
          *     deliver the same notification and a superseded worker cannot settle one.
          *
          *     Returns aggregate counts only — never an Owner or Recipient address, Task summary, actor
-         *     label, event subject, provider payload, or capability data.
-         *     **Status: Contracted and implemented in A8.5b, awaiting architecture review** (POST only; no
+         *     label, event subject, provider payload, capability data, or any individual expiry instant.
+         *     **Status: Contracted and implemented in A8.5e, awaiting architecture review** (POST only; no
          *     GET handler).
          *
          */
@@ -1636,31 +1647,64 @@ export interface components {
             deadlineStopped: boolean;
             requestId: string;
         };
-        /** @description Aggregate outcome of one internal Owner Event Notification processing invocation (A8.5b;
-         *     D133, D135). Counts only: never an Owner or Recipient address, Task summary, actor label,
-         *     event subject, provider payload, failure detail, capability data, or claim internal. Nothing
-         *     here can identify what any notification was about.
+        /** @description Aggregate outcome of one internal Owner Event Notification processing invocation (A8.5b,
+         *     A8.5e; D133, D135). Counts only: never an Owner or Recipient address, Task summary, actor
+         *     label, event subject, provider payload, failure detail, capability data, individual expiry
+         *     instant, or claim internal. Nothing here can identify what any notification or capability
+         *     was about.
          *
-         *     When `deliveryEnabled` or `transportConfigured` is false every count is zero, because the
-         *     invocation returned before opening a database connection — it scanned nothing, claimed
-         *     nothing, wrote no attempt, and constructed no transport.
+         *     Two independently gated phases report separately. The `expiry*` fields describe the capture
+         *     phase and are all zero unless `captureEnabled`; every other count describes the delivery
+         *     phase and is zero unless `deliveryEnabled` and `transportConfigured`. When **both** flags are
+         *     false the invocation returned before opening a database connection, so every count is zero
+         *     and no transport was constructed.
          *      */
         NotificationProcessResponse: {
-            /** @description Whether `ENABLE_OWNER_EVENT_DELIVERY` was exactly "true". False in every environment in
-             *     this milestone. Independent of `ENABLE_OWNER_EVENT_CAPTURE`, which governs whether
-             *     intents are recorded at all and is also unset everywhere (D135).
+            /** @description Whether `ENABLE_OWNER_EVENT_CAPTURE` was exactly "true", which is what governs the
+             *     capability-expiry capture phase. False in every environment. Fully independent of
+             *     `deliveryEnabled`: capture records durable events, delivery sends them, and neither
+             *     implies the other (D135).
+             *      */
+            captureEnabled: boolean;
+            /** @description Whether `ENABLE_OWNER_EVENT_DELIVERY` was exactly "true". False in every environment.
+             *     Independent of `captureEnabled` above.
              *      */
             deliveryEnabled: boolean;
-            /** @description Whether a transport was available to deliver through. False means the invocation failed
-             *     closed and did no work: processing refuses to run rather than manufacturing a transport
-             *     that would report deliveries it never made.
+            /** @description Whether a transport was composed for this invocation. False means no delivery was
+             *     attempted: processing refuses to run rather than manufacturing a transport that would
+             *     report deliveries it never made.
              *
-             *     **False in every environment in A8.5b**, including with delivery enabled. The only
-             *     implementation in this milestone is a deterministic fake belonging to tests; no Owner
-             *     notification email renderer and no Gmail adapter exist yet, so there is nothing this
-             *     endpoint could compose. A8.5c adds the real adapter.
+             *     False whenever `deliveryEnabled` is false, since nothing is composed for a phase that is
+             *     not running. Also false when delivery is enabled but the capture phase exhausted the
+             *     invocation's budget first — in that case `expiryDeadlineStopped` is true, and no Gmail
+             *     configuration was read on the way to doing nothing. With delivery enabled and budget
+             *     remaining, false means composition itself failed closed, for example an absent or
+             *     invalid application base URL.
              *      */
             transportConfigured: boolean;
+            /** @description Expired capabilities this invocation attempted to transition, oldest expiry first, up to
+             *     the capture phase's own bound. Not a count of every expired capability in existence,
+             *     which would require an unbounded scan.
+             *      */
+            expiryScanned: number;
+            /** @description Transitions this invocation won. Each wrote one `capability.expired` audit event and one
+             *     notification intent in the same transaction as the status change.
+             *      */
+            expiryObserved: number;
+            /** @description Capabilities another observer — a concurrent invocation, or a Recipient presenting the
+             *     lapsed token — had already transitioned. The loser writes nothing at all. Expected under
+             *     overlap, and not an error.
+             *      */
+            expiryLostRaces: number;
+            /** @description Whether the expiry scan came back full, so more expired capabilities probably remain for
+             *     the next invocation. Deliberately not a count of what is left.
+             *      */
+            expiryBatchFilled: boolean;
+            /** @description Whether the capture phase stopped starting transitions to stay inside the invocation's
+             *     runtime budget. When true the delivery phase did not begin at all, and the expiries
+             *     already observed remain committed — their intents are found by the next invocation.
+             *      */
+            expiryDeadlineStopped: boolean;
             /** @description Claimable intents examined, including those terminalized without any delivery — a stale
              *     suppression and an exhausted retry budget are both counted here and also in their own
              *     field.
@@ -1710,7 +1754,8 @@ export interface components {
             batchFilled: boolean;
             /** @description Whether the invocation stopped accepting new work to stay inside its runtime budget. Work
              *     already claimed is settled before stopping, so nothing is abandoned mid-flight by a
-             *     deliberate stop.
+             *     deliberate stop. Invocation-level and therefore true if **either** phase stopped;
+             *     `expiryDeadlineStopped` distinguishes which.
              *      */
             deadlineStopped: boolean;
             /** @description Correlates this invocation with its structured logs. */

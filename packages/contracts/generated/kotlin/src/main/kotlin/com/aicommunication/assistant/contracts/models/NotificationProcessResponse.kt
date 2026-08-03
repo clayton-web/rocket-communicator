@@ -21,10 +21,16 @@ import com.squareup.moshi.JsonClass
 import java.io.Serializable
 
 /**
- * Aggregate outcome of one internal Owner Event Notification processing invocation (A8.5b; D133, D135). Counts only: never an Owner or Recipient address, Task summary, actor label, event subject, provider payload, failure detail, capability data, or claim internal. Nothing here can identify what any notification was about.  When `deliveryEnabled` or `transportConfigured` is false every count is zero, because the invocation returned before opening a database connection — it scanned nothing, claimed nothing, wrote no attempt, and constructed no transport. 
+ * Aggregate outcome of one internal Owner Event Notification processing invocation (A8.5b, A8.5e; D133, D135). Counts only: never an Owner or Recipient address, Task summary, actor label, event subject, provider payload, failure detail, capability data, individual expiry instant, or claim internal. Nothing here can identify what any notification or capability was about.  Two independently gated phases report separately. The `expiry*` fields describe the capture phase and are all zero unless `captureEnabled`; every other count describes the delivery phase and is zero unless `deliveryEnabled` and `transportConfigured`. When **both** flags are false the invocation returned before opening a database connection, so every count is zero and no transport was constructed. 
  *
- * @param deliveryEnabled Whether `ENABLE_OWNER_EVENT_DELIVERY` was exactly \"true\". False in every environment in this milestone. Independent of `ENABLE_OWNER_EVENT_CAPTURE`, which governs whether intents are recorded at all and is also unset everywhere (D135). 
- * @param transportConfigured Whether a transport was available to deliver through. False means the invocation failed closed and did no work: processing refuses to run rather than manufacturing a transport that would report deliveries it never made.  **False in every environment in A8.5b**, including with delivery enabled. The only implementation in this milestone is a deterministic fake belonging to tests; no Owner notification email renderer and no Gmail adapter exist yet, so there is nothing this endpoint could compose. A8.5c adds the real adapter. 
+ * @param captureEnabled Whether `ENABLE_OWNER_EVENT_CAPTURE` was exactly \"true\", which is what governs the capability-expiry capture phase. False in every environment. Fully independent of `deliveryEnabled`: capture records durable events, delivery sends them, and neither implies the other (D135). 
+ * @param deliveryEnabled Whether `ENABLE_OWNER_EVENT_DELIVERY` was exactly \"true\". False in every environment. Independent of `captureEnabled` above. 
+ * @param transportConfigured Whether a transport was composed for this invocation. False means no delivery was attempted: processing refuses to run rather than manufacturing a transport that would report deliveries it never made.  False whenever `deliveryEnabled` is false, since nothing is composed for a phase that is not running. Also false when delivery is enabled but the capture phase exhausted the invocation's budget first — in that case `expiryDeadlineStopped` is true, and no Gmail configuration was read on the way to doing nothing. With delivery enabled and budget remaining, false means composition itself failed closed, for example an absent or invalid application base URL. 
+ * @param expiryScanned Expired capabilities this invocation attempted to transition, oldest expiry first, up to the capture phase's own bound. Not a count of every expired capability in existence, which would require an unbounded scan. 
+ * @param expiryObserved Transitions this invocation won. Each wrote one `capability.expired` audit event and one notification intent in the same transaction as the status change. 
+ * @param expiryLostRaces Capabilities another observer — a concurrent invocation, or a Recipient presenting the lapsed token — had already transitioned. The loser writes nothing at all. Expected under overlap, and not an error. 
+ * @param expiryBatchFilled Whether the expiry scan came back full, so more expired capabilities probably remain for the next invocation. Deliberately not a count of what is left. 
+ * @param expiryDeadlineStopped Whether the capture phase stopped starting transitions to stay inside the invocation's runtime budget. When true the delivery phase did not begin at all, and the expiries already observed remain committed — their intents are found by the next invocation. 
  * @param scanned Claimable intents examined, including those terminalized without any delivery — a stale suppression and an exhausted retry budget are both counted here and also in their own field. 
  * @param claimed Intents whose compare-and-set claim succeeded and whose lease this invocation held.
  * @param sent Deliveries the transport positively accepted. An ambiguous outcome is never counted here (D135): the provider may have accepted it, and reporting a delivery that may not have happened is the untruth this separation exists to prevent. 
@@ -36,20 +42,44 @@ import java.io.Serializable
  * @param recoveredClaims Lapsed leases returned to claimable work because no provider call had started. A lapsed lease whose provider call had started is counted in `ambiguous` instead and is never resent. 
  * @param lostClaims Compare-and-set refusals: another worker moved first, or this one was superseded while its call was in flight. Expected under overlapping invocations, and not an error. 
  * @param batchFilled Whether the scan returned a full batch, so more work probably remains. Deliberately not a count of what is left, which would require an unbounded count over every pending row. 
- * @param deadlineStopped Whether the invocation stopped accepting new work to stay inside its runtime budget. Work already claimed is settled before stopping, so nothing is abandoned mid-flight by a deliberate stop. 
+ * @param deadlineStopped Whether the invocation stopped accepting new work to stay inside its runtime budget. Work already claimed is settled before stopping, so nothing is abandoned mid-flight by a deliberate stop. Invocation-level and therefore true if **either** phase stopped; `expiryDeadlineStopped` distinguishes which. 
  * @param requestId Correlates this invocation with its structured logs.
  */
 
 
 data class NotificationProcessResponse (
 
-    /* Whether `ENABLE_OWNER_EVENT_DELIVERY` was exactly \"true\". False in every environment in this milestone. Independent of `ENABLE_OWNER_EVENT_CAPTURE`, which governs whether intents are recorded at all and is also unset everywhere (D135).  */
+    /* Whether `ENABLE_OWNER_EVENT_CAPTURE` was exactly \"true\", which is what governs the capability-expiry capture phase. False in every environment. Fully independent of `deliveryEnabled`: capture records durable events, delivery sends them, and neither implies the other (D135).  */
+    @Json(name = "captureEnabled")
+    val captureEnabled: kotlin.Boolean,
+
+    /* Whether `ENABLE_OWNER_EVENT_DELIVERY` was exactly \"true\". False in every environment. Independent of `captureEnabled` above.  */
     @Json(name = "deliveryEnabled")
     val deliveryEnabled: kotlin.Boolean,
 
-    /* Whether a transport was available to deliver through. False means the invocation failed closed and did no work: processing refuses to run rather than manufacturing a transport that would report deliveries it never made.  **False in every environment in A8.5b**, including with delivery enabled. The only implementation in this milestone is a deterministic fake belonging to tests; no Owner notification email renderer and no Gmail adapter exist yet, so there is nothing this endpoint could compose. A8.5c adds the real adapter.  */
+    /* Whether a transport was composed for this invocation. False means no delivery was attempted: processing refuses to run rather than manufacturing a transport that would report deliveries it never made.  False whenever `deliveryEnabled` is false, since nothing is composed for a phase that is not running. Also false when delivery is enabled but the capture phase exhausted the invocation's budget first — in that case `expiryDeadlineStopped` is true, and no Gmail configuration was read on the way to doing nothing. With delivery enabled and budget remaining, false means composition itself failed closed, for example an absent or invalid application base URL.  */
     @Json(name = "transportConfigured")
     val transportConfigured: kotlin.Boolean,
+
+    /* Expired capabilities this invocation attempted to transition, oldest expiry first, up to the capture phase's own bound. Not a count of every expired capability in existence, which would require an unbounded scan.  */
+    @Json(name = "expiryScanned")
+    val expiryScanned: kotlin.Int,
+
+    /* Transitions this invocation won. Each wrote one `capability.expired` audit event and one notification intent in the same transaction as the status change.  */
+    @Json(name = "expiryObserved")
+    val expiryObserved: kotlin.Int,
+
+    /* Capabilities another observer — a concurrent invocation, or a Recipient presenting the lapsed token — had already transitioned. The loser writes nothing at all. Expected under overlap, and not an error.  */
+    @Json(name = "expiryLostRaces")
+    val expiryLostRaces: kotlin.Int,
+
+    /* Whether the expiry scan came back full, so more expired capabilities probably remain for the next invocation. Deliberately not a count of what is left.  */
+    @Json(name = "expiryBatchFilled")
+    val expiryBatchFilled: kotlin.Boolean,
+
+    /* Whether the capture phase stopped starting transitions to stay inside the invocation's runtime budget. When true the delivery phase did not begin at all, and the expiries already observed remain committed — their intents are found by the next invocation.  */
+    @Json(name = "expiryDeadlineStopped")
+    val expiryDeadlineStopped: kotlin.Boolean,
 
     /* Claimable intents examined, including those terminalized without any delivery — a stale suppression and an exhausted retry budget are both counted here and also in their own field.  */
     @Json(name = "scanned")
@@ -95,7 +125,7 @@ data class NotificationProcessResponse (
     @Json(name = "batchFilled")
     val batchFilled: kotlin.Boolean,
 
-    /* Whether the invocation stopped accepting new work to stay inside its runtime budget. Work already claimed is settled before stopping, so nothing is abandoned mid-flight by a deliberate stop.  */
+    /* Whether the invocation stopped accepting new work to stay inside its runtime budget. Work already claimed is settled before stopping, so nothing is abandoned mid-flight by a deliberate stop. Invocation-level and therefore true if **either** phase stopped; `expiryDeadlineStopped` distinguishes which.  */
     @Json(name = "deadlineStopped")
     val deadlineStopped: kotlin.Boolean,
 

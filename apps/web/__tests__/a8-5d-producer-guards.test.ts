@@ -334,10 +334,25 @@ describe('A8.5d: nothing was scheduled, and nothing was deployed', () => {
     expect(JSON.parse(raw).crons).toBeUndefined();
   });
 
-  it('leaves the expiry sweep unwired to any worker', () => {
-    // A8.5d implements the sweep and proves it. Invoking it is A8.5e's decision, and until then no
-    // documentation may claim it is scheduled.
-    const code = readCode(NOTIFICATION_ROUTE);
-    expect(code).not.toContain('runCapabilityExpirySweep');
+  /**
+   * A8.5d asserted the sweep was unwired, which was true and was the whole reason it was written
+   * that way: invoking it then would have contradicted A8.5b's "delivery disabled means zero
+   * database access", and quietly breaking a documented invariant to land a feature is how a
+   * codebase stops being able to trust its own documentation.
+   *
+   * A8.5e replaced that invariant deliberately — both flags off is now what means zero database
+   * access — and wired the sweep behind the capture flag. So the intermediate assertion is retired
+   * and the permanent one takes its place: whatever invokes the sweep, nothing *schedules* it.
+   * Scheduling is A8.7's decision, and until then the endpoint is called by nobody.
+   *
+   * `a8-5e-worker-guards.test.ts` holds the assertions about how the wiring itself must behave.
+   */
+  it('schedules the expiry sweep nowhere, however it is now invoked', () => {
+    const vercel = path.join(repoRoot, 'vercel.json');
+    const raw = readFileSync(vercel, 'utf8');
+    expect(JSON.parse(raw).crons).toBeUndefined();
+
+    // And the route it now runs from is still reached only by an authenticated caller.
+    expect(readCode(NOTIFICATION_ROUTE)).toContain('authorizeCronRequest');
   });
 });

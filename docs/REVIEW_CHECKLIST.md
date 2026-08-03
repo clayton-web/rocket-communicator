@@ -168,6 +168,22 @@ Gates for the due-date-driven Follow-up Engine (D102–D110). These record **exp
 - [ ] Documentation does not describe the capability sweep as scheduled unless something actually invokes it
 - [ ] Concurrency claims for every new producer are proven on **real PostgreSQL 16 with simultaneous connections**
 
+### Owner notification worker phases (A8.5e; apply to any change to the notification endpoint)
+
+- [ ] **Both flags off means zero database access and no transport** — proven by observing that the database and transport thunks were never called, not inferred from where a flag is read
+- [ ] Capture and delivery are **independently gated**: expiry observation reads only `ENABLE_OWNER_EVENT_CAPTURE`, delivery reads only `ENABLE_OWNER_EVENT_DELIVERY`, and neither consults the other's flag
+- [ ] `ENABLE_REMINDER_DELIVERY` is **not referenced** by this endpoint or anything it calls
+- [ ] A capture-only invocation composes **no transport**, resolves no Gmail configuration, claims no intent, and writes no attempt row; invalid Gmail configuration cannot prevent it
+- [ ] A delivery-only invocation performs **no expiry scan** and creates no new `capability.expired` intent
+- [ ] Capture runs **before** delivery, and **no transaction spans the two phases**
+- [ ] The expiry scan is **bounded** with a deterministic order, and the bound is enforced inside `packages/db` rather than trusted from the caller
+- [ ] Phase failures are isolated: a lost per-item race is counted rather than raised, a systemic scan failure returns a truthful error, and committed capture work is not rolled back by any later delivery failure
+- [ ] Budget exhausted during capture stops **before** transport composition and is reported as such rather than as an absent configuration
+- [ ] The worker response is **counts and booleans only** — no capability identifier, address, Task summary, individual expiry instant, provider content, or raw database error
+- [ ] Response fields are **additive**; no existing field was removed or silently repurposed, and OpenAPI plus the generated TypeScript and Kotlin artifacts were regenerated together
+- [ ] **Capability authorization truth is independent of all of it**: an expired capability is unusable regardless of sweep outcome, flag state, intent uniqueness, or delivery
+- [ ] No cron job and no `vercel.json` change was introduced
+
 ## Owner web experience foundation (P1; apply when P1 work is in scope)
 
 Gates for D111–D126. Record **expected behaviour and required proof**; no specific implementation is pre-approved.

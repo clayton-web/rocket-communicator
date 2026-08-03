@@ -34,12 +34,16 @@ export const CAPABILITY_EXPIRY_SYSTEM_ID = 'capability_expiry' as const;
  * one notification — which is a property of the compare-and-set in `observeCapabilityExpiry`, not of
  * these callers being careful.
  *
- * ## Nothing here is scheduled
+ * ## What invokes the sweep (A8.5e)
  *
- * {@link runCapabilityExpirySweep} is invoked by tests and by nothing else. Wiring it to the A8.5b
- * worker route would have meant either an untruthful worker response or breaking that route's
- * "delivery disabled means zero database access" guarantee, so the mechanism lands here in A8.5d and
- * its invocation is left to A8.5e. The Recipient-triggered path is live and does produce events.
+ * {@link runCapabilityExpirySweep} is the capture phase of the Owner notification worker, and it runs
+ * only when `ENABLE_OWNER_EVENT_CAPTURE` is exactly `"true"` — which it is nowhere. A8.5d left it
+ * unwired because invoking it would have contradicted A8.5b's "delivery disabled means zero database
+ * access"; A8.5e replaced that with the invariant that actually holds now, that **both** flags off
+ * means zero database access, and wired the phase behind the capture flag alone.
+ *
+ * Still nothing schedules it: no cron job invokes the endpoint. The Recipient-triggered path remains
+ * live and is what observes expiry today.
  */
 
 /** The audit row for an expiry, identical whichever path observed it. */
@@ -85,6 +89,12 @@ export interface ObserveExpiryInput {
   readonly assignmentId?: string | null;
   readonly requestId?: string | null;
   readonly correlationId?: string | null;
+  /**
+   * The environment the capture decision is read from. Defaults to the process environment, which
+   * is what the Recipient-triggered path uses; the A8.5e worker passes the one it already resolved,
+   * so a single invocation cannot decide capture twice and disagree with itself.
+   */
+  readonly env?: NodeJS.ProcessEnv;
 }
 
 /**
@@ -98,7 +108,7 @@ export async function observeCapabilityExpiryForOrganization(
   input: ObserveExpiryInput,
 ): Promise<{ readonly expired: boolean }> {
   const runtime = await loadDbRuntime();
-  const capture = isOwnerEventCaptureEnabled()
+  const capture = isOwnerEventCaptureEnabled(input.env)
     ? { id: newEntityId(OWNER_NOTIFICATION_INTENT_ID_PREFIX) }
     : undefined;
 
@@ -123,13 +133,27 @@ export async function observeCapabilityExpiryForOrganization(
   return { expired: result.expired };
 }
 
-/** How many capabilities one sweep invocation may observe. Bounded like every other worker scan. */
+/**
+ * How many capabilities one sweep invocation may observe.
+ *
+ * Modest on purpose. The sweep shares its invocation with notification delivery, and a phase that
+ * can run for a minute is a phase that can starve the one after it. Fifty small transactions cost a
+ * few tens of milliseconds; what is left over is picked up by the next wake-up, which is exactly how
+ * the delivery scan's own bound behaves.
+ */
 export const MAX_CAPABILITY_EXPIRIES_PER_SWEEP = 50;
 
 export interface CapabilityExpirySweepResult {
+  /** Capabilities this invocation attempted, which is at most what the bounded scan returned. */
   readonly scanned: number;
   /** Transitions this invocation won. A concurrent sweep's wins are somebody else's count. */
-  readonly expired: number;
+  readonly observed: number;
+  /** Attempts another observer had already completed. Expected under overlap, and not an error. */
+  readonly lostRaces: number;
+  /** Whether the scan came back full, so more expiries probably remain for the next invocation. */
+  readonly batchFilled: boolean;
+  /** Whether the sweep stopped starting transitions to leave the invocation's budget intact. */
+  readonly deadlineStopped: boolean;
 }
 
 /**
@@ -137,27 +161,43 @@ export interface CapabilityExpirySweepResult {
  *
  * One transaction per capability rather than one for the batch: a scan held open across fifty
  * transactions would block anybody presenting any of those tokens, and a single failure would
- * discard forty-nine good transitions. Losing a race is not an error, so a loser is counted as
- * scanned and not as expired, and the sweep keeps going.
+ * discard forty-nine good transitions. Losing a race is not an error, so a loser is counted and the
+ * sweep keeps going.
  *
  * The instant is supplied by the caller and used for the whole batch, so the sweep cannot expire one
  * capability against a clock a millisecond ahead of the next.
+ *
+ * `stopAtMs` is a wall-clock instant after which no *new* transition is started. A transition already
+ * underway finishes — abandoning it would leave the capability `active` with the audit row written,
+ * which is the one outcome worse than being slow. The margin is the caller's to choose, because the
+ * budget being protected belongs to the invocation rather than to this scan.
  */
 export async function runCapabilityExpirySweep(input: {
   readonly db: DbClient;
   readonly now: string;
   readonly limit?: number;
+  readonly stopAtMs?: number;
   readonly requestId?: string | null;
   readonly correlationId?: string | null;
+  readonly env?: NodeJS.ProcessEnv;
 }): Promise<CapabilityExpirySweepResult> {
+  const limit = input.limit ?? MAX_CAPABILITY_EXPIRIES_PER_SWEEP;
   const runtime = await loadDbRuntime();
   const due = await runtime.listExpirableCapabilities(input.db, {
     expiresAtOrBefore: input.now,
-    limit: input.limit ?? MAX_CAPABILITY_EXPIRIES_PER_SWEEP,
+    limit,
   });
 
-  let expired = 0;
+  let scanned = 0;
+  let observed = 0;
+  let deadlineStopped = false;
+
   for (const capability of due) {
+    if (input.stopAtMs !== undefined && Date.now() > input.stopAtMs) {
+      deadlineStopped = true;
+      break;
+    }
+    scanned += 1;
     const outcome = await observeCapabilityExpiryForOrganization({
       db: input.db,
       organizationId: capability.organizationId,
@@ -167,11 +207,18 @@ export async function runCapabilityExpirySweep(input: {
       observedAt: input.now,
       requestId: input.requestId,
       correlationId: input.correlationId,
+      env: input.env,
     });
     if (outcome.expired) {
-      expired += 1;
+      observed += 1;
     }
   }
 
-  return { scanned: due.length, expired };
+  return {
+    scanned,
+    observed,
+    lostRaces: scanned - observed,
+    batchFilled: due.length === limit,
+    deadlineStopped,
+  };
 }

@@ -308,7 +308,7 @@ describe('contracts package', () => {
     );
   });
 
-  it('contracts the A8.5b notification endpoint as POST-only aggregates and nothing more', () => {
+  it('contracts the notification endpoint as POST-only aggregates and nothing more', () => {
     execSync('pnpm bundle', { cwd: root, stdio: 'pipe' });
     const bundled = parseYaml(readFileSync(path.join(root, 'dist/openapi.bundled.yaml'), 'utf8'));
     const schemas = (bundled.components?.schemas ?? {}) as Record<string, unknown>;
@@ -338,9 +338,20 @@ describe('contracts package', () => {
       // Whether the scan filled its batch. Not a count of remaining work, which would need an
       // unbounded count over every pending row.
       'batchFilled',
+      // A8.5e: the capture phase's own gate, independent of delivery's.
+      'captureEnabled',
       'claimed',
+      // Invocation-level since A8.5e: true if either phase stopped taking new work for time.
       'deadlineStopped',
       'deliveryEnabled',
+      // A8.5e capture phase, in counts and booleans like the delivery half. No capability
+      // identifier and no individual expiry instant, which would name whose link lapsed and when.
+      'expiryBatchFilled',
+      'expiryDeadlineStopped',
+      // Transitions another observer had already made. Normal under overlap, and not a failure.
+      'expiryLostRaces',
+      'expiryObserved',
+      'expiryScanned',
       'failedPermanent',
       // Retryable with budget left; the intent returned to claimable work rather than settling.
       'failedRetryable',
@@ -354,8 +365,9 @@ describe('contracts package', () => {
       'sent',
       // The 24-hour horizon (D135), which is what stops a backlog from flushing.
       'staleSuppressed',
-      // Two different reasons for a zero-work response, reported apart: the flag is off, or no
-      // transport exists to compose. In A8.5b the second is true in every environment.
+      // Two different reasons for a zero-work delivery half, reported apart: the flag is off, or
+      // no transport could be composed. Since A8.5e a third is possible — capture used the whole
+      // budget, so delivery never started and nothing was composed to begin with.
       'transportConfigured',
     ]);
     expect([...(response.required ?? [])].sort()).toEqual(

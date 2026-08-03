@@ -9,8 +9,8 @@ import {
   getOwnerNotificationExpectedOrganizationId,
   isOwnerEventDeliveryEnabled,
 } from '@/lib/notifications/process-config';
-import { runInternalNotificationProcess } from '@/lib/notifications/process-service';
 import type { OwnerNotificationTransport } from '@/lib/notifications/transport';
+import { runOwnerNotificationWorker } from '@/lib/notifications/worker';
 import {
   createRequestId,
   getRequestId,
@@ -28,7 +28,7 @@ function noStore(response: Response): Response {
 }
 
 /**
- * Internal Owner Event Notification processing (A8.5b, D133/D135).
+ * Internal Owner Event Notification processing (A8.5b/A8.5e, D133/D135).
  *
  * A sibling of `/api/v1/internal/reminders/process`, deliberately not an extension of it. The two
  * workers share a shape — cron bearer secret, Node runtime, 60-second cap, soft deadline, bounded
@@ -37,17 +37,22 @@ function noStore(response: Response): Response {
  * behind one entry point and make a change to either reach the other. Neither calls the other, and
  * a source guard fails the build if that changes.
  *
- * ## Inert after A8.5c
+ * ## Two phases, two flags (A8.5e)
  *
- * A8.5c gave this endpoint a real Gmail adapter, and the endpoint still sends nothing.
+ * Capability-expiry observation runs when `ENABLE_OWNER_EVENT_CAPTURE` is set; notification delivery
+ * runs when `ENABLE_OWNER_EVENT_DELIVERY` is set. {@link runOwnerNotificationWorker} sequences them
+ * and this route only composes what each phase needs. It is deliberately the only place in the
+ * engine allowed to name a provider — the phases receive a transport, they do not build one.
  *
- * `ENABLE_OWNER_EVENT_DELIVERY` is unset in every environment, and it is read in
- * {@link composeTransport} before anything else happens. With it unset, no transport is constructed,
- * no access token is resolved, no refresh token is decrypted, and the service returns before opening
- * a database connection — no scan, no claim, no attempt row, no state change. That an adapter now
- * exists changes what would happen if the flag were set; it does not authorize setting it.
+ * The order below is the safety argument. Authenticate, then read both flags, then refuse: with both
+ * unset — which is every environment — the worker never calls `openDb`, so this invocation opens no
+ * connection and constructs nothing. `getDb()` is passed as a thunk rather than awaited here, which
+ * is what makes that a fact about what ran rather than a claim about where a flag is read.
  *
- * No cron invokes this. Creating one is A8.7's decision, not this slice's.
+ * ## Inert
+ *
+ * A real Gmail adapter has existed since A8.5c and this endpoint still sends nothing: both flags are
+ * unset everywhere. **No cron invokes this.** Creating one is A8.7's decision, not this slice's.
  */
 
 /**
@@ -57,6 +62,11 @@ function noStore(response: Response): Response {
  * no configuration, no credential, and no database. Everything after it can fail, and every failure
  * means *no transport* rather than an error response: a base URL that will not validate is a reason
  * to deliver nothing, not a reason to return 500 to a scheduler that would simply call again.
+ *
+ * Since A8.5e the worker also declines to call this at all unless delivery is enabled and the capture
+ * phase left time, so a capture-only invocation resolves no Gmail configuration. The flag check here
+ * stays as the inner of the two: a function that can reach a credential should not depend on its
+ * caller having checked.
  *
  * The organization is deliberately absent from this composition. The transport resolves the
  * connected mailbox for whichever organization each intent names;
@@ -107,11 +117,10 @@ export async function POST(request: Request): Promise<Response> {
           );
         }
 
-        const db = await getDb();
-        const result = await runInternalNotificationProcess({
-          db,
+        const result = await runOwnerNotificationWorker({
+          openDb: getDb,
+          composeTransport,
           requestId: requestId!,
-          transport: await composeTransport(db),
         });
         return NextResponse.json(result.response);
       } catch (error) {

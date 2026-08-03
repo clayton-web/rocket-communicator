@@ -47,6 +47,11 @@ import type { OwnerNotificationTransport, OwnerNotificationTransportResult } fro
  * It does not render an email, resolve a destination address, or know that Gmail exists. A8.5b's
  * only transport is the fail-closed fake, and the seam it depends on carries identity rather than
  * content. A8.5c adds the real adapter behind the same interface.
+ *
+ * Since A8.5e it is also only the **delivery phase** of the endpoint. Capability-expiry observation
+ * is the capture phase, gated on a different flag, and it lives in `worker.ts` — which sequences the
+ * two — rather than here. This module still reads `ENABLE_OWNER_EVENT_DELIVERY` before it can reach
+ * the database, so delivery being off remains a refusal made before any connection is opened.
  */
 
 /** Bounded aggregate. Counts and flags only — never an address, subject, actor, or row identifier. */
@@ -92,6 +97,25 @@ const ZERO_AGGREGATE = {
   batchFilled: false,
   deadlineStopped: false,
 };
+
+/**
+ * The delivery half of the response when no delivery happened.
+ *
+ * Exported so the A8.5e worker can report a capture-only invocation without restating thirteen
+ * zeroes of its own. One definition means a field added here cannot be silently omitted there.
+ */
+export function zeroNotificationAggregate(input: {
+  readonly deliveryEnabled: boolean;
+  readonly transportConfigured: boolean;
+  readonly requestId: string;
+}): NotificationProcessAggregate {
+  return {
+    deliveryEnabled: input.deliveryEnabled,
+    transportConfigured: input.transportConfigured,
+    ...ZERO_AGGREGATE,
+    requestId: input.requestId,
+  };
+}
 
 export interface RunNotificationProcessInput {
   readonly db: DbClient;
@@ -207,12 +231,11 @@ export async function runInternalNotificationProcess(
   // a property of the control flow rather than a promise made by code further down.
   if (!deliveryEnabled || !transportConfigured) {
     return {
-      response: {
+      response: zeroNotificationAggregate({
         deliveryEnabled,
         transportConfigured,
-        ...ZERO_AGGREGATE,
         requestId: input.requestId,
-      },
+      }),
     };
   }
 
