@@ -142,6 +142,8 @@ export type TracedRuntimeModule = {
   releaseReminderScheduleClaim: typeof TracedRuntimeBindings.releaseReminderScheduleClaim;
   listDueReminderSchedulesGlobally: typeof TracedRuntimeBindings.listDueReminderSchedulesGlobally;
   listDueAdvanceReminderSchedulesGlobally: typeof TracedRuntimeBindings.listDueAdvanceReminderSchedulesGlobally;
+  // A8.6a Owner attention read, reached from the `/attention` server component.
+  listReminderSchedulesRequiringOwnerAttention: typeof TracedRuntimeBindings.listReminderSchedulesRequiringOwnerAttention;
   claimReminderOccurrence: typeof TracedRuntimeBindings.claimReminderOccurrence;
   listExpiredOccurrenceClaims: typeof TracedRuntimeBindings.listExpiredOccurrenceClaims;
   listRetryBudgetExhaustedOccurrences: typeof TracedRuntimeBindings.listRetryBudgetExhaustedOccurrences;
@@ -260,6 +262,8 @@ export async function loadTracedRuntimeModule(): Promise<TracedRuntimeModule> {
     releaseReminderScheduleClaim: tracedRuntime.releaseReminderScheduleClaim,
     listDueReminderSchedulesGlobally: tracedRuntime.listDueReminderSchedulesGlobally,
     listDueAdvanceReminderSchedulesGlobally: tracedRuntime.listDueAdvanceReminderSchedulesGlobally,
+    listReminderSchedulesRequiringOwnerAttention:
+      tracedRuntime.listReminderSchedulesRequiringOwnerAttention,
     claimReminderOccurrence: tracedRuntime.claimReminderOccurrence,
     listExpiredOccurrenceClaims: tracedRuntime.listExpiredOccurrenceClaims,
     listRetryBudgetExhaustedOccurrences: tracedRuntime.listRetryBudgetExhaustedOccurrences,

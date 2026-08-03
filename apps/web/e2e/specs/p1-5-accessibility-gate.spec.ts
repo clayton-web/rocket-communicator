@@ -1,6 +1,7 @@
 import { test, expect, signInAsOwner, uniqueLabel } from '../support/fixtures';
 import { seedCapabilityFixture } from '../support/capability-fixture';
 import { createRecipient, createTask } from '../support/owner-api';
+import { clearReminderSchedules, stopReminderScheduleForAttention } from '../support/db-fixtures';
 import { expectNoSeriousOrCriticalViolations } from '../support/accessibility';
 import { E2E_WORKSPACE_DOMAIN } from '../config/e2e-env';
 import type { Page } from '@playwright/test';
@@ -34,7 +35,8 @@ export const SCANNED_STATES = [
   'Owner task list',
   'Owner task list (loading)',
   'Owner task detail',
-  'Owner attention list',
+  'Owner attention list (empty)',
+  'Owner attention list (populated)',
   'Owner handoff dialog (open)',
   'Recipient capability panel',
   'Recipient capability panel (loading)',
@@ -78,6 +80,9 @@ test.describe('D119 accessibility gate — Owner surfaces', () => {
   });
 
   test('task list, task detail, and attention list', async ({ ownerPage }) => {
+    // Otherwise a row left by another run would be scanned under the label "(empty)".
+    clearReminderSchedules();
+
     const task = await createTask(
       ownerPage.request,
       uniqueLabel('a11y-owner'),
@@ -94,34 +99,70 @@ test.describe('D119 accessibility gate — Owner surfaces', () => {
 
     await ownerPage.goto('/attention');
     await expect(ownerPage.getByRole('heading', { level: 1 })).toBeVisible();
-    await expectNoSeriousOrCriticalViolations(ownerPage, 'Owner attention list');
+    await expectNoSeriousOrCriticalViolations(ownerPage, 'Owner attention list (empty)');
   });
 
+  /**
+   * The populated attention list, scanned against real rows (A8.6a).
+   *
+   * Both states are scanned because they are structurally different pages: empty is a single
+   * `role="status"` region, populated is a list of links carrying badges. An empty-only scan would
+   * cover the state an Owner sees when nothing is wrong and skip the one they see when it is.
+   *
+   * Seeded through the database fixture rather than reached through the product, because there is
+   * no product path to it: the attention flag is raised only by the reminder worker settling a real
+   * delivery, which requires enabling `ENABLE_REMINDER_DELIVERY`. This stays within the spec's rule
+   * that no state is scanned by injecting markup — the rows are real, the page renders its own
+   * query, and no production hook or debug parameter was added to reach it.
+   */
+  test('attention list with an item needing attention', async ({ ownerPage }) => {
+    clearReminderSchedules();
+
+    const task = await createTask(
+      ownerPage.request,
+      uniqueLabel('a11y-attention'),
+      'Confirm the delivery window.',
+    );
+    stopReminderScheduleForAttention({
+      taskId: task.id,
+      dueLocalDate: '2026-08-10',
+      stopReason: 'permanent_delivery_failure',
+    });
+
+    await ownerPage.goto('/attention');
+    await expect(ownerPage.getByRole('main').getByRole('listitem')).toHaveCount(1);
+    await expectNoSeriousOrCriticalViolations(ownerPage, 'Owner attention list (populated)');
+  });
+
+  /*
+   * The Task list's loading boundary, held open by throttling the transport.
+   *
+   * This test used to install `page.route('**​/tasks')` and delay the response by two seconds. That
+   * never delayed anything: a client-side navigation requests `/tasks?_rsc=<hash>`, which the glob
+   * does not match, so the handler was never invoked. The boundary painted for an unrelated reason
+   * — the click landed before hydration, so the browser performed a *document* navigation and the
+   * server streamed the Suspense fallback ahead of the page. That made the test a race against
+   * hydration, and A8.6a lost it: `/attention` now does real work, so by the time its heading is
+   * visible the router has hydrated, the click resolves client-side, and no fallback is streamed.
+   *
+   * Throttling instead of intercepting removes the race. It is the technique the Recipient loading
+   * state in this file already uses, it exercises the real streamed response, and it does not
+   * depend on when hydration happens to finish. Verified stable across repeated runs on both
+   * projects. Nothing in the application is delayed — the constraint is on the transport.
+   */
   test('task list while its loading boundary is painted', async ({ ownerPage }) => {
     await ownerPage.goto('/attention');
     await expect(ownerPage.getByRole('heading', { level: 1 })).toBeVisible();
 
-    /*
-     * Hold the navigation response in the test, the technique the shell spec already uses.
-     * The application is unchanged: nothing is delayed in product code, and the delay exists
-     * only inside this route handler.
-     */
-    await ownerPage.route('**/tasks', async (route) => {
-      await new Promise((resolve) => setTimeout(resolve, 2_000));
-      await route.continue();
-    });
-
-    const navigation = ownerPage
-      .getByRole('navigation', { name: 'Owner' })
-      .getByRole('link', { name: 'Tasks' })
-      .click();
+    const restore = await throttle(ownerPage);
+    const navigation = ownerPage.goto('/tasks');
 
     // Scan the boundary itself, proven present rather than assumed.
     await expect(ownerPage.getByText('Loading Tasks…')).toBeVisible();
     await expectNoSeriousOrCriticalViolations(ownerPage, 'Owner task list (loading)');
 
+    await restore();
     await navigation;
-    await ownerPage.unroute('**/tasks');
     await expect(ownerPage.getByRole('heading', { level: 1, name: 'Tasks' })).toBeVisible();
   });
 

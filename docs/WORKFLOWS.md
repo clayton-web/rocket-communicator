@@ -322,6 +322,20 @@ Seven truthful states apply to every current Owner and Recipient surface (D112):
 | **Ambiguous or transport retry**        | Nothing trustworthy — the result never arrived, or arrived unresolved | Retry the **same logical mutation** with the **same `Idempotency-Key`** and the **original `If-Match`**. The server classifies idempotency **before** re-checking preconditions, so a literal replay deliberately carries a now-stale `If-Match` and is replayed rather than rejected. **No "start over with a new key" after a durable attempt** (§2, A7.8) |
 | **Confirmed `412 PRECONDITION_FAILED`** | A definite server answer: the supplied version is stale               | **Refresh authoritative state and re-present it** before the Owner makes or confirms a new attempt. Never silently loop on a known-stale `If-Match`; never show a confirmed stale conflict as success or as merely transient. A fresh attempt is a **new Owner decision**, not a transport retry                                                             |
 
-The Owner shell provides one **generic** attention and operational-status destination (D118). It is not reminder-specific, and while A8 is unimplemented it must not claim or imply that any schedule, automation, or notification capability exists (D089). The future **D108** Owner schedule-status surface populates it during **A8.6** — it does **not** exist now.
+The Owner shell provides one attention and operational-status destination (D118). P1.4 built it generic and truthfully empty, so the **D108** Owner schedule-status work could populate it without a second shell redesign.
+
+**A8.6a populated its first half.** `/attention` now lists Reminder Schedules flagged `requiresOwnerAttention` — the **cross-Task discovery** step of §10a, and the reason a Task page alone could not satisfy D108. A schedule stops for one of three reasons an Owner must act on:
+
+| Stop reason                   | What the Owner is told                                                                                                |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `overdue_ceiling_reached`     | Reminders have finished for this Task and will not start again on their own (D106)                                    |
+| `permanent_delivery_failure`  | Reminders stopped after a delivery failure; nothing further will be sent                                              |
+| `repeated_ambiguous_outcomes` | Reminders stopped because delivery **could not be confirmed**; the Recipient may or may not have received them (D129) |
+
+The third row is the one worth reading twice. Rocket does not know the reminder was missed — it knows it could not confirm otherwise — and the copy must not collapse that into "not delivered", which would send an Owner to re-send something that may already have arrived.
+
+The page is a **read**: one bounded, organization-scoped query per navigation, no endpoint, no mutation, and no control. It states its own limits — it covers reminder automation only, and it does not monitor, queue, alert, or refresh itself. Acting on what it surfaces means opening the Task, and the Task-level status and repair controls are **A8.6b**. **D108 is not satisfied by A8.6a**; it is satisfied only once the complete minimum A8.6 reminder experience is reviewed and approved.
+
+Nothing here changes §10a. No reminder has been sent in any environment, `ENABLE_REMINDER_DELIVERY` is unset, and no cron job exists, so in every current environment this list is empty.
 
 Owner dates and timestamps render in the organization timezone (`America/Vancouver`, D034), never silently the browser's (D117). This is **presentation only**: §10a and **D103** remain the sole authority for reminder occurrence arithmetic.

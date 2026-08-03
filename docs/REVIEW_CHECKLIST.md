@@ -184,6 +184,23 @@ Gates for the due-date-driven Follow-up Engine (D102–D110). These record **exp
 - [ ] **Capability authorization truth is independent of all of it**: an expired capability is unusable regardless of sweep outcome, flag state, intent uniqueness, or delivery
 - [ ] No cron job and no `vercel.json` change was introduced
 
+### Owner reminder visibility (A8.6; apply to any Owner surface that reads reminder state)
+
+- [ ] The read is **bounded** by a limit validated inside `packages/db`, rejecting a non-integer, a non-positive, and an above-ceiling value, and ordered **totally** so two loads of an unchanged database agree
+- [ ] Organization scoping is applied **in application code**, on the schedule **and** on any joined Task — deny-by-default RLS with no policies is not tenant isolation for a Prisma read whose connection role owns the tables
+- [ ] An item can never link to a Task outside the authenticated Owner's organization; the fail-closed behaviour when one cannot be resolved is chosen deliberately, documented in code, and tested
+- [ ] Round-trip count is **constant in the number of rows**, measured at the driver rather than assumed, with no database call inside `map`, `forEach`, `for`, `for…of`, or `Promise.all`
+- [ ] The legacy `Task.reminder` metadata — `nextReminderAt`, `paused`, `pausedReason` — is **not read**. It is A2-era, nothing in A8 maintains it, and it reads plausibly enough to be displayed by mistake
+- [ ] The reminder **ETag is not used** for reading, caching, or freshness: it deliberately does not move when a worker records a delivery, increments the overdue count, or raises the attention flag
+- [ ] No `claimedBy`, `claimedAt`, `claimExpiresAt`, `reminderVersion`, `generation`, or schedule row id reaches the projection type — absent, not merely unrendered
+- [ ] Stop-reason copy is **truthful and exhaustive** over the contracted enum, with no fourth attention reason invented; repeated ambiguity says delivery **could not be confirmed**, never that the Recipient did not receive it (D129)
+- [ ] Local calendar dates render as the day they name, through a local-date formatter rather than the instant formatter, which would shift them a day in the organization's zone
+- [ ] Empty, loading, and error states are **distinguishable**, and the error state cannot be read as an all-clear
+- [ ] A missing migration or database failure reaches the **error boundary**; it is never degraded into an empty state
+- [ ] Any claim about D108 is limited to what shipped: **A8.6a establishes the cross-Task discovery surface** and does not satisfy, close, or discharge the D108 Owner UI gate
+- [ ] An E2E assertion about the **whole** list — "nothing needs attention", "exactly one item" — clears the organization's schedules first. The harness migrates the local database but never truncates it, so a row seeded by an earlier run would otherwise make the empty state unprovable forever
+- [ ] A loading-boundary scan holds the boundary open by **throttling the transport**, not by delaying a `page.route` handler. `page.route('**/x')` does not match the `/x?_rsc=<hash>` a client navigation actually requests, and blocking a response outright prevents the server from streaming the Suspense fallback at all — such a test passes only while the click keeps landing before hydration
+
 ## Owner web experience foundation (P1; apply when P1 work is in scope)
 
 Gates for D111–D126. Record **expected behaviour and required proof**; no specific implementation is pre-approved.
@@ -231,7 +248,7 @@ Gates for D111–D126. Record **expected behaviour and required proof**; no spec
 - [x] Chrome persists across loading and error boundaries; neither declares its own container or navigation
 - [x] Sign-out is **POST only** with no `GET` handler, revokes **server-side** at Supabase, redirects **303**, and is not reachable by `next/link` prefetch (D123)
 - [x] Sign-out required **no OpenAPI or generated-client change** (D123)
-- [x] `/attention` is truthfully empty: no query, no queue, no count, no schedule, no monitoring claim, and no A8 operational data (D118, D121)
+- [x] `/attention` made no claim it could not keep: at P1.4 it was truthfully empty and read nothing; since **A8.6a** it reads one bounded query and still claims no queue, no monitoring, and no automatic updating (D118, D121 — see the A8.6a section)
 - [x] Owner display timezone is a **documented constant**, not an environment variable or schema field; an invalid zone **fails loudly** rather than falling back to machine-local time (D122)
 - [x] Every rendered date-**time** carries a zone indicator; Owner timestamps are formatted **server-side** so no hydration mismatch is possible
 - [x] Timezone proven under `TZ=UTC`, `TZ=Asia/Tokyo`, **and** a non-Vancouver **browser** timezone, including both DST boundaries (D117)

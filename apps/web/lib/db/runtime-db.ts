@@ -20,6 +20,8 @@ const REQUIRED_EXPORTS = [
   'findReminderScheduleByTaskId',
   'getTaskDueLocalDate',
   'readCoherentReminderProjection',
+  // A8.6a Owner attention read, reached from the `/attention` server component.
+  'listReminderSchedulesRequiringOwnerAttention',
   // A8.4a worker-safety foundation. Reachable only from the dark internal processing endpoint.
   'claimReminderScheduleForProcessing',
   'releaseReminderScheduleClaim',

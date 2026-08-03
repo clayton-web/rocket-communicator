@@ -59,13 +59,27 @@ describe('P1.5 boundary structure', () => {
   });
 
   /*
-   * `/attention` has no boundary of its own. That is the coverage claim: it inherits the
-   * route-group boundary, so an Owner segment cannot ship without failure handling by
-   * forgetting to add a file.
+   * `/attention` had no boundary of its own in P1.5, and its absence was the coverage claim: the
+   * page read nothing, so the route-group boundary it inherited was the proof that an Owner segment
+   * cannot ship without failure handling by forgetting to add a file.
+   *
+   * A8.6a gave it one, because it now reads and the generic copy became actively misleading. The
+   * group boundary says a service did not respond; this page's failure means Rocket cannot say
+   * whether any reminder automation has stopped, and an Owner who reads the generic message as an
+   * all-clear has been told the opposite of the truth.
+   *
+   * The inherited-coverage claim moves rather than disappears. Every Owner segment still has a
+   * boundary — that is asserted above, and by the group boundary's continued existence — and the
+   * assertion here now checks that the segment boundary earns its place by being specific.
    */
-  it('covers /attention through the Owner route-group boundary', () => {
-    expect(existsSync(join(appRoot, '(owner)/attention/error.tsx'))).toBe(false);
+  it('gives /attention a segment boundary that speaks specifically about attention', () => {
+    const attentionError = join(appRoot, '(owner)/attention/error.tsx');
+    expect(existsSync(attentionError)).toBe(true);
     expect(existsSync(join(appRoot, '(owner)/error.tsx'))).toBe(true);
+
+    const source = readFileSync(attentionError, 'utf8');
+    expect(source).toContain('all-clear');
+    expect(source).toContain('Nothing was changed');
   });
 
   it('leaves the Recipient capability route outside the Owner group', () => {

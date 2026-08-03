@@ -315,8 +315,12 @@ paths:
         claim lease, worker identifier, delivery-attempt row, provider message identifier, or raw
         failure detail appears in the response.
 
-        A8.3b implements the API only. Nothing schedules, claims, sends, or retries a reminder, so
-        `overdueDeliveredCount` is always 0.
+        `overdueDeliveredCount` is 0 in every currently deployed environment because Recipient
+        reminder delivery is disabled, not because nothing can increment it. That was true of A8.3b,
+        which implemented the API alone; A8.4b since added the worker that claims an occurrence,
+        sends it, and counts it, so the field now reports real deliveries wherever delivery is
+        enabled. Nowhere is: `ENABLE_REMINDER_DELIVERY` is unset in every environment and no
+        scheduler invokes the worker (D108).
 
         Allowed for every Task status, including completed and dismissed, so the Owner can always see
         the truthful history of what was scheduled.

@@ -835,6 +835,95 @@ export async function listDueAdvanceReminderSchedulesGlobally(
   }));
 }
 
+/** One schedule flagged for Owner attention, with the Task fields its list row needs (A8.6a). */
+export interface OwnerAttentionReminderRow {
+  readonly taskId: string;
+  /** The Task's own summary points, for title derivation. Free text; never rendered raw as HTML. */
+  readonly taskSummaryPoints: unknown;
+  /**
+   * The Task's canonical due date, not the generation's snapshot.
+   *
+   * The two legitimately differ, and `state.ts` explains why at the single-Task projection: a
+   * schedule stopped by due-date removal keeps the date it was scheduling against, while the Task
+   * has none. Telling an Owner they still have a due date they had just removed would send them
+   * looking for something that is not there.
+   */
+  readonly taskDueLocalDate: string | null;
+  readonly status: PersistedReminderSchedule['status'];
+  readonly stopReason: ReminderScheduleStopReason | null;
+  readonly overdueDeliveredCount: number;
+}
+
+/**
+ * Bounded, organization-scoped read of the schedules asking for an Owner decision (A8.6a; D108).
+ *
+ * D108 requires the Owner to discover that an automation stopped **without inspecting Tasks
+ * continually**, which is a cross-Task question and the only reason this function exists. The
+ * single-Task reminder projection cannot answer it: an Owner who has to open a Task to learn that
+ * its reminders died has already had to guess which Task to open.
+ *
+ * ## One query, and the join is a safety mechanism rather than an optimization
+ *
+ * Every row needs Task fields to be worth rendering, and resolving them one at a time would issue a
+ * query per attention item. The nested `select` keeps that to a single statement plus at most one
+ * batched relation load, and the Task fields it names are the whole set the surface displays.
+ *
+ * `task: { organizationId }` in the `where` is **not** redundant with the schedule filter above it.
+ * There is no composite foreign key binding a schedule's organization to its Task's, so the two
+ * agreeing is an invariant maintained by the write path (`reminder-scope-guard.ts` resolves the
+ * organization from the Task row rather than trusting a caller) rather than a fact the database
+ * enforces. Asserting it here makes a cross-organization Task **unmatchable in SQL** instead of
+ * something the presentation layer is trusted to notice, and the failure mode it forecloses — an
+ * Owner shown a link to another organization's work — is the worst thing this surface could do.
+ * A schedule whose Task fails that test drops out of the result entirely, which is the fail-closed
+ * direction: a hidden attention item is recoverable, a leaked Task is not.
+ *
+ * ## Ordering and bound
+ *
+ * Ordered by the generation's due date, oldest first, then by Task for a total order — the schedule
+ * that has been stuck longest is the one to look at first, and two loads of an unchanged database
+ * produce an identical list. The generation snapshot is used for ordering rather than the Task's
+ * canonical date because it is non-null on every row; the canonical date is what gets displayed.
+ *
+ * The bound is a real bound and the caller cannot widen it past the ceiling. A filled batch is
+ * reported by the caller comparing lengths rather than by a second `COUNT` over the table, matching
+ * how every other bounded read here declines to price an exact remainder.
+ */
+export async function listReminderSchedulesRequiringOwnerAttention(
+  db: Client,
+  input: { readonly organizationId: string; readonly limit: number },
+): Promise<OwnerAttentionReminderRow[]> {
+  if (!Number.isInteger(input.limit) || input.limit < 1 || input.limit > 200) {
+    throw persistenceValidation('Owner attention list limit must be an integer between 1 and 200.');
+  }
+
+  const rows = await db.taskReminderSchedule.findMany({
+    where: {
+      organizationId: input.organizationId,
+      requiresOwnerAttention: true,
+      task: { organizationId: input.organizationId },
+    },
+    orderBy: [{ dueLocalDate: 'asc' }, { taskId: 'asc' }],
+    take: input.limit,
+    select: {
+      taskId: true,
+      status: true,
+      stopReason: true,
+      overdueDeliveredCount: true,
+      task: { select: { summaryPoints: true, dueLocalDate: true } },
+    },
+  });
+
+  return rows.map((row) => ({
+    taskId: row.taskId,
+    taskSummaryPoints: row.task.summaryPoints,
+    taskDueLocalDate: row.task.dueLocalDate,
+    status: row.status,
+    stopReason: row.stopReason,
+    overdueDeliveredCount: row.overdueDeliveredCount,
+  }));
+}
+
 /**
  * Bounded batch of schedules whose next overdue occurrence has arrived and that are not held under
  * a live lease.

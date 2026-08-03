@@ -12,6 +12,8 @@
  *   { "action": "expire-capability", capabilityId }
  *   { "action": "read-task", taskId }
  *   { "action": "read-notes", taskId }
+ *   { "action": "stop-reminder-schedule", taskId, dueLocalDate, stopReason }
+ *   { "action": "clear-reminder-schedules" }
  */
 import { randomUUID } from 'node:crypto';
 import {
@@ -59,6 +61,60 @@ async function main() {
           data: { expiresAt: new Date(Date.now() - 60_000) },
         });
         return { expired: true };
+      }
+
+      /**
+       * A stopped Reminder Schedule flagged for Owner attention, for the A8.6a `/attention` page.
+       *
+       * No Owner HTTP surface can produce this state, and no permitted action can either: the
+       * attention flag is raised only by the A8.4b reminder worker settling an occurrence, which
+       * requires `ENABLE_REMINDER_DELIVERY` and a real send. Seeding the row is what lets the
+       * browser harness exercise the populated page and its accessibility scan against real
+       * database rows, with no flag enabled, no worker run, and no injected markup.
+       *
+       * Writes the schedule directly rather than through the establishment repository because that
+       * path deliberately refuses to create an already-stopped generation.
+       */
+      case 'stop-reminder-schedule': {
+        const stoppedAt = new Date();
+        await db.task.update({
+          where: { id: command.taskId },
+          data: { dueLocalDate: command.dueLocalDate },
+        });
+        await db.taskReminderSchedule.create({
+          data: {
+            id: `sched_e2e_${randomUUID()}`.slice(0, 64),
+            organizationId: ORGANIZATION_ID,
+            taskId: command.taskId,
+            dueLocalDate: command.dueLocalDate,
+            schedulingTimeZone: 'America/Vancouver',
+            establishedAt: stoppedAt,
+            status: 'stopped',
+            stopReason: command.stopReason,
+            stoppedAt,
+            requiresOwnerAttention: true,
+            advanceDisposition: 'skipped_window_elapsed',
+            advanceOccurrenceLocalDate: command.dueLocalDate,
+            advanceOccurrenceAt: stoppedAt,
+          },
+        });
+        return { stopped: true };
+      }
+
+      /*
+       * Delete every Reminder Schedule in the organization.
+       *
+       * The harness migrates the local database but never truncates it, so rows survive between
+       * runs and every other spec copes by filtering on a unique label. The `/attention` page
+       * cannot: its empty state and its single-item state are assertions about the *whole* list,
+       * and one seeded row from a previous run would make "nothing needs attention" unprovable
+       * forever. Clearing first lets each test state the precondition it actually needs.
+       */
+      case 'clear-reminder-schedules': {
+        const { count } = await db.taskReminderSchedule.deleteMany({
+          where: { organizationId: ORGANIZATION_ID },
+        });
+        return { deleted: count };
       }
 
       case 'read-task': {

@@ -44,6 +44,36 @@ export function attachActiveAssignment(input: {
   return runFixture({ action: 'attach-assignment', ...input });
 }
 
+/**
+ * Stop a Task's Reminder Schedule and flag it for Owner attention, for the `/attention` page.
+ *
+ * There is no Owner HTTP surface for this and no permitted way to reach it through the product:
+ * the flag is raised only by the A8.4b reminder worker settling a real delivery, which requires
+ * `ENABLE_REMINDER_DELIVERY`. Seeding it is what makes the populated page — and its accessibility
+ * scan — testable in the browser with every flag still unset.
+ */
+export function stopReminderScheduleForAttention(input: {
+  taskId: string;
+  dueLocalDate: string;
+  stopReason:
+    'overdue_ceiling_reached' | 'permanent_delivery_failure' | 'repeated_ambiguous_outcomes';
+}): void {
+  runFixture({ action: 'stop-reminder-schedule', ...input });
+}
+
+/**
+ * Remove every Reminder Schedule in the organization, so a whole-list assertion is provable.
+ *
+ * The harness migrates the local database but never truncates it. Other specs absorb the leftover
+ * rows by filtering on a unique label; `/attention` cannot, because "nothing needs your attention"
+ * and "exactly one item needs attention" are claims about the entire list. A single row seeded by
+ * an earlier run would falsify both permanently. Tests that assert on the whole list call this
+ * first rather than depending on the order they happen to run in.
+ */
+export function clearReminderSchedules(): void {
+  runFixture({ action: 'clear-reminder-schedules' });
+}
+
 /** Age a capability so the application's real expiry rejection can be exercised. */
 export function expireCapability(capabilityId: string): void {
   runFixture({ action: 'expire-capability', capabilityId });

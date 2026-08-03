@@ -86,6 +86,59 @@ const dateTimeFormatter = new Intl.DateTimeFormat('en-CA', {
   timeZoneName: 'short',
 });
 
+/**
+ * Calendar dates, formatted in UTC on purpose (A8.6a).
+ *
+ * A `YYYY-MM-DD` due date is not an instant. It is already a date in the organization's zone — the
+ * Owner picked a day, and D103 stores that day verbatim rather than a moment — so converting it
+ * *again* is not a no-op, it is an off-by-one. `Date.parse('2026-08-10')` yields UTC midnight, and
+ * rendering that instant in `America/Vancouver` lands on the evening of the 9th, so the Owner is
+ * shown a due date one day earlier than the one they saved.
+ *
+ * Formatting in UTC after parsing the parts in UTC makes the two conversions cancel, which is the
+ * whole trick: the calendar date comes back out unchanged, for every zone and across every
+ * daylight-saving boundary.
+ */
+const localDateFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'UTC',
+  year: 'numeric',
+  month: 'short',
+  day: 'numeric',
+});
+
+const LOCAL_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/**
+ * Format a canonical `YYYY-MM-DD` organization-local date for display, or `UNKNOWN_DATE_TEXT`.
+ *
+ * Rejects anything that is not exactly a canonical local date rather than coercing it, including a
+ * full ISO instant: an instant reaching this function means a caller confused the two date kinds,
+ * and silently rendering its UTC day would hide that behind a plausible-looking answer. Round-trips
+ * the parsed components to reject a real-looking impossible day such as `2026-02-30`, which the
+ * `Date` constructor would otherwise roll forward into March.
+ */
+export function formatOwnerLocalDate(value: string | null | undefined): string {
+  if (typeof value !== 'string') {
+    return UNKNOWN_DATE_TEXT;
+  }
+  const match = LOCAL_DATE_PATTERN.exec(value.trim());
+  if (match === null) {
+    return UNKNOWN_DATE_TEXT;
+  }
+
+  const [, year, month, day] = match;
+  const instant = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+  if (
+    instant.getUTCFullYear() !== Number(year) ||
+    instant.getUTCMonth() !== Number(month) - 1 ||
+    instant.getUTCDate() !== Number(day)
+  ) {
+    return UNKNOWN_DATE_TEXT;
+  }
+
+  return localDateFormatter.format(instant);
+}
+
 function parseInstant(value: string | null | undefined): Date | null {
   if (typeof value !== 'string' || value.trim() === '') {
     return null;

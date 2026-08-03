@@ -209,11 +209,15 @@ export {
   releaseReminderScheduleClaim,
   listDueReminderSchedulesGlobally,
   listDueAdvanceReminderSchedulesGlobally,
+  // A8.6a Owner attention read. Owner-facing rather than worker-facing, and the first reminder
+  // read in this bundle that a signed-in Owner reaches directly.
+  listReminderSchedulesRequiringOwnerAttention,
   type CreateReminderScheduleInput,
   type OpenNextReminderGenerationInput,
   type ReminderOccurrenceInput,
   type DueReminderScheduleRow,
   type DueAdvanceReminderScheduleRow,
+  type OwnerAttentionReminderRow,
 } from './repositories/reminder-schedule-repository.js';
 export {
   claimReminderOccurrence,

@@ -248,12 +248,15 @@ describe('Owner shell module boundaries', () => {
 
   /*
    * The shell itself stays server-rendered: `owner-nav.tsx` is the only chrome that needs
-   * browser state. P1.5 adds `error.tsx`, which Next.js requires to be a client component
-   * because an error boundary has to catch failures during client rendering. It is a
-   * boundary, not chrome, and the list is pinned so shell markup cannot drift clientward
-   * behind it.
+   * browser state. Every other client module here is an error boundary, which Next.js requires
+   * to be one because a boundary has to catch failures during client rendering — the group
+   * boundary from P1.5, and the `/attention` segment boundary A8.6a added.
+   *
+   * Pinned by *kind* rather than by count, so a new segment can bring its own boundary without
+   * editing this list, while shell markup still cannot drift clientward behind it: anything that
+   * is not `error.tsx` has to be named.
    */
-  it('adds no client component to the shell beyond the nav and the error boundary', () => {
+  it('adds no client component to the shell beyond the nav and error boundaries', () => {
     const clientModules: string[] = [];
     const walk = (dir: string) => {
       for (const entry of readdirSync(dir)) {
@@ -271,7 +274,10 @@ describe('Owner shell module boundaries', () => {
     };
     walk(ownerGroup);
 
-    expect(clientModules.sort()).toEqual(['error.tsx', 'owner-nav.tsx']);
+    const notBoundaries = clientModules.filter((name) => name !== 'error.tsx');
+    expect(notBoundaries.sort()).toEqual(['owner-nav.tsx']);
+    // The group boundary and the `/attention` segment boundary.
+    expect(clientModules.filter((name) => name === 'error.tsx')).toHaveLength(2);
   });
 
   it('renders Task detail on the server now that only handoff needs browser state', () => {
