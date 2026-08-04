@@ -542,6 +542,18 @@ Both are bounded by one fact: **with zero reminder schedules, reconciliation is 
 
 The operator-ready sequence. It replaces retired Stages 1 through 10. Every step is procedural; no step contains a credential.
 
+**A note on worktree dependencies before you start.** A freshly created worktree has **no `node_modules`**, so `pnpm exec prisma` in it fails with `Command "prisma" not found`. Install the one workspace the repair needs, and do it **before** the Owner no-use window opens rather than inside it:
+
+```bash
+cd <worktree>
+pnpm install --filter @aicaa/db --ignore-scripts
+cd packages/db && pnpm exec prisma --version   # must report 6.19.3
+```
+
+This takes about a second against a warm pnpm store. It creates only ignored `node_modules`, so the worktree stays clean and stays `.env`-free — Prisma will print no `Environment variables loaded from .env` line, which is the visible confirmation that no file-borne credential is in play.
+
+**Do not substitute `--schema <worktree>/packages/db/prisma/schema.prisma` run from the main repository.** It resolves the right migrations, but it executes inside a directory that **does** contain `packages/db/.env` and Prisma loads that file. Process-scoped variables still win on precedence, so it would work — and it would quietly reinstate the inherited-credential exposure the `.env`-free worktree exists to eliminate.
+
 **A note on exit codes before you start.** `prisma migrate status` **exits non-zero when migrations are pending**. Before the repair it will exit 1 and list five pending migrations, and that is the expected, correct result — not a failure. Do not run these steps under `set -e` without accounting for it, and do not treat that exit code as a reason to stop. After the repair the same command exits 0.
 
 | #   | Step                                                                                                                                                                                                                                                                                                                 |
@@ -553,7 +565,7 @@ The operator-ready sequence. It replaces retired Stages 1 through 10. Every step
 | 5   | Establish an Owner no-use window — no Task creation, mutation, or reminder action for the duration                                                                                                                                                                                                                   |
 | 6   | Create or verify a detached worktree at `ee5e82a`, outside the main repository directory                                                                                                                                                                                                                             |
 | 7   | Verify the worktree holds **exactly ten** migration directories: the five pre-A8 and the five deployed A8                                                                                                                                                                                                            |
-| 8   | Confirm the worktree contains **no** `packages/db/.env`                                                                                                                                                                                                                                                              |
+| 8   | Confirm the worktree contains **no** `packages/db/.env`, install its dependencies, and confirm the Prisma CLI resolves at `6.19.3`                                                                                                                                                                                   |
 | 9   | Supply the Production migration URL as a process-scoped secret only                                                                                                                                                                                                                                                  |
 | 10  | Verify the endpoint is the Supabase Shared Pooler in **session mode on port 5432**                                                                                                                                                                                                                                   |
 | 11  | Verify the URL carries no `pgbouncer=true`                                                                                                                                                                                                                                                                           |

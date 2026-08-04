@@ -286,6 +286,25 @@ describe('A8.7b-INCIDENT-1c verification SQL is scoped to five migrations', () =
     );
   });
 
+  it('states the worktree dependency prerequisite that makes the repair runnable', () => {
+    const runbook = read('docs/DEPLOYMENT.md');
+
+    expect(runbook, 'a fresh worktree has no node_modules and cannot run Prisma').toMatch(
+      /pnpm install --filter @aicaa\/db --ignore-scripts/,
+    );
+    expect(runbook, 'the install must precede the no-use window').toMatch(
+      /before\*{0,2} the Owner no-use window/i,
+    );
+    expect(runbook, 'the Prisma version must be pinned to the rehearsed one').toMatch(/6\.19\.3/);
+    expect(
+      runbook,
+      'the --schema shortcut must be rejected because it loads packages/db/.env',
+    ).toMatch(/Do not substitute `--schema/);
+
+    const step8 = runbook.match(/\| 8 {3}\|[^\n]*/)?.[0] ?? '';
+    expect(step8, 'step 8 must cover the dependency install').toMatch(/install/i);
+  });
+
   it('carries the same five-migration expectations into the evidence template', () => {
     const evidence = read('docs/A8_7_EVIDENCE.md');
 
