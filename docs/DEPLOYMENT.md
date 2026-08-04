@@ -136,7 +136,7 @@ A8.4b.1 capability-skip migration: `packages/db/prisma/migrations/20260802173000
 
 A8.4b.2 repeated-ambiguity stop-reason migration: `packages/db/prisma/migrations/20260802210000_a8_4b2_repeated_ambiguous_stop_reason/` (**not yet applied in production**). One additive `ALTER TYPE "ReminderScheduleStopReason" ADD VALUE IF NOT EXISTS 'repeated_ambiguous_outcomes'`, adding the stop reason D129 uses. Same properties as the one above: it rewrites no row, invalidates no existing value, and `task_reminder_schedules_stop_reason_matches_status` constrains only that a reason is present exactly when the status is `stopped`, so it enumerates no value and needs no rebuild or revalidation. Both files are deliberately additive and contain only the enum alteration. Keeping enum introduction separate from any schema or data operation that consumes the new value avoids PostgreSQL enum-visibility and deployment-order hazards, and keeps each migration independently testable and safely additive.
 
-A8.4b.3 advance due-scan index migration: `packages/db/prisma/migrations/20260803090000_a8_4b3_advance_due_scan_index/` (**not yet applied in production**). One additive `CREATE INDEX IF NOT EXISTS "task_reminder_schedules_advance_due_scan_idx" ON "task_reminder_schedules"("advance_occurrence_at", "id") WHERE "status" = 'active' AND "advance_disposition" = 'scheduled'`, which the A8.4b.3 advance scan reads. It creates no column, no constraint, and no enum value, rewrites no row, and dropping it would leave the scan correct and merely slower. It is a plain `CREATE INDEX` rather than `CREATE INDEX CONCURRENTLY`: migrations are applied through the repository's standard path (`pnpm --filter @aicaa/db migrate:deploy`, that is `prisma migrate deploy`), and a concurrent build would need its own separately designed procedure rather than being introduced implicitly here. The table is empty in production, so the lock is instantaneous. Should that stop being true before this is applied, build it manually with `CREATE INDEX CONCURRENTLY` and let the `IF NOT EXISTS` make the migration a no-op.
+A8.4b.3 advance due-scan index migration: `packages/db/prisma/migrations/20260803090000_a8_4b3_advance_due_scan_index/` (**not yet applied in production**). One additive `CREATE INDEX IF NOT EXISTS "task_reminder_schedules_advance_due_scan_idx" ON "task_reminder_schedules"("advance_occurrence_at", "id") WHERE "status" = 'active' AND "advance_disposition" = 'scheduled'`, which the A8.4b.3 advance scan reads. It creates no column, no constraint, and no enum value, rewrites no row, and dropping it would leave the scan correct and merely slower. It is a plain `CREATE INDEX` rather than `CREATE INDEX CONCURRENTLY`: migrations are applied through `prisma migrate deploy`, and a concurrent build would need its own separately designed procedure rather than being introduced implicitly here. The table is empty in production, so the lock is instantaneous. Should that stop being true before this is applied, build it manually with `CREATE INDEX CONCURRENTLY` and let the `IF NOT EXISTS` make the migration a no-op.
 
 A8.5a Owner notification migration: `packages/db/prisma/migrations/20260803120000_a8_5a_owner_notification_intents/` (**not yet applied in production**). Creates five enum types and two new tables — `owner_notification_intents` and `owner_notification_attempts` — with their CHECK constraints, indexes, and deny-by-default RLS. It alters no existing table, drops nothing, and backfills nothing. **Ordering note for the operator: the application does not require this migration to be applied.** `ENABLE_OWNER_EVENT_CAPTURE` is evaluated before the mutation transaction opens, so with the flag absent — which it is everywhere — Production's Task mutations issue no statement against either table and are unaffected by its absence. Applying it enables nothing; enabling the flag before applying it is the ordering that would break, and the flag must therefore stay absent until after the migration lands.
 
@@ -150,7 +150,7 @@ A8.5e adds **no migration** — no column, no table, no index, no enum value. It
 
 **Each enum migration contains one statement and uses the new value nowhere, deliberately.** Keeping enum introduction separate from any schema or data operation that consumes the new value avoids PostgreSQL enum-visibility and deployment-order hazards: PostgreSQL restricts _using_ a freshly added enum value in the same transaction that added it, so depending on how statements are grouped when applied, a file that added the value and then referenced it — in an index predicate, a CHECK, or a backfill — can pass a from-empty test and still fail on apply. Separating them keeps the migration independently testable and safely additive. `packages/db/__tests__/a8-4b1-capability-skip-migration.test.ts` asserts that shape as well as the behaviour.
 
-**A known inaccuracy is retained inside three migration files, and this paragraph is its authoritative correction.** The header comments of `20260802094500_a8_4a_settlement_marker`, `20260802173000_a8_4b1_capability_skip_reason`, and `20260802210000_a8_4b2_repeated_ambiguous_stop_reason` each make a claim about how Prisma groups a migration file's statements into transactions. The repository establishes only that migrations are applied through `pnpm --filter @aicaa/db migrate:deploy`, that is `prisma migrate deploy`. It establishes nothing about transaction grouping, that claim should not be relied on or repeated, and no reasoning in this document depends on it. The comments are left in place because editing an applied migration file changes its recorded checksum and would break `migrate deploy` against every local database that already applied it, while the SQL statements themselves are correct and unaffected.
+**A known inaccuracy is retained inside three migration files, and this paragraph is its authoritative correction.** The header comments of `20260802094500_a8_4a_settlement_marker`, `20260802173000_a8_4b1_capability_skip_reason`, and `20260802210000_a8_4b2_repeated_ambiguous_stop_reason` each make a claim about how Prisma groups a migration file's statements into transactions. The repository establishes only that migrations are applied through `prisma migrate deploy`. It establishes nothing about transaction grouping, that claim should not be relied on or repeated, and no reasoning in this document depends on it. The comments are left in place because editing an applied migration file changes its recorded checksum and would break `migrate deploy` against every local database that already applied it, while the SQL statements themselves are correct and unaffected.
 
 The A8.4a comment also draws a substantive conclusion from that claim — that its `NOT VALID` / `VALIDATE` split cannot yet reduce lock duration. Read it instead as follows: the migration applies the constraint change through the repository's standard deployment path as one migration step, and a lower-lock rollout would require a separately designed operational procedure that creates the constraint as `NOT VALID` and validates it in a later step, rather than merely changing that file's wording. The split is still the right shape to have written, because it is the form such a procedure would adopt and because the backfill guarantees the validation finds nothing to reject.
 
@@ -187,7 +187,7 @@ postgresql://postgres.<PROJECT_REF>:<PASSWORD>@aws-<REGION>.pooler.supabase.com:
 
 #### Secure migration-command handling
 
-Read the credential into the environment without it entering shell history, run the three commands, then discard it:
+Read the credential into the environment without it entering shell history, run the three commands **from the detached worktree that bounds the migration set**, then discard it:
 
 ```bash
 read -rs -p "Migration DATABASE_URL (session pooler, port 5432): " MIGRATE_URL
@@ -195,18 +195,21 @@ export MIGRATE_URL
 ```
 
 ```bash
-DATABASE_URL="$MIGRATE_URL" pnpm --filter @aicaa/db migrate:status
-DATABASE_URL="$MIGRATE_URL" pnpm --filter @aicaa/db migrate:deploy
-DATABASE_URL="$MIGRATE_URL" pnpm --filter @aicaa/db migrate:status
+cd <worktree>/packages/db
+DATABASE_URL="$MIGRATE_URL" pnpm exec prisma migrate status
+DATABASE_URL="$MIGRATE_URL" pnpm exec prisma migrate deploy
+DATABASE_URL="$MIGRATE_URL" pnpm exec prisma migrate status
 unset MIGRATE_URL
 ```
 
 Rules that make that pattern load-bearing rather than cosmetic:
 
-- **The local-only helpers must never be pointed at production.** `pnpm db:migrate:local`, `db:migrate:status:local`, and anything else routed through `packages/db/scripts/run-local-prisma.mjs` assert a loopback host and exist for the Docker cluster. They are not "the same command with a different URL".
-- **A bare migration command is prohibited during a production operation.** `pnpm --filter @aicaa/db migrate:deploy` with no inline `DATABASE_URL` falls back to `packages/db/.env`, whose contents are operator-local, untracked, and unverifiable from the repository. The explicit prefix is what makes the target auditable.
-- **Inspect the local `.env` target before migrating anyway.** Confirm what `packages/db/.env` currently points at, so that a mistyped prefix fails rather than silently reaching something unintended.
+- **The local-only helpers must never be pointed at production.** `pnpm db:migrate:local`, `db:migrate:status:local`, and anything else routed through `packages/db/scripts/run-local-prisma.mjs` assert a loopback host and exist for the Docker cluster. They are not "the same command with a different URL", and they will refuse a production host by design.
+- **No unguarded migration package script exists any more.** `packages/db` previously exposed bare `migrate:deploy`, `migrate:dev`, and `migrate:status` scripts that inherited whatever `DATABASE_URL` was in scope, including one loaded silently from `packages/db/.env`. **They have been removed.** Prisma is invoked directly for the one authorized production operation, so the target is always written at the call site.
+- **Run from a worktree that has no `.env`.** Prisma reads `.env` from the schema's directory, so the surest way to prevent an unintended target is to execute where no `.env` exists. Verify its absence rather than assuming it.
+- **The commit you run from determines which migrations apply.** `prisma migrate deploy` applies everything pending in _its own_ migrations directory and offers no way to select a subset. Bounding the set therefore means choosing the worktree, not choosing a flag.
 - **No credential may be committed, pasted into documentation, quoted in a ticket, or recorded in evidence.** Evidence records the redacted host form and the port, never the string.
+- **`migrate status` exits non-zero when migrations are pending.** Expect exit 1 before the migration and exit 0 after. Do not run the sequence under `set -e` without allowing for it, and do not read that exit code as a failure.
 - **An advisory-lock timeout is not a retry-immediately condition.** If `migrate deploy` fails to acquire the advisory lock, another migration process may still be running or may have died holding state. Re-run only after confirming there is no failed migration row **and** no partial physical schema — see [Migration failure model](#migration-failure-model-a87).
 
 #### Migration endpoint verification
@@ -326,7 +329,9 @@ Operator notes:
 
 **P1.1 through P1.5 are implemented. P1 is COMPLETE** — implementation complete, deployed, and production-validated. The P1.1 baseline comparison against production was completed in P1.5 (D119).
 
-Production currently serves commit `8588c5d260176b24c8ecf6fb16e026c5c6034359` via the automatic Vercel production deployment `dpl_7vmnL71Lck7JLeftgsJkYVJ4uw82` (Ready; stable alias `https://rocket-communicator-web.vercel.app`; immutable URL `https://rocket-communicator-fokub6tw4-claytons-projects-37065b04.vercel.app`). Deployed and production-validated 2026-07-30. No manual deployment action was required for P1.5. Evidence: [P1_5_EVIDENCE.md](P1_5_EVIDENCE.md).
+P1.5 was deployed and production-validated on 2026-07-30 as commit `8588c5d260176b24c8ecf6fb16e026c5c6034359`, via the automatic Vercel production deployment `dpl_7vmnL71Lck7JLeftgsJkYVJ4uw82` (stable alias `https://rocket-communicator-web.vercel.app`). No manual deployment action was required. Evidence: [P1_5_EVIDENCE.md](P1_5_EVIDENCE.md).
+
+> **Production has since advanced past `8588c5d`.** It now serves `ee5e82a`, which is A8 code, against a database that has not been migrated — see [Current incident state](#current-incident-state). The paragraph above is the P1.5 historical record, not a statement about what is running today.
 
 **Rollback deployment retained:** `dpl_3sp18eqYRQH6bjKdXC72Tue263V1` (commit `243895f`, the P1.4 closeout documentation; application code identical to the P1.4 validated build). The earlier P1.4 deployment `dpl_F5zjNcc4zwiwbr25CSdMGA3zDy8c` (commit `a38c8574`) also remains available. No rollback condition was triggered and no rollback was performed.
 
@@ -346,9 +351,13 @@ Production currently serves commit `8588c5d260176b24c8ecf6fb16e026c5c6034359` vi
 
 **Browser verification runs as a separate job (D119)** rather than inside `pnpm verify` — **P1.2 is implemented, pending review**: `pnpm --filter @aicaa/web e2e`. It targets a **controlled local environment only** (disposable local Postgres plus a local Supabase Auth double) and refuses any non-loopback database. It is never run against production, and it produces **no** preview or production evidence. It has been executed on **macOS only** and is **not part of any CI workflow**; running it elsewhere needs PostgreSQL binaries on `PATH` plus a Chromium install step. Stop the disposable cluster with `pnpm --filter @aicaa/web e2e:db:stop` when finished. Prerequisites, commands, coverage, and known gaps: [P1_2_BROWSER_HARNESS.md](P1_2_BROWSER_HARNESS.md).
 
-### Reminder engine operations (A8 — not operational)
+### Reminder engine operations (A8 — deployed through A8.4a, not operational)
 
-**Nothing in this subsection is operational, and no reminder has ever been sent.** Since A8.4a a worker endpoint and a delivery flag **do** exist in the repository: `POST /api/v1/internal/reminders/process` and `ENABLE_REMINDER_DELIVERY`. Neither is live. **No scheduler job invokes the endpoint and the flag is set in no environment.** The A8.3b Owner reminder routes configure a schedule, the Task-lifecycle wiring keeps it truthful as the Task moves, and A8.4a can claim, guard, and finalize an occurrence. The A8 persistence tables (`task_reminder_schedules`, `reminder_delivery_attempts`, and `tasks.due_local_date`) **exist in the repository migrations but are not applied in Production** — see the migration history above. This records the approved enablement gate so it cannot be missed later; it is not a runbook for existing infrastructure.
+**No reminder has ever been sent, and nothing in this subsection is operational.** The distinction that matters after the incident is between _deployed_ and _operational_: **A8 code through A8.4a is deployed in Production** as part of `ee5e82a`, including `POST /api/v1/internal/reminders/process`, the A8.3b Owner reminder routes, and the Task-lifecycle reminder wiring. None of it is live — **no scheduler job invokes the endpoint and `ENABLE_REMINDER_DELIVERY` is set in no environment.**
+
+**The A8 persistence tables (`task_reminder_schedules`, `reminder_delivery_attempts`, and `tasks.due_local_date`) are not applied in Production.** Because the deployed code expects them and no flag guards the Task path that reaches them, this is the [current incident](#current-incident-state) rather than a benign pending step. [A8.7b-INCIDENT-1c](#a87b-incident-1c--production-schema-compatibility-repair) applies them.
+
+After that repair the A8.3b routes and the lifecycle wiring become functional, so the enablement gate below stops being theoretical: **the Owner must not create or modify a reminder until the later rollout is authorized.**
 
 **A8.4b.1 added a real Gmail transport for overdue reminders, and the flag is what holds it shut.** The processing service itself still imports no provider — a source guard scans `lib/reminders` and fails the build if one appears — and the route is the single composition point. That composition is **conditional on `ENABLE_REMINDER_DELIVERY === 'true'`**, so in every environment as configured today no Gmail transport object is constructed, **no access resolver exists, no stored refresh token is decrypted, and no token exchange is attempted**; the endpoint returns a zero-work response reporting `transportConfigured: false`. Enabling the flag additionally requires `OWNER_ORGANIZATION_ID` to be set and a Gmail account to be connected for that organization: without either, the route builds no transport and the response reports the same zero work rather than proceeding on a guess. Automated tests cannot reach real Gmail even with the flag forced on, because the adapter throws at construction when it detects a test runner.
 
@@ -378,7 +387,9 @@ The five-minute cadence is a wake-up interval, not a reminder interval. Nothing 
 
 Even with the flag on, A8.4a sends no email, and it does not even pretend to. Processing requires an **injected** transport and refuses to run without one, returning a zero-work response with `transportConfigured: false`; nothing in the application injects one, because the only implementation is a deterministic fake used by tests, and an unscripted fake returns a permanent `transport_not_configured` failure rather than acceptance. No processing module can reach a Gmail client — a source guard fails the build if one is imported. Real delivery is A8.4b.
 
-### Owner notification worker (A8.5b–A8.5e — not operational)
+### Owner notification worker (A8.5b–A8.5e — not deployed, not operational)
+
+**None of A8.5 is deployed.** Production serves `ee5e82a`, which predates A8.4b.1; every A8.5 and A8.6 slice sits in the unpushed local commits. The subsection below describes code that exists in the repository and will become deployed only in the later rollout slice, not code running in Production today.
 
 **A second internal worker exists and is separate from the reminder worker in every respect.** `POST /api/v1/internal/notifications/process`, same `CRON_SECRET` bearer family, same Node.js runtime and sixty-second budget, same twenty-five-item delivery batch and fifteen-second deadline reserve. **No scheduler job invokes it and none may be created**; `vercel.json` is unchanged. The two workers are deliberately not merged: reminder occurrence policy and one-shot Owner event delivery have different retry rules, different terminal states, and different tables, and one endpoint doing both would make a single deadline and a single batch serve two unrelated backlogs.
 
@@ -407,35 +418,169 @@ Each flag is matched as the exact string `true`, independently. `"1"`, `"TRUE"`,
 
 ## A8.7 production rollout
 
-**Nothing in this section has been performed.** Every command, query, and dashboard action below is an instruction to a future operator working under a separate authorization. A8.7a — the slice that wrote this section — contacted no production system, no database, no scheduler, and no provider, and changed no environment variable.
+> **A8.7b as originally written is retired.** It was designed for a Production that served pre-A8 code against an unmigrated database. That premise was false. Production is serving **A8 code** against an unmigrated database, which is an incident rather than a starting point. The migrate-then-deploy rollout it described cannot be run, because the deploy already happened. Everything A8.7b covered is superseded by [A8.7b-INCIDENT-1c](#a87b-incident-1c--production-schema-compatibility-repair), which repairs the schema and deploys nothing.
+>
+> A8.7c, A8.7d, and A8.7e remain as written but now sit behind the repair and behind a later slice that applies the remaining migrations and deploys the queued code.
 
-Read this section as the whole rollout at once before starting any part of it. It is deliberately written so that the decision points are settled while nobody is under pressure.
+**No part of A8.7 has contacted Production.** Every command, query, and dashboard action below is an instruction to a future operator working under a separate authorization. A8.7a wrote this section, A8.7b-INCIDENT-1a rehearsed the repair on a local container, and A8.7b-INCIDENT-1b corrected this document; none of the three contacted any production system, database, scheduler, or provider, and none changed an environment variable.
+
+Read this section as a whole before starting any part of it. It is deliberately written so that the decision points are settled while nobody is under pressure.
 
 ### A8.7 slice structure
 
-| Slice     | Scope                                                                                                                 | Production contact                       |
-| --------- | --------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
-| **A8.7a** | Rollout preparation, recovery procedures, verification classification. **This documentation.**                        | **None**                                 |
-| **A8.7b** | Production preflight, all pending A8 migrations, schema verification, disabled-feature deployment, smoke verification | Database and deployment                  |
-| **A8.7c** | Owner-event capture enablement and observation                                                                        | One environment variable, one deployment |
-| **A8.7d** | Zero-send notification rehearsal, single-notification canary, Gmail-loop proof, notification scheduler creation       | Gmail send, scheduler creation           |
-| **A8.7e** | Reminder preflight, single-reminder canary, reminder scheduler creation                                               | Recipient email, scheduler creation      |
+| Slice                 | Scope                                                                                                                | Production contact                       |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| **A8.7a**             | Rollout preparation, recovery procedures, verification classification                                                | **None**                                 |
+| **A8.7b**             | **Retired.** Superseded by the incident slices below                                                                 | —                                        |
+| **A8.7b-INCIDENT-1a** | Local PostgreSQL 17 rehearsal of the repair migration path. **Complete** ([evidence](A8_7B_INCIDENT_1A_EVIDENCE.md)) | **None**                                 |
+| **A8.7b-INCIDENT-1b** | Incident runbook correction. **This documentation.**                                                                 | **None**                                 |
+| **A8.7b-INCIDENT-1c** | Production schema compatibility repair — five migrations, no deployment                                              | Database only                            |
+| _(later, unnamed)_    | Remaining four migrations, then deployment of the queued A8.4b–A8.6 code                                             | Database and deployment                  |
+| **A8.7c**             | Owner-event capture enablement and observation                                                                       | One environment variable, one deployment |
+| **A8.7d**             | Zero-send notification rehearsal, single-notification canary, Gmail-loop proof, notification scheduler creation      | Gmail send, scheduler creation           |
+| **A8.7e**             | Reminder preflight, single-reminder canary, reminder scheduler creation                                              | Recipient email, scheduler creation      |
 
 **Each slice requires its own authorization.** A8.7d is the first slice in the project's history that can send mail on Rocket's initiative, and A8.7e is the first that can send mail to somebody who is not the Owner. Those are different thresholds and are deliberately not crossed in one slice.
 
-### Current production state — the rollout's starting point
+### Current incident state
 
-| Property                      | Value                                                                                          |
-| ----------------------------- | ---------------------------------------------------------------------------------------------- |
-| Deployment                    | `dpl_7vmnL71Lck7JLeftgsJkYVJ4uw82` (Ready; alias `https://rocket-communicator-web.vercel.app`) |
-| Commit                        | `8588c5d260176b24c8ecf6fb16e026c5c6034359` (P1.5)                                              |
-| A8 migrations applied         | **None of the nine**                                                                           |
-| `ENABLE_OWNER_EVENT_CAPTURE`  | Absent                                                                                         |
-| `ENABLE_OWNER_EVENT_DELIVERY` | Absent                                                                                         |
-| `ENABLE_REMINDER_DELIVERY`    | Absent                                                                                         |
-| Scheduler jobs                | Gmail poll and suggestion process only                                                         |
+| Property                      | Value                                                                                        |
+| ----------------------------- | -------------------------------------------------------------------------------------------- |
+| Production commit             | `ee5e82a0466fa08086fbd007d4b68342f2c8a6db` — **A8 code through A8.4a**                       |
+| Production schema             | The **five pre-A8 migrations** only. No A8 schema object exists                              |
+| `ENABLE_OWNER_EVENT_CAPTURE`  | Absent                                                                                       |
+| `ENABLE_OWNER_EVENT_DELIVERY` | Absent                                                                                       |
+| `ENABLE_REMINDER_DELIVERY`    | Absent                                                                                       |
+| Gmail                         | **Connected.** No recorded sync run since 2026-07-20                                         |
+| Scheduler jobs                | External, at cron-job.org. **Repository state cannot prove which jobs exist or are enabled** |
 
-**The deployed commit predates every A8 slice.** That is what makes migrate-before-deploy safe here: the code currently running issues no statement against any A8 table or column, so applying all nine migrations changes nothing it can observe. Prisma Client selects columns explicitly rather than with `SELECT *`, so a new nullable column on `tasks` is invisible to it. The compatibility question that normally makes migrate-before-deploy delicate — old code meeting new schema — has the trivial answer in this direction, and the dangerous ordering is the reverse one: A8.6 code meeting a schema without the tables, which takes `/attention` and `/tasks/{taskId}` to their error boundaries.
+**This is State A: deployed A8 code against an unmigrated database.** The consequence is a genuine incompatibility, not a cosmetic drift:
+
+- **Task reads are incompatible.** The deployed Prisma Client selects `tasks.due_local_date`, a column introduced by `20260731040000_a8_reminder_persistence`. The column does not exist in Production, so the query is invalid.
+- **Task mutations are incompatible.** The deployed lifecycle path calls `reconcileReminderScheduleForTaskStatus` unconditionally, which reads `task_reminder_schedules`. That table does not exist in Production.
+- **No feature flag protects either path.** Both are on the ordinary Task path, not behind `ENABLE_REMINDER_DELIVERY`.
+
+**The incident is latent, not benign.** No database write has been recorded since 2026-07-28, before the incompatible code was deployed, so nothing has yet exercised the defect in a way that produced an error anybody saw. Latency is a property of current traffic, not of the code. **The defect is live and the next Task read or mutation will meet it.**
+
+### Approved repair state matrix
+
+**Environment-variable changes affect only deployments created after the change.** A running deployment holds the values it was built and bound with; editing a variable in the Vercel dashboard does nothing until something redeploys. Correspondingly, **Instant Rollback restores the target deployment together with its original environment variables** — it does not re-bind current values onto an old build. Rolling back to a deployment built with a flag set restores that flag.
+
+| State   | Code                   | Schema                     | Flags  | Meaning                                                               |
+| ------- | ---------------------- | -------------------------- | ------ | --------------------------------------------------------------------- |
+| **D0**  | `ee5e82a`              | five pre-A8 migrations     | none   | **Current incompatible state** — the incident                         |
+| **D1**  | `ee5e82a`              | pre-A8 + A8 migrations 1–5 | none   | **Repaired compatibility baseline** — the target of A8.7b-INCIDENT-1c |
+| **D2**  | `ee5e82a`              | all nine A8 migrations     | none   | Future schema-ahead-of-code gate, before the queued code deploys      |
+| **D3**  | current queued A8 code | all nine A8 migrations     | none   | Future deployed-code baseline                                         |
+| **D4+** | later code and schema  | as required                | staged | Capture and delivery rollout (A8.7c, A8.7d, A8.7e)                    |
+
+Rules that follow from the binding model:
+
+- **D1 is the repair target and the safe harbour for the incident.** It is reached by migration alone. **No deployment is part of reaching D1.**
+- **D1 is not reachable by rollback**, because it is not a deployment state. Only forward migration reaches it.
+- **Rolling back does not undo a migration.** Schema is forward-only, so D1 remains D1 whatever happens to the code.
+- **Rollback does not disable external scheduler jobs.** cron-job.org keeps calling the endpoints. If the intent is to stop invocation, **pause the job** — a separate action in a separate system.
+- **Rolling back does not unsend an email.**
+
+### Repair boundary
+
+The boundary is the single most important operational fact in the repair, so it is stated as rules rather than prose:
+
+- **A8.7b-INCIDENT-1c applies exactly the five A8 migrations that exist at `ee5e82a`**, and no others:
+  1. `20260731040000_a8_reminder_persistence`
+  2. `20260731170000_a8_3b_reminder_concurrency`
+  3. `20260731230000_a8_advance_waiting_skip`
+  4. `20260801120000_a8_4a_worker_safety`
+  5. `20260802094500_a8_4a_settlement_marker`
+- **The operation must run from a detached worktree at `ee5e82a`.** That worktree contains exactly ten migration directories — the five pre-A8 plus the five above — so the boundary is enforced by construction rather than by operator discipline.
+- **Running the migration from current HEAD is prohibited.** HEAD contains fourteen migration directories, and `prisma migrate deploy` has no way to apply a subset. Running it from HEAD would apply nine A8 migrations, not five.
+- **Applying migrations 6 through 9 during the repair is prohibited.** They are: 6. `20260802173000_a8_4b1_capability_skip_reason` 7. `20260802210000_a8_4b2_repeated_ambiguous_stop_reason` 8. `20260803090000_a8_4b3_advance_due_scan_index` 9. `20260803120000_a8_5a_owner_notification_intents`
+- **Phase-3 rehearsal evidence does not authorize Production application.** [A8.7b-INCIDENT-1a](A8_7B_INCIDENT_1A_EVIDENCE.md) proved migrations 6 through 9 apply cleanly on PostgreSQL 17. That is a statement about the migrations, not an authorization to run them. They support code that is not deployed and has not completed review.
+
+### Containment
+
+**Redeploying `8588c5d` is the universal code-containment option.** It is the last commit known to predate every A8 slice, so it cannot reference an A8 column or table regardless of what the schema contains.
+
+Three qualifications, all of which matter:
+
+- **It is not assumed to be reachable through one-step Instant Rollback.** The Hobby plan restricts rollback to the immediately previous deployment, and `8588c5d` is no longer that. Treat it as a **redeployment**, which is a different operation with a different failure mode.
+- **Availability and redeployability must be confirmed read-only before execution**, not discovered during an incident. Confirm the deployment still exists and that the commit is still redeployable before relying on it.
+- **No rollback or redeployment is authorized merely by documenting this option.** Recording a containment path is not the same as approving its use.
+
+Containment is a code action. It does not repair the schema and it is not the preferred repair; **forward repair is**.
+
+### Product-surface consequence of the repair
+
+Applying the five migrations makes real product surfaces functional that have never run in Production. This is a consequence of the repair, not a side effect to discover later:
+
+- **The A8.3b Owner reminder APIs become operational.** An authenticated Owner can set a due date, create a reminder schedule, and modify or delete one.
+- **Task-lifecycle reminder reconciliation becomes operational.** Completing, dismissing, or reassigning a Task will suspend, resume, or stop a schedule inside the Task's own transaction.
+
+Both are bounded by one fact: **with zero reminder schedules, reconciliation is inert.** It looks up a schedule by Task, finds none, and returns without writing. A schedule can only come into existence through a deliberate, authenticated Owner reminder action — nothing creates one automatically, and D109 forbids historical due dates from auto-activating anything.
+
+> **The Owner must not create or modify a reminder until the later A8 rollout is authorized.** This is the one behavioural restriction the repair imposes. It is a discipline, not a control: no flag enforces it, because the A8.3b surfaces carry no flag.
+
+### Gmail and schedulers during the repair
+
+- **Production Gmail is connected**, and it must **remain** connected. Disconnecting it is not part of the repair.
+- **The repository cannot prove the external scheduler state.** cron-job.org is a separate system with no representation in this repository, so any statement here about which jobs exist or whether they are enabled would be a guess.
+- **Read-only scheduler verification is required before the repair.** Inspect the dashboard and record what is actually there.
+- **Any enabled Gmail-poll or suggestion-processing job must be paused before the migration**, because both reach the Task path that the missing schema breaks, and because a job firing mid-migration contends for the lock the migration needs.
+- **No scheduler may be created, resumed, or invoked during the repair.** Leave the jobs exactly as found unless a later architecture decision explicitly authorizes restoring them.
+- **The Gmail loop-proof procedure must be re-derived before A8.7d.** It was written against assumptions about the deployed code that the incident invalidated.
+
+### Local credential safety for the repair
+
+- **The normal main worktree contains a `packages/db/.env` that has pointed at Production.** It is gitignored, so it is invisible in review and survives branch changes.
+- **The Production migration must not run from that worktree.** Prisma reads `.env` from the schema directory, so a bare command there can reach Production without the operator naming a host.
+- **The detached `ee5e82a` worktree must contain no `.env`.** Because the file is gitignored it cannot be created by the checkout, which makes the safety structural. **Verify its absence anyway** before running anything.
+- **The migration URL must be supplied process-scoped**, read into a shell variable that is not exported into history and passed to the single command that needs it.
+- **Bare migration commands are prohibited.** `packages/db` exposes guarded `:local` scripts that refuse a non-loopback host; the unguarded `migrate:deploy`, `migrate:dev`, and `migrate:status` scripts have been removed so that no script can silently inherit a production `DATABASE_URL`.
+- **Secrets must never appear in evidence.** Record the endpoint's classification — host form, port, session mode, absence of `pgbouncer=true` — never its value.
+
+### A8.7b-INCIDENT-1c — Production schema compatibility repair
+
+The operator-ready sequence. It replaces retired Stages 1 through 10. Every step is procedural; no step contains a credential.
+
+**A note on exit codes before you start.** `prisma migrate status` **exits non-zero when migrations are pending**. Before the repair it will exit 1 and list five pending migrations, and that is the expected, correct result — not a failure. Do not run these steps under `set -e` without accounting for it, and do not treat that exit code as a reason to stop. After the repair the same command exits 0.
+
+| #   | Step                                                                                                                                                                       |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Record the repository and deployment baseline: local HEAD, `origin/main`, `git status`, and the current Production deployment ID and commit                                |
+| 2   | Confirm the retained `8588c5d` containment deployment exists and is redeployable, read-only                                                                                |
+| 3   | Verify cron-job.org scheduler state, read-only, and record exactly what is there                                                                                           |
+| 4   | Pause any enabled Gmail-poll or suggestion-processing job                                                                                                                  |
+| 5   | Establish an Owner no-use window — no Task creation, mutation, or reminder action for the duration                                                                         |
+| 6   | Create or verify a detached worktree at `ee5e82a`, outside the main repository directory                                                                                   |
+| 7   | Verify the worktree holds **exactly ten** migration directories: the five pre-A8 and the five deployed A8                                                                  |
+| 8   | Confirm the worktree contains **no** `packages/db/.env`                                                                                                                    |
+| 9   | Supply the Production migration URL as a process-scoped secret only                                                                                                        |
+| 10  | Verify the endpoint is the Supabase Shared Pooler in **session mode on port 5432**                                                                                         |
+| 11  | Verify the URL carries no `pgbouncer=true`                                                                                                                                 |
+| 12  | Record the PostgreSQL version                                                                                                                                              |
+| 13  | Confirm **exactly five** rows in `_prisma_migrations` (Q2)                                                                                                                 |
+| 14  | Confirm all five A8 physical objects remain absent: `tasks.due_local_date`, `task_reminder_schedules`, `reminder_delivery_attempts`, and both notification tables (Q5, Q7) |
+| 15  | Confirm no failed or unfinished migration row exists (Q3)                                                                                                                  |
+| 16  | Review active database sessions using the [approved allowlist](#q4-allowlist) (Q4)                                                                                         |
+| 17  | Perform the out-of-band `tasks` lock probe (Stage 4)                                                                                                                       |
+| 18  | Reconfirm the schedulers are still paused                                                                                                                                  |
+| 19  | **Immediately** repeat the activity and lock checks — steps 16 and 17 — so the window between checking and migrating is as small as possible                               |
+| 20  | Run **one** `prisma migrate deploy` invocation from the `ee5e82a` worktree, with the URL supplied process-scoped                                                           |
+| 21  | Verify **exactly ten** rows in `_prisma_migrations`, all finished, none rolled back, each with `applied_steps_count = 1`                                                   |
+| 22  | Verify migrations 6 through 9 remain **absent** from `_prisma_migrations`, and that neither notification table exists                                                      |
+| 23  | Verify the required column, tables, constraints, indexes, enums, and RLS (Q5, Q6, Q7, Q8, Q9, Q10, Q11, Q12, Q13, Q14)                                                     |
+| 24  | Perform an authenticated **read-only** Task-list smoke test                                                                                                                |
+| 25  | Perform an authenticated **read-only** Task-detail smoke test                                                                                                              |
+| 26  | **Do not** perform a mutation smoke test unless separately authorized                                                                                                      |
+| 27  | Leave the schedulers exactly as found unless architecture explicitly authorizes restoration                                                                                |
+| 28  | Record evidence in [A8_7_EVIDENCE.md](A8_7_EVIDENCE.md) §A8.7b-INCIDENT-1c                                                                                                 |
+| 29  | **Do not push and do not deploy**                                                                                                                                          |
+
+Expected post-repair state is **D1**: `ee5e82a` code, pre-A8 plus A8 migrations 1–5, all flags absent, notification tables absent.
+
+**Expected duration.** The rehearsal applied the same five migrations in 853 ms against an empty database, with the `ACCESS EXCLUSIVE` migration taking 11 ms. Production's `tasks` table holds a single-digit row count and the added column is nullable with no default, so the operation is a catalog change rather than a rewrite. **If it has not completed within a few seconds, something is contending for the lock** — go to Stage 4's probe rather than waiting.
+
+**On failure, stop.** Do not re-run, do not `migrate resolve` on the strength of `_prisma_migrations` alone, and do not hand-patch. Classify the physical state using the [per-migration recovery decision tree](#per-migration-recovery-decision-tree), which covers each of these five migrations individually.
 
 ### Verification gate classification
 
@@ -477,32 +622,35 @@ Read-only production SQL from [Production preflight and verification SQL](#produ
 
 `.pg.test.ts` suites skip themselves unless `AICAA_PG_CONCURRENCY_URL` is set, so the ordinary suites need no container. **Start Docker before running a local PostgreSQL migration rehearsal or an opted-in PostgreSQL integration suite.** Docker is not required for any other step, and there is no reason to leave it running afterwards.
 
-### Deployment and flag matrix
+### Flag-staging states (A8.7c–A8.7e)
 
-**Environment-variable changes affect only deployments created after the change.** A running deployment holds the values it was built and bound with; editing a variable in the Vercel dashboard does nothing until something redeploys. Correspondingly, **Instant Rollback restores the target deployment together with its original environment variables** — it does not re-bind current values onto an old build. This cuts both ways and is the single most important operational fact in this section: rolling back to a deployment that was built with a flag set restores that flag.
+**These states all sit inside `D4+` of the [approved repair state matrix](#approved-repair-state-matrix), and they use their own `F` namespace deliberately.** The `D` states describe how far the _code and schema_ have advanced; the `F` states describe which _flags_ are set once both are in place. They were a single sequence before the incident, and merging them again would reintroduce the ambiguity that let a deployment be described as a migration prerequisite.
 
-| State                         | Deployment                         | Commit     | Capture | Delivery | Reminder | Scheduler jobs                            | Valid rollback target                                                                                                                         |
-| ----------------------------- | ---------------------------------- | ---------- | ------- | -------- | -------- | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| **D0** Current production     | `dpl_7vmnL71Lck7JLeftgsJkYVJ4uw82` | `8588c5d`  | absent  | absent   | absent   | Gmail poll, suggestions                   | Yes, until A8 migrations are applied — after that it serves pre-A8 code against a migrated schema, which is harmless but has no A8.6 surfaces |
-| **D1** Disabled-feature A8.6c | new                                | A8.6c HEAD | absent  | absent   | absent   | Gmail poll, suggestions                   | **Yes — the designated safe harbour**                                                                                                         |
-| **D2** Capture-only           | new                                | A8.6c HEAD | `true`  | absent   | absent   | Gmail poll, suggestions                   | Yes                                                                                                                                           |
-| **D3** Delivery rehearsal     | new                                | A8.6c HEAD | absent  | `true`   | absent   | Gmail poll, suggestions                   | No — exists only for the zero-send rehearsal                                                                                                  |
-| **D4** Capture + delivery     | new                                | A8.6c HEAD | `true`  | `true`   | absent   | + notification job (after the Gmail gate) | Yes                                                                                                                                           |
-| **D5** All three flags        | new                                | A8.6c HEAD | `true`  | `true`   | `true`   | + reminder job                            | Yes                                                                                                                                           |
+**Every `F` state presupposes `D3`**: the queued A8 code deployed against all nine migrations. **None of them is reachable until the repair and the later rollout slice are both complete.**
 
-Rules that follow from the binding model:
+| State                          | Commit         | Capture | Delivery | Reminder | Scheduler jobs                            | Valid rollback target                        |
+| ------------------------------ | -------------- | ------- | -------- | -------- | ----------------------------------------- | -------------------------------------------- |
+| **F0** Deployed, all flags off | queued A8 code | absent  | absent   | absent   | as found                                  | **Yes — the designated safe harbour**        |
+| **F1** Capture-only            | queued A8 code | `true`  | absent   | absent   | as found                                  | Yes                                          |
+| **F2** Delivery rehearsal      | queued A8 code | absent  | `true`   | absent   | as found                                  | No — exists only for the zero-send rehearsal |
+| **F3** Capture + delivery      | queued A8 code | `true`  | `true`   | absent   | + notification job (after the Gmail gate) | Yes                                          |
+| **F4** All three flags         | queued A8 code | `true`  | `true`   | `true`   | + reminder job                            | Yes                                          |
 
-- **D1 is the safe-harbour configuration**: the current code with every A8 feature inert. Returning to it is the containment action for almost everything below.
-- **Reaching D1 later may require a fresh deployment rather than Instant Rollback.** On the **Hobby** plan, rollback may only reach the **immediately previous** deployment. Once D2 and D3 exist, D1 is two or three steps back and is no longer reachable by rollback at all. Plan on unsetting the variables and redeploying.
+The [environment-variable binding model](#approved-repair-state-matrix) governs every transition below: a deployment carries the values it was built with, and rolling back to a deployment built with a flag set restores that flag.
+
+Rules that follow from it:
+
+- **F0 is the safe-harbour configuration** once the queued code is deployed: that code with every A8 feature inert. Returning to it is the containment action for almost everything in A8.7c–A8.7e.
+- **Reaching F0 later may require a fresh deployment rather than Instant Rollback.** On the **Hobby** plan, rollback may only reach the **immediately previous** deployment. Once F1 and F2 exist, F0 is two or three steps back and is no longer reachable by rollback at all. Plan on unsetting the variables and redeploying.
 - **Rollback does not disable external scheduler jobs.** cron-job.org keeps calling the endpoints; the endpoints simply become inert again because the rolled-back build has no flags. If the intent is to stop invocation, **pause the job** — that is a separate action in a separate system.
-- **Rolling back does not undo a migration.** Schema is forward-only.
+- **Rolling back does not undo a migration.** Schema is forward-only, so no `F` transition can return the database to `D1` or `D2`.
 - **Rolling back does not unsend an email.**
 
 ### Migration failure model (A8.7)
 
 Stated precisely, because the wrong mental model here produces exactly the wrong recovery action.
 
-- **No A8 migration contains an explicit `BEGIN` or `COMMIT`.** This was verified across all nine files.
+- **No A8 migration contains an explicit `BEGIN` or `COMMIT`.** This was verified across all nine files, and re-confirmed by the [local rehearsal](A8_7B_INCIDENT_1A_EVIDENCE.md).
 - `prisma migrate deploy` applies **pending files sequentially**, recording each in `_prisma_migrations` as it completes.
 - **No transaction spans migration files.** A failure in file 5 leaves files 1–4 applied and committed.
 - PostgreSQL **may** treat a multi-statement query message as an implicit transaction block, so a multi-statement file **might** roll back as a unit. **The runbook does not rely on that.** It is emergent behaviour of statement grouping in a driver, not a property this repository establishes or tests, and three migration file headers make a claim about transaction grouping that is [explicitly corrected above](#database-migrations).
@@ -513,11 +661,13 @@ The accurate description of the operation is:
 
 > One ordered `prisma migrate deploy` invocation, applying pending migration files sequentially with per-file recording and no guaranteed cross-file or per-file atomicity.
 
-**Do not describe the nine migrations as an atomic unit**, in evidence, in a ticket, or to yourself at 2 a.m.
+**Do not describe the repair's five migrations — or the full nine — as an atomic unit**, in evidence, in a ticket, or to yourself at 2 a.m. The rehearsal applying all five cleanly is evidence that they _can_ apply cleanly, not that they apply as one transaction.
 
 ### Per-migration recovery decision tree
 
-The nine pending migrations, in application order. All nine are additive; none drops anything.
+All nine A8 migrations, in application order. All nine are additive; none drops anything.
+
+> **Migrations 1 through 5 are the [A8.7b-INCIDENT-1c repair set](#repair-boundary).** Migrations 6 through 9 are documented here for completeness and for the later rollout slice; **they must not be applied during the repair.**
 
 **The three physical-state classifications**, which every entry below uses:
 
@@ -529,7 +679,7 @@ The nine pending migrations, in application order. All nine are additive; none d
 
 `migrate resolve --applied` is the dangerous one throughout: it tells Prisma to stop trying, permanently, and every later migration then runs against a schema nobody re-verified.
 
-**Escalation condition, common to all nine:** any state not exactly matching a case below, any doubt about which case applies, or any temptation to "just drop it and re-run" — stop, record the physical state, and get a second reviewer. Production holds no A8 rows, so **waiting costs nothing**. There is no partial state below whose remedy is urgent.
+**Escalation condition, common to all nine:** any state not exactly matching a case below, any doubt about which case applies, or any temptation to "just drop it and re-run" — stop, record the physical state, and get a second reviewer. Production holds no A8 rows, and the deployed code was already incompatible before the attempt began, so **waiting costs nothing and makes nothing worse**. There is no partial state below whose remedy is urgent.
 
 ---
 
@@ -652,7 +802,7 @@ Creates five enum types and two tables — `owner_notification_intents` and `own
 | ID      | Query                                                                                                                                                                                                                                                                                                                                                                                                                                                         | When                                                         | Expected                                                                                                             | Stop/go                                                                                                                                                 | Evidence field                        |
 | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
 | **Q1**  | `SELECT count(*) FROM tasks;`                                                                                                                                                                                                                                                                                                                                                                                                                                 | Preflight, before migration                                  | A small number consistent with production usage                                                                      | Go on any value; a wildly unexpected count means stop and understand why before taking an `ACCESS EXCLUSIVE` lock on it                                 | `tasks.count.before`                  |
-| **Q2**  | `SELECT migration_name, started_at, finished_at, rolled_back_at, applied_steps_count FROM _prisma_migrations ORDER BY started_at;`                                                                                                                                                                                                                                                                                                                            | Preflight, and after every migration attempt                 | Pre-A8 migrations finished; **no A8 rows** before, all nine finished after                                           | Stop if any pre-existing row is unfinished                                                                                                              | `migrations.status.before` / `.after` |
+| **Q2**  | `SELECT migration_name, started_at, finished_at, rolled_back_at, applied_steps_count FROM _prisma_migrations ORDER BY started_at;`                                                                                                                                                                                                                                                                                                                            | Preflight, and after every migration attempt                 | **Exactly five** rows before, all finished, no A8 rows. **Exactly ten** after the repair, migrations 6–9 absent      | Stop if any pre-existing row is unfinished, or if the count is anything other than five before and ten after                                            | `migrations.status.before` / `.after` |
 | **Q3**  | `SELECT migration_name, started_at, finished_at, rolled_back_at, logs FROM _prisma_migrations WHERE finished_at IS NULL OR rolled_back_at IS NOT NULL;`                                                                                                                                                                                                                                                                                                       | Preflight, and immediately after any failure                 | **Zero rows**                                                                                                        | **Any row is a hard stop.** Go to the recovery tree                                                                                                     | `migrations.failed_rows`              |
 | **Q4**  | `SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND state <> 'idle' AND pid <> pg_backend_pid();` plus `SELECT pid, state, now() - xact_start AS xact_age, left(query, 80) FROM pg_stat_activity WHERE datname = current_database() AND xact_start IS NOT NULL AND pid <> pg_backend_pid() ORDER BY xact_start;`                                                                                                                    | Immediately before migration                                 | No `idle in transaction`; no transaction older than 30 s                                                             | **Stop** on any `idle in transaction`, any transaction older than 30 s, or any session whose source is unclear                                          | `preflight.transactions`              |
 | **Q5**  | `SELECT column_name, is_nullable, data_type FROM information_schema.columns WHERE table_name = 'tasks' AND column_name = 'due_local_date';`                                                                                                                                                                                                                                                                                                                   | Before and after migration                                   | Before: zero rows. After: one row, `is_nullable = 'YES'`                                                             | Stop if it is `NO` after — that would mean a different migration ran                                                                                    | `schema.due_local_date`               |
@@ -677,17 +827,19 @@ Creates five enum types and two tables — `owner_notification_intents` and `own
 
 Twenty-one stages. Each uses the same seven headings, and no heading is omitted — where a heading does not apply, it says so.
 
+**Stages 1 through 10 are the detailed expansion of the [A8.7b-INCIDENT-1c sequence](#a87b-incident-1c--production-schema-compatibility-repair)** and are labelled for that slice. Where the two differ in wording they do not differ in effect; where a stage was written for the retired A8.7b and no longer applies, it says so in place rather than being deleted, so that a reader comparing against an older review finds the correction rather than a gap.
+
 ---
 
-#### Stage 1 — Production preflight (A8.7b)
+#### Stage 1 — Production preflight (A8.7b-INCIDENT-1c)
 
-**Preconditions.** A8.7a is architecture-approved and committed. A8.7b is separately authorized. Repository HEAD matches the reviewed commit. The [repository-non-mutating preflight](#1-repository-non-mutating-preflight) is green. Nobody else is operating on production.
+**Preconditions.** A8.7a, A8.7b-INCIDENT-1a, and A8.7b-INCIDENT-1b are complete and committed. A8.7b-INCIDENT-1c is separately authorized. Repository HEAD matches the reviewed commit. The [repository-non-mutating preflight](#1-repository-non-mutating-preflight) is green. Nobody else is operating on production.
 
-**Execution.** Run Q1, Q2, Q3 read-only. Record the current deployment ID, commit, and the effective value of all three flags from the Vercel dashboard.
+**Execution.** Run Q1, Q2, Q3 read-only. Record the current deployment ID, commit, and the effective value of all three flags from the Vercel dashboard. Confirm the deployed commit is `ee5e82a`.
 
-**Verification.** Q1 returns a plausible count. Q2 shows the pre-A8 migrations finished and **no A8 rows**. Q3 returns zero rows. All three flags read as absent.
+**Verification.** Q1 returns a plausible count. Q2 shows **exactly five** pre-A8 migrations finished and **no A8 rows**. Q3 returns zero rows. All three flags read as absent. The deployment serves `ee5e82a`.
 
-**Stop/go criteria.** **Stop** if Q3 returns any row; if any A8 migration is already recorded; or if any A8 flag is set. Go otherwise.
+**Stop/go criteria.** **Stop** if Q3 returns any row; if any A8 migration is already recorded; if any A8 flag is set; or if the deployed commit is not `ee5e82a` — a different commit means the incident baseline this runbook was written against has changed and the whole assessment needs redoing. Go otherwise.
 
 **Immediate containment.** Not applicable — nothing has been changed.
 
@@ -697,33 +849,47 @@ Twenty-one stages. Each uses the same seven headings, and no heading is omitted 
 
 ---
 
-#### Stage 2 — Migration connection verification (A8.7b)
+#### Stage 2 — Worktree and migration connection verification (A8.7b-INCIDENT-1c)
 
 **Preconditions.** Stage 1 passed. The operator has the session-mode connection string from the Supabase Connect dialog, copied whole.
 
-**Execution.** Apply the three checks in [Migration endpoint verification](#migration-endpoint-verification): hostname form, port `5432`, no `pgbouncer=true`. Then run the advisory-lock session test. Load the credential with the `read -rs` pattern from [Secure migration-command handling](#secure-migration-command-handling). Inspect what `packages/db/.env` currently points at.
+**Execution.** Create or verify a detached worktree at `ee5e82a` outside the main repository directory. Count its migration directories and confirm `packages/db/.env` is absent from it. Then apply the three checks in [Migration endpoint verification](#migration-endpoint-verification): hostname form, port `5432`, no `pgbouncer=true`. Run the advisory-lock session test. Load the credential with the `read -rs` pattern from [Secure migration-command handling](#secure-migration-command-handling).
 
-**Verification.** Host is `aws-<region>.pooler.supabase.com`. Port is `5432`. No `pgbouncer=true`. The advisory-lock test observes its own lock. `DATABASE_URL="$MIGRATE_URL" pnpm --filter @aicaa/db migrate:status` connects and lists the nine as pending.
+**Verification.** The worktree is at `ee5e82a`, holds **exactly ten** migration directories, and contains **no** `packages/db/.env`. Host is `aws-<region>.pooler.supabase.com`. Port is `5432`. No `pgbouncer=true`. The advisory-lock test observes its own lock. Run from the worktree, `migrate status` connects and lists **exactly five** pending migrations — the five named in the [repair boundary](#repair-boundary).
 
-**Stop/go criteria.** **Stop** if the port is `6543`; if the host is the `db.<project-ref>.supabase.co` form; if `pgbouncer=true` appears; or if `migrate:status` reports anything other than exactly nine pending migrations.
+**Stop/go criteria.** **Stop** if the worktree is at any other commit; if it holds any number of migration directories other than ten; if it contains a `packages/db/.env`; if the port is `6543`; if the host is the `db.<project-ref>.supabase.co` form; if `pgbouncer=true` appears; or if `migrate status` reports anything other than exactly those five pending migrations. **A report of nine pending migrations means the command ran from the wrong worktree — stop immediately.**
+
+**Expected exit code.** `migrate status` **exits 1 here**, because migrations are pending. That is the correct result at this stage and is not a failure.
 
 **Immediate containment.** `unset MIGRATE_URL`. No schema change has occurred; `migrate status` is read-only.
 
 **Recovery or rollback.** Not applicable — nothing has been changed.
 
-**Evidence to record.** Redacted hostname form, port, session-mode confirmation, advisory-lock test result, the nine pending migration names, and **an explicit confirmation that the credential itself was not recorded**.
+**Evidence to record.** Worktree commit, migration-directory count, confirmation that no `.env` is present, redacted hostname form, port, session-mode confirmation, advisory-lock test result, the five pending migration names, and **an explicit confirmation that the credential itself was not recorded**.
 
 ---
 
-#### Stage 3 — Long-running transaction inspection (A8.7b)
+#### Stage 3 — Long-running transaction inspection (A8.7b-INCIDENT-1c)
 
 **Preconditions.** Stage 2 passed. This runs **immediately** before the migration — a check from ten minutes ago is not evidence about now.
 
 **Execution.** Run Q4.
 
-**Verification.** No session in `idle in transaction`. No transaction with `xact_age` over 30 seconds. Every remaining session's source is identifiable.
+**Verification.** No session in `idle in transaction`. No transaction with `xact_age` over 30 seconds. Every remaining session is either on the allowlist below or individually identifiable.
 
-**Stop/go criteria.** **Stop** on any `idle in transaction`, any transaction older than 30 s, or any session you cannot account for. Migration 1 takes an `ACCESS EXCLUSIVE` lock on `tasks`; a lock request queues **behind** existing holders and **blocks everything arriving after it**, so a single forgotten open transaction converts a fast migration into a production-wide stall on the busiest table.
+<a id="q4-allowlist"></a>
+
+**Q4 allowlist.** The original rule — stop on _any_ session you cannot account for — is unusable against a managed Postgres, because the platform maintains its own backends that no operator authorized and none of which hold a transaction open on `tasks`. Applying it literally would stop every window forever, and a rule that always fires teaches an operator to ignore it. Judge each session against this list instead:
+
+| Session                                                                                                                                                                    | Treatment                                                                                   |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| The operator's own `psql` and the migration connection                                                                                                                     | Expected. Excluded by `pid <> pg_backend_pid()` for the former                              |
+| Supabase platform backends — `supabase_admin`, `supabase_auth_admin`, `supabase_storage_admin`, `pg_cron`, `postgres` running `autovacuum`, `WalSender`, or an empty query | **Allowed**, provided `xact_start` is null or under 30 s. These are not application traffic |
+| Any session on the application role with `xact_start` older than 30 s                                                                                                      | **Hard stop**, whatever it appears to be doing                                              |
+| Any session in `idle in transaction` on the application role                                                                                                               | **Hard stop.** This is the exact condition that converts a fast migration into a stall      |
+| Any session you cannot place in one of the rows above                                                                                                                      | **Hard stop**, and do not guess                                                             |
+
+**Stop/go criteria.** Stop on any hard-stop row above. Migration 1 takes an `ACCESS EXCLUSIVE` lock on `tasks`; a lock request queues **behind** existing holders and **blocks everything arriving after it**, so a single forgotten open transaction converts a fast migration into a production-wide stall on the busiest table.
 
 **Immediate containment.** **Do not terminate an unknown backend.** Wait for it to clear, or postpone.
 
@@ -733,7 +899,7 @@ Twenty-one stages. Each uses the same seven headings, and no heading is omitted 
 
 ---
 
-#### Stage 4 — Out-of-band `tasks` lock probe (A8.7b)
+#### Stage 4 — Out-of-band `tasks` lock probe (A8.7b-INCIDENT-1c)
 
 **Preconditions.** Stage 3 passed. A `psql` session on the same database.
 
@@ -762,11 +928,13 @@ ROLLBACK;
 
 ---
 
-#### Stage 5 — Scheduler pause (A8.7b)
+#### Stage 5 — Scheduler pause (A8.7b-INCIDENT-1c)
 
 **Preconditions.** Stage 4 passed. Access to the cron-job.org account.
 
-**Execution.** **Pause** the Gmail-poll job and the suggestion-processing job. Confirm both show as paused. Note the pause time.
+**Execution.** First **record what is actually there**, read-only — the repository cannot prove which jobs exist or whether they are enabled, so the dashboard is the only authority. Then **pause** whichever of the Gmail-poll and suggestion-processing jobs are enabled. Confirm each shows as paused. Note the pause time.
+
+**A job that is already paused, or absent, is recorded as found and left alone.** Do not create a job, and do not resume one to "check that it works".
 
 **Do not rotate `CRON_SECRET`.** Rotation would fail the jobs closed, which sounds equivalent and is not: it changes a shared credential four endpoints depend on, in the middle of a schema change, and creates a second recovery obligation.
 
@@ -776,65 +944,83 @@ ROLLBACK;
 
 **Immediate containment.** Not applicable — pausing is itself the containment posture.
 
-**Recovery or rollback.** Resume both jobs. They are resumed in Stage 10, after smoke verification.
+**Recovery or rollback.** **The jobs are not resumed by this slice.** They are left exactly as found unless a later architecture decision explicitly authorizes restoration.
 
-**Evidence to record.** `schedulers.paused` — both job names, the pause timestamp, and confirmation of no execution afterwards.
+**Evidence to record.** `schedulers.before` — every job, its enabled state as found, and whether the repair paused it; `schedulers.paused` — the pause timestamp and confirmation of no execution afterwards.
 
 ---
 
-#### Stage 6 — Migration application (A8.7b)
+#### Stage 6 — Migration application (A8.7b-INCIDENT-1c)
 
-**Preconditions.** Stages 1–5 passed, **all of them, in this window**. `MIGRATE_URL` is loaded. The recovery tree has been read, not skimmed.
+**Preconditions.** Stages 1–5 passed, **all of them, in this window**. Steps 16 and 17 of the sequence have just been repeated. `MIGRATE_URL` is loaded process-scoped. The recovery tree has been read, not skimmed.
 
-**Execution.**
+**Execution.** Run from **`packages/db` inside the detached `ee5e82a` worktree**, never from the main worktree:
 
 ```bash
-DATABASE_URL="$MIGRATE_URL" pnpm --filter @aicaa/db migrate:status
-DATABASE_URL="$MIGRATE_URL" pnpm --filter @aicaa/db migrate:deploy
-DATABASE_URL="$MIGRATE_URL" pnpm --filter @aicaa/db migrate:status
+cd <ee5e82a-worktree>/packages/db
+DATABASE_URL="$MIGRATE_URL" pnpm exec prisma migrate status
+DATABASE_URL="$MIGRATE_URL" pnpm exec prisma migrate deploy
+DATABASE_URL="$MIGRATE_URL" pnpm exec prisma migrate status
 ```
+
+`prisma` is invoked directly because the unguarded `migrate:deploy` package script has been removed — the remaining `:local` scripts refuse a non-loopback host by design, which is correct for development and wrong for this one authorized operation. Supplying `DATABASE_URL` inline scopes it to the single command.
 
 Keep the full console output. It is the primary evidence of which file failed, if one does.
 
-**Verification.** The final `migrate:status` reports the database schema up to date with **all nine** applied. Q2 shows nine finished rows. Q3 returns zero rows.
+**Verification.** The first `migrate status` lists **exactly five** pending migrations. `migrate deploy` reports applying those five and nothing else. The final `migrate status` reports the schema up to date. Q2 shows **ten** finished rows. Q3 returns zero rows.
 
-**Stop/go criteria.** **Stop on any non-zero exit.** Do not re-run. Go to Stage 7. **An advisory-lock acquisition timeout is also a stop** — see the rule in [Secure migration-command handling](#secure-migration-command-handling): confirm no failed migration row and no partial physical state before retrying.
+**Expected exit codes.** The **first** `migrate status` exits **1**, because five migrations are pending — expected, not a failure. `migrate deploy` exits **0** on success. The **final** `migrate status` exits **0**.
 
-**Immediate containment.** The scheduler jobs are already paused and no deployment has changed, so the application continues serving pre-A8 code that cannot observe any of this. **Do not deploy anything while a migration failure is unresolved.**
+**Stop/go criteria.** **Stop on any non-zero exit from `migrate deploy`.** Do not re-run. Go to Stage 7. **Stop before running `deploy` if the first `migrate status` lists anything other than exactly the five migrations in the [repair boundary](#repair-boundary)** — nine pending means the wrong worktree. **An advisory-lock acquisition timeout is also a stop**: confirm no failed migration row and no partial physical state before retrying.
+
+**Expected duration.** Sub-second. The rehearsal applied the same five in 853 ms. **Stop and investigate contention rather than waiting if it exceeds a few seconds.**
+
+**Immediate containment.** The scheduler jobs are paused and no deployment has changed. Note that unlike the retired A8.7b, the deployed code here **is** A8 code, so a partial schema leaves it in the same incompatible state it was already in — no worse, but not repaired. **Do not deploy anything while a migration failure is unresolved.**
 
 **Recovery or rollback.** **There is no rollback.** Migrations are forward-only. Go to Stage 7 and classify.
 
-**Evidence to record.** `migrations.status.after`, the nine applied names, the full command output with the connection string redacted, and the wall-clock duration.
+**Evidence to record.** `migrations.status.after`, the five applied names, the full command output with the connection string redacted, and the wall-clock duration.
 
 ---
 
-#### Stage 7 — Failed-migration classification and recovery (A8.7b, only on failure)
+#### Stage 7 — Failed-migration classification and recovery (A8.7b-INCIDENT-1c, only on failure)
 
 **Preconditions.** Stage 6 failed. **This stage is skipped entirely on success.**
 
 **Execution.** Identify the failing file from the console output and from Q3. Look it up in the [per-migration recovery decision tree](#per-migration-recovery-decision-tree). Run that entry's detection queries. Classify the physical state as **none present**, **all present**, or **some present**. Apply only the action that entry authorizes for that state.
 
-**Verification.** The classification is supported by query output, not by inference from `_prisma_migrations`. If a `migrate resolve` was used, the following `migrate:status` reflects the intended state and a subsequent `migrate deploy` proceeds cleanly.
+**Verification.** The classification is supported by query output, not by inference from `_prisma_migrations`. If a `migrate resolve` was used, the following `migrate status` reflects the intended state and a subsequent `migrate deploy` proceeds cleanly.
 
-**Stop/go criteria.** **Stop and escalate** on **some present**, unless that migration's entry describes a reviewed recovery for that exact state — which, across all nine, is only migration 5's unvalidated constraint. **Stop** if the classification is uncertain. Production holds no A8 rows and nothing depends on these tables, so **there is no cost to waiting for a second reviewer**.
+**Stop/go criteria.** **Stop and escalate** on **some present**, unless that migration's entry describes a reviewed recovery for that exact state — which, across the five in the repair set, is only migration 5's unvalidated constraint. **Stop** if the classification is uncertain. Production holds no A8 rows and nothing writes to these tables, so **there is no cost to waiting for a second reviewer**. The deployed code was already incompatible before the attempt, so pausing does not make anything worse.
 
 **Immediate containment.** Schedulers stay paused. No deployment. No flag changes. Do not clean up by hand.
 
 **Recovery or rollback.** As authorized by the specific entry: `migrate resolve --rolled-back` after correcting the cause for **none present**; `migrate resolve --applied` only after proving the end state matches, for **all present**; the single reviewed `VALIDATE CONSTRAINT` for migration 5's unvalidated case; a corrective migration where the entry calls for one.
 
-**Evidence to record.** The failing migration name, the full error, every detection query result, the classification, the action taken and its authorization, and the post-action `migrate:status`.
+**Evidence to record.** The failing migration name, the full error, every detection query result, the classification, the action taken and its authorization, and the post-action `migrate status`.
 
 ---
 
-#### Stage 8 — Post-migration schema verification (A8.7b)
+#### Stage 8 — Post-migration schema verification (A8.7b-INCIDENT-1c)
 
 **Preconditions.** Stage 6 succeeded, or Stage 7 completed with an authorized recovery and a clean `migrate deploy`.
 
-**Execution.** Run Q5, Q6, Q7, Q8, Q9, Q10, Q11, Q12, Q13, Q14. Re-run Q1.
+**Execution.** Run Q5, Q6, Q7, Q8, Q9, Q10, Q11, Q12, Q13, Q14. Re-run Q1 and Q2.
 
-**Verification.** `tasks.due_local_date` exists and is nullable. **Q6 returns exactly 0.** All four tables exist. All four row counts are 0. RLS is `true` on all four. Every named column, constraint, index, and enum value is present. Q13 shows every index `indisvalid`. Q14 shows `convalidated = true`. Q1 is unchanged from Stage 1.
+**The repair applies five migrations, not nine, so several queries have a different expected answer than the retired A8.7b assumed.** Where a query names all four A8 tables or all eleven enum types, only the reminder half is expected to exist:
 
-**Stop/go criteria.** **Q6 non-zero is a hard stop** — D109 requires that no historical Task auto-activates a reminder, and a non-null `due_local_date` on a historical Task is exactly that failure. **Any RLS `false` is a hard stop.** **Any non-zero row count in Q8 is a hard stop.** **Any `indisvalid = false` is a hard stop.** **Any change in Q1 is a hard stop** — the migration must not have touched a row.
+| Query   | Expected after the five-migration repair                                                                                                                                |
+| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Q2**  | **Exactly ten rows**, all finished, none rolled back, each `applied_steps_count = 1`. **Migrations 6–9 absent**                                                         |
+| **Q7**  | **Exactly two** tables: `task_reminder_schedules` and `reminder_delivery_attempts`. **`owner_notification_intents` and `owner_notification_attempts` must be absent**   |
+| **Q8**  | The two reminder tables return **0, 0**. The two notification counts **will error**, because those tables do not exist — that error is the expected result, not a fault |
+| **Q9**  | Two rows, `relrowsecurity = true` on both                                                                                                                               |
+| **Q12** | The **six reminder enum types** only. The five `OwnerNotification*` types must be absent                                                                                |
+| **Q13** | Every index on the two reminder tables present with `indisvalid = true`                                                                                                 |
+
+**Verification.** `tasks.due_local_date` exists and is nullable. **Q6 returns exactly 0.** The two reminder tables exist with zero rows and RLS `true`. Every named column, constraint, index, and reminder enum value is present. Q13 shows every index `indisvalid`. Q14 shows `convalidated = true`. Q1 is unchanged from Stage 1.
+
+**Stop/go criteria.** **Q6 non-zero is a hard stop** — D109 requires that no historical Task auto-activates a reminder, and a non-null `due_local_date` on a historical Task is exactly that failure. **Any RLS `false` is a hard stop.** **Any non-zero reminder row count in Q8 is a hard stop.** **Any `indisvalid = false` is a hard stop.** **Any change in Q1 is a hard stop** — the migration must not have touched a row. **The presence of either notification table is a hard stop**: it means migrations beyond the repair boundary were applied, which is the specific failure this slice is designed to prevent.
 
 **Immediate containment.** Schedulers stay paused; do not deploy.
 
@@ -844,49 +1030,63 @@ Keep the full console output. It is the primary evidence of which file failed, i
 
 ---
 
-#### Stage 9 — Deployment with all A8 flags absent (A8.7b)
+#### Stage 9 — Retired. No deployment occurs in the repair (A8.7b-INCIDENT-1c)
 
-**Preconditions.** Stage 8 passed. **Verified in the Vercel dashboard: `ENABLE_OWNER_EVENT_CAPTURE`, `ENABLE_OWNER_EVENT_DELIVERY`, and `ENABLE_REMINDER_DELIVERY` are all absent from Production.** `pnpm verify` is green on the commit being deployed — run before the window, not during it.
+**This stage described deploying the A8.6c commit to reach a safe harbour. It does not apply and must not be performed.**
 
-**Execution.** Deploy the A8.6c commit to Production by the project's normal path. Record the new deployment ID. This produces state **D1**, the safe harbour.
+The retired A8.7b assumed Production served pre-A8 code, so a deployment was needed to bring A8 code and A8 schema into agreement. Production already serves A8 code. **The disagreement is repaired entirely by the migration in Stage 6**, and D1 is reached without deploying anything.
 
-**Verification.** The deployment reports Ready. The new deployment ID and commit are recorded. All three flags still read as absent.
+**Deploying the queued A8.4b–A8.6 code during the repair is prohibited.** That code needs migrations 6 through 9, which the repair deliberately does not apply, so deploying it would create a second, worse incident of exactly the kind being repaired.
 
-**Stop/go criteria.** **Stop** if any flag is set — a deployment built with a flag set carries it permanently and becomes an unsafe rollback target. **Stop** if the build fails. Go on Ready with all three absent.
+**Preconditions.** None. The stage is retired and is not performed.
 
-**Immediate containment.** Roll back to `dpl_7vmnL71Lck7JLeftgsJkYVJ4uw82` (**D0**). It is one step back and therefore reachable on Hobby. It serves pre-A8 code against a migrated schema, which is inert but has no A8.6 surfaces.
+**Execution.** None. **Do not deploy.**
 
-**Recovery or rollback.** As above. Note that rollback does **not** unapply migrations, and does **not** resume the paused schedulers.
+**Verification.** Confirm the Production deployment ID is unchanged from Stage 1 and still serves `ee5e82a`.
 
-**Evidence to record.** New deployment ID, commit, build result, three flag values read after deployment.
+**Stop/go criteria.** **Stop** if the deployment ID has changed during the window — something deployed that nobody in this runbook authorized.
+
+**Immediate containment.** Not applicable — nothing is deployed by this stage.
+
+**Recovery or rollback.** Not applicable — nothing is deployed by this stage.
+
+**Evidence to record.** An explicit statement that no deployment was performed, and the deployment ID confirmed unchanged from Stage 1.
 
 ---
 
-#### Stage 10 — Application smoke verification (A8.7b)
+#### Stage 10 — Read-only application smoke verification (A8.7b-INCIDENT-1c)
 
-**Preconditions.** Stage 9 deployed successfully.
+**Preconditions.** Stage 8 passed. No deployment has occurred.
 
-**Execution.** With an authenticated Owner session, exercise `GET /api/v1/session`, `GET /api/v1/tasks`, the Owner `/tasks` list, one Task detail page, and **`/attention`** — the page that has been failing to its error boundary and is the reason the migrations were applied. Then **resume the Gmail-poll and suggestion-processing scheduler jobs** and confirm one execution of each succeeds.
+**Execution.** With an authenticated Owner session, exercise **read-only paths only**: `GET /api/v1/session`, `GET /api/v1/tasks`, the Owner `/tasks` list, and one Task detail page.
 
-**Verification.** `/api/v1/session` returns `200` with `role = owner` and `organizationId = axford`. `/api/v1/tasks` returns a cursor page. Task detail renders, and its reminder panel truthfully reports no schedule. **`/attention` renders with two empty sections rather than reaching its error boundary.** Both scheduler jobs execute successfully. A `GmailSyncRun` row appears with `trigger = cron`.
+**`/attention` is not part of this smoke test.** It is an A8.6a surface and A8.6 is not deployed; `ee5e82a` does not serve that route.
 
-**Stop/go criteria.** **Stop** if `/attention` still errors — that means a migration did not take effect despite Stage 8. **Stop** if either scheduler job fails after resuming. **Stop** if the Task detail reminder panel shows anything other than "no schedule".
+> **Do not perform a mutation smoke test unless separately authorized.** A Task mutation is the path that exercises reminder reconciliation, and while the repair makes it structurally sound, proving that is a deliberate decision with its own approval, not a step to slip into a repair window. **Do not create or modify a reminder.**
 
-**Immediate containment.** Re-pause the schedulers and roll back to **D0**.
+**Do not resume the schedulers.** They are left exactly as found.
 
-**Recovery or rollback.** Roll back to **D0**; investigate; re-deploy when understood. The schema stays.
+**Verification.** `/api/v1/session` returns `200` with `role = owner` and `organizationId = axford`. `/api/v1/tasks` returns a cursor page — this is the direct proof the repair worked, because that query selects `tasks.due_local_date`, the column whose absence was the incident. The Owner `/tasks` list renders. Task detail renders, and its reminder panel truthfully reports no schedule.
 
-**Evidence to record.** Each smoke result, both scheduler resume confirmations, the `GmailSyncRun` trigger value, and the observation that both `/attention` sections are empty.
+**Stop/go criteria.** **Stop** if `GET /api/v1/tasks` still errors — that means a migration did not take effect despite Stage 8. **Stop** if Task detail fails to render. **Stop** if the reminder panel shows anything other than "no schedule": with zero rows in `task_reminder_schedules`, anything else means something wrote to a table nothing should be writing to.
 
-**A8.7b ends here.** A8.7c requires separate authorization.
+**Immediate containment.** The schema is correct and forward-only; there is nothing to contain at the database level. If the application misbehaves in a way the schema does not explain, the containment option is redeploying `8588c5d`, subject to the [containment qualifications](#containment).
+
+**Recovery or rollback.** Forward-only. The schema stays.
+
+**Evidence to record.** Each smoke result, an explicit statement that no mutation was performed, an explicit statement that no scheduler was resumed, and the unchanged deployment ID.
+
+**A8.7b-INCIDENT-1c ends here.** Applying migrations 6 through 9, deploying the queued code, and A8.7c each require separate authorization.
 
 ---
 
 #### Stage 11 — Owner-event capture enablement (A8.7c)
 
-**Preconditions.** A8.7b complete and reviewed. A8.7c authorized. Q8 confirms all four A8 tables still hold zero rows. Q21 recorded for reference.
+**Preconditions.** A8.7b-INCIDENT-1c complete and reviewed, **and** the later rollout slice complete: migrations 6 through 9 applied and the queued A8 code deployed, reaching state **F0**. A8.7c authorized. Q8 confirms all four A8 tables still hold zero rows. Q21 recorded for reference.
 
-**Execution.** Set `ENABLE_OWNER_EVENT_CAPTURE=true` in Vercel **Production only** — the exact lowercase string. Redeploy so the value binds. This produces state **D2**.
+> **A8.7c cannot follow the repair directly.** The repair leaves Production at `D1` — `ee5e82a` code, five A8 migrations, no notification tables. Owner-event capture needs `owner_notification_intents`, which migration 9 creates, and the capture code itself, which is not deployed. Both gaps are closed by the later rollout slice, not by this stage.
+
+**Execution.** Set `ENABLE_OWNER_EVENT_CAPTURE=true` in Vercel **Production only** — the exact lowercase string. Redeploy so the value binds. This produces state **F1**.
 
 **Verification.** The new deployment is Ready. `ENABLE_OWNER_EVENT_DELIVERY` and `ENABLE_REMINDER_DELIVERY` remain absent. The `/attention` page still loads. No notification scheduler job exists.
 
@@ -894,7 +1094,7 @@ Keep the full console output. It is the primary evidence of which file failed, i
 
 **Immediate containment.** Unset the variable and redeploy. Capture writes intents and audit rows; it contacts nothing, so there is no urgency, but a runaway capture is stopped by unsetting.
 
-**Recovery or rollback.** **D1** is one deployment back and reachable by Instant Rollback at this point. Intents already captured remain, and are harmless: an intent older than 24 hours terminalizes as suppressed without contacting anything.
+**Recovery or rollback.** **F0** is one deployment back and reachable by Instant Rollback at this point. Intents already captured remain, and are harmless: an intent older than 24 hours terminalizes as suppressed without contacting anything.
 
 **Evidence to record.** New deployment ID, the exact flag value set, the other two flags confirmed absent, and the four row counts immediately before enabling.
 
@@ -912,7 +1112,7 @@ Keep the full console output. It is the primary evidence of which file failed, i
 
 **Immediate containment.** Unset `ENABLE_OWNER_EVENT_CAPTURE` and redeploy.
 
-**Recovery or rollback.** Return to **D1** by unsetting and redeploying. Captured intents stay and expire into suppression on their own.
+**Recovery or rollback.** Return to **F0** by unsetting and redeploying. Captured intents stay and expire into suppression on their own.
 
 **Evidence to record.** `notifications.pending.buckets` at each observation, `owner_notification_attempts` at each observation (expected 0 throughout), the observed event types, and the window duration.
 
@@ -926,7 +1126,7 @@ Keep the full console output. It is the primary evidence of which file failed, i
 
 **Preconditions.** A8.7c complete and reviewed. A8.7d authorized. **Every pending intent has aged beyond the 24-hour staleness horizon** — confirm with Q15: `under_1h = 0`, `h1_to_24 = 0`, `over_24h` equal to the full pending count. Reaching that state requires capture to have been **off** for over 24 hours, so this stage begins by unsetting capture and waiting.
 
-**Execution.** Set `ENABLE_OWNER_EVENT_DELIVERY=true` and ensure `ENABLE_OWNER_EVENT_CAPTURE` is **absent**. Redeploy — state **D3**. Re-run Q15 to confirm the queue is frozen and entirely stale. Then invoke `POST /api/v1/internal/notifications/process` **exactly once**, manually, with the `CRON_SECRET` bearer.
+**Execution.** Set `ENABLE_OWNER_EVENT_DELIVERY=true` and ensure `ENABLE_OWNER_EVENT_CAPTURE` is **absent**. Redeploy — state **F2**. Re-run Q15 to confirm the queue is frozen and entirely stale. Then invoke `POST /api/v1/internal/notifications/process` **exactly once**, manually, with the `CRON_SECRET` bearer.
 
 Capture is off precisely so the queue cannot grow between the check and the invocation. That is what "the queue is frozen" means, and it is why capture and delivery being independent flags matters operationally rather than only architecturally.
 
@@ -936,7 +1136,7 @@ Capture is off precisely so the queue cannot grow between the check and the invo
 
 **Immediate containment.** Unset `ENABLE_OWNER_EVENT_DELIVERY` and redeploy immediately. If a message was sent, treat it as the quarantine case in [Stage 15](#stage-15--gmail-custom-header-round-trip-proof-a87d) — an unexpected Rocket-generated message in the Gmail mailbox is an ingestion risk regardless of why it was sent.
 
-**Recovery or rollback.** **D3 is not a valid rollback target and exists only for this stage.** Move forward to Stage 14 or back to **D1** by unsetting both flags and redeploying.
+**Recovery or rollback.** **F2 is not a valid rollback target and exists only for this stage.** Move forward to Stage 14 or back to **F0** by unsetting both flags and redeploying.
 
 **Evidence to record.** Q15 before and after, the worker response verbatim, the attempts count before and after (0 and 0), the suppression reasons observed, and an explicit statement that no email was sent.
 
@@ -946,7 +1146,7 @@ Capture is off precisely so the queue cannot grow between the check and the invo
 
 **Preconditions.** Stage 13 passed. **Q15 shows `pending = 0` — every intent is terminal.** **Q21 returns 0** — no capability is due for expiry observation, because the capture phase would create up to fifty additional intents in the same invocation and the canary would stop being single-item. Both flags currently absent or being set together in this stage. **No notification scheduler job exists.**
 
-**Execution.** Set `ENABLE_OWNER_EVENT_CAPTURE=true` and `ENABLE_OWNER_EVENT_DELIVERY=true`; redeploy — state **D4**. Perform **exactly one** reviewed, real event that a producer captures — choose the least consequential producer available and record which one, and record any real Task change it causes truthfully. Re-run **Q15 (expect `pending = 1`)** and **Q21 (expect 0)**. Then invoke `POST /api/v1/internal/notifications/process` **exactly once**.
+**Execution.** Set `ENABLE_OWNER_EVENT_CAPTURE=true` and `ENABLE_OWNER_EVENT_DELIVERY=true`; redeploy — state **F3**. Perform **exactly one** reviewed, real event that a producer captures — choose the least consequential producer available and record which one, and record any real Task change it causes truthfully. Re-run **Q15 (expect `pending = 1`)** and **Q21 (expect 0)**. Then invoke `POST /api/v1/internal/notifications/process` **exactly once**.
 
 **This canary is single-item by state preparation, not by a batch limit.** The worker's batch is 25. It processes one item because there is exactly one item to process. **Do not add a batch-limit parameter, a production-only bypass, or a test-only query string.**
 
@@ -956,7 +1156,7 @@ Capture is off precisely so the queue cannot grow between the check and the invo
 
 **Immediate containment.** Unset **both** flags and redeploy. Do not create a scheduler job.
 
-**Recovery or rollback.** Return to **D1** by unsetting both and redeploying — likely a fresh deployment rather than Instant Rollback, since D1 is now several steps back.
+**Recovery or rollback.** Return to **F0** by unsetting both and redeploying — likely a fresh deployment rather than Instant Rollback, since F0 is now several steps back.
 
 **Evidence to record.** The chosen event and producer, the real Task change it caused, Q15 and Q21 before and after, the intent identifier, the attempt identifier, the provider message reference, and Q18.
 
@@ -985,7 +1185,7 @@ Capture is off precisely so the queue cannot grow between the check and the invo
 
 **Immediate containment.** Unset both notification flags and redeploy. **Pause the Gmail-poll scheduler job** so the message cannot be ingested by the next cycle. Quarantine the message: move it out of the polled scope so no future poll can reach it, and record the message identifier. If a communication event, excerpt, or suggestion was created from it, record their identifiers before any cleanup and treat their removal as a separate reviewed decision.
 
-**Recovery or rollback.** Return to **D1**. The loop-suppression defect must be fixed and re-proven in a new slice before A8.7d can resume; this is not something to work around operationally.
+**Recovery or rollback.** Return to **F0**. The loop-suppression defect must be fixed and re-proven in a new slice before A8.7d can resume; this is not something to work around operationally.
 
 **Evidence to record.** The `messages.get` header block (headers only — **no message body, no personal content**), the message identifier matched against the stored reference, the header count, the normalized value, the poll's skipped count, and explicit zero confirmations for communication event, excerpt, suggestion, and second intent.
 
@@ -993,7 +1193,7 @@ Capture is off precisely so the queue cannot grow between the check and the invo
 
 #### Stage 16 — Notification scheduler creation (A8.7d)
 
-**Preconditions.** **Stage 15 passed in full.** State **D4** with both notification flags set. `CRON_SECRET` is configured in Production only.
+**Preconditions.** **Stage 15 passed in full.** State **F3** with both notification flags set. `CRON_SECRET` is configured in Production only.
 
 **Execution.** Create **one** cron-job.org job: HTTP **POST** to `{NEXT_PUBLIC_APP_URL}/api/v1/internal/notifications/process`, every five minutes, `Authorization: Bearer <CRON_SECRET>`, empty body. This is a **third, independent** job alongside Gmail poll and suggestion processing.
 
@@ -1003,7 +1203,7 @@ Capture is off precisely so the queue cannot grow between the check and the invo
 
 **Immediate containment.** **Pause the job.** Note that pausing the scheduler does **not** disable delivery: an intent can still be delivered by a manual invocation, and the flag is what governs delivery. To stop delivery, unset the flag and redeploy.
 
-**Recovery or rollback.** Pause the job and return to **D1**. A rollback alone would leave the job calling an inert endpoint every five minutes, which is safe but should not be left in place unexamined.
+**Recovery or rollback.** Pause the job and return to **F0**. A rollback alone would leave the job calling an inert endpoint every five minutes, which is safe but should not be left in place unexamined.
 
 **Evidence to record.** Job name, URL, interval, first execution result, worker response, Q16.
 
@@ -1021,7 +1221,7 @@ Capture is off precisely so the queue cannot grow between the check and the invo
 
 **Immediate containment.** Pause the notification job; unset `ENABLE_OWNER_EVENT_DELIVERY` and redeploy if sends must stop immediately.
 
-**Recovery or rollback.** Return to **D1** by unsetting both flags and redeploying, and pause the notification job — both actions, because they are in different systems.
+**Recovery or rollback.** Return to **F0** by unsetting both flags and redeploying, and pause the notification job — both actions, because they are in different systems.
 
 **Evidence to record.** Q15, Q16, Q18 at each observation; scheduler success rate; the count of notifications sent; and confirmation that no Rocket-generated message was ingested.
 
@@ -1051,7 +1251,7 @@ Capture is off precisely so the queue cannot grow between the check and the invo
 
 **Preconditions.** Stage 18 passed with all three zeros. **Zero reminder schedules and zero reminder delivery attempts** in Production. One reviewed Task with one reviewed Recipient, chosen deliberately — **a real Recipient will receive a real email**. `ENABLE_REMINDER_DELIVERY` still absent. **No reminder scheduler job exists.**
 
-**Execution.** Through the ordinary Owner UI, set a due date on the one reviewed Task so that **exactly one** occurrence becomes eligible. Confirm **Q19 = 1** and **Q20 = 1**. Set `ENABLE_REMINDER_DELIVERY=true` and redeploy — state **D5**. Re-confirm Q19 and Q20 are still 1. Then invoke `POST /api/v1/internal/reminders/process` **exactly once**.
+**Execution.** Through the ordinary Owner UI, set a due date on the one reviewed Task so that **exactly one** occurrence becomes eligible. Confirm **Q19 = 1** and **Q20 = 1**. Set `ENABLE_REMINDER_DELIVERY=true` and redeploy — state **F4**. Re-confirm Q19 and Q20 are still 1. Then invoke `POST /api/v1/internal/reminders/process` **exactly once**.
 
 **A larger burst is not acceptable here.** The worker's batch is 25 schedules. If Q20 exceeds 1, this is no longer a canary and requires separate authorization before proceeding.
 
@@ -1061,7 +1261,7 @@ Capture is off precisely so the queue cannot grow between the check and the invo
 
 **Immediate containment.** Unset `ENABLE_REMINDER_DELIVERY` and redeploy. Remove the due date from the canary Task to stop the schedule. Do **not** create a scheduler job.
 
-**Recovery or rollback.** Return to **D4** (notifications operational, reminders off) by unsetting the reminder flag and redeploying. **A delivered reminder cannot be unsent** — if the wrong Recipient was contacted, that is a communication to handle directly, not an operational rollback.
+**Recovery or rollback.** Return to **F3** (notifications operational, reminders off) by unsetting the reminder flag and redeploying. **A delivered reminder cannot be unsent** — if the wrong Recipient was contacted, that is a communication to handle directly, not an operational rollback.
 
 **Evidence to record.** The Task and Recipient identifiers (identifiers, **not** names or addresses), the schedule identifier, the attempt identifier and outcome, `overdue_delivered_count` before and after, Q17, Q18, the attention-flag state, and confirmation that the email carried no link.
 
@@ -1069,7 +1269,7 @@ Capture is off precisely so the queue cannot grow between the check and the invo
 
 #### Stage 20 — Reminder scheduler creation (A8.7e)
 
-**Preconditions.** **Stage 19 passed.** State **D5**. Q17 is 0.
+**Preconditions.** **Stage 19 passed.** State **F4**. Q17 is 0.
 
 **Execution.** Create **one** cron-job.org job: HTTP **POST** to `{NEXT_PUBLIC_APP_URL}/api/v1/internal/reminders/process`, every five minutes, `Authorization: Bearer <CRON_SECRET>`, empty body. This is a **fourth, independent** job.
 
@@ -1079,7 +1279,7 @@ Capture is off precisely so the queue cannot grow between the check and the invo
 
 **Immediate containment.** **Pause the job.** As with notifications, pausing the scheduler does not disable delivery; unsetting the flag and redeploying does.
 
-**Recovery or rollback.** Pause the job and return to **D4**.
+**Recovery or rollback.** Pause the job and return to **F3**.
 
 **Evidence to record.** Job name, URL, interval, first execution result, Q17, Q19.
 
@@ -1097,7 +1297,7 @@ Capture is off precisely so the queue cannot grow between the check and the invo
 
 **Immediate containment.** Pause the affected job; unset the corresponding flag and redeploy if delivery must stop.
 
-**Recovery or rollback.** Return to **D4** (reminders off) or **D1** (everything off), in both cases by unsetting variables and redeploying, plus pausing the relevant jobs.
+**Recovery or rollback.** Return to **F3** (reminders off) or **F0** (everything off), in both cases by unsetting variables and redeploying, plus pausing the relevant jobs.
 
 **Evidence to record.** Every query at every observation, all four schedulers' success rates, the delivery-hour confirmation with timezone, the D109 confirmation, and the token-absence confirmation.
 
@@ -1117,7 +1317,7 @@ Compare counts before/after E2E or deploy; do not paste row contents containing 
 
 ## Rollback principles
 
-1. **Application:** Redeploy the previous known-good Vercel deployment via the Vercel dashboard. **A deployment carries the environment variables it was built with**, so Instant Rollback restores the target's original flag values rather than today's, and on the Hobby plan it may reach only the immediately previous deployment. During A8.7, use the [deployment and flag matrix](#deployment-and-flag-matrix) rather than reasoning about rollback ad hoc.
+1. **Application:** Redeploy the previous known-good Vercel deployment via the Vercel dashboard. **A deployment carries the environment variables it was built with**, so Instant Rollback restores the target's original flag values rather than today's, and on the Hobby plan it may reach only the immediately previous deployment. **Do not assume a specific older deployment is one step back** — confirm it before relying on it. During A8.7, use the [approved repair state matrix](#approved-repair-state-matrix) and the [flag-staging states](#flag-staging-states-a87ca87e) rather than reasoning about rollback ad hoc.
 2. **Schema:** Prisma migrations are forward-only in production; roll back application code before attempting destructive schema changes. Never drop production tables without an explicit operator decision. **Rolling back application code does not unapply a migration**, and no A8 migration has a down path.
 3. **Schedulers:** Rolling back a deployment does **not** pause an External Scheduler job. Pausing the job is a separate action in a separate system, and stopping delivery additionally requires unsetting the governing flag and redeploying.
 4. **Secrets:** Rotate `CAPABILITY_TOKEN_PEPPER` only with a documented invalidation plan (all outstanding links become unusable). Do **not** rotate `CRON_SECRET` as a containment action during a schema change — pause the scheduler jobs instead.

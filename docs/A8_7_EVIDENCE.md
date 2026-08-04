@@ -2,7 +2,9 @@
 
 Governed by [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md). Procedure: [DEPLOYMENT.md § A8.7 production rollout](DEPLOYMENT.md#a87-production-rollout). Milestone status: [MILESTONES.md](MILESTONES.md).
 
-**This file is a template. Nothing in it has been performed.** A8.7a created it and contacted no production system, no database, no scheduler, and no provider.
+**This file is a template, and no part of it has been performed against Production.** A8.7a created it; A8.7b-INCIDENT-1b restructured it around the open incident. Neither contacted any production system, database, scheduler, or provider.
+
+> **A8.7b is retired.** Its section is replaced by three incident sections: the completed local rehearsal (**1a**), this documentation correction (**1b**), and the pending Production repair (**1c**). The repair applies **five** migrations, not nine, and **deploys nothing**. Context: [MILESTONES.md](MILESTONES.md) incident notice.
 
 ## How to use this record
 
@@ -29,7 +31,7 @@ Fill once per slice.
 
 | Field                                        | Value |
 | -------------------------------------------- | ----- |
-| Slice (A8.7b / c / d / e)                    |       |
+| Slice (A8.7b-INCIDENT-1c / A8.7c / d / e)    |       |
 | Date (ISO, with timezone)                    |       |
 | Operator                                     |       |
 | Authorization reference                      |       |
@@ -47,7 +49,7 @@ Fill once per slice.
 | Reminder job state at start                  |       |
 | Docker required for this slice (y/n)         |       |
 
-**Migration endpoint** (A8.7b only):
+**Migration endpoint** (A8.7b-INCIDENT-1c only):
 
 | Field                                      | Value |
 | ------------------------------------------ | ----- |
@@ -60,7 +62,97 @@ Fill once per slice.
 
 ---
 
-## A8.7b — Migration and disabled-feature deployment
+## A8.7b-INCIDENT-1a — Local PostgreSQL 17 migration rehearsal
+
+**Complete.** Recorded in full in [A8_7B_INCIDENT_1A_EVIDENCE.md](A8_7B_INCIDENT_1A_EVIDENCE.md); not duplicated here.
+
+| Field              | Value                                                                      |
+| ------------------ | -------------------------------------------------------------------------- |
+| Slice commit       | `192e30381f0e7846d6bf27f9394649d3a8588837`                                 |
+| Engine             | `postgres:17`, PostgreSQL 17.10, local Docker, loopback only               |
+| Prisma             | 6.19.3                                                                     |
+| Phase 1            | Five pre-A8 migrations from `932a9f0` — reproduced the Production baseline |
+| Phase 2            | Five deployed A8 migrations from `ee5e82a` in one `migrate deploy`, 853 ms |
+| Phase 2 end state  | Ten rows, all finished, none rolled back, every `applied_steps_count = 1`  |
+| Phase 3            | Migrations 6–9 proved separately — **authorizes nothing in Production**    |
+| Suites             | All nine real-PostgreSQL suites passed; full `pnpm verify` passed          |
+| Production contact | **None**                                                                   |
+
+---
+
+## A8.7b-INCIDENT-1b — Incident runbook correction
+
+**Complete.** A local documentation-and-safety slice. It corrected the Production baseline across the runbook, replaced the retired A8.7b rollout material with the incident sequence, defined the D0–D4 matrix, repointed local database credentials at loopback, removed the unguarded migration package scripts, and added guards proving the five-migration boundary.
+
+| Field              | Value                       |
+| ------------------ | --------------------------- |
+| Slice commit       | _(recorded at commit time)_ |
+| Production contact | **None**                    |
+| Migrations applied | **None**                    |
+| Deployments        | **None**                    |
+| Flags changed      | **None**                    |
+| Schedulers touched | **None**                    |
+| Pushed             | **No**                      |
+
+---
+
+## A8.7b-INCIDENT-1c — Production schema compatibility repair
+
+**Not performed.** Procedure: [DEPLOYMENT.md § A8.7b-INCIDENT-1c](DEPLOYMENT.md#a87b-incident-1c--production-schema-compatibility-repair).
+
+**This slice applies exactly five migrations and deploys nothing.** Its target state is **D1**.
+
+### 1c capture record
+
+Fill every row. A blank row is an incomplete record, not an implied "nothing to report".
+
+| Field                                                                                                              | Value |
+| ------------------------------------------------------------------------------------------------------------------ | ----- |
+| Operator                                                                                                           |       |
+| Verification window (start / end, ISO with timezone)                                                               |       |
+| Authorization reference                                                                                            |       |
+| Local `git rev-parse HEAD`                                                                                         |       |
+| Local `git rev-parse origin/main`                                                                                  |       |
+| Worktree commit used for the migration                                                                             |       |
+| Worktree migration-directory count (**expect 10**)                                                                 |       |
+| `packages/db/.env` absent from worktree (y/n)                                                                      |       |
+| Production deployment ID at start                                                                                  |       |
+| Production commit at start (**expect `ee5e82a`**)                                                                  |       |
+| Containment deployment `8588c5d` available and redeployable (y/n, how confirmed)                                   |       |
+| Scheduler dashboard state as found (each job, enabled or paused)                                                   |       |
+| Scheduler actions taken (paused which, at what time)                                                               |       |
+| Owner no-use window confirmed (y/n, by whom, duration)                                                             |       |
+| Endpoint classification (redacted host form, port, session mode, `pgbouncer=true` absent)                          |       |
+| **Credential not recorded anywhere (y/n)**                                                                         |       |
+| PostgreSQL version                                                                                                 |       |
+| Pre-migration history: row count (**expect 5**), all finished                                                      |       |
+| Pre-migration physical state: `tasks.due_local_date` absent, all four A8 tables absent                             |       |
+| Failed or unfinished migration rows before (**expect none**)                                                       |       |
+| Activity check result (Q4, against the allowlist)                                                                  |       |
+| Lock probe result (Stage 4)                                                                                        |       |
+| Activity and lock checks repeated immediately before migrating                                                     |       |
+| Migration start time                                                                                               |       |
+| Migration end time                                                                                                 |       |
+| Wall-clock duration                                                                                                |       |
+| Prisma output (**connection string redacted**)                                                                     |       |
+| Post-migration history: row count (**expect 10**), all finished, none rolled back, every `applied_steps_count = 1` |       |
+| Post-migration physical schema (column, two tables, constraints, indexes, enums, RLS)                              |       |
+| **Migrations 6–9 absent from history (y/n)**                                                                       |       |
+| **`owner_notification_intents` and `owner_notification_attempts` absent (y/n)**                                    |       |
+| Authenticated Task-list smoke result (read-only)                                                                   |       |
+| Authenticated Task-detail smoke result (read-only)                                                                 |       |
+| **No mutation performed (y/n)**                                                                                    |       |
+| **No reminder created or modified (y/n)**                                                                          |       |
+| Scheduler state after repair (left as found, y/n)                                                                  |       |
+| Flags after repair (**expect all three absent**)                                                                   |       |
+| **Nothing pushed (y/n)**                                                                                           |       |
+| **Nothing deployed; deployment ID unchanged (y/n)**                                                                |       |
+| Incident classification after repair                                                                               |       |
+| Final state (**expect D1**)                                                                                        |       |
+
+### Per-stage records
+
+Stages 1 through 10 below are the per-stage detail behind that table. **Stage 9 is retired — no deployment occurs in this slice.**
 
 ### Stage 1 — Production preflight
 
@@ -156,7 +248,7 @@ Fill once per slice.
 
 **Recovery or rollback.** Forward-only; state whether Stage 7 was entered:
 
-**Evidence to record.** Full console output **with the connection string redacted**, `migrate:status` before and after, duration.
+**Evidence to record.** Full console output **with the connection string redacted**, `migrate status` before and after, duration.
 
 ### Stage 7 — Failed-migration classification and recovery
 
@@ -172,7 +264,7 @@ Fill once per slice.
 
 **Immediate containment.** Schedulers still paused (y/n) · no deployment (y/n) · no hand cleanup (y/n):
 
-**Recovery or rollback.** Action taken, the recovery-tree entry authorizing it, and the post-action `migrate:status`:
+**Recovery or rollback.** Action taken, the recovery-tree entry authorizing it, and the post-action `migrate status`:
 
 **Evidence to record.** Failing migration name, full error, every detection query result, classification, action, authorization, post-action status.
 
@@ -206,39 +298,42 @@ Fill once per slice.
 
 **Evidence to record.** The table above, complete.
 
-### Stage 9 — Deployment with all A8 flags absent
+### Stage 9 — Retired. No deployment occurs in the repair
 
-**Preconditions.** Three flags confirmed absent in Vercel **before** deploying (y/n) · `pnpm verify` green on this commit (when):
+**Preconditions.** None — the stage is retired.
 
-**Execution.** Deployment created at: · new deployment ID: · commit:
+**Execution.** None. **Do not deploy.**
 
-**Verification.** Build Ready (y/n) · three flags read after deployment:
+**Verification.** Production deployment ID unchanged from Stage 1 (y/n) · still serving `ee5e82a` (y/n):
 
-**Stop/go criteria.**
+**Stop/go criteria.** Deployment ID changed during the window (y/n — any "y" is a hard stop):
 
-**Immediate containment.** Rollback target available (`dpl_7vmnL71Lck7JLeftgsJkYVJ4uw82`, state **D0**):
+**Immediate containment.** Not applicable — nothing is deployed by this stage.
 
-**Recovery or rollback.**
+**Recovery or rollback.** Not applicable — nothing is deployed by this stage.
 
-**Evidence to record.** New deployment ID, commit, build result, three flag values read after deployment.
+**Evidence to record.** Explicit statement that no deployment was performed, and the unchanged deployment ID.
 
-### Stage 10 — Application smoke verification
+### Stage 10 — Read-only application smoke verification
 
-**Preconditions.**
+**Preconditions.** Stage 8 passed (y/n) · no deployment occurred (y/n):
 
-**Execution.** Smoke checks run at: · schedulers resumed at:
+**Execution.** Smoke checks run at: · **schedulers left as found, not resumed** (y/n):
 
 **Verification.**
 
-| Check                               | Expected                        | Observed |
-| ----------------------------------- | ------------------------------- | -------- |
-| `GET /api/v1/session`               | 200, owner, `axford`            |          |
-| `GET /api/v1/tasks`                 | 200, cursor page                |          |
-| Owner `/tasks`                      | renders                         |          |
-| Task detail reminder panel          | "no schedule"                   |          |
-| **`/attention`**                    | **renders, two empty sections** |          |
-| Gmail-poll job resumed and executed | success, `GmailSyncRun` `cron`  |          |
-| Suggestion job resumed and executed | success                         |          |
+| Check                      | Expected                                            | Observed |
+| -------------------------- | --------------------------------------------------- | -------- |
+| `GET /api/v1/session`      | 200, owner, `axford`                                |          |
+| `GET /api/v1/tasks`        | 200, cursor page — proves `due_local_date` resolves |          |
+| Owner `/tasks`             | renders                                             |          |
+| Task detail                | renders                                             |          |
+| Task detail reminder panel | "no schedule"                                       |          |
+| **No mutation performed**  | **y**                                               |          |
+| **No reminder created**    | **y**                                               |          |
+| **No scheduler resumed**   | **y**                                               |          |
+
+`/attention` is **not** checked: it is an A8.6a surface and A8.6 is not deployed.
 
 **Stop/go criteria.**
 
@@ -246,9 +341,9 @@ Fill once per slice.
 
 **Recovery or rollback.**
 
-**Evidence to record.** The table above, plus the resume timestamps.
+**Evidence to record.** The table above, plus confirmation that no mutation, reminder action, deployment, or scheduler change occurred.
 
-**A8.7b final observed state.** Deployment ID · commit · three flag values · four scheduler states · four A8 table row counts:
+**A8.7b-INCIDENT-1c final observed state.** Deployment ID (unchanged) · commit `ee5e82a` · three flag values · scheduler states as found · migration row count (**10**) · reminder table row counts (**0, 0**) · notification tables (**absent**) · state (**D1**):
 
 ---
 

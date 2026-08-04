@@ -266,6 +266,49 @@ Gates for the due-date-driven Follow-up Engine (D102–D110). These record **exp
 - [ ] The evidence template prohibits connection strings, tokens, capability URLs, personal message content, and Recipient identities, and asks for identifiers and counts instead
 - [ ] Each stage's seven headings are all present, and an inapplicable heading says so rather than being dropped
 
+### Production schema compatibility repair (A8.7b-INCIDENT-1c; apply to the Production repair slice)
+
+**Context.** Production serves A8 code against an unmigrated database. The repair applies **exactly five** migrations from a detached `ee5e82a` worktree and **deploys nothing**. Every gate below exists because a plausible-looking shortcut would violate it.
+
+**Migration boundary**
+
+- [ ] The migration executed from a **detached worktree at `ee5e82a`**, and the worktree commit is recorded
+- [ ] The worktree held **exactly ten** migration directories — five pre-A8 and five A8 — verified before the migration, not inferred
+- [ ] **Exactly five** A8 migrations were applied, named individually in evidence, and the history holds **exactly ten** rows afterwards
+- [ ] **No migration 6 through 9 was applied.** `owner_notification_intents` and `owner_notification_attempts` are proven **absent** after the repair
+- [ ] **Current HEAD was not used for the Production migration.** A `migrate status` reporting nine pending migrations is recorded as a stop, not as a surprise
+- [ ] Phase-3 rehearsal evidence is **not** cited as authorization for applying migrations 6 through 9
+
+**Credential and execution safety**
+
+- [ ] The execution worktree contained **no `packages/db/.env`**, and its absence was verified rather than assumed
+- [ ] The migration URL was supplied **process-scoped** to the single command; no bare migration command was run
+- [ ] The endpoint was the Supabase Shared Pooler in **session mode on port 5432**, with **no `pgbouncer=true`** — recorded as a redacted host form plus port
+- [ ] **No connection string, password, project reference, or token appears anywhere in evidence**, including in redacted-looking form
+
+**Operational preconditions**
+
+- [ ] Scheduler state was **verified read-only** at the dashboard and recorded **as found**, since the repository cannot prove it
+- [ ] Any enabled Gmail-poll or suggestion-processing job was **paused before** the migration
+- [ ] An **Owner no-use window** was established and confirmed for the duration
+- [ ] The `8588c5d` containment deployment was confirmed available and redeployable **read-only**, and **not** assumed reachable by one-step Instant Rollback
+- [ ] Activity and lock checks were run, judged against the **Q4 allowlist**, and **repeated immediately** before the migration
+
+**Verification**
+
+- [ ] **Five** migration-history rows before and **ten** after, all finished, none rolled back, every `applied_steps_count = 1`
+- [ ] Physical schema verified directly: `tasks.due_local_date`, both reminder tables, constraints validated, indexes valid, reminder enums present, RLS deny-by-default on both tables
+- [ ] An **authenticated read-only** Task-list and Task-detail smoke passed
+- [ ] **No mutation smoke test was performed** unless separately approved and that approval is referenced
+- [ ] **No reminder was created or modified.** The Owner-restraint obligation is acknowledged in evidence
+
+**Prohibitions**
+
+- [ ] **Nothing was pushed**
+- [ ] **Nothing was deployed.** The Production deployment ID is unchanged and still serves `ee5e82a`
+- [ ] **No feature flag changed.** All three remain absent
+- [ ] **No Gmail action was taken.** Gmail remains connected, and no scheduler was created, resumed, or invoked
+
 ## Owner web experience foundation (P1; apply when P1 work is in scope)
 
 Gates for D111–D126. Record **expected behaviour and required proof**; no specific implementation is pre-approved.

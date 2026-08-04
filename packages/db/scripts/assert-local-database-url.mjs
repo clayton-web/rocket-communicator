@@ -29,7 +29,8 @@ export function assertLocalDatabaseUrl(raw) {
     throw new Error(
       `Refusing local database command: host "${url.hostname}" is not loopback. ` +
         'Local Docker helpers only accept 127.0.0.1 / localhost. ' +
-        'Production migrate:deploy must be run intentionally with an explicit production DATABASE_URL — not via db:*:local scripts.',
+        'An authorized remote migration is run deliberately — `pnpm exec prisma migrate deploy` ' +
+        'from a worktree with no .env, with DATABASE_URL supplied process-scoped — never through a db:*:local script.',
     );
   }
 

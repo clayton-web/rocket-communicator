@@ -222,7 +222,7 @@ Recipient **work requests** in A4 create pending suggestions in persistence with
 
 **Credentials (names only):** application auth uses `CRON_SECRET`. The External Scheduler management credential (for example cron-job.org’s API key env name `CRON_JOB_ORG_API_KEY`) is never stored in the repository and is not used by the application endpoint.
 
-### Internal reminder processing (A8.4a foundation, A8.4b.1 real overdue transport, A8.4b.2 D129 stop — contracted, disabled, never deployed)
+### Internal reminder processing (A8.4a foundation, A8.4b.1 real overdue transport, A8.4b.2 D129 stop — contracted and disabled; the A8.4a route is deployed, A8.4b is not)
 
 **Status: implemented and contracted, deliberately inert.** `operationId`: `processRemindersInternal`. No External Scheduler job invokes it, `ENABLE_REMINDER_DELIVERY` is set in no environment, no deployment has been made since it was merged, and the A8 migrations are not applied in Production — so this endpoint exists in the repository and does nothing anywhere. An earlier A8.4a report described it as deployed; no deployment ever happened, and the wording has been corrected everywhere it appeared.
 
@@ -256,7 +256,7 @@ The one advance reminder a generation holds may be delivered only during its own
 
 ### Internal Owner notification processing (A8.5b–A8.5e — contracted, disabled, never deployed)
 
-**Status: implemented and contracted, deliberately inert.** `operationId`: `processOwnerNotificationsInternal`. No scheduler job invokes it, neither `ENABLE_OWNER_EVENT_CAPTURE` nor `ENABLE_OWNER_EVENT_DELIVERY` is set in any environment, no A8.5 migration is applied in Production, no Owner notification has been sent, and nothing has been deployed. A real Gmail adapter and Owner email renderer have existed since A8.5c, so the flags are the only thing holding delivery shut.
+**Status: implemented and contracted, deliberately inert.** `operationId`: `processOwnerNotificationsInternal`. No scheduler job invokes it, neither `ENABLE_OWNER_EVENT_CAPTURE` nor `ENABLE_OWNER_EVENT_DELIVERY` is set in any environment, no A8.5 migration is applied in Production, no Owner notification has been sent, and **no A8.5 code is deployed** — it sits in the unpushed local commits. A real Gmail adapter and Owner email renderer have existed since A8.5c, so the flags are the only thing holding delivery shut.
 
 | Method | Path                                     | Purpose                                                  |
 | ------ | ---------------------------------------- | -------------------------------------------------------- |

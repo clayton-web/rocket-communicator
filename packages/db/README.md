@@ -28,7 +28,16 @@ Upgrading the pinned image across a major version makes the existing `aicaa_pgda
 | `pnpm db:migrate:status:local` | Migration status against Docker only        |
 | `pnpm db:studio:local`         | Prisma Studio against Docker only           |
 
-The `:local` helpers always set `DATABASE_URL` to the loopback Docker URL and refuse non-loopback hosts. Bare `migrate:deploy` / `migrate:status` still read `packages/db/.env` and can target production — that is intentional for operators, not for day-to-day local work.
+The `:local` helpers always set `DATABASE_URL` to the loopback Docker URL and refuse non-loopback hosts.
+
+**There are no unguarded migration scripts.** `migrate:deploy`, `migrate:dev`, and `migrate:status` used to exist here and inherited whatever `DATABASE_URL` was in scope — including one loaded silently from `packages/db/.env`, which is untracked and unreviewable. **They have been removed.** An authorized production migration invokes Prisma directly, from a detached worktree that contains no `.env`, with the URL supplied process-scoped to that one command:
+
+```bash
+cd <worktree>/packages/db
+DATABASE_URL="$MIGRATE_URL" pnpm exec prisma migrate deploy
+```
+
+That form is deliberately inconvenient: the target is written at the call site, so it cannot be inherited by accident. See [DEPLOYMENT.md § Local credential safety](../../docs/DEPLOYMENT.md#local-credential-safety-for-the-repair).
 
 Ordinary Vitest remains on **PGlite** and does not need Docker.
 
