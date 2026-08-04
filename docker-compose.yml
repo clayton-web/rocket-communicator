@@ -8,14 +8,16 @@
 # Host port 5433 avoids clashing with a typical Homebrew Postgres on 5432.
 # Bind address is loopback-only so the container is not reachable on the LAN.
 #
-# PostgreSQL 16 is deliberate, not incidental. The A8.3b reminder concurrency suite needs two real
-# connections contending for the same rows, which PGlite cannot express because it is one in-process
-# connection; that suite runs against the `prisma_test` database created by
-# docker/postgres/init/01-create-databases.sql. See packages/db/README.md.
+# PostgreSQL 17 is deliberate, not incidental. It is the major version Production runs, so a local
+# `prisma migrate deploy` rehearsal exercises the same engine that will apply the migrations for real.
+# The A8.3b reminder concurrency suite separately needs two real connections contending for the same
+# rows, which PGlite cannot express because it is one in-process connection; that suite runs against
+# the `prisma_test` database created by docker/postgres/init/01-create-databases.sql.
+# See packages/db/README.md.
 
 services:
   postgres:
-    image: postgres:16
+    image: postgres:17
     container_name: aicaa-postgres
     restart: unless-stopped
     ports:

@@ -12,7 +12,7 @@
  *
  * ## Running it
  *
- * Skipped unless `AICAA_PG_CONCURRENCY_URL` names a **loopback** PostgreSQL 16 with the migrations
+ * Skipped unless `AICAA_PG_CONCURRENCY_URL` names a **loopback** PostgreSQL 17 with the migrations
  * applied. Not part of `pnpm verify`, which must not require Docker.
  *
  *   pnpm db:docker:up
@@ -137,7 +137,7 @@ async function settle<T>(promise: Promise<T>): Promise<Settled<T>> {
   }
 }
 
-describeMaybe('A8.4a occurrence lifecycle under contention (real PostgreSQL 16)', () => {
+describeMaybe('A8.4a occurrence lifecycle under contention (real PostgreSQL 17)', () => {
   /** Independent connections. Two workers are two processes; two clients is the closest analogue. */
   let a: DbClient;
   let b: DbClient;

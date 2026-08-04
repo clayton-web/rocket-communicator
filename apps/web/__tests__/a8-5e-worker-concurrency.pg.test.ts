@@ -1,6 +1,6 @@
 // @vitest-environment node
 /**
- * A8.5e: the two-phase worker against a real PostgreSQL 16 server.
+ * A8.5e: the two-phase worker against a real PostgreSQL 17 server.
  *
  * `a8-5e-notification-worker.test.ts` establishes what one invocation does. It runs on PGlite, which
  * serializes every statement onto one connection, so two workers there are never actually
@@ -18,7 +18,7 @@
  *
  * ## Running it
  *
- * Skipped unless `AICAA_PG_CONCURRENCY_URL` names a **loopback** PostgreSQL 16 with the migrations
+ * Skipped unless `AICAA_PG_CONCURRENCY_URL` names a **loopback** PostgreSQL 17 with the migrations
  * applied. Not part of `pnpm verify`, which must stay Docker-free. A skipped run is not evidence.
  *
  *   pnpm db:docker:up
@@ -73,7 +73,7 @@ function nextSuffix(): string {
   return `${runId}_${seq}`;
 }
 
-describeMaybe('A8.5e two-phase worker on PostgreSQL 16', () => {
+describeMaybe('A8.5e two-phase worker on PostgreSQL 17', () => {
   /** Independent connections. Two workers are two processes; two clients is the closest analogue. */
   let a: DbClient;
   let b: DbClient;
@@ -118,9 +118,9 @@ describeMaybe('A8.5e two-phase worker on PostgreSQL 16', () => {
     }
   });
 
-  it('runs against PostgreSQL 16', async () => {
+  it('runs against PostgreSQL 17', async () => {
     const [{ version }] = await a.$queryRawUnsafe<{ version: string }[]>('SELECT version()');
-    expect(version).toMatch(/PostgreSQL 16\./);
+    expect(version).toMatch(/PostgreSQL 17\./);
   });
 
   /** One capability whose expiry has already passed, with the rows it cannot exist without. */

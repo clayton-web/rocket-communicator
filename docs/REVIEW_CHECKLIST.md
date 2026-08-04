@@ -132,7 +132,7 @@ Gates for the due-date-driven Follow-up Engine (D102–D110). These record **exp
 - [ ] Terminal outcome audit events are **`system`-attributed** — never the Owner and never the Recipient — and are written in the same transaction that settles the intent; `note` carries a code from a closed set, never a provider response or exception message (D133)
 - [ ] Owner mail and worker responses carry **no** capability token, capability URL, `/c/` path, token hash, temporary excerpt, Recipient free text, quoted clarification, or address (D109, D114, D134)
 - [ ] Internal worker responses and logs are aggregates only, and a count expensive enough to need an unbounded scan is not promised
-- [ ] Concurrency claims are proven on **real PostgreSQL 16 with simultaneous connections**; PGlite proves deterministic transitions and is not concurrency evidence
+- [ ] Concurrency claims are proven on **the repository's real Docker PostgreSQL with simultaneous connections**; PGlite proves deterministic transitions and is not concurrency evidence
 
 ### Owner notification mail and the Gmail adapter (A8.5c; apply to rendering, destination, transport, or ingestion changes)
 
@@ -166,7 +166,7 @@ Gates for the due-date-driven Follow-up Engine (D102–D110). These record **exp
 - [ ] Capability expiry goes through the **one shared transaction** that both the sweep and lazy validation call; a race produces one transition, one audit event, and one intent, and notification failure cannot affect authorization truth
 - [ ] `packages/db` reads **no clock** for expiry — the observation instant is an argument (D103) — and expiry does not depend on a Recipient presenting a token
 - [ ] Documentation does not describe the capability sweep as scheduled unless something actually invokes it
-- [ ] Concurrency claims for every new producer are proven on **real PostgreSQL 16 with simultaneous connections**
+- [ ] Concurrency claims for every new producer are proven on **the repository's real Docker PostgreSQL with simultaneous connections**
 
 ### Owner notification worker phases (A8.5e; apply to any change to the notification endpoint)
 

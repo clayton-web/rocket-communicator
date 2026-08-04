@@ -15,7 +15,9 @@ Operations: [../../docs/DEPLOYMENT.md](../../docs/DEPLOYMENT.md)
 
 ### Local Docker Postgres
 
-Minimal Compose service at the repo root (`docker-compose.yml`). Postgres **16**, loopback-only port **5433**, databases `prisma` (dev) and `prisma_test` (future suites). Named volume `aicaa_pgdata`.
+Minimal Compose service at the repo root (`docker-compose.yml`). Postgres **17**, matching the Production major version so migration rehearsals run on the same engine. Loopback-only port **5433**, databases `prisma` (dev) and `prisma_test` (future suites). Named volume `aicaa_pgdata`.
+
+Upgrading the pinned image across a major version makes the existing `aicaa_pgdata` volume unreadable, so the first start after such a change requires `pnpm db:docker:reset`.
 
 | Command                        | Purpose                                     |
 | ------------------------------ | ------------------------------------------- |
@@ -34,11 +36,11 @@ Ordinary Vitest remains on **PGlite** and does not need Docker.
 
 ## Tests vs production
 
-| Environment              | Database                                                                                                                                                                                                           |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Ordinary Vitest**      | In-process **PGlite** (embedded Postgres) with migration SQL applied — no Docker or production database required. Use `createTestDatabase()` from `@aicaa/db/testing`.                                             |
-| **Local Docker**         | Real PostgreSQL 16 via `docker compose` (loopback 5433; `prisma` for development, `prisma_test` for contention). Use for Prisma migrate verification, multi-connection concurrency suites, and worker integration. |
-| **Production / staging** | Current deployment uses Supabase Postgres via `DATABASE_URL` on Vercel (see [DEPLOYMENT.md](../../docs/DEPLOYMENT.md)); hosting remains replaceable under D079.                                                    |
+| Environment              | Database                                                                                                                                                                                                                                                  |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Ordinary Vitest**      | In-process **PGlite** (embedded Postgres) with migration SQL applied — no Docker or production database required. Use `createTestDatabase()` from `@aicaa/db/testing`.                                                                                    |
+| **Local Docker**         | Real PostgreSQL 17 via `docker compose`, matching the Production major version (loopback 5433; `prisma` for development, `prisma_test` for contention). Use for Prisma migrate verification, multi-connection concurrency suites, and worker integration. |
+| **Production / staging** | Current deployment uses Supabase Postgres via `DATABASE_URL` on Vercel (see [DEPLOYMENT.md](../../docs/DEPLOYMENT.md)); hosting remains replaceable under D079.                                                                                           |
 
 Optional live DB: set `DATABASE_URL` and run Prisma CLI commands against your instance — or use the `:local` scripts for Docker.
 

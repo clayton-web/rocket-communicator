@@ -15,7 +15,7 @@
  *
  * ## Running it
  *
- * Skipped unless `AICAA_PG_CONCURRENCY_URL` names a **loopback** PostgreSQL 16 with the migrations
+ * Skipped unless `AICAA_PG_CONCURRENCY_URL` names a **loopback** PostgreSQL 17 with the migrations
  * applied. Not part of `pnpm verify`, which must not require Docker.
  *
  *   pnpm db:docker:up
@@ -156,7 +156,7 @@ function taskFixture(id: string, at: string): Task {
   };
 }
 
-describeMaybe('A8.4a worker and Owner contention (real PostgreSQL 16)', () => {
+describeMaybe('A8.4a worker and Owner contention (real PostgreSQL 17)', () => {
   let prisma: DbClient;
   let sequence = 0;
 

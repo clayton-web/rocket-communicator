@@ -27,7 +27,7 @@
  * Skipped unless `AICAA_PG_CONCURRENCY_URL` names a **loopback** PostgreSQL with the migrations
  * applied. It is not part of `pnpm verify`, which must not require Docker.
  *
- * Use the committed Compose environment, which serves PostgreSQL 16 on `127.0.0.1:5433` and creates
+ * Use the committed Compose environment, which serves PostgreSQL 17 on `127.0.0.1:5433` and creates
  * the `prisma_test` database for exactly this purpose. Do not hand-run a container on another port:
  *
  *   pnpm db:docker:up

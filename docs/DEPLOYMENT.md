@@ -156,7 +156,7 @@ The A8.4a comment also draws a substantive conclusion from that claim — that i
 
 Applying any of these reminder migrations still sends nothing. They make occurrence processing _representable_; the processing endpoint remains disabled by default, constructs no transport at all while `ENABLE_REMINDER_DELIVERY` is unset, and is invoked by no cron job.
 
-**Local Docker** (loopback Postgres 16 on port 5433; never production):
+**Local Docker** (loopback Postgres 17 on port 5433, matching the Production major version; never production):
 
 ```bash
 pnpm db:docker:up

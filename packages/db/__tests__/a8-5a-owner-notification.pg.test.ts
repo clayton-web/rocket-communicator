@@ -1,5 +1,5 @@
 /**
- * A8.5a Owner notification storage on real PostgreSQL 16.
+ * A8.5a Owner notification storage on real PostgreSQL 17.
  *
  * PGlite proves shape and every constraint reachable on one connection, and
  * `a8-5a-owner-notification-intent.test.ts` does that. It cannot prove the three things here:
@@ -15,7 +15,7 @@
  *
  * ## Running it
  *
- * Skipped unless `AICAA_PG_CONCURRENCY_URL` names a **loopback** PostgreSQL 16. Not part of
+ * Skipped unless `AICAA_PG_CONCURRENCY_URL` names a **loopback** PostgreSQL 17. Not part of
  * `pnpm verify`, which must stay Docker-free. A skipped run is not evidence.
  *
  *   pnpm db:docker:up
@@ -78,7 +78,7 @@ function intentInput(
   };
 }
 
-describeMaybe('A8.5a owner notification storage on PostgreSQL 16', () => {
+describeMaybe('A8.5a owner notification storage on PostgreSQL 17', () => {
   // Resolved in `beforeAll`, not here: `describe.skip` still evaluates this body, and a
   // Docker-free `pnpm verify` run has no URL to validate.
   let url: string;
@@ -101,9 +101,9 @@ describeMaybe('A8.5a owner notification storage on PostgreSQL 16', () => {
     await db.ownerNotificationIntent.deleteMany({ where: { organizationId: org } });
   });
 
-  it('runs against PostgreSQL 16', async () => {
+  it('runs against PostgreSQL 17', async () => {
     const [{ version }] = await db.$queryRawUnsafe<{ version: string }[]>('SELECT version()');
-    expect(version).toMatch(/PostgreSQL 16\./);
+    expect(version).toMatch(/PostgreSQL 17\./);
   });
 
   describe('migration', () => {

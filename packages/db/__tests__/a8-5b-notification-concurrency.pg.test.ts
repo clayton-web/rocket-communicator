@@ -1,5 +1,5 @@
 /**
- * A8.5b claim, fence, and recovery on real PostgreSQL 16.
+ * A8.5b claim, fence, and recovery on real PostgreSQL 17.
  *
  * `a8-5b-notification-delivery.test.ts` proves the state machine on PGlite, and that is the right
  * place for it: one connection makes every transition deterministic. It is the wrong place for the
@@ -16,7 +16,7 @@
  *
  * ## Running it
  *
- * Skipped unless `AICAA_PG_CONCURRENCY_URL` names a **loopback** PostgreSQL 16. Not part of
+ * Skipped unless `AICAA_PG_CONCURRENCY_URL` names a **loopback** PostgreSQL 17. Not part of
  * `pnpm verify`, which must stay Docker-free. A skipped run is not evidence.
  *
  *   pnpm db:docker:up
@@ -115,7 +115,7 @@ function systemAudit(action: string, id = `audit_${randomBytes(6).toString('hex'
   } satisfies CreateAuditEventInput;
 }
 
-describeMaybe('A8.5b owner notification concurrency on PostgreSQL 16', () => {
+describeMaybe('A8.5b owner notification concurrency on PostgreSQL 17', () => {
   // Resolved in `beforeAll`, not here: `describe.skip` still evaluates this body, and a Docker-free
   // `pnpm verify` run has no URL to validate.
   let a: DbClient;

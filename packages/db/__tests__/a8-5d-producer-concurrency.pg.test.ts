@@ -1,5 +1,5 @@
 /**
- * A8.5d producers under contention, on real PostgreSQL 16.
+ * A8.5d producers under contention, on real PostgreSQL 17.
  *
  * `a8-5d-notification-producers.test.ts` and its reminder sibling establish what each producer does.
  * They run on PGlite, which means one connection, which means two workers are never actually
@@ -14,7 +14,7 @@
  *
  * ## Running it
  *
- * Skipped unless `AICAA_PG_CONCURRENCY_URL` names a **loopback** PostgreSQL 16. Not part of
+ * Skipped unless `AICAA_PG_CONCURRENCY_URL` names a **loopback** PostgreSQL 17. Not part of
  * `pnpm verify`, which must stay Docker-free. A skipped run is not evidence.
  *
  *   pnpm db:docker:up
@@ -158,7 +158,7 @@ function systemAudit(action: string, overrides: Partial<CreateAuditEventInput> =
   } satisfies CreateAuditEventInput;
 }
 
-describeMaybe('A8.5d producers under contention on PostgreSQL 16', () => {
+describeMaybe('A8.5d producers under contention on PostgreSQL 17', () => {
   /** Independent connections. Two workers are two processes; two clients is the closest analogue. */
   let a: DbClient;
   let b: DbClient;
@@ -182,9 +182,9 @@ describeMaybe('A8.5d producers under contention on PostgreSQL 16', () => {
     }
   });
 
-  it('runs against PostgreSQL 16', async () => {
+  it('runs against PostgreSQL 17', async () => {
     const [{ version }] = await a.$queryRawUnsafe<{ version: string }[]>('SELECT version()');
-    expect(version).toMatch(/PostgreSQL 16\./);
+    expect(version).toMatch(/PostgreSQL 17\./);
   });
 
   /** A Task with an active assignment, capability, and pending handoff attempt. */

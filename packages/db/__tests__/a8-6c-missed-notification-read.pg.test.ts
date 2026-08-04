@@ -1,5 +1,5 @@
 /**
- * A8.6c undelivered Owner notification read, on real PostgreSQL 16.
+ * A8.6c undelivered Owner notification read, on real PostgreSQL 17.
  *
  * `a8-6c-missed-notification-read.test.ts` proves the read's behaviour on PGlite and that is the
  * right place for it. Three things it cannot prove:
@@ -14,7 +14,7 @@
  *
  * ## Running it
  *
- * Skipped unless `AICAA_PG_CONCURRENCY_URL` names a **loopback** PostgreSQL 16. Not part of
+ * Skipped unless `AICAA_PG_CONCURRENCY_URL` names a **loopback** PostgreSQL 17. Not part of
  * `pnpm verify`, which must stay Docker-free. A skipped run is not evidence.
  *
  *   pnpm db:docker:up
@@ -52,7 +52,7 @@ const NOW = new Date('2026-09-01T12:00:00.000Z');
 const WINDOW_START = new Date(NOW.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
 const INSIDE_WINDOW = '2026-08-20T09:00:00.000Z';
 
-describeMaybe('A8.6c undelivered Owner notification read on PostgreSQL 16', () => {
+describeMaybe('A8.6c undelivered Owner notification read on PostgreSQL 17', () => {
   // Resolved in `beforeAll`, not here: `describe.skip` still evaluates this body, and a
   // Docker-free `pnpm verify` run has no URL to validate.
   let db: DbClient;
@@ -106,9 +106,9 @@ describeMaybe('A8.6c undelivered Owner notification read on PostgreSQL 16', () =
     });
   }
 
-  it('runs against PostgreSQL 16', async () => {
+  it('runs against PostgreSQL 17', async () => {
     const [{ version }] = await db.$queryRawUnsafe<{ version: string }[]>('SELECT version()');
-    expect(version).toMatch(/PostgreSQL 16\./);
+    expect(version).toMatch(/PostgreSQL 17\./);
   });
 
   /**
