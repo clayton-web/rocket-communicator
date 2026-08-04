@@ -293,6 +293,12 @@ export {
   type ClaimOwnerNotificationResult,
   type RecoverExpiredClaimResult,
 } from './repositories/owner-notification-repository.js';
+// A8.6c Owner visibility read, reached from the `/attention` server component. Read-only, bounded,
+// and organization-scoped; it writes nothing and needs no flag, unlike the delivery workflow above.
+export {
+  listUndeliveredOwnerNotifications,
+  type OwnerMissedNotificationRow,
+} from './repositories/owner-notification-repository.js';
 export {
   settleOwnerNotificationAttempt,
   terminalizeOwnerNotificationWithoutDelivery,

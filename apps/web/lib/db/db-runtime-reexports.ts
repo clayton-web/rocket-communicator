@@ -111,4 +111,5 @@ export {
   recoverExpiredOwnerNotificationClaim,
   settleOwnerNotificationAttempt,
   terminalizeOwnerNotificationWithoutDelivery,
+  listUndeliveredOwnerNotifications,
 } from '../../../../packages/db/dist/runtime.js';

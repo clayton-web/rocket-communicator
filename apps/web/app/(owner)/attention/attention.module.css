@@ -1,0 +1,85 @@
+/*
+ * `/attention` section styling (A8.6c). Values come from `@aicaa/ui/tokens.css` (D116).
+ *
+ * The page carries two sections that answer different questions, so each needs a visible
+ * boundary and its own heading. Section one keeps the Task-list styling it has used since
+ * A8.6a — it is a list of Tasks and looks like one. Section two is not: an undelivered
+ * notification is an event with an outcome attached, several lines of it, and squeezing that
+ * into a one-line row would either truncate the explanation or make the row unreadable.
+ */
+
+.section {
+  margin-top: var(--aicaa-space-3xl);
+  padding-top: var(--aicaa-space-xl);
+  border-top: var(--aicaa-border-width) var(--aicaa-border-style) var(--aicaa-color-line);
+}
+
+.sectionTitle {
+  margin: 0 0 var(--aicaa-space-2xs);
+  font-size: var(--aicaa-text-heading-sm);
+  font-weight: var(--aicaa-weight-semibold);
+}
+
+.sectionDescription {
+  margin: 0 0 var(--aicaa-space-lg);
+  color: var(--aicaa-color-muted);
+  font-family: var(--aicaa-font-sans);
+  font-size: var(--aicaa-text-md);
+  line-height: var(--aicaa-leading-normal);
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--aicaa-space-xs);
+}
+
+.item {
+  padding: 0.85rem var(--aicaa-space-lg);
+  border: var(--aicaa-border-width) var(--aicaa-border-style) var(--aicaa-color-line);
+  background: var(--aicaa-color-surface-raised);
+  font-family: var(--aicaa-font-sans);
+}
+
+.headline {
+  margin: 0;
+  color: var(--aicaa-color-ink);
+  line-height: var(--aicaa-leading-normal);
+  /* Fixed copy today, but a headline sits beside derived Task titles; never widen the page. */
+  overflow-wrap: anywhere;
+}
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--aicaa-space-3xs);
+  margin-top: var(--aicaa-space-3xs);
+}
+
+.meta {
+  margin: var(--aicaa-space-3xs) 0 0;
+  color: var(--aicaa-color-muted);
+  font-size: var(--aicaa-text-sm);
+  line-height: var(--aicaa-leading-normal);
+  /* Task titles derive from free text and routinely contain an unbroken reference number. */
+  overflow-wrap: anywhere;
+}
+
+.meta a {
+  color: var(--aicaa-color-ink);
+}
+
+.meta a:focus-visible {
+  outline: var(--aicaa-focus-ring-width) var(--aicaa-border-style) var(--aicaa-color-focus-ring);
+  outline-offset: var(--aicaa-focus-ring-offset);
+}
+
+.muted {
+  margin: var(--aicaa-space-lg) 0 0;
+  color: var(--aicaa-color-muted);
+  font-family: var(--aicaa-font-sans);
+  font-size: var(--aicaa-text-sm);
+  line-height: var(--aicaa-leading-normal);
+}

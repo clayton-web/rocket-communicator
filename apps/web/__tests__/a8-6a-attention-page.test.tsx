@@ -12,9 +12,17 @@ vi.mock('@/lib/reminders/attention-service', () => ({
   loadOwnerAttentionView: vi.fn(),
   ATTENTION_LIST_LIMIT: 50,
 }));
+// A8.6c added a second section to this page. These tests are about the first one, so the second
+// is stubbed empty; its own behaviour is covered in `a8-6c-attention-missed-section.test.tsx`.
+vi.mock('@/lib/notifications/missed-notifications-service', () => ({
+  loadOwnerMissedNotificationsView: vi.fn(),
+  MISSED_NOTIFICATION_LIMIT: 50,
+  MISSED_NOTIFICATION_WINDOW_DAYS: 30,
+}));
 
 import { requireOwnerPage } from '@/lib/owner/require-owner-page';
 import { getDb } from '@/lib/db/server';
+import { loadOwnerMissedNotificationsView } from '@/lib/notifications/missed-notifications-service';
 import { loadOwnerAttentionView } from '@/lib/reminders/attention-service';
 import AttentionPage from '@/app/(owner)/attention/page';
 import AttentionLoading from '@/app/(owner)/attention/loading';
@@ -65,6 +73,11 @@ describe('A8.6a Attention page', () => {
     });
     vi.mocked(getDb).mockResolvedValue({} as never);
     vi.mocked(loadOwnerAttentionView).mockResolvedValue(view());
+    vi.mocked(loadOwnerMissedNotificationsView).mockResolvedValue({
+      items: [],
+      batchFilled: false,
+      windowDays: 30,
+    });
   });
 
   describe('authentication and scoping', () => {
@@ -135,8 +148,9 @@ describe('A8.6a Attention page', () => {
     it('states plainly that nothing needs attention, and announces it', async () => {
       render(await AttentionPage());
       // `role="status"` so the emptiness is announced after a navigation, rather than leaving a
-      // screen-reader user with silence they cannot tell apart from a still-loading page.
-      expect(screen.getByRole('status')).toHaveTextContent(
+      // screen-reader user with silence they cannot tell apart from a still-loading page. The page
+      // carries one per section since A8.6c; this is the reminder one.
+      expect(screen.getAllByRole('status')[0]).toHaveTextContent(
         'No reminder schedule needs your attention.',
       );
     });
@@ -181,7 +195,7 @@ describe('A8.6a Attention page', () => {
 
     it('tells the Owner the page does not update by itself', async () => {
       render(await AttentionPage());
-      expect(screen.getByRole('status')).toHaveTextContent(/does not monitor anything/i);
+      expect(screen.getAllByRole('status')[0]).toHaveTextContent(/does not monitor anything/i);
     });
 
     it('replaces the P1.4 placeholder copy entirely', async () => {
@@ -194,12 +208,20 @@ describe('A8.6a Attention page', () => {
 
   describe('scope honesty', () => {
     /**
-     * "Attention" over a reminder-only list implies the absence of everything else. The header has
-     * to name what the page can actually see, or its silence becomes a claim (D112).
+     * The list has to name what it can see, or its silence becomes a claim (D112).
+     *
+     * Until A8.6c this list owned the page heading and qualified it in the description — "this
+     * page covers reminder automation only" — because "Attention" over a reminder-only list
+     * implied the absence of everything else. It is now one section of two, so the same
+     * requirement is met by its own heading: an empty list under "Reminder schedules that stopped"
+     * claims nothing about anything else on the page.
      */
-    it('says the page covers reminder automation only', () => {
+    it('names its own scope in its heading rather than claiming the page', () => {
       render(<AttentionList view={view()} />);
-      expect(screen.getByText(/covers reminder automation only/i)).toBeInTheDocument();
+      expect(
+        screen.getByRole('heading', { level: 2, name: 'Reminder schedules that stopped' }),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { level: 1 })).not.toBeInTheDocument();
     });
   });
 

@@ -74,6 +74,54 @@ export function clearReminderSchedules(): void {
   runFixture({ action: 'clear-reminder-schedules' });
 }
 
+/**
+ * A reminder-stop event type, named here rather than in a spec.
+ *
+ * Two members of the A8.5 event enum are longer than forty characters, which is exactly the shape
+ * the P1.2 capability-secret sweep looks for in a spec file. Keeping the literal in the fixture
+ * module lets that guard stay strict rather than learning an exception for a vocabulary that has
+ * nothing to do with secrets.
+ */
+export const REMINDER_STOP_EVENT_TYPE = 'reminder_schedule_stopped_ceiling_reached';
+
+/**
+ * Seed an Owner notification that was never delivered, for `/attention` section two (A8.6c).
+ *
+ * There is no product path to this state and there is not meant to be one. Capture is behind
+ * `ENABLE_OWNER_EVENT_CAPTURE`, and the terminal states this section shows are written only by the
+ * A8.5b delivery worker, which additionally needs `ENABLE_OWNER_EVENT_DELIVERY` and a real Gmail
+ * send. Seeding is what makes the populated section — and its accessibility scan — testable in the
+ * browser with every flag still unset.
+ */
+export function seedUndeliveredNotification(input: {
+  taskId: string;
+  eventType?:
+    | 'task_completed_by_recipient'
+    | 'task_clarification_requested'
+    | 'task_returned_to_owner'
+    | 'handoff_delivery_failed'
+    | 'gmail_disconnected'
+    | 'capability_expired'
+    | typeof REMINDER_STOP_EVENT_TYPE
+    | 'reminder_no_active_assignment';
+  state?: 'suppressed' | 'failed_permanent' | 'ambiguous' | 'requires_owner_attention' | 'sent';
+  suppressionReason?: 'stale' | 'channel_unavailable';
+  actorKind?: 'owner' | 'capability' | 'system';
+  occurredAt?: string;
+}): { intentId: string } {
+  return runFixture({ action: 'seed-undelivered-notification', ...input });
+}
+
+/**
+ * Remove every Owner notification intent in the organization, so a whole-list assertion holds.
+ *
+ * Section two's empty state is a claim about the entire list, and the harness never truncates the
+ * local database, so a row seeded by an earlier run would falsify it permanently.
+ */
+export function clearOwnerNotifications(): void {
+  runFixture({ action: 'clear-owner-notifications' });
+}
+
 /** Age a capability so the application's real expiry rejection can be exercised. */
 export function expireCapability(capabilityId: string): void {
   runFixture({ action: 'expire-capability', capabilityId });

@@ -1,6 +1,10 @@
 import { test, expect, uniqueLabel } from '../support/fixtures';
 import { createTask } from '../support/owner-api';
-import { clearReminderSchedules, stopReminderScheduleForAttention } from '../support/db-fixtures';
+import {
+  clearOwnerNotifications,
+  clearReminderSchedules,
+  stopReminderScheduleForAttention,
+} from '../support/db-fixtures';
 
 /**
  * A8.6a attention surface (D108, D112, D118).
@@ -49,6 +53,9 @@ test('an empty attention surface is truthful and claims no automation', async ({
   diagnostics,
 }) => {
   clearReminderSchedules();
+  // A8.6c added a second section to this page, and both of this test's whole-list assertions now
+  // span it. A notification left by another spec would falsify them.
+  clearOwnerNotifications();
 
   // A Task exists, so an empty page cannot be explained away by an empty database.
   await createTask(ownerPage.request, 'Fixture point', uniqueLabel('attention'));
@@ -67,7 +74,18 @@ test('an empty attention surface is truthful and claims no automation', async ({
 
   // The page states its own limits rather than leaving them to be inferred.
   expect(body).toContain('does not monitor anything');
-  expect(body).toContain('covers reminder automation only');
+
+  /*
+   * Scope honesty, moved rather than dropped.
+   *
+   * Until A8.6c this list owned the page and had to qualify its heading — "covers reminder
+   * automation only" — because "Attention" over a reminder-only list implied the absence of
+   * everything else. The page now has two sections, so the same requirement is met by each naming
+   * its own subject in a heading, and the old sentence would have become false.
+   */
+  await expect(
+    ownerPage.getByRole('heading', { level: 2, name: 'Reminder schedules that stopped' }),
+  ).toBeVisible();
 
   // No list and no count while nothing needs attention. Scoped to `main`: the shell navigation is
   // itself a list, so an unscoped assertion would measure the chrome rather than the page.
@@ -83,6 +101,7 @@ test('a stopped reminder schedule is discoverable without opening the Task', asy
   diagnostics,
 }) => {
   clearReminderSchedules();
+  clearOwnerNotifications();
 
   const summary = uniqueLabel('Confirm the site visit window');
   const task = await createTask(ownerPage.request, 'Fixture point', summary);

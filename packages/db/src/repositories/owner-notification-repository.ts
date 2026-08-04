@@ -1,7 +1,7 @@
 import type { DbClient, DbTransaction } from '../client/create-prisma-client.js';
 import { Prisma } from '../client/create-prisma-client.js';
 import { persistenceValidation, uniqueViolation } from '../errors/persistence-errors.js';
-import { fromIso } from '../mappers/domain-mappers.js';
+import { fromIso, toIso } from '../mappers/domain-mappers.js';
 import {
   mapOwnerNotificationAttempt,
   mapOwnerNotificationIntent,
@@ -10,6 +10,7 @@ import {
   type OwnerNotificationEventTypeValue,
   type OwnerNotificationIntentRecord,
   type OwnerNotificationSubjectKindValue,
+  type OwnerNotificationSuppressionReasonValue,
 } from '../mappers/owner-notification-mappers.js';
 
 type Client = DbClient | DbTransaction;
@@ -222,6 +223,277 @@ export async function findOwnerNotificationSubjectTaskId(
     case 'communication_account':
       return null;
   }
+}
+
+// ---------------------------------------------------------------------------
+// A8.6c Owner visibility: notifications that were never delivered
+// ---------------------------------------------------------------------------
+
+/**
+ * The states in which Rocket owes the Owner an event it never managed to send.
+ *
+ * `sent` is excluded because the Owner already has the email — repeating it on a web surface is
+ * an inbox, which A8.6c is deliberately not. `pending`, `claimed`, and `failed_retryable` are
+ * excluded because they are still in progress and saying so would invite the Owner to act on a
+ * decision the worker has not finished making. A retryable failure returns the intent to
+ * `pending` rather than resting in `failed_retryable`, so that state is unreachable in practice
+ * and listed only to keep this set exhaustive against the enum.
+ */
+const UNDELIVERED_NOTIFICATION_STATES = [
+  'suppressed',
+  'failed_permanent',
+  'ambiguous',
+  'requires_owner_attention',
+] as const satisfies ReadonlyArray<OwnerNotificationIntentRecord['state']>;
+
+/**
+ * Reminder stops, excluded from this read because `/attention` already has a section for them.
+ *
+ * The exclusion is a correctness requirement, not a de-duplication nicety. Section one of that
+ * page is driven by `TaskReminderSchedule.requiresOwnerAttention`, which **clears** when the Owner
+ * sets a new due date; a notification intent is terminal and clears never. An unfiltered read
+ * would therefore keep announcing "we could not tell you reminders stopped" for a schedule the
+ * Owner repaired weeks ago, directly beneath the live section that no longer lists it.
+ *
+ * Filtering in SQL rather than after projection also keeps the bound honest. Dropping rows in the
+ * presentation layer would let a full batch of fifty reminder stops render as an empty list while
+ * still reporting the batch as filled.
+ *
+ * `reminder_no_active_assignment` is **not** here. It never sets `requiresOwnerAttention`, never
+ * reaches the reminder section, and is invisible to the Owner today.
+ */
+const REMINDER_STOP_EVENT_TYPES = [
+  'reminder_schedule_stopped_ceiling_reached',
+  'reminder_schedule_stopped_permanent_failure',
+  'reminder_schedule_stopped_repeated_ambiguous',
+] as const satisfies ReadonlyArray<OwnerNotificationEventTypeValue>;
+
+/** One undelivered notification, already joined to the Task it is about. */
+export interface OwnerMissedNotificationRow {
+  readonly id: string;
+  readonly eventType: OwnerNotificationEventTypeValue;
+  readonly state: OwnerNotificationIntentRecord['state'];
+  readonly suppressionReason: OwnerNotificationSuppressionReasonValue | null;
+  readonly actorKind: OwnerNotificationActor['actorKind'];
+  readonly occurredAt: string;
+  readonly settledAt: string | null;
+  /**
+   * The Task this event is about, or null.
+   *
+   * Null has three causes and they are deliberately indistinguishable here: the subject names no
+   * Task at all (`communication_account`), the subject was purged under retention, or the subject
+   * belongs to another organization. All three must produce the same outcome — an item that
+   * renders without a link — so collapsing them removes the chance of a caller treating the third
+   * case as linkable.
+   */
+  readonly taskId: string | null;
+  /** The Task's summary points, for title derivation. Null whenever `taskId` is. */
+  readonly taskSummaryPoints: unknown;
+}
+
+/**
+ * Resolve many subjects to their Tasks in a fixed number of statements (A8.6c).
+ *
+ * `findOwnerNotificationSubjectTaskId` above answers this for one subject and is the wrong tool
+ * for a list: it issues a statement per row, so a fifty-item page would cost fifty round-trips.
+ * This groups by subject kind first and issues at most one `IN` per kind, which makes the cost a
+ * function of the *number of kinds* — a constant of five, three of which query — rather than of
+ * how many notifications went undelivered.
+ *
+ * Every lookup repeats `organizationId`. No foreign key binds a subject to the organization of the
+ * intent that names it — an intent deliberately has no foreign key to its subject at all, so that
+ * purging a Task cannot delete a notification that is still owed — which makes their agreement an
+ * invariant of the write path rather than something the database enforces. A subject naming
+ * another organization's row simply fails to match and resolves to null.
+ */
+async function resolveSubjectTaskIds(
+  db: Client,
+  organizationId: string,
+  subjects: ReadonlyArray<{ kind: OwnerNotificationSubjectKindValue; id: string }>,
+): Promise<Map<string, string>> {
+  const byKind = new Map<OwnerNotificationSubjectKindValue, Set<string>>();
+  for (const subject of subjects) {
+    const existing = byKind.get(subject.kind);
+    if (existing) {
+      existing.add(subject.id);
+    } else {
+      byKind.set(subject.kind, new Set([subject.id]));
+    }
+  }
+
+  // Keyed by `kind:id` because a capability and a Task could in principle share an identifier,
+  // and a collision here would link a notification to the wrong Task.
+  const resolved = new Map<string, string>();
+
+  const capabilityIds = byKind.get('task_capability');
+  if (capabilityIds && capabilityIds.size > 0) {
+    const rows = await db.taskCapability.findMany({
+      where: { id: { in: [...capabilityIds] }, organizationId },
+      select: { id: true, taskId: true },
+    });
+    for (const row of rows) {
+      resolved.set(`task_capability:${row.id}`, row.taskId);
+    }
+  }
+
+  const handoffIds = byKind.get('handoff_attempt');
+  if (handoffIds && handoffIds.size > 0) {
+    const rows = await db.handoffAttempt.findMany({
+      where: { id: { in: [...handoffIds] }, organizationId },
+      select: { id: true, taskId: true },
+    });
+    for (const row of rows) {
+      resolved.set(`handoff_attempt:${row.id}`, row.taskId);
+    }
+  }
+
+  const scheduleIds = byKind.get('task_reminder_schedule');
+  if (scheduleIds && scheduleIds.size > 0) {
+    const rows = await db.taskReminderSchedule.findMany({
+      where: { id: { in: [...scheduleIds] }, organizationId },
+      select: { id: true, taskId: true },
+    });
+    for (const row of rows) {
+      resolved.set(`task_reminder_schedule:${row.id}`, row.taskId);
+    }
+  }
+
+  // A `task` subject already carries its own identifier, and `communication_account` names no
+  // Task. Neither costs a statement. Both are still verified against the organization below,
+  // because the Task load is what proves a Task is real and ours.
+  for (const id of byKind.get('task') ?? []) {
+    resolved.set(`task:${id}`, id);
+  }
+
+  return resolved;
+}
+
+/**
+ * Bounded, organization-scoped read of recent Owner notifications that were never delivered
+ * (A8.6c; D133, D135).
+ *
+ * A8.5 exists to email the Owner once per notable event. When that email is not sent, the Owner
+ * may never learn the event happened at all, and until now no surface said so. This read is that
+ * backstop — the events Rocket could not tell them about — and nothing more. It is not a
+ * notification inbox, an audit feed, or a delivery console.
+ *
+ * ## The window is what keeps this from becoming an inbox
+ *
+ * `occurredAtOrAfter` is required and is computed by the caller, because nothing in this package
+ * reads a clock (D103). The window is also the *only* mechanism by which an item ever leaves this
+ * surface: A8.6c introduces no acknowledgement, dismissal, or read state, so an item is retired
+ * by ageing out and by nothing else. That is a ratified product decision, and it is why the
+ * predicate is mandatory rather than optional — an unbounded variant of this query would quietly
+ * become the perpetual to-do list the surface is designed not to be.
+ *
+ * The window is **not** a performance measure, and it was measured rather than assumed. On
+ * PostgreSQL 16.14 with 200,000 intents in one organization, the windowed and unbounded forms of
+ * this query cost the same 3,656 buffers and 0.50 ms, because `LIMIT 50` against a backward scan
+ * of `owner_notification_intents_occurred_at_idx` stops early either way. The window earns its
+ * place as a product bound, not as an optimization, and claiming otherwise would leave a future
+ * reader thinking the surface cannot be widened without a query rewrite.
+ *
+ * ## Why no index was added
+ *
+ * A candidate `(organization_id, occurred_at, id)` index was built and measured during the A8.6c
+ * review. It helps the populated case — 61 buffers and 0.18 ms against 3,656 and 0.50 ms — and the
+ * planner **declines it** in the steady state, where every notification was delivered and the scan
+ * must walk the whole window to prove the answer is empty (20,522 buffers, 3.0 ms, identical with
+ * and without the candidate, because no index covers `state`). Three milliseconds on a
+ * hundredfold more rows than Production holds does not buy a permanent write cost, so nothing was
+ * added. Should that change, the shape to reach for is a partial index on the four visible states
+ * — the same trick `owner_notification_intents_pending_idx` uses — and not this candidate, which
+ * the empty case never touches.
+ *
+ * ## Constant round-trips
+ *
+ * One statement for the intents, at most three to resolve their subjects, and one to load the
+ * Tasks: five at the most, whatever the row count. The `select` lists exactly the columns the
+ * Owner surface projects, so claim holders, lease expiry, fencing sequence, attempt counts,
+ * provider references, failure codes, and request identifiers are never loaded into memory at all
+ * — absent rather than filtered out later.
+ */
+export async function listUndeliveredOwnerNotifications(
+  db: Client,
+  input: {
+    readonly organizationId: string;
+    readonly occurredAtOrAfter: string;
+    readonly limit: number;
+  },
+): Promise<OwnerMissedNotificationRow[]> {
+  if (!Number.isInteger(input.limit) || input.limit < 1 || input.limit > 50) {
+    throw persistenceValidation(
+      'Undelivered Owner notification limit must be an integer between 1 and 50.',
+    );
+  }
+
+  // `fromIso` constructs a `Date` without validating, so an unparseable cutoff would otherwise
+  // reach Prisma as `Invalid Date` and surface as a driver error rather than a caller mistake.
+  const cutoff = fromIso(input.occurredAtOrAfter);
+  if (cutoff === null || Number.isNaN(cutoff.getTime())) {
+    throw persistenceValidation(
+      'Undelivered Owner notification read requires an ISO-8601 window cutoff.',
+    );
+  }
+
+  const intents = await db.ownerNotificationIntent.findMany({
+    where: {
+      organizationId: input.organizationId,
+      occurredAt: { gte: cutoff },
+      state: { in: [...UNDELIVERED_NOTIFICATION_STATES] },
+      eventType: { notIn: [...REMINDER_STOP_EVENT_TYPES] },
+    },
+    // Most recent first: this is a "what did I miss" surface, and the newest miss is the one most
+    // likely to still be actionable. `id` breaks ties so two loads of an unchanged database agree.
+    orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }],
+    take: input.limit,
+    select: {
+      id: true,
+      eventType: true,
+      subjectKind: true,
+      subjectId: true,
+      state: true,
+      suppressionReason: true,
+      actorKind: true,
+      occurredAt: true,
+      settledAt: true,
+    },
+  });
+
+  const subjectTaskIds = await resolveSubjectTaskIds(
+    db,
+    input.organizationId,
+    intents.map((intent) => ({ kind: intent.subjectKind, id: intent.subjectId })),
+  );
+
+  const candidateTaskIds = [...new Set(subjectTaskIds.values())];
+  const tasks =
+    candidateTaskIds.length === 0
+      ? []
+      : await db.task.findMany({
+          where: { id: { in: candidateTaskIds }, organizationId: input.organizationId },
+          select: { id: true, summaryPoints: true },
+        });
+  const tasksById = new Map(tasks.map((task) => [task.id, task]));
+
+  return intents.map((intent) => {
+    const taskId = subjectTaskIds.get(`${intent.subjectKind}:${intent.subjectId}`);
+    // A resolved identifier is not yet a linkable Task. Only a row that loaded under this
+    // organization's filter proves the Task exists and is ours, so the Task load — not the
+    // subject lookup — is what decides whether the item gets a link.
+    const task = taskId === undefined ? undefined : tasksById.get(taskId);
+    return {
+      id: intent.id,
+      eventType: intent.eventType,
+      state: intent.state,
+      suppressionReason: intent.suppressionReason,
+      actorKind: intent.actorKind,
+      occurredAt: toIso(intent.occurredAt),
+      settledAt: intent.settledAt === null ? null : toIso(intent.settledAt),
+      taskId: task ? task.id : null,
+      taskSummaryPoints: task ? task.summaryPoints : null,
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------

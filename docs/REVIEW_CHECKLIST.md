@@ -197,7 +197,7 @@ Gates for the due-date-driven Follow-up Engine (D102–D110). These record **exp
 - [ ] Local calendar dates render as the day they name, through a local-date formatter rather than the instant formatter, which would shift them a day in the organization's zone
 - [ ] Empty, loading, and error states are **distinguishable**, and the error state cannot be read as an all-clear
 - [ ] A missing migration or database failure reaches the **error boundary**; it is never degraded into an empty state
-- [ ] Any claim about D108 is limited to what shipped: **A8.6a establishes the cross-Task discovery surface**, **A8.6b adds Task-level status and repair**, and the gate is discharged only by architecture approval of the complete minimum reminder UI — not by a passing test run
+- [ ] Any claim about D108 is limited to what shipped: **A8.6a establishes the cross-Task discovery surface**, **A8.6b adds Task-level status and repair**, and the gate is discharged only by architecture approval of the complete minimum reminder UI — not by a passing test run. **A8.6c is not a D108 requirement** and must not be offered as evidence toward it
 - [ ] An E2E assertion about the **whole** list — "nothing needs attention", "exactly one item" — clears the organization's schedules first. The harness migrates the local database but never truncates it, so a row seeded by an earlier run would otherwise make the empty state unprovable forever
 - [ ] A loading-boundary scan holds the boundary open by **throttling the transport**, not by delaying a `page.route` handler. `page.route('**/x')` does not match the `/x?_rsc=<hash>` a client navigation actually requests, and blocking a response outright prevents the server from streaming the Suspense fallback at all — such a test passes only while the click keeps landing before hydration
 
@@ -217,6 +217,24 @@ Gates for the due-date-driven Follow-up Engine (D102–D110). These record **exp
 - [ ] Updating a schedule is **never described as sending anything**; configuration and delivery are separate facts and no copy claims an email on the strength of a saved date
 - [ ] A destructive removal is gated by the established confirmation pattern, states that sent email **cannot be recalled**, and moves focus in and restores it on close
 - [ ] A **value** imported from a `serverExternalPackages` package is a runtime hazard: the binding can arrive `undefined` in the server with no error, no failing unit test, and a plausible-looking result. Reach those packages through the established dynamic runtime loader, or own the constant locally with a test asserting the **product** parses, not merely that the two values match
+
+### Owner notification visibility (A8.6c; apply to any surface that shows notification delivery outcomes)
+
+- [ ] The surface is **read-only and stays read-only**: no resend, acknowledgement, dismissal, mark-as-read, snooze, or attempt-history browser, and a source guard prohibits the vocabulary so none can appear later by accident
+- [ ] Only states meaning **the Owner was never told** are shown. `sent` is excluded — repeating a delivered email makes this an inbox — and `pending`, `claimed`, and `failed_retryable` are excluded because reporting an unfinished decision invites the Owner to act on one the worker has not made
+- [ ] Events already represented by another section are excluded **in the statement, not after projection**. Filtering after the fact lets a full batch render as an empty list while still reporting the batch as filled
+- [ ] The exclusion is justified by **divergent clearing behaviour**, not tidiness: the reminder attention flag clears when the Owner repairs a schedule and a notification intent never does, so an unfiltered read re-announces a stop that was fixed weeks ago
+- [ ] The visibility window is the **only** retirement mechanism, and that is stated rather than implied. If an item can never leave any other way, no copy may suggest the Owner can act on it
+- [ ] A ratified bound is enforced where it cannot be widened — the ceiling inside `packages/db`, rejecting an above-ceiling limit rather than clamping it — and the clock stays outside persistence (D103)
+- [ ] Subject resolution is **batched by kind**, never a single-item resolver in a loop, with the statement count asserted constant at the driver as rows are added
+- [ ] Every subject lookup repeats `organizationId` independently. No foreign key binds an intent to its subject, so their agreement is a write-path invariant the read must not assume
+- [ ] An **unresolvable subject still renders**, without a link. Purged, foreign, and Task-less subjects collapse to the same outcome, and none of them removes the item — a surface about things the Owner was not told cannot itself withhold one
+- [ ] `occurrenceKey`, claim holder, lease expiry, fencing sequence, attempt count, provider references, failure codes, and request or correlation identifiers are **not selected**, so they are absent from memory rather than filtered out later
+- [ ] Actor attribution uses the **closed category vocabulary** from the shared mapping module. Recipient identity is not resolved, `attributionLabel` is not displayed, and email-renderer wording is not reused where it would name a second actor for the same assistant
+- [ ] Copy distinguishes **suppressed** from **failed** from **ambiguous**: Rocket choosing not to send, Rocket failing to send, and Rocket not knowing are three facts, and collapsing them into "failed" invents certainty
+- [ ] A **new index is measured, not assumed**. Any claim that a query needs one — or does not — carries `EXPLAIN (ANALYZE, BUFFERS)` from real PostgreSQL at a realistic row count, including the **empty** case, which is the steady state for a delivery-backstop query and the one a filtered index usually fails to help
+- [ ] A performance justification for a product bound is **checked before it is written down**. A window that turns out to cost the same as no window is a product decision, and saying otherwise leaves the next reader believing the surface cannot be widened without a rewrite
+- [ ] Accessibility coverage includes the item shape with **no link**, not only the linked one; an item whose only interactive element is absent is the state most likely to have been built as an empty anchor
 
 ## Owner web experience foundation (P1; apply when P1 work is in scope)
 

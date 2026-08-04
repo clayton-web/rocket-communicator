@@ -55,6 +55,8 @@ const REQUIRED_EXPORTS = [
   'recoverExpiredOwnerNotificationClaim',
   'settleOwnerNotificationAttempt',
   'terminalizeOwnerNotificationWithoutDelivery',
+  // A8.6c Owner visibility read, reached from the `/attention` server component.
+  'listUndeliveredOwnerNotifications',
   'findCapabilityByTokenHash',
   'createCapability',
   'findActiveCapabilitiesForAssignment',

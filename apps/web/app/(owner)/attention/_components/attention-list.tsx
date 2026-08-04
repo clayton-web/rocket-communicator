@@ -1,17 +1,17 @@
 import Link from 'next/link';
 import type { OwnerAttentionView } from '@/lib/reminders/attention';
 import { EmptyState } from '../../_components/empty-state';
-import { PageHeader } from '../../_components/page-header';
 import { StatusBadge } from '../../_components/status-badge';
-import styles from '../../tasks/tasks.module.css';
+import listStyles from '../../tasks/tasks.module.css';
+import styles from '../attention.module.css';
 
 /**
- * Owner Attention list (A8.6a; D108, D112).
+ * `/attention` section one: reminder schedules that stopped (A8.6a; D108, D112).
  *
  * Presentation only, and deliberately built from the components the Task list already uses —
- * `PageHeader`, `StatusBadge`, `EmptyState`, and the same list styling. A second visual language
- * for what is still a list of Tasks would be a new set of accessibility and mobile behaviours to
- * re-prove for no gain, and this list is structurally identical to the one on `/tasks`.
+ * `StatusBadge`, `EmptyState`, and the same list styling. A second visual language for what is
+ * still a list of Tasks would be a new set of accessibility and mobile behaviours to re-prove for
+ * no gain, and this list is structurally identical to the one on `/tasks`.
  *
  * Every sentence rendered here was chosen in the projection. This component picks no copy, decides
  * no tone, and derives nothing, so what the Owner reads and what the unit tests assert are the same
@@ -19,39 +19,43 @@ import styles from '../../tasks/tasks.module.css';
  *
  * ## Truthfulness constraints
  *
- * The header says what this page covers, because "Attention" over a list of two things implies the
- * absence of a third. Reminder automation is the only thing A8.6a can see, and an Owner who reads
- * an unqualified empty state as "nothing anywhere is wrong" has been misled by omission (D112).
+ * A8.6c made this a section rather than the whole page, and that changed what its silence claims.
+ * It used to own the page heading and had to qualify it, because "Attention" over a reminder-only
+ * list implied the absence of everything else (D112). Now the page heading covers both sections and
+ * this one names its own scope in its heading, so an empty reminder list reads as "no reminder
+ * schedule needs you" rather than as an all-clear for the product.
  *
  * Nothing here claims to be live. The page is rendered once per navigation and says so: no polling,
  * no revalidation, no "as of" freshness badge that would go stale the moment it painted.
  */
 export function AttentionList({ view }: { view: OwnerAttentionView }) {
   return (
-    // The Owner shell layout supplies the container, landmark, and navigation.
-    <>
-      <PageHeader
-        title="Attention"
-        description="Reminder schedules that stopped and need a decision from you. This page covers reminder automation only, and shows what was true when it loaded."
-      />
+    <section aria-labelledby="attention-reminders-heading">
+      <h2 id="attention-reminders-heading" className={styles.sectionTitle}>
+        Reminder schedules that stopped
+      </h2>
+      <p className={styles.sectionDescription}>
+        Tasks whose reminder automation stopped and cannot restart on its own. Each one needs a
+        decision from you.
+      </p>
       {view.items.length === 0 ? (
         <EmptyState
           message="No reminder schedule needs your attention."
-          explanation="A Task appears here when its reminders stop and cannot restart on their own. This page does not monitor anything or update by itself — reload it to check again."
+          explanation="A Task appears here when its reminders stop and cannot restart on their own. This section does not monitor anything or update by itself — reload the page to look again."
         />
       ) : (
-        <ul className={styles.list}>
+        <ul className={listStyles.list}>
           {view.items.map((item) => (
             <li key={item.taskId}>
               <Link href={item.href}>
-                <span className={styles.itemTitle}>{item.taskTitle}</span>
-                <span className={styles.itemBadges}>
+                <span className={listStyles.itemTitle}>{item.taskTitle}</span>
+                <span className={listStyles.itemBadges}>
                   <StatusBadge label={item.badge} tone={item.badgeTone} />
                 </span>
-                <span className={styles.meta}>{item.headline}</span>
-                <span className={styles.meta}>{item.explanation}</span>
+                <span className={listStyles.meta}>{item.headline}</span>
+                <span className={listStyles.meta}>{item.explanation}</span>
                 {item.dueDateText ? (
-                  <span className={styles.meta}>Due date: {item.dueDateText}</span>
+                  <span className={listStyles.meta}>Due date: {item.dueDateText}</span>
                 ) : null}
               </Link>
             </li>
@@ -64,6 +68,6 @@ export function AttentionList({ view }: { view: OwnerAttentionView }) {
           ones above will reveal any others.
         </p>
       ) : null}
-    </>
+    </section>
   );
 }

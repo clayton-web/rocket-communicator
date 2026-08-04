@@ -1,7 +1,12 @@
 import { test, expect, signInAsOwner, uniqueLabel } from '../support/fixtures';
 import { seedCapabilityFixture } from '../support/capability-fixture';
 import { createRecipient, createTask, getTask } from '../support/owner-api';
-import { clearReminderSchedules, stopReminderScheduleForAttention } from '../support/db-fixtures';
+import {
+  clearOwnerNotifications,
+  clearReminderSchedules,
+  seedUndeliveredNotification,
+  stopReminderScheduleForAttention,
+} from '../support/db-fixtures';
 import { expectNoSeriousOrCriticalViolations } from '../support/accessibility';
 import { E2E_WORKSPACE_DOMAIN } from '../config/e2e-env';
 import type { Page } from '@playwright/test';
@@ -43,6 +48,8 @@ export const SCANNED_STATES = [
   'Owner reminder panel (stale state resolved)',
   'Owner attention list (empty)',
   'Owner attention list (populated)',
+  'Owner attention undelivered notifications (populated)',
+  'Owner attention undelivered notifications (no Task link)',
   'Owner handoff dialog (open)',
   'Recipient capability panel',
   'Recipient capability panel (loading)',
@@ -86,8 +93,10 @@ test.describe('D119 accessibility gate — Owner surfaces', () => {
   });
 
   test('task list, task detail, and attention list', async ({ ownerPage }) => {
-    // Otherwise a row left by another run would be scanned under the label "(empty)".
+    // Otherwise a row left by another run would be scanned under the label "(empty)". Both
+    // sections of `/attention` need clearing since A8.6c.
     clearReminderSchedules();
+    clearOwnerNotifications();
 
     const task = await createTask(
       ownerPage.request,
@@ -123,6 +132,7 @@ test.describe('D119 accessibility gate — Owner surfaces', () => {
    */
   test('attention list with an item needing attention', async ({ ownerPage }) => {
     clearReminderSchedules();
+    clearOwnerNotifications();
 
     const task = await createTask(
       ownerPage.request,
@@ -138,6 +148,71 @@ test.describe('D119 accessibility gate — Owner surfaces', () => {
     await ownerPage.goto('/attention');
     await expect(ownerPage.getByRole('main').getByRole('listitem')).toHaveCount(1);
     await expectNoSeriousOrCriticalViolations(ownerPage, 'Owner attention list (populated)');
+  });
+
+  /**
+   * `/attention` section two, populated (A8.6c).
+   *
+   * Structurally unlike either state above: each item is a card of several paragraphs carrying a
+   * badge and an inline link, rather than a single-line row wrapped in one. Scanning only the
+   * reminder list would cover none of it.
+   *
+   * Both item shapes are scanned, because they differ in the one way that matters to a screen
+   * reader: the second has no link at all. An item whose subject was purged, or belongs to another
+   * organization, resolves to no Task and is still rendered — so the section has to read correctly
+   * with nowhere to go, which is the state most likely to have been built as an empty anchor.
+   *
+   * Seeded through the database fixture, because there is no product path: an undelivered
+   * notification requires both A8.5 flags and a real Gmail send that fails. The rows are real, the
+   * page runs its own query, and no markup is injected.
+   */
+  test('attention section two, with and without a resolvable Task', async ({ ownerPage }) => {
+    clearReminderSchedules();
+    clearOwnerNotifications();
+
+    const task = await createTask(
+      ownerPage.request,
+      uniqueLabel('a11y-missed'),
+      'Confirm the caterer headcount.',
+    );
+    seedUndeliveredNotification({
+      taskId: task.id,
+      eventType: 'task_completed_by_recipient',
+      state: 'failed_permanent',
+      actorKind: 'capability',
+    });
+    seedUndeliveredNotification({
+      taskId: task.id,
+      eventType: 'task_clarification_requested',
+      state: 'suppressed',
+      suppressionReason: 'stale',
+      actorKind: 'capability',
+    });
+
+    await ownerPage.goto('/attention');
+    await expect(ownerPage.getByRole('main').getByRole('listitem')).toHaveCount(2);
+    await expectNoSeriousOrCriticalViolations(
+      ownerPage,
+      'Owner attention undelivered notifications (populated)',
+    );
+
+    // A subject that resolves to no Task: the identifier names nothing this organization owns.
+    clearOwnerNotifications();
+    seedUndeliveredNotification({
+      taskId: 'task_absent_for_a11y_scan',
+      eventType: 'capability_expired',
+      state: 'ambiguous',
+      actorKind: 'system',
+    });
+
+    await ownerPage.goto('/attention');
+    const item = ownerPage.getByRole('main').getByRole('listitem');
+    await expect(item).toHaveCount(1);
+    await expect(item.getByRole('link')).toHaveCount(0);
+    await expectNoSeriousOrCriticalViolations(
+      ownerPage,
+      'Owner attention undelivered notifications (no Task link)',
+    );
   });
 
   /**

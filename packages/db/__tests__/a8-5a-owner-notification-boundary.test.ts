@@ -52,13 +52,19 @@ describe('A8.5a capture boundary', () => {
     // Reminder *lifecycle* reconciliation is a long-standing part of this transaction and is not
     // what this guards. Delivery policy — ceilings, ambiguity counting, transports, worker config —
     // must never reach a notification capture path (D135 declines all of it).
+    //
+    // The ambiguity pattern excludes `reminder_schedule_stopped_repeated_ambiguous`, which is a
+    // member of `OwnerNotificationEventType` rather than reminder policy: D133 ratified it into the
+    // notification enum this module owns, and A8.6c must name it to exclude those events from the
+    // Owner visibility read. The bare stop reason — the reminder-side vocabulary this guard was
+    // written for — is still forbidden.
     const forbidden = [
       /lib\/reminders\//,
       /process-config/,
       /OVERDUE_SUCCESSFUL_DELIVERY_CEILING/,
       /MAX_OCCURRENCE_ATTEMPTS/,
       /ENABLE_REMINDER_DELIVERY/,
-      /repeated_ambiguous/,
+      /(?<!reminder_schedule_stopped_)repeated_ambiguous/,
     ];
     for (const file of [TRANSACTIONS, REPOSITORY, CAPTURE_CONFIG]) {
       const source = code(file);

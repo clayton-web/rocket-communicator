@@ -40,8 +40,22 @@ const REPOSITORY = path.join(
 /** Every file the Attention surface is made of. */
 const ATTENTION_SOURCES = [PAGE, LIST, LOADING, ERROR_BOUNDARY, PROJECTION, SERVICE] as const;
 
+/**
+ * The reminder half of the surface, without the page.
+ *
+ * A8.6c gave `/attention` a second section fed by the A8.5 notification tables, so the page now
+ * legitimately reaches notification code. The reminder list, projection, and service must not:
+ * their subject is a reminder schedule, and a reminder sentence derived from a notification intent
+ * would be a second source of truth for a condition the schedule already records.
+ */
+const REMINDER_SOURCES = [LIST, LOADING, ERROR_BOUNDARY, PROJECTION, SERVICE] as const;
+
 function attentionCode(): string {
   return ATTENTION_SOURCES.map(readCode).join('\n');
+}
+
+function reminderCode(): string {
+  return REMINDER_SOURCES.map(readCode).join('\n');
 }
 
 /** The one repository function this surface added, isolated from the rest of the file. */
@@ -113,8 +127,16 @@ describe('A8.6a Attention surface guards', () => {
   });
 
   describe('what the surface must not reach', () => {
-    it('touches no Owner notification persistence', () => {
-      const code = attentionCode();
+    /**
+     * The reminder section still knows nothing about notifications.
+     *
+     * A8.6c put both on one page, which makes this guard more necessary rather than less: the
+     * temptation from here is to describe a stopped schedule using the notification intent that
+     * was written about it, and the two disagree by design — the schedule flag clears when the
+     * Owner repairs the schedule, and the intent never does.
+     */
+    it('touches no Owner notification persistence in the reminder section', () => {
+      const code = reminderCode();
       for (const forbidden of [
         'ownerNotificationIntent',
         'ownerNotificationAttempt',
@@ -123,6 +145,25 @@ describe('A8.6a Attention surface guards', () => {
         'lib/notifications',
       ]) {
         expect(code).not.toContain(forbidden);
+      }
+    });
+
+    /**
+     * The page composes both sections, so it may name the A8.6c read — and only that. Reaching
+     * notification persistence directly, or the delivery worker, would put policy in a page.
+     */
+    it('reaches notifications only through the A8.6c read service', () => {
+      const page = readCode(PAGE);
+      expect(page).toContain('@/lib/notifications/missed-notifications-service');
+      for (const forbidden of [
+        'ownerNotificationIntent',
+        'ownerNotificationAttempt',
+        'lib/notifications/process-service',
+        'lib/notifications/worker',
+        'lib/notifications/transport',
+        'lib/notifications/capture-config',
+      ]) {
+        expect(page).not.toContain(forbidden);
       }
     });
 

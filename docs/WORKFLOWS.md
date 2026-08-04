@@ -350,8 +350,21 @@ There is **no resume control** for a Waiting Task: suspension follows Task state
 
 Changing a schedule is **not** sending anything, and the panel never conflates the two. A saved due date is a configuration fact; whether an email left the building is a separate one, and no wording in the panel claims the latter on the strength of the former.
 
-**D108's minimum Owner UI is implemented across A8.6a and A8.6b, and is satisfied only once that work is architecture-approved.** A8.6c Owner notification visibility remains pending.
+**A8.6c added a second section to the same page, answering a different question: what happened recently that Rocket could not tell you about?** A8.5 sends the Owner one email per notable event, so an email that never leaves means an event the Owner may never hear about. This section lists those, and only those — the recent notifications that ended `suppressed`, `failed_permanent`, `ambiguous`, or `requires_owner_attention`.
 
-Nothing here changes §10a. No reminder has been sent in any environment, `ENABLE_REMINDER_DELIVERY` is unset, and no cron job exists, so in every current environment the Attention list is empty and every panel reports a schedule no worker has ever touched.
+| Badge            | Why it says so                                                                                                                                                         |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Not sent         | Rocket chose not to send (too old to be useful, or no connected mailbox), the attempt was refused permanently, or Rocket gave up after repeated failures — each stated |
+| Delivery unknown | Rocket could not confirm the email was sent; the Owner may have received it, or it may never have arrived                                                              |
+
+Two badges, not four, because two is how many outcomes the Owner can act on differently. "Not sent" is safe to act on; "Delivery unknown" means a duplicate may already be sitting in the Owner's inbox, and flattening the two would make one of those sentences untrue. Why a message was not sent is still shown beneath the badge, because "Rocket decided not to" and "the attempt was refused" are not the same problem and the first two are conditions the Owner can fix.
+
+Each item names the event, when it happened, who caused it — **you**, **the Recipient**, or **Rocket**, never a Recipient's name or address — and links to the Task when there is one to link to. An event whose subject has since been purged still appears, without a link, because a thing Rocket failed to tell the Owner must not also be a thing this page withholds.
+
+**It is not an inbox and offers nothing to do.** There is no resend, no acknowledgement, no dismissal, and no mark-as-read; an item leaves after **30 days** and by no other means, and the section shows at most **50**. Reminder stops appear in the first section and never here, because that section clears when the Owner repairs the schedule while a notification record never does — showing both would keep announcing a stop that was fixed weeks ago. `reminder.no_active_assignment` does appear here, being the one notification no other surface shows.
+
+**D108's minimum Owner UI is implemented across A8.6a and A8.6b, and is satisfied only once that work is architecture-approved.** A8.6c is **not** part of that gate.
+
+Nothing here changes §10a. No reminder and no Owner notification has been sent in any environment, `ENABLE_REMINDER_DELIVERY`, `ENABLE_OWNER_EVENT_CAPTURE`, and `ENABLE_OWNER_EVENT_DELIVERY` are unset, and no cron job exists — so in every current environment both sections of `/attention` are empty and every panel reports a schedule no worker has ever touched.
 
 Owner dates and timestamps render in the organization timezone (`America/Vancouver`, D034), never silently the browser's (D117). This is **presentation only**: §10a and **D103** remain the sole authority for reminder occurrence arithmetic.

@@ -14,6 +14,9 @@
  *   { "action": "read-notes", taskId }
  *   { "action": "stop-reminder-schedule", taskId, dueLocalDate, stopReason }
  *   { "action": "clear-reminder-schedules" }
+ *   { "action": "seed-undelivered-notification", taskId, eventType, state, suppressionReason,
+ *     actorKind, occurredAt }
+ *   { "action": "clear-owner-notifications" }
  */
 import { randomUUID } from 'node:crypto';
 import {
@@ -112,6 +115,62 @@ async function main() {
        */
       case 'clear-reminder-schedules': {
         const { count } = await db.taskReminderSchedule.deleteMany({
+          where: { organizationId: ORGANIZATION_ID },
+        });
+        return { deleted: count };
+      }
+
+      /**
+       * An Owner notification intent that was never delivered, for `/attention` section two.
+       *
+       * Unreachable through the product by design, twice over. Capture writes an intent only with
+       * `ENABLE_OWNER_EVENT_CAPTURE` set, and the terminal states this surface shows are reached
+       * only by the A8.5b delivery worker exhausting retries or refusing a stale intent — which
+       * additionally requires `ENABLE_OWNER_EVENT_DELIVERY` and a real Gmail send. Seeding the row
+       * is what lets the browser harness exercise the populated section and its accessibility scan
+       * against real database rows, with every flag still unset and no worker ever run.
+       *
+       * The CHECK constraints are not bypassed: a terminal state needs `settled_at`, and
+       * `suppressed` needs a reason, so a fixture that contradicts the state machine fails here.
+       */
+      case 'seed-undelivered-notification': {
+        const occurredAt = new Date(command.occurredAt ?? Date.now() - 60 * 60 * 1000);
+        const state = command.state ?? 'failed_permanent';
+        const actorKind = command.actorKind ?? 'capability';
+        const id = `onint_e2e_${randomUUID()}`.slice(0, 64);
+        await db.ownerNotificationIntent.create({
+          data: {
+            id,
+            organizationId: ORGANIZATION_ID,
+            eventType: command.eventType ?? 'task_completed_by_recipient',
+            subjectKind: 'task',
+            subjectId: command.taskId,
+            occurrenceKey: id,
+            state,
+            suppressionReason:
+              state === 'suppressed' ? (command.suppressionReason ?? 'stale') : null,
+            occurredAt,
+            settledAt: occurredAt,
+            actorKind,
+            ownerId: actorKind === 'owner' ? (command.ownerId ?? null) : null,
+            systemId: actorKind === 'system' ? 'e2e-fixture' : null,
+          },
+        });
+        return { intentId: id };
+      }
+
+      /*
+       * Delete every Owner notification intent in the organization.
+       *
+       * Same reason `clear-reminder-schedules` exists: the harness migrates the local database but
+       * never truncates it, and section two's empty state is a claim about the whole list. One row
+       * left by an earlier run would make "no undelivered notifications" unprovable forever.
+       */
+      case 'clear-owner-notifications': {
+        await db.ownerNotificationAttempt.deleteMany({
+          where: { organizationId: ORGANIZATION_ID },
+        });
+        const { count } = await db.ownerNotificationIntent.deleteMany({
           where: { organizationId: ORGANIZATION_ID },
         });
         return { deleted: count };

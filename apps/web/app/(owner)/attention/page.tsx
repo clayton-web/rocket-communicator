@@ -1,4 +1,5 @@
 import { getDb } from '@/lib/db/server';
+import { loadOwnerMissedNotificationsView } from '@/lib/notifications/missed-notifications-service';
 import { requireOwnerPage } from '@/lib/owner/require-owner-page';
 import { loadOwnerAttentionView } from '@/lib/reminders/attention-service';
 import {
@@ -9,7 +10,9 @@ import {
   monotonicNowMs,
   runWithRequestContext,
 } from '@/lib/observability';
+import { PageHeader } from '../_components/page-header';
 import { AttentionList } from './_components/attention-list';
+import { MissedNotificationList } from './_components/missed-notification-list';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,6 +29,22 @@ export const dynamic = 'force-dynamic';
  *
  * It is discovery only. Acting on what is found here means opening the Task, and the Task-level
  * status and repair controls are A8.6b. D108 is not satisfied by this page.
+ *
+ * ## The second section (A8.6c)
+ *
+ * A8.5 tells the Owner about notable events by email, once. When that email is never sent the
+ * event becomes invisible, because nothing else in the product says "something happened and we
+ * could not reach you". Section two is that backstop, and it is on this page rather than a route
+ * of its own because both sections answer one Owner question; splitting them would mean checking
+ * two places for one answer.
+ *
+ * The two sections never describe the same thing. Reminder-stop notifications are excluded from
+ * the second read in SQL, because section one already shows that condition and — unlike a
+ * terminal notification intent — stops showing it once the Owner repairs the schedule.
+ *
+ * Section two is **not** a D108 requirement. D108 is about the Owner seeing the reminder
+ * automation acting for them, which is section one and A8.6b. This is Owner visibility for the
+ * A8.5 notification engine, and it neither satisfies nor advances D108.
  *
  * ## What replaced the P1.4 placeholder
  *
@@ -73,11 +92,20 @@ export default async function AttentionPage() {
 
         const loadStarted = monotonicNowMs();
         const db = await getDb();
-        // Organization comes from the authenticated session, never from the request.
-        const view = await loadOwnerAttentionView({
-          db,
-          organizationId: authenticated.actor.organizationId,
-        });
+        const organizationId = authenticated.actor.organizationId;
+        /*
+         * One instant for the whole render. The notification window is computed from it above
+         * `packages/db`, which reads no clock (D103), and taking it once means every row on a
+         * page was judged against the same moment.
+         */
+        const now = new Date();
+        // Organization comes from the authenticated session, never from the request. The two reads
+        // are independent, so they run together rather than making the page pay for both in turn;
+        // `owner_attention_load` times the pair.
+        const [view, missedView] = await Promise.all([
+          loadOwnerAttentionView({ db, organizationId }),
+          loadOwnerMissedNotificationsView({ db, organizationId, now }),
+        ]);
         emitOperationalLog({
           event: 'operation_timing',
           level: 'info',
@@ -96,7 +124,19 @@ export default async function AttentionPage() {
           outcome: 'ok',
         });
 
-        return <AttentionList view={view} />;
+        return (
+          // The Owner shell layout supplies the container, landmark, and navigation. The page owns
+          // the single `<h1>`; each section owns an `<h2>` beneath it, so the two lists are
+          // navigable as headings rather than as one undifferentiated run of content.
+          <>
+            <PageHeader
+              title="Attention"
+              description="Reminder schedules that stopped, and recent events Rocket could not email you about. This page shows what was true when it loaded."
+            />
+            <AttentionList view={view} />
+            <MissedNotificationList view={missedView} />
+          </>
+        );
       } catch (error) {
         // A login redirect is expected control flow, not an operational failure.
         if (isNextControlFlowError(error)) {

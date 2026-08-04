@@ -166,6 +166,8 @@ export type TracedRuntimeModule = {
   recoverExpiredOwnerNotificationClaim: typeof TracedRuntimeBindings.recoverExpiredOwnerNotificationClaim;
   settleOwnerNotificationAttempt: typeof TracedRuntimeBindings.settleOwnerNotificationAttempt;
   terminalizeOwnerNotificationWithoutDelivery: typeof TracedRuntimeBindings.terminalizeOwnerNotificationWithoutDelivery;
+  // A8.6c Owner visibility read, reached from the `/attention` server component.
+  listUndeliveredOwnerNotifications: typeof TracedRuntimeBindings.listUndeliveredOwnerNotifications;
 };
 
 export async function loadTracedRuntimeModule(): Promise<TracedRuntimeModule> {
@@ -286,5 +288,6 @@ export async function loadTracedRuntimeModule(): Promise<TracedRuntimeModule> {
     settleOwnerNotificationAttempt: tracedRuntime.settleOwnerNotificationAttempt,
     terminalizeOwnerNotificationWithoutDelivery:
       tracedRuntime.terminalizeOwnerNotificationWithoutDelivery,
+    listUndeliveredOwnerNotifications: tracedRuntime.listUndeliveredOwnerNotifications,
   };
 }
