@@ -274,21 +274,25 @@ Stages 1 through 10 below are the per-stage detail behind that table. **Stage 9 
 
 **Execution.** Q5–Q14 and Q1 re-run at:
 
-**Verification.**
+**Verification.** **Five-migration expectations, not nine.** Two tables, six enums, no notification objects. See [five-migration expectations](DEPLOYMENT.md#five-migration-expectations-a87b-incident-1c).
 
-| Assertion                                            | Expected | Observed |
-| ---------------------------------------------------- | -------- | -------- |
-| `schema.due_local_date` exists and nullable          | yes      |          |
-| `schema.due_local_date.nonnull` (Q6)                 | **0**    |          |
-| `schema.tables` (Q7)                                 | 4        |          |
-| `schema.rowcounts.after` (Q8)                        | 0,0,0,0  |          |
-| `schema.rls` (Q9)                                    | all true |          |
-| `schema.columns` (Q10)                               | all 7    |          |
-| `schema.constraints` (Q11)                           | all      |          |
-| `schema.enums` (Q12)                                 | all 11   |          |
-| `schema.indexes` (Q13), all `indisvalid`             | true     |          |
-| `schema.settlement_constraint` (Q14) `convalidated`  | true     |          |
-| `tasks.count.after` (Q1) equals `tasks.count.before` | yes      |          |
+| Assertion                                            | Expected              | Observed |
+| ---------------------------------------------------- | --------------------- | -------- |
+| `schema.due_local_date` exists and nullable          | yes                   |          |
+| `schema.due_local_date.nonnull` (Q6)                 | **0**                 |          |
+| `schema.tables` (Q7)                                 | **2** reminder only   |          |
+| `schema.rowcounts.after` (Q8, two-table variant)     | **0, 0**              |          |
+| `schema.rls` (Q9)                                    | **2 rows**, both true |          |
+| `schema.columns` (Q10)                               | all 7                 |          |
+| `schema.constraints` (Q11)                           | repair set only       |          |
+| `schema.enums` (Q12)                                 | **6** `Reminder*`     |          |
+| `schema.indexes` (Q13), all `indisvalid`             | true                  |          |
+| `schema.settlement_constraint` (Q14) `convalidated`  | true                  |          |
+| `tasks.count.after` (Q1) equals `tasks.count.before` | yes                   |          |
+| **Boundary (QB)** — notification tables              | **absent**            |          |
+| **Boundary (QB)** — `OwnerNotification*` enum types  | **absent**            |          |
+| **Boundary (QB)** — `no_actionable_capability`       | **absent**            |          |
+| **Boundary (QB)** — `repeated_ambiguous_outcomes`    | **absent**            |          |
 
 **Stop/go criteria.**
 

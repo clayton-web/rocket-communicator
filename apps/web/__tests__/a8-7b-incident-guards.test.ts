@@ -196,3 +196,107 @@ describe('A8.7b-INCIDENT review and evidence structure', () => {
     }
   });
 });
+
+/**
+ * The verification SQL was authored for the nine-migration end state. A8.7b-INCIDENT-1c applies
+ * five, so an operator following the published `Expected` column literally would read a correct
+ * repair as a hard stop, and would run two `count(*)` statements against tables that do not exist.
+ *
+ * These guards derive the true end state from the migration SQL rather than restating it, so the
+ * documentation cannot drift away from what the migrations actually build.
+ */
+describe('A8.7b-INCIDENT-1c verification SQL is scoped to five migrations', () => {
+  const migrationsDir = path.join(repoRoot, 'packages/db/prisma/migrations');
+
+  function repairSql(): string {
+    return REPAIR_MIGRATIONS.map((name) =>
+      readFileSync(path.join(migrationsDir, name, 'migration.sql'), 'utf8'),
+    ).join('\n');
+  }
+
+  it('builds exactly two tables and six reminder enum types, and no notification objects', () => {
+    const sql = repairSql();
+
+    const tables = new Set(
+      [...sql.matchAll(/CREATE TABLE (?:IF NOT EXISTS )?"?([a-z_]+)"?/g)].map((m) => m[1]),
+    );
+    expect(tables, 'the five repair migrations create exactly two tables').toEqual(
+      new Set(['task_reminder_schedules', 'reminder_delivery_attempts']),
+    );
+
+    const enums = [...sql.matchAll(/CREATE TYPE "([A-Za-z]+)" AS ENUM/g)].map((m) => m[1]);
+    expect(enums.filter((name) => name.startsWith('Reminder'))).toHaveLength(6);
+    expect(sql, 'no repair migration may create a notification object').not.toMatch(
+      /owner_notification|OwnerNotification/,
+    );
+  });
+
+  it('the prohibited migrations are the only source of the notification objects', () => {
+    const prohibited = PROHIBITED_MIGRATIONS.map((name) =>
+      readFileSync(path.join(migrationsDir, name, 'migration.sql'), 'utf8'),
+    ).join('\n');
+
+    for (const object of [
+      'owner_notification_intents',
+      'owner_notification_attempts',
+      'no_actionable_capability',
+      'repeated_ambiguous_outcomes',
+    ]) {
+      expect(prohibited, `${object} must come from migrations 6–9`).toContain(object);
+      expect(repairSql(), `${object} must not come from the repair set`).not.toContain(object);
+    }
+  });
+
+  it('states the five-migration expectations rather than the nine-migration ones', () => {
+    const runbook = read('docs/DEPLOYMENT.md');
+
+    expect(runbook).toMatch(/Five-migration expectations \(A8\.7b-INCIDENT-1c\)/);
+    expect(runbook, 'Q7 must not claim four tables without qualifying the repair').toMatch(
+      /After 1c: exactly two/,
+    );
+    expect(runbook, 'Q9 must expect two RLS rows after the repair').toMatch(
+      /\*\*After 1c: two rows\*\*/,
+    );
+    expect(runbook, 'Q12 must expect six reminder types after the repair').toMatch(
+      /After 1c: exactly the six `Reminder\*` types/,
+    );
+    expect(runbook, 'the two prohibited enum labels must be called out as required-absent').toMatch(
+      /`no_actionable_capability` \(migration 6\)[\s\S]{0,120}must be ABSENT/,
+    );
+  });
+
+  it('replaces Q8 with a runnable two-table variant and adds the boundary assertion', () => {
+    const runbook = read('docs/DEPLOYMENT.md');
+
+    expect(runbook, 'Q8 as published cannot run after the repair').toMatch(/Q8, two-table variant/);
+    expect(runbook, 'a boundary assertion must prove the prohibited objects are absent').toMatch(
+      /QB, the boundary assertion/,
+    );
+    expect(runbook).toMatch(/boundary\.prohibited_absent/);
+    expect(runbook, 'Q15–Q21 must be marked out of scope for the repair').toMatch(
+      /Out of scope for 1c: Q15 through Q21/,
+    );
+
+    const step23 = runbook.match(/\| 23 {2}\|[^\n]*/)?.[0] ?? '';
+    const queryList = step23.match(/\((Q5[^)]*)\)/)?.[1] ?? '';
+    expect(queryList, 'step 23 must enumerate the queries to run').toMatch(/Q5/);
+    expect(queryList, 'the unrunnable Q8 must not be in the list to run').not.toMatch(/Q8/);
+    expect(step23, 'step 23 must redirect the operator to the runnable variant').toMatch(
+      /two-table variant/,
+    );
+  });
+
+  it('carries the same five-migration expectations into the evidence template', () => {
+    const evidence = read('docs/A8_7_EVIDENCE.md');
+
+    expect(evidence, 'the Stage 8 table must not expect four tables').not.toMatch(
+      /`schema\.tables` \(Q7\) *\| *4 /,
+    );
+    expect(evidence, 'the Stage 8 table must not expect eleven enums').not.toMatch(
+      /`schema\.enums` \(Q12\) *\| *all 11/,
+    );
+    expect(evidence).toMatch(/\*\*2\*\* reminder only/);
+    expect(evidence).toMatch(/\*\*6\*\* `Reminder\*`/);
+    expect(evidence).toMatch(/Boundary \(QB\)/);
+  });
+});
