@@ -71,8 +71,15 @@ async function composeTransportProvider(
  * stop it sending anything: `ENABLE_REMINDER_DELIVERY` is not set to `"true"` in any environment, and
  * with it unset no Gmail transport is even constructed; the processing service fails closed without a
  * transport; and the once-per-invocation Gmail authorization has to succeed before a single occurrence
- * can be claimed. With delivery off it scans nothing, claims nothing, writes nothing, and calls no
- * transport — it returns zero aggregates and `deliveryEnabled: false`. No cron job invokes it.
+ * can be claimed. With delivery off it claims nothing, writes nothing, and calls no transport — it
+ * returns zero aggregates and `deliveryEnabled: false`. No cron job invokes it.
+ *
+ * **It does still open a database connection while disabled, and that is worth stating plainly**
+ * because the sibling notification worker does not. `getDb()` is awaited below before the flag is
+ * consulted, so a disabled invocation constructs a database client and connects; what it does not do
+ * is issue a scan, a claim, or a write. Against a Production database without the A8 migrations that
+ * connection succeeds and the invocation is still inert, since nothing queries the absent tables.
+ * Do not cite this route as an example of "disabled implies no database contact".
  *
  * A8.4b.1 delivers **overdue** reminders only. Advance delivery is A8.4b.3 and has no scan predicate,
  * so no advance occurrence can be claimed here; D129's consecutive-ambiguous stopping rule is

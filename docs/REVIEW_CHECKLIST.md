@@ -236,6 +236,36 @@ Gates for the due-date-driven Follow-up Engine (D102–D110). These record **exp
 - [ ] A performance justification for a product bound is **checked before it is written down**. A window that turns out to cost the same as no window is a product decision, and saying otherwise leaves the next reader believing the surface cannot be widened without a rewrite
 - [ ] Accessibility coverage includes the item shape with **no link**, not only the linked one; an item whose only interactive element is absent is the state most likely to have been built as an empty anchor
 
+### Production rollout preparation (A8.7a; apply to rollout documentation and non-production tooling)
+
+- [ ] The slice **contacted nothing**: no production or remote database, no production SQL of any kind including read-only, no deploy, no environment variable change, no Vercel or Supabase dashboard, no scheduler job, no provider, and no internal production route
+- [ ] No migration file was created, edited, renamed, or deleted. **Prisma checksums are intact**, and any correction to an applied migration's wording lives in documentation rather than in the file
+- [ ] `vercel.json` is unchanged and still declares no `crons`; `schema.prisma` is unchanged and gained no `directUrl`
+- [ ] **No feature flag is enabled anywhere.** Every example-environment entry remains commented, and none is assigned `true`
+- [ ] No A8.3, A8.4, A8.5, or A8.6 runtime semantics changed, and no production-only canary bypass, batch-limit parameter, or test-only query string was added
+- [ ] Every production command and query appears as a **future operator instruction**, never as something the slice executed
+- [ ] Migration connection guidance names an endpoint that can actually hold a **session-scoped advisory lock**. A pooled endpoint recommended for the application runtime is not automatically correct for Prisma Migrate, and the port is the difference
+- [ ] A documented credential form is a **placeholder** — no project reference, region, username, or password — and the command pattern keeps the real value out of shell history and out of evidence
+- [ ] A bare migration command is prohibited where it could fall back to an operator-local `.env`, and local-only helpers are not presented as the same command with a different URL
+- [ ] Any claim that a control protects a migration is **checked against whether it reaches the migration's own connection**. A setting applied in a different session, or through an option a pooler need not forward, protects nothing
+- [ ] The failure model does not assert transactional guarantees the repository does not establish. Per-file and cross-file atomicity are stated as **absent**, and recovery depends on **physical schema inspection** rather than the migration-history row
+- [ ] Every migration in scope has a recovery entry covering objects, statement count, idempotency, likely failure points, detection queries, and the three physical-state classifications — **none present**, **all present**, **some present** — with `migrate resolve --applied` treated as the dangerous one
+- [ ] A migration using `NOT VALID` then `VALIDATE` is detected by **`pg_constraint.convalidated`**, not by constraint existence, and its half-applied state has an explicitly reviewed completion
+- [ ] A migration touching a **live** table carries a stronger warning than one creating empty tables, and the lock class it takes is named
+- [ ] Every preflight query states **when it runs, the expected result, the stop/go threshold, and the evidence field** — a query with no threshold is an observation, not a gate
+- [ ] Verification commands are classified honestly. A command that writes cache, `dist`, coverage, or `node_modules` output is **not** described as non-mutating; the accurate phrase is "does not alter tracked source"
+- [ ] `pnpm verify` is **preserved unchanged** as the slice exit gate, and any command that regenerates tracked artifacts is excluded from the between-steps preflight category
+- [ ] Docker is required **only** where a step genuinely needs it, and the documentation does not imply it must stay running
+- [ ] The rollback model accounts for **environment-variable binding**: a deployment carries the values it was built with, rollback restores the target's original values, and plan limits may make an older state unreachable
+- [ ] The documentation says plainly that rollback does **not** unapply a migration, does **not** pause a scheduler job, and does **not** unsend a message
+- [ ] A canary is **genuinely single-item by state preparation** — verified counts immediately before invocation — rather than by a batch limit, a bypass, or a hope that the queue is empty
+- [ ] Every condition that could make a canary multi-item is enumerated and checked, including secondary phases of the same endpoint that populate the same queue
+- [ ] Provider round-trip evidence is **API-level**, with the exact call and fields named. Visual inspection of a mail client is not evidence, and "at least one marker header" is not the same assertion as "exactly one"
+- [ ] A hard gate states what it **blocks**, and the blocked action is not described anywhere else as optional
+- [ ] Containment for a failed provider gate includes **quarantine**, not only disablement, when the artifact could otherwise be re-ingested
+- [ ] The evidence template prohibits connection strings, tokens, capability URLs, personal message content, and Recipient identities, and asks for identifiers and counts instead
+- [ ] Each stage's seven headings are all present, and an inapplicable heading says so rather than being dropped
+
 ## Owner web experience foundation (P1; apply when P1 work is in scope)
 
 Gates for D111–D126. Record **expected behaviour and required proof**; no specific implementation is pre-approved.
