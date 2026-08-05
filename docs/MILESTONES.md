@@ -1,26 +1,32 @@
 # Milestones
 
-> ## ⚠ Open production incident — read before any A8 work
+> ## ⚠ Production incident — schema repaired, incident still open
 >
-> **Production is serving A8 code against a database that has not been migrated.** This was discovered during the A8.7b architecture review and is the governing fact about the project's current state.
+> **The schema incompatibility was repaired on 2026-08-04.** Production ran A8 code against an unmigrated database from 2026-08-01 until then. The five A8 migrations present at the deployed commit have been applied and verified; **the incident is not yet closed.**
 >
-> | Property              | Verified value                                                                                                                                                                                                |
-> | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-> | Production commit     | `ee5e82a0466fa08086fbd007d4b68342f2c8a6db` — **A8 code through A8.4a is deployed**                                                                                                                            |
-> | Production deployment | `dpl_AnUKqdGj3gBw7N56yUT4pMBAVbac`, alias-holding, deployed ≈2026-08-01T19:14Z by push to `main`                                                                                                              |
-> | Production schema     | The **five pre-A8 migrations** only. **The five deployed A8 migrations are not applied**                                                                                                                      |
-> | Application state     | **Latently incompatible.** Task reads select `tasks.due_local_date` and Task mutations read `task_reminder_schedules`; neither exists, and no feature flag guards either path                                 |
-> | Flags                 | `ENABLE_OWNER_EVENT_CAPTURE`, `ENABLE_OWNER_EVENT_DELIVERY`, `ENABLE_REMINDER_DELIVERY` — **all absent**                                                                                                      |
-> | Gmail                 | **Connected in Production.** No recorded sync run since 2026-07-20                                                                                                                                            |
-> | Schedulers            | External at cron-job.org. **State not verifiable from this repository**; none created or resumed by A8.7 work                                                                                                 |
-> | Local commits         | **Seventeen, unpushed** (`7153bec` → this slice). **Migrations 6–9 must be applied and verified before they may be pushed** — pushing to `main` deploys automatically, which is how this incident was created |
-> | Flags and schedulers  | **No flag has been enabled and no scheduler has been created or resumed by any A8.7 work**                                                                                                                    |
+> | Property              | Verified value                                                                                                                                                                        |
+> | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+> | Production commit     | `ee5e82a0466fa08086fbd007d4b68342f2c8a6db` — **A8 code through A8.4a is deployed**                                                                                                    |
+> | Production deployment | `dpl_AnUKqdGj3gBw7N56yUT4pMBAVbac`, alias-holding, deployed ≈2026-08-01T19:14Z by push to `main`. **Unchanged by the repair**                                                         |
+> | Production schema     | Five pre-A8 **plus A8 migrations 1–5** — ten rows in `_prisma_migrations`, all finished, none rolled back                                                                             |
+> | Application state     | **Schema-compatible.** `tasks.due_local_date` exists and is nullable, both reminder tables exist and are empty with RLS enabled. **Not yet confirmed by an authenticated smoke test** |
+> | Flags                 | `ENABLE_OWNER_EVENT_CAPTURE`, `ENABLE_OWNER_EVENT_DELIVERY`, `ENABLE_REMINDER_DELIVERY` — **all absent**                                                                              |
+> | Gmail                 | **Connected in Production.** No recorded sync run since 2026-07-20                                                                                                                    |
+> | Schedulers            | External at cron-job.org. Gmail-poll and suggestion-processing **both disabled** as found; none created or resumed                                                                    |
+> | Database credential   | **Rotated 2026-08-04** outside the approved plan; Vercel Production `DATABASE_URL` updated. No documented rotation procedure exists                                                   |
+> | Local commits         | **Unpushed.** **Migrations 6–9 must be applied and verified before they may be pushed** — pushing to `main` deploys automatically, which is how this incident was created             |
+>
+> **Outstanding before the incident can be closed:**
+>
+> 1. The **authenticated read-only smoke tests** (runbook steps 24–25). `GET /api/v1/tasks/{taskId}/reminder` is the discriminating check — it failed in Production before the repair and should now return 200.
+> 2. Reconciliation of the **redeploy anomaly**: a redeploy was attempted, no deployment was created on 2026-08-04, yet a database-backed page renders despite the credential rotation.
+> 3. A decision on whether the **credential rotation** needs a documented procedure before the next production operation.
 >
 > **Slice status.** **A8.7b is retired** — it was written for a pre-A8 Production that no longer exists. It is replaced by:
 >
 > - **A8.7b-INCIDENT-1a** — local PostgreSQL 17 migration rehearsal. **Complete** ([evidence](A8_7B_INCIDENT_1A_EVIDENCE.md)).
-> - **A8.7b-INCIDENT-1b** — incident runbook correction. **This documentation slice.**
-> - **A8.7b-INCIDENT-1c** — Production schema compatibility repair, applying **exactly five** migrations from a detached `ee5e82a` worktree and deploying nothing. **Pending authorization.**
+> - **A8.7b-INCIDENT-1b** — incident runbook correction. **Complete.**
+> - **A8.7b-INCIDENT-1c** — Production schema compatibility repair. **Migration complete and verified 2026-08-04; slice open pending steps 24–25** ([evidence](A8_7_EVIDENCE.md#a87b-incident-1c--production-schema-compatibility-repair)).
 >
 > The repair procedure is [in DEPLOYMENT.md](DEPLOYMENT.md#a87b-incident-1c--production-schema-compatibility-repair). **After the repair the A8.3b Owner reminder APIs become functional; the Owner must not create or modify a reminder until the later rollout is authorized.**
 

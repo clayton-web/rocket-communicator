@@ -268,7 +268,17 @@ Gates for the due-date-driven Follow-up Engine (D102–D110). These record **exp
 
 ### Production schema compatibility repair (A8.7b-INCIDENT-1c; apply to the Production repair slice)
 
-**Context.** Production serves A8 code against an unmigrated database. The repair applies **exactly five** migrations from a detached `ee5e82a` worktree and **deploys nothing**. Every gate below exists because a plausible-looking shortcut would violate it.
+**Context.** Production served A8 code against an unmigrated database from 2026-08-01. The repair applies **exactly five** migrations from a detached `ee5e82a` worktree and **deploys nothing**. Every gate below exists because a plausible-looking shortcut would violate it.
+
+> **Executed 2026-08-04. Five gates are not met and the slice cannot be signed off yet.** Evidence: [A8_7_EVIDENCE.md § A8.7b-INCIDENT-1c](A8_7_EVIDENCE.md#a87b-incident-1c--production-schema-compatibility-repair).
+>
+> | Gate                                                                   | Status                                                                                                                                         |
+> | ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+> | Activity and lock checks **repeated immediately** before the migration | **Not met.** The Stage 4 lock probe and the immediate re-check were skipped                                                                    |
+> | Authenticated read-only Task-list and Task-detail smoke                | **Not met.** Outstanding                                                                                                                       |
+> | Every `applied_steps_count = 1`                                        | **Not confirmed.** Row count, finished, and not-rolled-back were verified; this field was not                                                  |
+> | Nothing was deployed                                                   | **Partially met.** The deployment ID is unchanged, but a redeploy was attempted                                                                |
+> | _(no gate exists)_                                                     | The **database password was rotated** and Vercel `DATABASE_URL` changed. **No gate covers this — that is a gap in this checklist, not a pass** |
 
 **Migration boundary**
 

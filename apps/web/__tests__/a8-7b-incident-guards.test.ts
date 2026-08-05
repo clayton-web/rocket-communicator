@@ -198,6 +198,83 @@ describe('A8.7b-INCIDENT review and evidence structure', () => {
 });
 
 /**
+ * The repair ran on 2026-08-04 and succeeded, but not cleanly: the database password was rotated,
+ * Vercel Production `DATABASE_URL` was changed, and a redeploy was attempted — none of which the
+ * approved plan permitted — while the lock probe and the authenticated smoke tests were skipped.
+ *
+ * The risk these guards address is a reader six months from now concluding the repair was routine
+ * and complete. They assert that the repaired state is recorded, that the boundary held, and that
+ * the deviations and outstanding work remain visible.
+ */
+describe('A8.7b-INCIDENT-1c repaired state is recorded truthfully', () => {
+  it('records the repair and the new schema baseline', () => {
+    for (const file of ['docs/DEPLOYMENT.md', 'docs/MILESTONES.md']) {
+      const contents = read(file);
+      expect(contents, `${file} must date the repair`).toMatch(/2026-08-04/);
+      expect(contents, `${file} must state migrations 1–5 are applied`).toMatch(
+        /A8 migrations 1–5/,
+      );
+    }
+    const runbook = read('docs/DEPLOYMENT.md');
+    expect(runbook, 'D1 must be recorded as the current state').toMatch(
+      /\*\*D1\*\*[^\n]*Current state/,
+    );
+  });
+
+  it('keeps the boundary visible: five applied, four still prohibited', () => {
+    const runbook = read('docs/DEPLOYMENT.md');
+
+    const applied = runbook.match(/\*\*applied in production 2026-08-04\*\*/g) ?? [];
+    expect(applied, 'exactly the five repair migrations are marked applied').toHaveLength(
+      REPAIR_MIGRATIONS.length,
+    );
+
+    const pending = runbook.match(/\*\*not yet applied in production\*\*/g) ?? [];
+    expect(pending, 'migrations 6–9 must still be marked unapplied').toHaveLength(
+      PROHIBITED_MIGRATIONS.length,
+    );
+  });
+
+  it('records every deviation from the approved procedure', () => {
+    const evidence = read('docs/A8_7_EVIDENCE.md');
+
+    expect(evidence, 'the 1c record must no longer say it was not performed').not.toMatch(
+      /## A8\.7b-INCIDENT-1c[\s\S]{0,200}\*\*Not performed\.\*\*/,
+    );
+    expect(evidence).toMatch(/Deviations from the approved procedure/);
+    for (const deviation of [/rotated/i, /`DATABASE_URL` was \*\*updated\*\*/, /redeploy/i]) {
+      expect(evidence, `deviation ${deviation} must be recorded`).toMatch(deviation);
+    }
+    expect(evidence, 'the skipped lock probe must be recorded').toMatch(
+      /Stage 4 lock probe[\s\S]{0,80}not\*{0,2} run/i,
+    );
+  });
+
+  it('keeps the outstanding smoke tests and the unresolved anomaly visible', () => {
+    const evidence = read('docs/A8_7_EVIDENCE.md');
+    const milestones = read('docs/MILESTONES.md');
+
+    expect(evidence, 'the smoke tests must be marked outstanding').toMatch(
+      /Authenticated Task-list smoke result[^|]*\|[^|]*Outstanding/,
+    );
+    expect(evidence, 'the redeploy anomaly must be recorded as unreconciled').toMatch(
+      /not reconciled/i,
+    );
+    expect(milestones, 'the incident must not be described as closed').toMatch(
+      /incident still open|Outstanding before the incident can be closed/i,
+    );
+  });
+
+  it('still records no credential anywhere, after the rotation', () => {
+    const evidence = read('docs/A8_7_EVIDENCE.md');
+    expect(evidence).not.toMatch(/postgresql:\/\/[^\s`"]*:[^\s`"]*@/);
+    expect(evidence, 'no concrete pooler host may be recorded').not.toMatch(
+      /aws-[a-z0-9-]+\.pooler\.supabase\.com/,
+    );
+  });
+});
+
+/**
  * The verification SQL was authored for the nine-migration end state. A8.7b-INCIDENT-1c applies
  * five, so an operator following the published `Expected` column literally would read a correct
  * repair as a hard stop, and would run two `count(*)` statements against tables that do not exist.
