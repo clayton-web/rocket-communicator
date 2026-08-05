@@ -895,20 +895,22 @@ The failure model claimed more atomicity than exists. **No A8 migration contains
 
 **A8.7b is retired.** It assumed a pre-A8 Production and would have instructed an operator to migrate nine migrations and then deploy. Production had already deployed, so its premise was false and its sequence unsafe.
 
-| Slice                 | Scope                                                                                                   | Status                   |
-| --------------------- | ------------------------------------------------------------------------------------------------------- | ------------------------ |
-| **A8.7b-INCIDENT-1a** | Local PostgreSQL 17 rehearsal of the five-migration repair path, plus phase-3 proof of migrations 6–9   | **Complete** (`192e303`) |
-| **A8.7b-INCIDENT-1b** | Incident runbook correction, credential safety, and repair-boundary guards                              | **Complete**             |
-| **A8.7b-INCIDENT-1c** | Production schema compatibility repair — five migrations from an `ee5e82a` worktree, no deployment      | **Complete 2026-08-04**  |
-| **A8.7b-INCIDENT-1d** | Reminder endpoint hotfix on top of `ee5e82a`, deployed and validated in Production                      | **Complete 2026-08-05**  |
-| **A8.7b-INCIDENT-1e** | Documentation reconciliation after the hotfix. No production contact                                    | **Complete**             |
-| **A8.7b-INCIDENT-1f** | Gate 4 production migration runbook — the remaining four migrations, written out in full                | **Complete** (`31d0cd1`) |
-| **A8.7b-INCIDENT-1g** | Gate 4 evidence record and recovery reconciliation. No production contact                               | **Complete** (`512189a`) |
-| **A8.7b-INCIDENT-1h** | Runbook accuracy corrections found by the 1g architecture review. **This slice.** No production contact | **Complete**             |
+| Slice                 | Scope                                                                                                 | Status                              |
+| --------------------- | ----------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| **A8.7b-INCIDENT-1a** | Local PostgreSQL 17 rehearsal of the five-migration repair path, plus phase-3 proof of migrations 6–9 | **Complete** (`192e303`)            |
+| **A8.7b-INCIDENT-1b** | Incident runbook correction, credential safety, and repair-boundary guards                            | **Complete**                        |
+| **A8.7b-INCIDENT-1c** | Production schema compatibility repair — five migrations from an `ee5e82a` worktree, no deployment    | **Complete 2026-08-04**             |
+| **A8.7b-INCIDENT-1d** | Reminder endpoint hotfix on top of `ee5e82a`, deployed and validated in Production                    | **Complete 2026-08-05**             |
+| **A8.7b-INCIDENT-1e** | Documentation reconciliation after the hotfix. No production contact                                  | **Complete**                        |
+| **A8.7b-INCIDENT-1f** | Gate 4 production migration runbook — the remaining four migrations, written out in full              | **Complete** (`31d0cd1`)            |
+| **A8.7b-INCIDENT-1g** | Gate 4 evidence record and recovery reconciliation. No production contact                             | **Complete** (`512189a`)            |
+| **A8.7b-INCIDENT-1h** | Runbook accuracy corrections found by the 1g architecture review. No production contact               | **Complete** (`2aa837f`)            |
+| **Gate 4**            | A8 migrations 6–9 applied to Production from a detached `2aa837f` worktree. `D1′` → `D2`              | **Complete 2026-08-05** (`75d7c88`) |
+| **A8.7b-INCIDENT-1i** | QG verification-query scope correction found during Gate 4. **This slice.** No production contact     | **Complete**                        |
 
 **A8.7b-INCIDENT-1a evidence:** [A8_7B_INCIDENT_1A_EVIDENCE.md](A8_7B_INCIDENT_1A_EVIDENCE.md). **1c and 1d evidence:** [A8_7_EVIDENCE.md](A8_7_EVIDENCE.md). **Repair procedure:** [DEPLOYMENT.md](DEPLOYMENT.md#a87b-incident-1c--production-schema-compatibility-repair). **Review gates:** [REVIEW_CHECKLIST.md](REVIEW_CHECKLIST.md).
 
-**Gate 4 is documented, unauthorized, and not begun.** Runbook: [DEPLOYMENT.md § Gate 4](DEPLOYMENT.md#gate-4--production-migrations-69). Evidence template: [A8_7_EVIDENCE.md § Gate 4](A8_7_EVIDENCE.md#gate-4--production-migrations-69). It applies A8 migrations 6–9 and moves Production from `D1′` to `D2`; it **deploys nothing**, and it authorizes neither Gate 5 nor the flag-staging slices behind it.
+**Gate 4 is complete.** Executed 2026-08-05 under its own explicit Owner authorization, applying A8 migrations 6–9 and moving Production from `D1′` to **`D2`** — schema at all nine A8 migrations, code unchanged on `534959d`. No stop condition fired. Runbook: [DEPLOYMENT.md § Gate 4](DEPLOYMENT.md#gate-4--production-migrations-69). Evidence: [A8_7_EVIDENCE.md § Gate 4](A8_7_EVIDENCE.md#gate-4--production-migrations-69), including four recorded deviations. It deployed nothing, and **completing it authorizes neither Gate 5 nor the flag-staging slices behind it. Gate 5 remains unauthorized and not begun.**
 
 **A8.7b-INCIDENT-1b acceptance criteria**
 
@@ -969,6 +971,17 @@ The failure model claimed more atomicity than exists. **No A8 migration contains
 - [x] The evidence record's migration-endpoint note no longer claims the migration slices are the only ones that reach the Production database
 - [x] Guards derive the label count from the migration SQL and pin all three corrections
 - [ ] **Two review findings remain open by decision:** the duplicated assertion in the 1g guard suite, and three pre-existing broken intra-document anchors
+- [ ] **Architecture review** — outstanding
+
+**A8.7b-INCIDENT-1i acceptance criteria**
+
+- [x] QG's unvalidated-constraint term is scoped to the `public` schema, so a Supabase-managed `realtime` constraint can no longer read as a hard stop on a correct gate
+- [x] The G4.11 object table asks for zero unvalidated constraints in `public` rather than "anywhere"
+- [x] The expected QG tuple is unchanged at `2, 5, 1, 1, 2, 0, 0` — the scope changed, not the expectation
+- [x] The reason is recorded next to the query, including the instruction not to widen it back, so the defect cannot be reintroduced as a tidy-up
+- [x] **The Gate 4 evidence record keeps what Production actually returned** — `unvalidated_all = 1`, `unvalidated_public = 0` — and deviation 2 is marked closed rather than rewritten
+- [x] Guards pin the scope, the preserved historical readings, and the absence of any unscoped `NOT convalidated` check in the Gate 4 section
+- [x] No production contact, no migration, no deployment, no flag change, no scheduler action, and no push
 - [ ] **Architecture review** — outstanding
 
 **A8.7c through A8.7e each require their own authorization.** Migrations 6–9 must be applied and verified before the local commits may be pushed, because a push to `main` deploys automatically — and because Production now serves a commit that is **not** on `main`, a push would also replace it.

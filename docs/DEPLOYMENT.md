@@ -919,7 +919,7 @@ DATABASE_URL="$MIGRATE_URL" pnpm exec prisma migrate status
 | `task_reminder_schedules_advance_due_scan_idx` (migration 8)                                                                                                                  | **present**, `indisvalid = true`     |
 | RLS on `owner_notification_intents` and `owner_notification_attempts`                                                                                                         | **enabled on both**                  |
 | RLS **policies** on the two new tables                                                                                                                                        | **zero** — deny-by-default, approved |
-| Unvalidated constraints anywhere                                                                                                                                              | **zero**                             |
+| Unvalidated constraints **in the `public` schema**                                                                                                                            | **zero**                             |
 | Rows in either new table                                                                                                                                                      | **zero**                             |
 | `tasks`, `task_reminder_schedules` row counts                                                                                                                                 | **unchanged** from Q1 and QR before  |
 
@@ -943,10 +943,15 @@ SELECT
        AND c.relrowsecurity) AS rls_enabled,
   (SELECT count(*) FROM pg_policies WHERE schemaname = 'public'
      AND tablename IN ('owner_notification_intents','owner_notification_attempts')) AS notification_policies,
-  (SELECT count(*) FROM pg_constraint WHERE NOT convalidated) AS unvalidated_constraints;
+  (SELECT count(*) FROM pg_constraint c
+     JOIN pg_class r ON r.oid = c.conrelid
+     JOIN pg_namespace n ON n.oid = r.relnamespace
+     WHERE NOT c.convalidated AND n.nspname = 'public') AS unvalidated_constraints;
 ```
 
 Expected **`2, 5, 1, 1, 2, 0, 0`**. Evidence field `gate4.objects_present`. **Any other result is a hard stop.**
+
+**The unvalidated-constraint term is scoped to `public` deliberately.** `pg_constraint` is cluster-wide, and a Supabase-managed database carries an unvalidated constraint in the managed `realtime` schema that no migration in this repository creates, controls, or may validate. An unscoped count therefore returns **1 on a perfectly healthy Production database**, which under a literal reading is a hard stop on a correct gate. **Gate 4 hit exactly that on 2026-08-05** and recorded both readings rather than halting — see [A8_7_EVIDENCE.md § Gate 4](A8_7_EVIDENCE.md#gate-4--production-migrations-69), deviation 2. Scoping narrows the check without weakening it: an unvalidated constraint on an application table is still a hard stop, and it is the only kind this gate can cause. **Do not widen this back to every schema** — doing so reintroduces a guaranteed false stop inside a live Owner no-use window.
 
 **Also run, with their after-Gate-4 readings:** **Q2**, **Q3**, **Q7** (all four tables), **Q8** (`0, 0, 0, 0` — the full four-statement form is runnable for the first time), **Q9** (four rows, `relrowsecurity = true` on all four), **Q11** (every named constraint from the recovery tree, each `convalidated = true`), **Q12** (all eleven enum types, plus the **two** labels this gate adds — `no_actionable_capability` from migration 6 and `repeated_ambiguous_outcomes` from migration 7; `skipped_waiting_elapsed` is already present from the repair), **Q13** (every named index, each `indisvalid = true`), **Q1** and **QR** for the unchanged-count comparison.
 
