@@ -46,22 +46,23 @@ import type { PersistedReminderSchedule } from '@aicaa/db';
  */
 
 /**
- * The version a Task with no schedule reports, declared here rather than imported (A8.6b).
+ * The version a Task with no schedule reports, declared here rather than imported.
  *
- * `@aicaa/db` exports the same constant and is the authority for it, but it is listed in
- * `serverExternalPackages`, so Next leaves it as a runtime external and a *value* imported from it
- * statically arrives `undefined` in the running server. Nothing fails loudly when that happens: the
- * token formats as `"task-reminder-<id>-vundefined"`, the GET route returns it with a `200`, and the
- * only symptom is that every mutation presenting it is refused with `412` — an unparseable token
- * reported as a concurrency conflict. It survived A8.3b because the unit tests resolve the package
- * directly and no browser test had yet established a first due date; the A8.6b panel is the first
- * caller to round-trip a no-schedule token through a real server, which is how it surfaced.
+ * `@aicaa/db` exports the same constant and is the authority for it, but the package is listed in
+ * `serverExternalPackages`, so Next leaves it a runtime external and a *value* imported from it
+ * statically does not survive the build. In the deployed server chunk the identifier was emitted
+ * as an undeclared free variable while every neighbouring binding was minified, so the first real
+ * Task without a schedule reached `noDueDateState` and threw
+ * `ReferenceError: NO_SCHEDULE_REMINDER_VERSION is not defined`. The route reported that as
+ * `INTERNAL_ERROR` under category `UNKNOWN_FAILURE`, and because a `ReferenceError` is neither a
+ * Prisma nor a persistence error no database diagnostic was emitted to contradict it — which is
+ * why it read as a database incident for as long as it did.
  *
- * The rest of the app already avoids this by reaching persistence only through `loadDbRuntime()`.
- * That is a dynamic import returning async functions, and these two helpers are synchronous and
- * called from synchronous projection code, so the narrow fix is to own the constant here. It is a
- * single literal that has never changed, and `a8-6b-reminder-etag.test.ts` asserts it still equals
- * the persistence value so the two cannot drift apart silently.
+ * The rest of the app avoids this by reaching persistence only through `loadDbRuntime()`, but that
+ * is a dynamic import returning async functions and these two helpers are synchronous, called from
+ * synchronous projection code. So the narrow fix is to own the constant here. It is a single
+ * literal that has never changed, and `a8-7b-incident-1d-reminder-etag.test.ts` asserts it still
+ * equals the persistence value so the two cannot drift apart silently.
  */
 export const NO_SCHEDULE_REMINDER_VERSION = 0;
 
