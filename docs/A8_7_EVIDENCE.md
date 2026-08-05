@@ -98,7 +98,9 @@ Fill once per slice.
 
 ## A8.7b-INCIDENT-1c — Production schema compatibility repair
 
-**Performed 2026-08-04. The schema repair succeeded; five deviations from the approved procedure are recorded below and two required steps remain outstanding.** Procedure: [DEPLOYMENT.md § A8.7b-INCIDENT-1c](DEPLOYMENT.md#a87b-incident-1c--production-schema-compatibility-repair).
+**Performed 2026-08-04. The schema repair succeeded; five deviations from the approved procedure are recorded below.** Procedure: [DEPLOYMENT.md § A8.7b-INCIDENT-1c](DEPLOYMENT.md#a87b-incident-1c--production-schema-compatibility-repair).
+
+> **Closed by A8.7b-INCIDENT-1d on 2026-08-05.** The two outstanding steps — the authenticated read-only Task-list and Task-detail smoke tests — were performed there and passed. Attempting them is also what exposed the reminder endpoint defect, which was a **pre-existing packaging fault, not a consequence of this repair**. Deviation **D-d** (the skipped lock probe) cannot be satisfied retrospectively and is recorded as an accepted deviation. See [§ A8.7b-INCIDENT-1d](#a87b-incident-1d--production-reminder-endpoint-hotfix).
 
 **This slice applies exactly five migrations and deploys nothing.** Its target state is **D1**.
 
@@ -106,15 +108,17 @@ Fill once per slice.
 
 ### Deviations from the approved procedure
 
-| #       | Deviation                                                                              | Approved plan said                                                                                         | Status                                                                   |
-| ------- | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| **D-a** | The Supabase database password was **rotated**                                         | No rotation was planned, and no runbook in this repository instructs or describes one                      | Done. No procedure existed, so none was followed                         |
-| **D-b** | Vercel Production `DATABASE_URL` was **updated**                                       | [DEPLOYMENT.md](DEPLOYMENT.md#migration-connection-strategy) states it is "**Unchanged by any A8.7 step**" | Done                                                                     |
-| **D-c** | A **redeploy** of `ee5e82a` was performed                                              | Step 29: "**Do not push and do not deploy**"                                                               | Attempted. **No deployment was created** — see the anomaly note below    |
-| **D-d** | The Stage 4 lock probe (step 17) and the immediate re-check (step 19) were **not run** | Both are required in the same session immediately before `migrate deploy`                                  | Not performed. Preflight activity/lock checks were clean minutes earlier |
-| **D-e** | The authenticated read-only smoke tests (steps 24–25) were **not run**                 | Both are required before the slice closes                                                                  | **Outstanding**                                                          |
+| #       | Deviation                                                                              | Approved plan said                                                                                         | Status                                                                                                                                                                 |
+| ------- | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **D-a** | The Supabase database password was **rotated**                                         | No rotation was planned, and no runbook in this repository instructs or describes one                      | Done. No procedure existed, so none was followed                                                                                                                       |
+| **D-b** | Vercel Production `DATABASE_URL` was **updated**                                       | [DEPLOYMENT.md](DEPLOYMENT.md#migration-connection-strategy) states it is "**Unchanged by any A8.7 step**" | Done                                                                                                                                                                   |
+| **D-c** | A **redeploy** of `ee5e82a` was performed                                              | Step 29: "**Do not push and do not deploy**"                                                               | Attempted. **No deployment was created** — see the anomaly note below                                                                                                  |
+| **D-d** | The Stage 4 lock probe (step 17) and the immediate re-check (step 19) were **not run** | Both are required in the same session immediately before `migrate deploy`                                  | **Accepted deviation.** Not performable retrospectively. Preflight activity and lock checks were clean minutes earlier, and the migration completed without contention |
+| **D-e** | The authenticated read-only smoke tests (steps 24–25) were **not run**                 | Both are required before the slice closes                                                                  | **Closed by 1d on 2026-08-05.** Both passed                                                                                                                            |
 
-**Anomaly, unresolved.** Read-only `vercel ls` and `vercel inspect` on 2026-08-04 show **no deployment created that day**; the alias holder remains `dpl_AnUKqdGj3gBw7N56yUT4pMBAVbac`, created 2026-08-01. Vercel binds environment variables to a deployment when that deployment is created, so a deployment built before the rotation would be expected to carry the pre-rotation credential and fail to authenticate. The operator confirmed a database-backed Owner page renders normally. **These observations are not reconciled.** Do not treat either the redeploy or the credential propagation as understood until steps 24–25 settle it.
+**Anomaly, still unexplained but no longer operationally live.** Read-only `vercel ls` and `vercel inspect` on 2026-08-04 show **no deployment created that day**; the alias holder remained `dpl_AnUKqdGj3gBw7N56yUT4pMBAVbac`, created 2026-08-01. Vercel binds environment variables to a deployment when that deployment is created, so a build predating the rotation would be expected to carry the pre-rotation credential and fail to authenticate — yet a database-backed Owner page rendered normally.
+
+**What 1d settled and what it did not.** The 2026-08-05 hotfix deployment was created **after** the rotation, binds the current `DATABASE_URL`, and serves database-backed pages correctly, so **the Vercel Production `DATABASE_URL` is confirmed valid** and the build that produced the anomaly no longer serves traffic. **Why the pre-rotation build kept working was never determined.** The two candidate explanations — that the old credential was not actually invalidated, or that a pooled connection outlived the rotation — have different consequences for rollback, which is why [Rollback principles](DEPLOYMENT.md#rollback-principles) now treats one-step rollback as unavailable rather than merely degraded.
 
 ### 1c capture record
 
@@ -153,16 +157,16 @@ Fill every row. A blank row is an incomplete record, not an implied "nothing to 
 | Post-migration physical schema (column, two tables, constraints, indexes, enums, RLS)                              | `tasks.due_local_date` present and nullable, backfill count **0**; both reminder tables present with **0** rows; RLS enabled on both; **6** `Reminder*` enum types; `reminder_delivery_attempts_settlement_only_when_terminal` present and validated — _reported_ |
 | **Migrations 6–9 absent from history (y/n)**                                                                       | **y** — _reported_                                                                                                                                                                                                                                                |
 | **`owner_notification_intents` and `owner_notification_attempts` absent (y/n)**                                    | **y**, with all `OwnerNotification*` enum types and both future enum labels (`no_actionable_capability`, `repeated_ambiguous_outcomes`) absent — _reported_                                                                                                       |
-| Authenticated Task-list smoke result (read-only)                                                                   | **Outstanding** — deviation **D-e**. A database-backed Owner page was confirmed to render, but not as the runbook's recorded smoke test                                                                                                                           |
-| Authenticated Task-detail smoke result (read-only)                                                                 | **Outstanding** — deviation **D-e**                                                                                                                                                                                                                               |
+| Authenticated Task-list smoke result (read-only)                                                                   | **Passed 2026-08-05** under 1d — _reported_. Deferred from this slice as deviation **D-e**                                                                                                                                                                        |
+| Authenticated Task-detail smoke result (read-only)                                                                 | **Passed 2026-08-05** under 1d — _reported_                                                                                                                                                                                                                       |
 | **No mutation performed (y/n)**                                                                                    | **y** — _reported_                                                                                                                                                                                                                                                |
 | **No reminder created or modified (y/n)**                                                                          | **y** — _reported_                                                                                                                                                                                                                                                |
 | Scheduler state after repair (left as found, y/n)                                                                  | **y** — both remain disabled — _reported_                                                                                                                                                                                                                         |
 | Flags after repair (**expect all three absent**)                                                                   | All three absent — _verified_ by read-only `vercel env ls production` on 2026-08-04                                                                                                                                                                               |
 | **Nothing pushed (y/n)**                                                                                           | **y** — `origin/main` still `ee5e82a`; local commits unpushed — _verified_                                                                                                                                                                                        |
 | **Nothing deployed; deployment ID unchanged (y/n)**                                                                | Deployment ID **unchanged** — _verified_. But a redeploy **was attempted** (deviation **D-c**) and produced no deployment; see the anomaly note                                                                                                                   |
-| Incident classification after repair                                                                               | Schema incompatibility **resolved**. Incident remains **open** pending steps 24–25 and reconciliation of the D-c anomaly                                                                                                                                          |
-| Final state (**expect D1**)                                                                                        | **D1 schema achieved.** D1 not yet fully evidenced: the application-state half rests on the outstanding smoke tests                                                                                                                                               |
+| Incident classification after repair                                                                               | Schema incompatibility **resolved**. The incident stayed open past this slice and was **closed on 2026-08-05** by 1d                                                                                                                                              |
+| Final state (**expect D1**)                                                                                        | **D1 reached.** It proved defective on the reminder path for reasons unrelated to the migration, so D1 was never validated; Production moved to **D1′** the next day                                                                                              |
 | Task row count preserved (**expect unchanged**)                                                                    | **7** before and after — _reported_                                                                                                                                                                                                                               |
 
 ### Per-stage records
@@ -335,34 +339,101 @@ Stages 1 through 10 below are the per-stage detail behind that table. **Stage 9 
 
 ### Stage 10 — Read-only application smoke verification
 
-**Preconditions.** Stage 8 passed (y/n) · no deployment occurred (y/n):
+**Deferred out of 1c as deviation D-e and performed under 1d on 2026-08-05.** The results below were observed against `534959d`, not `ee5e82a`, because the first attempt at this stage is what revealed the reminder defect.
 
-**Execution.** Smoke checks run at: · **schedulers left as found, not resumed** (y/n):
+**Preconditions.** Stage 8 passed: **y** · no deployment occurred **during 1c**: **y**
+
+**Execution.** Smoke checks run 2026-08-05 after the hotfix promotion · **schedulers left as found, not resumed**: **y**
 
 **Verification.**
 
-| Check                      | Expected                                            | Observed |
-| -------------------------- | --------------------------------------------------- | -------- |
-| `GET /api/v1/session`      | 200, owner, `axford`                                |          |
-| `GET /api/v1/tasks`        | 200, cursor page — proves `due_local_date` resolves |          |
-| Owner `/tasks`             | renders                                             |          |
-| Task detail                | renders                                             |          |
-| Task detail reminder panel | "no schedule"                                       |          |
-| **No mutation performed**  | **y**                                               |          |
-| **No reminder created**    | **y**                                               |          |
-| **No scheduler resumed**   | **y**                                               |          |
+| Check                                  | Expected                                            | Observed                                                  |
+| -------------------------------------- | --------------------------------------------------- | --------------------------------------------------------- |
+| `GET /api/v1/session`                  | 200, owner, `axford`                                | 200 — _reported_                                          |
+| `GET /api/v1/tasks`                    | 200, cursor page — proves `due_local_date` resolves | 200, expected task JSON — _reported_                      |
+| Owner `/tasks`                         | renders                                             | Renders — _reported_                                      |
+| Task detail                            | renders                                             | Renders — _reported_                                      |
+| `GET /api/v1/tasks/{taskId}/reminder`  | 200, `no_due_date`, ETag ending `v0`                | **200**, `state=no_due_date`, ETag ends `v0` — _reported_ |
+| `GET /api/v1/tasks/task_doesnotexist…` | typed `NOT_FOUND`                                   | Typed `NOT_FOUND` — _reported_                            |
+| **No mutation performed**              | **y**                                               | **y** — _reported_                                        |
+| **No reminder created or modified**    | **y**                                               | **y** — _reported_                                        |
+| **No scheduler resumed**               | **y**                                               | **y** — _verified_; no scheduler was contacted at all     |
 
-`/attention` is **not** checked: it is an A8.6a surface and A8.6 is not deployed.
+**The Task-detail reminder panel is not checked, and the original row asking for it was wrong.** The panel is an **A8.6b** surface and A8.6 is not deployed, so the deployed Task detail page issues no reminder request. Refreshing it produces no `/reminder` call, which is correct behaviour and not a symptom. The reminder resource must therefore be probed **directly**, as the two rows above do.
 
-**Stop/go criteria.**
+**`/attention` is not checked.** The route has existed since the P1.4 Owner shell and **is** served, but the A8.6a reminder-derived content that would make it meaningful is not deployed.
 
-**Immediate containment.**
+**Stop/go criteria.** Go. Every check passed.
 
-**Recovery or rollback.**
+**Immediate containment.** Not required.
 
-**Evidence to record.** The table above, plus confirmation that no mutation, reminder action, deployment, or scheduler change occurred.
+**Recovery or rollback.** Not required.
 
-**A8.7b-INCIDENT-1c final observed state.** Deployment ID (unchanged) · commit `ee5e82a` · three flag values · scheduler states as found · migration row count (**10**) · reminder table row counts (**0, 0**) · notification tables (**absent**) · state (**D1**):
+**Evidence to record.** The table above, plus confirmation that no mutation, reminder action, or scheduler change occurred.
+
+**Final observed state after 1c and 1d.** Deployment `dpl_3oder2T3PuDYdmp8pezy6u7RwPRm` · commit `534959d` · all three flags **absent** · schedulers as found · migration row count **10** · reminder table row counts **0, 0** · notification tables **absent** · state **D1′**.
+
+---
+
+## A8.7b-INCIDENT-1d — Production reminder endpoint hotfix
+
+**Performed 2026-08-05. Complete, validated, and closing the incident.** One source file changed, one guard test added, one deployment created and promoted. No migration, schema, flag, scheduler, provider, dependency, or environment-variable change.
+
+### Why the slice existed
+
+With the schema repaired, `GET /api/v1/tasks/{taskId}/reminder` still answered `INTERNAL_ERROR` for every real Task, while an unknown Task correctly answered `NOT_FOUND` and the sibling `GET /api/v1/tasks/{taskId}` returned 200. That pattern ruled out authentication, the route wrapper, `getDb()`, the runtime bridge, and the deployed Prisma client, and isolated the fault to reminder-specific code reached only after a real Task loads.
+
+The cause was **not** a database fault. `apps/web/lib/reminders/etag.ts` at `ee5e82a` imported `NO_SCHEDULE_REMINDER_VERSION` as a runtime value from `@aicaa/db`, which is listed in `serverExternalPackages`. The compiled server chunk carried the identifier as an **undeclared free variable**, so the first Task without a reminder schedule threw `ReferenceError: NO_SCHEDULE_REMINDER_VERSION is not defined`. The route reported that as `INTERNAL_ERROR` under `UNKNOWN_FAILURE`, and because a `ReferenceError` is neither a Prisma error nor a `PersistenceError`, **no `database_runtime_failure` event was emitted to contradict the appearance of a database problem.** Full statement: [DEPLOYMENT.md § the runtime-value import hazard](DEPLOYMENT.md#the-runtime-value-import-hazard).
+
+**The defect predated the repair.** It shipped with the routes and would have surfaced at whatever moment the schema first allowed a real Task to reach that code.
+
+### 1d capture record
+
+| Field                                               | Value                                                                                                                                        |
+| --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Operator                                            | Repository owner (single-operator project)                                                                                                   |
+| Authorization reference                             | A8.7b-INCIDENT-1d, architecture approval granted in session for commit `534959d`                                                             |
+| Base commit                                         | `ee5e82a0466fa08086fbd007d4b68342f2c8a6db` — the deployed commit, **not** `main` — _verified_                                                |
+| Hotfix commit                                       | `534959d07715ed1cc14e7ee3468706034f5922fe` on `hotfix/a8-7b-incident-1d-reminder-etag` — _verified_                                          |
+| Files changed                                       | `apps/web/lib/reminders/etag.ts`; `apps/web/__tests__/a8-7b-incident-1d-reminder-etag.test.ts` (new) — _verified_                            |
+| Migration directories on the branch (**expect 10**) | **10**, matching Production — _verified_                                                                                                     |
+| Build verification                                  | Built via the effective Vercel production path; `NO_SCHEDULE_REMINDER_VERSION` absent from `.next/server`, value inlined as `0` — _verified_ |
+| `pnpm verify`                                       | Green — _verified_                                                                                                                           |
+| Deployment method                                   | `vercel deploy --prod --skip-domain`, inspect, then `vercel promote` — see below                                                             |
+| Deployment ID                                       | `dpl_3oder2T3PuDYdmp8pezy6u7RwPRm` — _verified_                                                                                              |
+| Deployment target / state                           | `production` / READY, created 2026-08-05T06:37Z — _verified_                                                                                 |
+| Commit SHA bound to the deployment                  | `534959d07715ed1cc14e7ee3468706034f5922fe` — _verified_ from deployment metadata                                                             |
+| Node version / build command                        | **24.x** / `cd ../.. && pnpm build:domain && pnpm build:db && pnpm --filter @aicaa/web build` — _verified_ from project settings             |
+| **Migration during build (expect none)**            | **None.** Only `prisma generate` (Client v6.19.3) appears in the build log — _verified_                                                      |
+| Route set                                           | 51 routes including `/api/v1/tasks/[taskId]/reminder`; **no notification routes** — _verified_ from the build log                            |
+| Environment binding                                 | All five Production-only variables present in the build environment, `DATABASE_URL` among them — _verified_                                  |
+| Flags in the deployment environment                 | `ENABLE_OWNER_EVENT_CAPTURE`, `ENABLE_OWNER_EVENT_DELIVERY`, `ENABLE_REMINDER_DELIVERY` — **all absent** — _verified_                        |
+| Previous deployment                                 | `dpl_AnUKqdGj3gBw7N56yUT4pMBAVbac` (`ee5e82a`) — retained, and **known-defective**                                                           |
+| Production domain after promotion                   | `rocket-communicator-web.vercel.app`, the project's only production domain, resolves to the new deployment — _verified_                      |
+| Unauthenticated routing probe                       | Reminder and tasks endpoints both return typed **401 `UNAUTHORIZED`** — _verified_                                                           |
+| Authenticated Task list                             | Loads — _reported_                                                                                                                           |
+| Authenticated Task detail                           | Loads — _reported_                                                                                                                           |
+| Reminder `GET`, existing Task                       | **200**, `state=no_due_date`, ETag ends **`v0`** — _reported_                                                                                |
+| Reminder `GET`, unknown Task                        | Typed **`NOT_FOUND`** — _reported_                                                                                                           |
+| **No reminder created or modified (y/n)**           | **y** — _reported_                                                                                                                           |
+| **Database unchanged (y/n)**                        | **y** — no migration, no schema change, no data change                                                                                       |
+| **Schedulers and Gmail untouched (y/n)**            | **y** — cron-job.org not contacted; Gmail not contacted                                                                                      |
+| **`main` unpushed (y/n)**                           | **y** — `origin/main` remains `ee5e82a`; only the hotfix branch was pushed — _verified_                                                      |
+| Final state                                         | **D1′** — schema and application both validated                                                                                              |
+
+### Deployment method, and why Preview promotion was rejected
+
+**The approved plan assumed the pushed branch's Git-integration deployment could be promoted. It could not, safely.** Vercel built the pushed branch as a **preview-target** deployment, and `vercel promote` moves an alias without rebuilding, so a preview build keeps the Preview environment permanently. Read-only comparison of the two environments showed **five variables present only in Production** — `DATABASE_URL`, `CRON_SECRET`, `GMAIL_TOKEN_ENCRYPTION_KEY`, `GMAIL_TOKEN_ENCRYPTION_KEY_VERSION`, and `ENABLE_DB_RUNTIME_DIAGNOSTICS`.
+
+**Promoting that build would have put Production on a server with no database connection string** — a full Owner outage, and the same failure class as the A7 incident. The preview deployment `dpl_3ZwfVbGSiwswih2YY4KSTj3UPJog` was therefore left unpromoted.
+
+The substitute, chosen with architecture approval mid-slice, was a **production-target build from the clean worktree** with `--skip-domain`, so the artifact existed with Production environment variables while serving no traffic; then inspection of its commit SHA, target, state, route set, environment, build command, Node version, and the absence of any migration; then an explicit `promote`. **This preserved the inspect-before-promote gate** that the original plan intended and that push-to-`main` does not provide. The procedure is now documented at [DEPLOYMENT.md § deploying a commit that is not on `main`](DEPLOYMENT.md#deploying-a-commit-that-is-not-on-main).
+
+### What this slice deliberately did not do
+
+- **It did not deploy `main`.** `main` carries A8.5 and A8.6 code that requires migrations 6–9, which are not applied. Deploying it would have recreated the original incident in a worse form.
+- **It did not fix the second runtime-value import.** `PersistenceError` in `apps/web/lib/suggestions/process-service.ts` is the same defect class and is still latent in Production. It was analysed and recorded, and no repository evidence tied it to the reminder failure, so including it would have widened a hotfix built on a commit that had already reached Production.
+- **It did not merge or push to `main`, change any environment variable, touch Supabase, touch cron-job.org, enable any flag, or invoke any scheduler or provider route.**
 
 ---
 

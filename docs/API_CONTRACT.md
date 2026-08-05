@@ -116,7 +116,7 @@ Reminder schedule management lives on a sub-resource of the same Task and is doc
 
 ### Owner reminder schedule (A8.3b)
 
-**Status: implemented, not production-operational.** Handlers exist in `apps/web`; the A8.3a migration is **not applied in Production**, so these three routes cannot function there until it is. Binding: D102–D107, D109, D128. `operationId`s: `getTaskReminder`, `setTaskReminder`, `removeTaskReminder`.
+**Status: implemented and functional in Production.** Handlers exist in `apps/web`; the A8.3a migration was applied on 2026-08-04 and the reminder ETag packaging defect was fixed on 2026-08-05, so all three routes now work against a real Task. **The Owner must not create or modify a reminder until the later A8 rollout is authorized** — no flag enforces that restraint, because these surfaces carry none. Binding: D102–D107, D109, D128. `operationId`s: `getTaskReminder`, `setTaskReminder`, `removeTaskReminder`.
 
 | Method | Path                              | Purpose                                                                           |
 | ------ | --------------------------------- | --------------------------------------------------------------------------------- |
@@ -224,7 +224,7 @@ Recipient **work requests** in A4 create pending suggestions in persistence with
 
 ### Internal reminder processing (A8.4a foundation, A8.4b.1 real overdue transport, A8.4b.2 D129 stop — contracted and disabled; the A8.4a route is deployed, A8.4b is not)
 
-**Status: implemented and contracted, deliberately inert.** `operationId`: `processRemindersInternal`. No External Scheduler job invokes it, `ENABLE_REMINDER_DELIVERY` is set in no environment, no deployment has been made since it was merged, and the A8 migrations are not applied in Production — so this endpoint exists in the repository and does nothing anywhere. An earlier A8.4a report described it as deployed; no deployment ever happened, and the wording has been corrected everywhere it appeared.
+**Status: implemented and contracted, deliberately inert.** `operationId`: `processRemindersInternal`. No External Scheduler job invokes it and `ENABLE_REMINDER_DELIVERY` is set in no environment, so it does nothing anywhere. It **is** deployed — it reached Production with `ee5e82a` and appears in the deployed route set — and A8 migrations 1–5 are applied, so the inertness now rests entirely on the absent flag and the absent scheduler rather than on a missing schema.
 
 | Method | Path                                 | Purpose                                                              |
 | ------ | ------------------------------------ | -------------------------------------------------------------------- |

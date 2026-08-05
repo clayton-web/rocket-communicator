@@ -94,6 +94,47 @@ Repository verification also includes:
 
 These are durable safeguards for Linux/Vercel Prisma packaging—not temporary incident probes.
 
+### Deploying a commit that is not on `main`
+
+**The ordinary path is a push to `main`**, which Vercel builds and promotes automatically with no inspection gate. That is how the A8 schema incident reached Production, and it is why A8.7 deployments should not use it.
+
+**Promoting a Preview deployment is not a substitute, and must not be used.** The Git integration builds a pushed non-`main` branch as a **preview-target** deployment, and `vercel promote` moves the alias without rebuilding. A preview build therefore carries the **Preview** environment for the rest of its life. Five variables exist only in Production and are **absent from Preview**:
+
+| Variable                             | Consequence if a Preview build is promoted        |
+| ------------------------------------ | ------------------------------------------------- |
+| `DATABASE_URL`                       | **Every database route fails.** Full Owner outage |
+| `CRON_SECRET`                        | Scheduler authentication fails                    |
+| `GMAIL_TOKEN_ENCRYPTION_KEY`         | Stored Gmail tokens cannot be decrypted           |
+| `GMAIL_TOKEN_ENCRYPTION_KEY_VERSION` | As above                                          |
+| `ENABLE_DB_RUNTIME_DIAGNOSTICS`      | Diagnostics silently unavailable                  |
+
+**Use a production-target build, inspect it, then promote it.** This is the method A8.7b-INCIDENT-1d used, and it keeps the inspection gate that push-to-`main` removes:
+
+```bash
+# from a clean worktree at the exact commit to deploy
+vercel deploy --prod --skip-domain --yes    # production env, production target, no alias yet
+vercel inspect <url> --logs                 # confirm before anything is live
+vercel promote <deploymentId> --yes         # assign the production domain
+```
+
+`--skip-domain` is what makes the gate real: the build exists, holds Production environment variables, and serves no traffic. **Before promoting, confirm** the commit SHA in the deployment metadata, the target is `production`, the build state is ready, the route set is what you expect, **no migration ran during the build** — only `prisma generate` should appear — and that the build used the configured Node version and build command.
+
+**The deploying worktree needs `.vercel/project.json`** to be linked. It contains a project and organization identifier, no secret, and `.vercel/` is gitignored.
+
+### The runtime-value import hazard
+
+**`@aicaa/db` is listed in `serverExternalPackages`, so Next leaves it a runtime external.** A statically imported **value** from it does not reliably survive the build: in the deployed `ee5e82a` bundle, `NO_SCHEDULE_REMINDER_VERSION` was emitted into the server chunk as an **undeclared free variable** while every neighbouring binding was minified. The first real Task without a reminder schedule threw `ReferenceError: NO_SCHEDULE_REMINDER_VERSION is not defined`, and the route answered `INTERNAL_ERROR`.
+
+The rules, which apply to any package in `serverExternalPackages`:
+
+- **Type-only imports are always safe.** `import type { PersistedReminderSchedule } from '@aicaa/db'` is erased at compile time and cannot fail at runtime.
+- **Value imports are the hazard** — constants, classes, functions. Either reach persistence through `loadDbRuntime()`, or own the value locally with a guard asserting it matches the persistence authority.
+- **Unit tests structurally cannot detect this.** Vitest resolves `@aicaa/db` directly, so the binding is present in every test and absent only in the artifact that ships. A green suite is not evidence.
+- **Production bundle verification is the only guard.** Build with the effective Vercel production path and assert the identifier does not appear as a free variable in `.next/server`.
+- **The diagnostic signature is misleading.** A `ReferenceError` is neither a Prisma error nor a `PersistenceError`, so **no `database_runtime_failure` event is emitted** to contradict it. Category `UNKNOWN_FAILURE` **with no accompanying database diagnostic** points at code or packaging, not at the database — that inference would have saved most of the 1d investigation.
+
+**One instance remains** and is a separate maintenance slice: `import { PersistenceError } from '@aicaa/db'` in `apps/web/lib/suggestions/process-service.ts`, used via `instanceof`. It sits inside an error handler, so it converts a persistence failure into a `ReferenceError` that hides the original error. It is latent in Production today and should be resolved before the queued code deploys.
+
 ## Database migrations
 
 A4 foundation migration: `packages/db/prisma/migrations/20260713190000_a4_persistence_foundation/` (**applied in production** as part of A4).
@@ -331,7 +372,7 @@ Operator notes:
 
 P1.5 was deployed and production-validated on 2026-07-30 as commit `8588c5d260176b24c8ecf6fb16e026c5c6034359`, via the automatic Vercel production deployment `dpl_7vmnL71Lck7JLeftgsJkYVJ4uw82` (stable alias `https://rocket-communicator-web.vercel.app`). No manual deployment action was required. Evidence: [P1_5_EVIDENCE.md](P1_5_EVIDENCE.md).
 
-> **Production has since advanced past `8588c5d`.** It now serves `ee5e82a`, which is A8 code, against a database that has not been migrated — see [Current incident state](#current-incident-state). The paragraph above is the P1.5 historical record, not a statement about what is running today.
+> **Production has since advanced past `8588c5d`.** It now serves `534959d`, which is A8 code through A8.4a plus the reminder ETag hotfix, against a database holding the five pre-A8 migrations plus A8 migrations 1–5 — see [Current production state](#current-production-state). The paragraph above is the P1.5 historical record, not a statement about what is running today.
 
 **Rollback deployment retained:** `dpl_3sp18eqYRQH6bjKdXC72Tue263V1` (commit `243895f`, the P1.4 closeout documentation; application code identical to the P1.4 validated build). The earlier P1.4 deployment `dpl_F5zjNcc4zwiwbr25CSdMGA3zDy8c` (commit `a38c8574`) also remains available. No rollback condition was triggered and no rollback was performed.
 
@@ -353,7 +394,7 @@ P1.5 was deployed and production-validated on 2026-07-30 as commit `8588c5d26017
 
 ### Reminder engine operations (A8 — deployed through A8.4a, not operational)
 
-**No reminder has ever been sent, and nothing in this subsection is operational.** The distinction that matters after the incident is between _deployed_ and _operational_: **A8 code through A8.4a is deployed in Production** as part of `ee5e82a`, including `POST /api/v1/internal/reminders/process`, the A8.3b Owner reminder routes, and the Task-lifecycle reminder wiring. None of it is live — **no scheduler job invokes the endpoint and `ENABLE_REMINDER_DELIVERY` is set in no environment.**
+**No reminder has ever been sent, and no worker in this subsection is operational.** The distinction that matters after the incident is between _deployed_, _functional_, and _operational_: **A8 code through A8.4a is deployed in Production** — it arrived with `ee5e82a` and still runs under `534959d` — including `POST /api/v1/internal/reminders/process`, the A8.3b Owner reminder routes, and the Task-lifecycle reminder wiring. Since the 1c schema repair and the 1d hotfix, **the A8.3b Owner reminder routes are functional**: `GET`, `PUT`, and `DELETE` all work against a real Task. Nothing else is live — **no scheduler job invokes the worker endpoint and `ENABLE_REMINDER_DELIVERY` is set in no environment.**
 
 **The A8 persistence tables (`task_reminder_schedules`, `reminder_delivery_attempts`, and `tasks.due_local_date`) are not applied in Production.** Because the deployed code expects them and no flag guards the Task path that reaches them, this is the [current incident](#current-incident-state) rather than a benign pending step. [A8.7b-INCIDENT-1c](#a87b-incident-1c--production-schema-compatibility-repair) applies them.
 
@@ -389,7 +430,7 @@ Even with the flag on, A8.4a sends no email, and it does not even pretend to. Pr
 
 ### Owner notification worker (A8.5b–A8.5e — not deployed, not operational)
 
-**None of A8.5 is deployed.** Production serves `ee5e82a`, which predates A8.4b.1; every A8.5 and A8.6 slice sits in the unpushed local commits. The subsection below describes code that exists in the repository and will become deployed only in the later rollout slice, not code running in Production today.
+**None of A8.5 is deployed.** Production serves `534959d`, whose parent `ee5e82a` predates A8.4b.1; every A8.5 and A8.6 slice sits in the unpushed local commits. The subsection below describes code that exists in the repository and will become deployed only in the later rollout slice, not code running in Production today.
 
 **A second internal worker exists and is separate from the reminder worker in every respect.** `POST /api/v1/internal/notifications/process`, same `CRON_SECRET` bearer family, same Node.js runtime and sixty-second budget, same twenty-five-item delivery batch and fifteen-second deadline reserve. **No scheduler job invokes it and none may be created**; `vercel.json` is unchanged. The two workers are deliberately not merged: reminder occurrence policy and one-shot Owner event delivery have different retry rules, different terminal states, and different tables, and one endpoint doing both would make a single deadline and a single batch serve two unrelated backlogs.
 
@@ -433,8 +474,10 @@ Read this section as a whole before starting any part of it. It is deliberately 
 | **A8.7a**             | Rollout preparation, recovery procedures, verification classification                                                | **None**                                 |
 | **A8.7b**             | **Retired.** Superseded by the incident slices below                                                                 | —                                        |
 | **A8.7b-INCIDENT-1a** | Local PostgreSQL 17 rehearsal of the repair migration path. **Complete** ([evidence](A8_7B_INCIDENT_1A_EVIDENCE.md)) | **None**                                 |
-| **A8.7b-INCIDENT-1b** | Incident runbook correction. **This documentation.**                                                                 | **None**                                 |
-| **A8.7b-INCIDENT-1c** | Production schema compatibility repair — five migrations, no deployment                                              | Database only                            |
+| **A8.7b-INCIDENT-1b** | Incident runbook correction. **Complete**                                                                            | **None**                                 |
+| **A8.7b-INCIDENT-1c** | Production schema compatibility repair — five migrations, no deployment. **Complete 2026-08-04**                     | Database only                            |
+| **A8.7b-INCIDENT-1d** | Reminder endpoint hotfix on `ee5e82a`, deployed and validated. **Complete 2026-08-05**                               | Deployment only                          |
+| **A8.7b-INCIDENT-1e** | Documentation reconciliation after the hotfix. **This documentation**                                                | **None**                                 |
 | _(later, unnamed)_    | Remaining four migrations, then deployment of the queued A8.4b–A8.6 code                                             | Database and deployment                  |
 | **A8.7c**             | Owner-event capture enablement and observation                                                                       | One environment variable, one deployment |
 | **A8.7d**             | Zero-send notification rehearsal, single-notification canary, Gmail-loop proof, notification scheduler creation      | Gmail send, scheduler creation           |
@@ -442,47 +485,58 @@ Read this section as a whole before starting any part of it. It is deliberately 
 
 **Each slice requires its own authorization.** A8.7d is the first slice in the project's history that can send mail on Rocket's initiative, and A8.7e is the first that can send mail to somebody who is not the Owner. Those are different thresholds and are deliberately not crossed in one slice.
 
-### Current incident state
+### Current production state
 
-**The schema incompatibility was repaired on 2026-08-04.** The five A8 migrations from `ee5e82a` were applied in one `prisma migrate deploy` from the bounded worktree, and the post-migration verification passed. Evidence: [A8_7_EVIDENCE.md § A8.7b-INCIDENT-1c](A8_7_EVIDENCE.md#a87b-incident-1c--production-schema-compatibility-repair).
+**The incident is closed.** The schema was repaired on 2026-08-04 by applying the five A8 migrations from `ee5e82a` in one `prisma migrate deploy` from the bounded worktree. The repair exposed a separate, pre-existing packaging defect in the reminder endpoint, which was fixed and validated on 2026-08-05. Evidence: [A8_7_EVIDENCE.md § A8.7b-INCIDENT-1c](A8_7_EVIDENCE.md#a87b-incident-1c--production-schema-compatibility-repair) and [§ A8.7b-INCIDENT-1d](A8_7_EVIDENCE.md#a87b-incident-1d--production-reminder-endpoint-hotfix).
 
-| Property                      | Value                                                                                       |
-| ----------------------------- | ------------------------------------------------------------------------------------------- |
-| Production commit             | `ee5e82a0466fa08086fbd007d4b68342f2c8a6db` — **A8 code through A8.4a**                      |
-| Production schema             | Five pre-A8 **plus A8 migrations 1–5** — ten rows in `_prisma_migrations`                   |
-| `ENABLE_OWNER_EVENT_CAPTURE`  | Absent                                                                                      |
-| `ENABLE_OWNER_EVENT_DELIVERY` | Absent                                                                                      |
-| `ENABLE_REMINDER_DELIVERY`    | Absent                                                                                      |
-| Gmail                         | **Connected.** No recorded sync run since 2026-07-20                                        |
-| Scheduler jobs                | External, at cron-job.org. Gmail-poll and suggestion-processing both **disabled** as found  |
-| Database credential           | **Rotated 2026-08-04**, outside the approved plan. Vercel Production `DATABASE_URL` updated |
-| State                         | **D1 schema.** The incident remains **open** — see the outstanding items below              |
+| Property                      | Value                                                                                                      |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Production commit             | `534959d07715ed1cc14e7ee3468706034f5922fe` — `ee5e82a` plus the reminder ETag hotfix                       |
+| Commit reachability           | On `hotfix/a8-7b-incident-1d-reminder-etag`. **Not an ancestor of `main`**, and `origin/main` is `ee5e82a` |
+| Production deployment         | `dpl_3oder2T3PuDYdmp8pezy6u7RwPRm`, created 2026-08-05T06:37Z, target `production`, alias-holding          |
+| Previous deployment           | `dpl_AnUKqdGj3gBw7N56yUT4pMBAVbac` (`ee5e82a`) — the one-step rollback target, and **known-defective**     |
+| Production schema             | Five pre-A8 **plus A8 migrations 1–5** — ten rows in `_prisma_migrations`. Unchanged by the hotfix         |
+| `ENABLE_OWNER_EVENT_CAPTURE`  | Absent                                                                                                     |
+| `ENABLE_OWNER_EVENT_DELIVERY` | Absent                                                                                                     |
+| `ENABLE_REMINDER_DELIVERY`    | Absent                                                                                                     |
+| Gmail                         | **Connected.** No recorded sync run since 2026-07-20                                                       |
+| Scheduler jobs                | External, at cron-job.org. Gmail-poll and suggestion-processing both **disabled** as found                 |
+| Database credential           | **Rotated 2026-08-04**, outside the approved plan. Vercel Production `DATABASE_URL` updated                |
+| State                         | **D1′** — see the [state matrix](#approved-repair-state-matrix). Schema and application both validated     |
 
-**The original defect, for the record.** Production ran A8 code against a database holding only the five pre-A8 migrations. Task reads selected `tasks.due_local_date`, which did not exist; Task mutations called `reconcileReminderScheduleForTaskStatus`, which reads `task_reminder_schedules`, which did not exist; and no feature flag protected either path, because both sit on the ordinary Task path. Applying the five migrations removes all three conditions.
+**The original defect, for the record.** Production ran A8 code against a database holding only the five pre-A8 migrations. Task reads selected `tasks.due_local_date`, which did not exist; Task mutations called `reconcileReminderScheduleForTaskStatus`, which reads `task_reminder_schedules`, which did not exist; and no feature flag protected either path, because both sit on the ordinary Task path. Applying the five migrations removed all three conditions.
 
-**The incident is not closed.** Three things remain unresolved:
+**The second defect, which the repair revealed rather than caused.** With the schema correct, `GET /api/v1/tasks/{taskId}/reminder` still answered `INTERNAL_ERROR` for every real Task while a nonexistent Task correctly answered `NOT_FOUND`. The cause was a build-time packaging fault, not a database fault: see [the runtime-value import hazard](#the-runtime-value-import-hazard). It had been latent since the routes were first deployed and would have been attributed to the migration by anyone reading the timeline, which is why it is recorded here rather than only in the evidence file.
 
-- **The authenticated read-only smoke tests (steps 24–25) have not been run.** D1 means `ee5e82a` code working against the repaired schema. The schema half is evidenced; the application half is not.
-- **A redeploy was attempted and produced no deployment.** Read-only `vercel ls` shows no deployment created on 2026-08-04, and the alias holder remains `dpl_AnUKqdGj3gBw7N56yUT4pMBAVbac` from 2026-08-01. Since Vercel binds environment variables at deployment creation, a build predating the rotation would be expected to carry the old credential — yet a database-backed Owner page renders. **These facts are not reconciled**, and the smoke tests are what will settle them.
-- **The credential rotation followed no documented procedure**, because none exists in this repository.
+**Validated in Production on 2026-08-05**, authenticated and read-only: the Task list loads, Task detail loads, `GET /api/v1/tasks/{taskId}/reminder` returns **200** with `state=no_due_date` and an ETag ending **`v0`**, and `GET /api/v1/tasks/task_doesnotexist000000/reminder` returns a typed **`NOT_FOUND`**. No reminder was created or modified.
+
+**Three items are carried forward as follow-ups.** None is an open incident condition:
+
+- **No documented credential-rotation procedure exists.** The 2026-08-04 rotation followed none, because none is written. The [redeploy anomaly](A8_7_EVIDENCE.md#a87b-incident-1d--production-reminder-endpoint-hotfix) that the rotation produced is now moot operationally — the build in question no longer serves Production — but it was never explained.
+- **`applied_steps_count` was never confirmed** on the ten migration rows. Row count, finished, and not-rolled-back were verified.
+- **One more runtime-value import is still latent in Production**: `PersistenceError` in `apps/web/lib/suggestions/process-service.ts`. It is the same defect class 1d fixed, sits inside an error handler, and is a separate maintenance slice.
 
 ### Approved repair state matrix
 
 **Environment-variable changes affect only deployments created after the change.** A running deployment holds the values it was built and bound with; editing a variable in the Vercel dashboard does nothing until something redeploys. Correspondingly, **Instant Rollback restores the target deployment together with its original environment variables** — it does not re-bind current values onto an old build. Rolling back to a deployment built with a flag set restores that flag.
 
-| State   | Code                   | Schema                     | Flags  | Meaning                                                          |
-| ------- | ---------------------- | -------------------------- | ------ | ---------------------------------------------------------------- |
-| **D0**  | `ee5e82a`              | five pre-A8 migrations     | none   | The incident state. **Left on 2026-08-04**                       |
-| **D1**  | `ee5e82a`              | pre-A8 + A8 migrations 1–5 | none   | **Current state.** Reached 2026-08-04 by A8.7b-INCIDENT-1c       |
-| **D2**  | `ee5e82a`              | all nine A8 migrations     | none   | Future schema-ahead-of-code gate, before the queued code deploys |
-| **D3**  | current queued A8 code | all nine A8 migrations     | none   | Future deployed-code baseline                                    |
-| **D4+** | later code and schema  | as required                | staged | Capture and delivery rollout (A8.7c, A8.7d, A8.7e)               |
+| State   | Code                   | Schema                     | Flags  | Meaning                                                                                      |
+| ------- | ---------------------- | -------------------------- | ------ | -------------------------------------------------------------------------------------------- |
+| **D0**  | `ee5e82a`              | five pre-A8 migrations     | none   | The incident state. **Left on 2026-08-04**                                                   |
+| **D1**  | `ee5e82a`              | pre-A8 + A8 migrations 1–5 | none   | **Schema-repaired but defective.** Held 2026-08-04 to 08-05. **Never a validated baseline**  |
+| **D1′** | `534959d`              | pre-A8 + A8 migrations 1–5 | none   | **Current state.** Reached 2026-08-05 by A8.7b-INCIDENT-1d. Schema and application validated |
+| **D2**  | `534959d`              | all nine A8 migrations     | none   | Future schema-ahead-of-code gate, before the queued code deploys                             |
+| **D3**  | current queued A8 code | all nine A8 migrations     | none   | Future deployed-code baseline                                                                |
+| **D4+** | later code and schema  | as required                | staged | Capture and delivery rollout (A8.7c, A8.7d, A8.7e)                                           |
+
+**D1 and D1′ are deliberately separate rows.** `D1` was the state the repair was designed to reach, and Production genuinely occupied it for about a day — but the reminder endpoint answered `INTERNAL_ERROR` throughout, so `D1` was never a state anyone validated or would want to return to. Collapsing the two would let a future operator read a validated baseline into a commit that never had one.
 
 Rules that follow from the binding model:
 
-- **D1 is the repair target and the safe harbour for the incident.** It is reached by migration alone. **No deployment is part of reaching D1.**
-- **D1 is not reachable by rollback**, because it is not a deployment state. Only forward migration reaches it.
-- **Rolling back does not undo a migration.** Schema is forward-only, so D1 remains D1 whatever happens to the code.
+- **D1′ is the safe harbour for the incident**, and the only validated pre-`D3` state. It was reached by migration and then by one deployment.
+- **Neither D1 nor D1′ is reachable by rollback alone.** Schema is reached only by forward migration, and `D1′`'s code is not the deployment that precedes it.
+- **Rolling back one step from D1′ lands on D1**, which reinstates the reminder defect and may do worse — see [Rollback principles](#rollback-principles).
+- **Rolling back does not undo a migration.** Schema is forward-only, so the schema half of D1′ survives anything done to the code.
 - **Rollback does not disable external scheduler jobs.** cron-job.org keeps calling the endpoints. If the intent is to stop invocation, **pause the job** — a separate action in a separate system.
 - **Rolling back does not unsend an email.**
 
@@ -515,14 +569,16 @@ Containment is a code action. It does not repair the schema and it is not the pr
 
 ### Product-surface consequence of the repair
 
-Applying the five migrations makes real product surfaces functional that have never run in Production. This is a consequence of the repair, not a side effect to discover later:
+Applying the five migrations made real product surfaces functional that had never run in Production. This is a consequence of the repair, not a side effect to discover later:
 
-- **The A8.3b Owner reminder APIs become operational.** An authenticated Owner can set a due date, create a reminder schedule, and modify or delete one.
-- **Task-lifecycle reminder reconciliation becomes operational.** Completing, dismissing, or reassigning a Task will suspend, resume, or stop a schedule inside the Task's own transaction.
+- **The A8.3b Owner reminder APIs are operational.** An authenticated Owner can set a due date, create a reminder schedule, and modify or delete one.
+- **Task-lifecycle reminder reconciliation is operational.** Completing, dismissing, or reassigning a Task will suspend, resume, or stop a schedule inside the Task's own transaction.
 
 Both are bounded by one fact: **with zero reminder schedules, reconciliation is inert.** It looks up a schedule by Task, finds none, and returns without writing. A schedule can only come into existence through a deliberate, authenticated Owner reminder action — nothing creates one automatically, and D109 forbids historical due dates from auto-activating anything.
 
 > **The Owner must not create or modify a reminder until the later A8 rollout is authorized.** This is the one behavioural restriction the repair imposes. It is a discipline, not a control: no flag enforces it, because the A8.3b surfaces carry no flag.
+
+**Between 1c and 1d that discipline was redundant, and it no longer is.** The packaging defect made `currentReminderVersion(null)` throw, and every reminder verb reaches it for a Task with no schedule — `GET` through `noDueDateState`, `PUT` and `DELETE` through the pre-write projection. So all three failed, and the surface was accidentally protected by being broken. **The 1d hotfix removed that accidental protection along with the defect.** An authenticated Owner can now create a reminder in Production by clicking through the ordinary UI, and nothing in the system will stop them.
 
 ### Gmail and schedulers during the repair
 
@@ -593,6 +649,8 @@ This takes about a second against a warm pnpm store. It creates only ignored `no
 | 29  | **Do not push and do not deploy**                                                                                                                                                                                                                                                                                    |
 
 Expected post-repair state is **D1**: `ee5e82a` code, pre-A8 plus A8 migrations 1–5, all flags absent, notification tables absent.
+
+> **Executed 2026-08-04, and the whole of this subsection is now the historical procedure rather than pending work.** The five migrations were applied and verified. `D1` was reached and then found defective on the reminder path, so Production was moved to **`D1′`** the following day by A8.7b-INCIDENT-1d. Current state: [Current production state](#current-production-state).
 
 **Expected duration.** The rehearsal applied the same five migrations in 853 ms against an empty database, with the `ACCESS EXCLUSIVE` migration taking 11 ms. Production's `tasks` table holds a single-digit row count and the added column is nullable with no default, so the operation is a catalog change rather than a rewrite. **If it has not completed within a few seconds, something is contending for the lock** — go to Stage 4's probe rather than waiting.
 
@@ -891,6 +949,8 @@ Twenty-one stages. Each uses the same seven headings, and no heading is omitted 
 
 **Stages 1 through 10 are the detailed expansion of the [A8.7b-INCIDENT-1c sequence](#a87b-incident-1c--production-schema-compatibility-repair)** and are labelled for that slice. Where the two differ in wording they do not differ in effect; where a stage was written for the retired A8.7b and no longer applies, it says so in place rather than being deleted, so that a reader comparing against an older review finds the correction rather than a gap.
 
+> **Stages 1 through 10 were executed on 2026-08-04 and are retained as the historical procedure.** Their preconditions describe the pre-repair world — five migration rows, no A8 objects, a deployment serving `ee5e82a` — and every one of those statements is now deliberately out of date. Do not read them as a description of Production. **Stages 11 onward are still pending** and their preconditions remain live.
+
 ---
 
 #### Stage 1 — Production preflight (A8.7b-INCIDENT-1c)
@@ -1122,7 +1182,7 @@ The retired A8.7b assumed Production served pre-A8 code, so a deployment was nee
 
 **Execution.** With an authenticated Owner session, exercise **read-only paths only**: `GET /api/v1/session`, `GET /api/v1/tasks`, the Owner `/tasks` list, and one Task detail page.
 
-**`/attention` is not part of this smoke test.** It is an A8.6a surface and A8.6 is not deployed; `ee5e82a` does not serve that route.
+**`/attention` is not part of this smoke test.** The route itself has existed since the P1.4 Owner shell (`a38c857`) and **is** served by the deployed commit — the 1d deployment's route set confirms it. What is not deployed is the A8.6a reminder-derived content that gives it meaning, so exercising it proves nothing about the repair either way.
 
 > **Do not perform a mutation smoke test unless separately authorized.** A Task mutation is the path that exercises reminder reconciliation, and while the repair makes it structurally sound, proving that is a deliberate decision with its own approval, not a step to slip into a repair window. **Do not create or modify a reminder.**
 
@@ -1380,6 +1440,16 @@ Compare counts before/after E2E or deploy; do not paste row contents containing 
 ## Rollback principles
 
 1. **Application:** Redeploy the previous known-good Vercel deployment via the Vercel dashboard. **A deployment carries the environment variables it was built with**, so Instant Rollback restores the target's original flag values rather than today's, and on the Hobby plan it may reach only the immediately previous deployment. **Do not assume a specific older deployment is one step back** — confirm it before relying on it. During A8.7, use the [approved repair state matrix](#approved-repair-state-matrix) and the [flag-staging states](#flag-staging-states-a87ca87e) rather than reasoning about rollback ad hoc.
+
+> **⚠ The current one-step rollback target is not a safe harbour.** Production serves `dpl_3oder2T3PuDYdmp8pezy6u7RwPRm` (`534959d`). One step back is `dpl_AnUKqdGj3gBw7N56yUT4pMBAVbac` (`ee5e82a`), and rolling back to it has two consequences:
+>
+> - **It reinstates the reminder defect** on `GET`, `PUT`, and `DELETE` — the `D1` state the [matrix](#approved-repair-state-matrix) marks as never validated.
+> - **It may be worse than that.** The hotfix build was created **after** the 2026-08-04 credential rotation; `ee5e82a` was built **before** it. Because rollback restores the target's original environment binding, a rollback restores the **pre-rotation `DATABASE_URL`**. If the old credential was genuinely invalidated, that is a **total database outage**, not a reminder regression. The [unexplained anomaly](A8_7_EVIDENCE.md#a87b-incident-1d--production-reminder-endpoint-hotfix) — a pre-rotation build that kept serving database-backed pages — is exactly why this cannot be settled from the record.
+>
+> **Treat one-step rollback as unavailable.** The containment path is a fresh production-target build of a known-good commit, using [the method above](#deploying-a-commit-that-is-not-on-main). `8588c5d` remains the universal pre-A8 option and still requires read-only confirmation that it is redeployable before anyone relies on it.
+>
+> **The deployed commit lives only on `hotfix/a8-7b-incident-1d-reminder-etag`.** It is not an ancestor of `main`. Do not delete that branch, and prefer tagging `534959d` before any branch cleanup.
+
 2. **Schema:** Prisma migrations are forward-only in production; roll back application code before attempting destructive schema changes. Never drop production tables without an explicit operator decision. **Rolling back application code does not unapply a migration**, and no A8 migration has a down path.
 3. **Schedulers:** Rolling back a deployment does **not** pause an External Scheduler job. Pausing the job is a separate action in a separate system, and stopping delivery additionally requires unsetting the governing flag and redeploying.
 4. **Secrets:** Rotate `CAPABILITY_TOKEN_PEPPER` only with a documented invalidation plan (all outstanding links become unusable). Do **not** rotate `CRON_SECRET` as a containment action during a schema change — pause the scheduler jobs instead.
@@ -1402,6 +1472,10 @@ If Owner task routes return `500` and logs are insufficient:
 1. Set `ENABLE_DB_RUNTIME_DIAGNOSTICS=true` on a **non-production** preview deployment first.
 2. Reproduce the failing Owner route; inspect **server logs** only (structured categories—no connection strings).
 3. Disable diagnostics before promoting to Production.
+
+> **⚠ This procedure cannot be followed as written today.** The **Preview environment has no `DATABASE_URL`** — see [Deploying a commit that is not on `main`](#deploying-a-commit-that-is-not-on-main) — so a preview deployment cannot reach the database and cannot reproduce a database-backed Owner route at all. Reproducing such a route on a preview deployment first requires adding `DATABASE_URL` to Preview, which is an environment change needing its own authorization and its own decision about **which** database it should point at. Until that decision is made, treat this section as unavailable rather than as guidance.
+>
+> Note also that the diagnostics this section produces are **database** diagnostics. A failure in packaging or application code emits none, and their absence alongside an `UNKNOWN_FAILURE` is itself a signal — see [the runtime-value import hazard](#the-runtime-value-import-hazard).
 
 Production normally runs with diagnostics **disabled**. No temporary `X-AICAA-DB-*` headers should be present.
 

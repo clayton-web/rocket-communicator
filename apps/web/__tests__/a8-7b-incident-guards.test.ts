@@ -60,7 +60,7 @@ describe('A8.7b-INCIDENT baseline truthfulness', () => {
       );
     }
 
-    expect(runbook).toContain('Current incident state');
+    expect(runbook).toContain('Current production state');
   });
 
   it('no longer claims Production runs pre-A8 code', () => {
@@ -216,8 +216,8 @@ describe('A8.7b-INCIDENT-1c repaired state is recorded truthfully', () => {
       );
     }
     const runbook = read('docs/DEPLOYMENT.md');
-    expect(runbook, 'D1 must be recorded as the current state').toMatch(
-      /\*\*D1\*\*[^\n]*Current state/,
+    expect(runbook, 'D1′ must be recorded as the current state, not D1').toMatch(
+      /\*\*D1′\*\*[^\n]*Current state/,
     );
   });
 
@@ -250,18 +250,26 @@ describe('A8.7b-INCIDENT-1c repaired state is recorded truthfully', () => {
     );
   });
 
-  it('keeps the outstanding smoke tests and the unresolved anomaly visible', () => {
+  it('shows the smoke tests as closed by 1d rather than as still outstanding', () => {
     const evidence = read('docs/A8_7_EVIDENCE.md');
-    const milestones = read('docs/MILESTONES.md');
 
-    expect(evidence, 'the smoke tests must be marked outstanding').toMatch(
-      /Authenticated Task-list smoke result[^|]*\|[^|]*Outstanding/,
+    expect(evidence, 'the deferred smoke tests must be recorded as passed').toMatch(
+      /Authenticated Task-list smoke result[^|]*\|[^|]*Passed 2026-08-05/,
     );
-    expect(evidence, 'the redeploy anomaly must be recorded as unreconciled').toMatch(
-      /not reconciled/i,
+    expect(evidence, 'deviation D-e must point at the slice that discharged it').toMatch(
+      /\*\*D-e\*\*[\s\S]{0,400}Closed by 1d/,
     );
-    expect(milestones, 'the incident must not be described as closed').toMatch(
-      /incident still open|Outstanding before the incident can be closed/i,
+  });
+
+  it('keeps the redeploy anomaly recorded as unexplained rather than quietly dropping it', () => {
+    const evidence = read('docs/A8_7_EVIDENCE.md');
+
+    expect(evidence, 'the anomaly must remain in the record').toMatch(/Anomaly, still unexplained/);
+    expect(evidence, 'what 1d did and did not settle must be separated').toMatch(
+      /Why the pre-rotation build kept working was never determined/i,
+    );
+    expect(evidence, 'the rollback consequence of the unexplained rotation must be stated').toMatch(
+      /one-step rollback/i,
     );
   });
 
@@ -394,5 +402,166 @@ describe('A8.7b-INCIDENT-1c verification SQL is scoped to five migrations', () =
     expect(evidence).toMatch(/\*\*2\*\* reminder only/);
     expect(evidence).toMatch(/\*\*6\*\* `Reminder\*`/);
     expect(evidence).toMatch(/Boundary \(QB\)/);
+  });
+});
+
+/**
+ * A8.7b-INCIDENT-1e documentation guards.
+ *
+ * Production no longer serves `ee5e82a`, and for the first time it serves a commit that is not on
+ * `main`. Almost every stale claim these guards catch is a restatement of that one fact, so they
+ * assert the specific corrected values rather than prose — an operator reading a superseded baseline
+ * during the next slice is the failure being prevented.
+ */
+
+const HOTFIX_COMMIT = '534959d';
+const HOTFIX_DEPLOYMENT = 'dpl_3oder2T3PuDYdmp8pezy6u7RwPRm';
+const PREVIOUS_DEPLOYMENT = 'dpl_AnUKqdGj3gBw7N56yUT4pMBAVbac';
+
+describe('A8.7b-INCIDENT-1e reconciled production baseline', () => {
+  it('records the validated baseline: commit, deployment, and rollback target', () => {
+    const runbook = read('docs/DEPLOYMENT.md');
+    const milestones = read('docs/MILESTONES.md');
+
+    for (const [name, contents] of [
+      ['docs/DEPLOYMENT.md', runbook],
+      ['docs/MILESTONES.md', milestones],
+    ] as const) {
+      expect(contents, `${name} must name the deployed hotfix commit`).toContain(HOTFIX_COMMIT);
+      expect(contents, `${name} must name the promoted deployment`).toContain(HOTFIX_DEPLOYMENT);
+      expect(contents, `${name} must name the previous deployment`).toContain(PREVIOUS_DEPLOYMENT);
+    }
+
+    expect(
+      runbook,
+      'the deployed commit not being on main is the fact most likely to be assumed away',
+    ).toMatch(/[Nn]ot an ancestor of `main`/);
+  });
+
+  it('no longer claims Production serves ee5e82a or that the incident is open', () => {
+    expect(read('README.md'), 'the README baseline must not say the incident is open').not.toMatch(
+      /Incident open/i,
+    );
+    expect(read('docs/MILESTONES.md')).not.toMatch(/incident still open/i);
+    expect(read('docs/DEPLOYMENT.md')).not.toMatch(/\*\*The incident is not closed\.\*\*/);
+    expect(
+      read('docs/API_CONTRACT.md'),
+      'the reminder routes are functional in Production now',
+    ).not.toMatch(/the A8\.3a migration is \*\*not applied in Production\*\*/);
+  });
+
+  it('separates the unvalidated D1 from the validated D1′ in the state matrix', () => {
+    const runbook = read('docs/DEPLOYMENT.md');
+    const matrix = runbook.slice(
+      runbook.indexOf('### Approved repair state matrix'),
+      runbook.indexOf('### Repair boundary'),
+    );
+    expect(matrix.length).toBeGreaterThan(0);
+
+    expect(matrix, 'D1 must be marked as never validated').toMatch(
+      /\*\*D1\*\*[^\n]*[Nn]ever a validated baseline/,
+    );
+    expect(matrix, 'D1′ must carry the hotfix commit').toMatch(
+      new RegExp(`\\*\\*D1′\\*\\*[^\\n]*${HOTFIX_COMMIT}`),
+    );
+    expect(matrix, 'the reason for splitting the two must be stated, not just the rows').toMatch(
+      /deliberately separate rows/i,
+    );
+  });
+
+  it('records the smoke evidence that closed the incident', () => {
+    const evidence = read('docs/A8_7_EVIDENCE.md');
+    const section = evidence.slice(evidence.indexOf('## A8.7b-INCIDENT-1d'));
+    expect(section.length).toBeGreaterThan(0);
+
+    expect(section, 'the reminder GET result must be recorded').toMatch(/no_due_date/);
+    expect(section, 'the ETag version must be recorded as v0').toMatch(/ETag ends \*\*`v0`\*\*/);
+    expect(section, 'the unknown-Task result must be recorded').toMatch(/NOT_FOUND/);
+    expect(section, 'the absence of a build-time migration must be recorded').toMatch(
+      /\*\*None\.\*\* Only `prisma generate`/,
+    );
+    expect(section, 'no reminder may have been created or modified').toMatch(
+      /No reminder created or modified/i,
+    );
+  });
+
+  it('documents the deployment method and why a Preview build was not promoted', () => {
+    const runbook = read('docs/DEPLOYMENT.md');
+    const section = runbook.slice(
+      runbook.indexOf('### Deploying a commit that is not on `main`'),
+      runbook.indexOf('### The runtime-value import hazard'),
+    );
+    expect(section.length).toBeGreaterThan(0);
+
+    expect(section, 'the three-step method must be named').toMatch(/--skip-domain/);
+    expect(section).toMatch(/vercel promote/);
+    expect(section, 'the reason Preview promotion is unsafe must be the missing variable').toMatch(
+      /DATABASE_URL/,
+    );
+    expect(section, 'promotion must be stated not to rebuild').toMatch(/without rebuilding/i);
+    expect(section, 'the outage consequence must be explicit').toMatch(/outage/i);
+  });
+
+  it('records the runtime-value import hazard as a permanent rule, not incident trivia', () => {
+    const runbook = read('docs/DEPLOYMENT.md');
+    const section = runbook.slice(runbook.indexOf('### The runtime-value import hazard'));
+    expect(section.length).toBeGreaterThan(0);
+
+    expect(section, 'the externalization mechanism must be named').toMatch(
+      /serverExternalPackages/,
+    );
+    expect(section, 'type-only imports must be stated as safe').toMatch(
+      /[Tt]ype-only imports are always safe/,
+    );
+    expect(section, 'the reason unit tests cannot catch it must be stated').toMatch(
+      /[Uu]nit tests structurally cannot detect this/,
+    );
+    expect(section, 'bundle verification must be named as the guard').toMatch(
+      /Production bundle verification is the only guard/,
+    );
+    expect(section, 'the misleading diagnostic signature must be recorded').toMatch(
+      /UNKNOWN_FAILURE/,
+    );
+    expect(section, 'the remaining known instance must be named').toMatch(
+      /suggestions\/process-service\.ts/,
+    );
+
+    expect(
+      read('docs/ARCHITECTURE.md'),
+      'the hazard is an architectural constraint, not only an operational one',
+    ).toMatch(/runtime value imported from it does not reliably survive the Next build/i);
+    expect(read('docs/REVIEW_CHECKLIST.md'), 'a review gate must enforce it').toMatch(
+      /No runtime value is imported from a package listed in `serverExternalPackages`/,
+    );
+  });
+
+  it('records the rollback target as unsafe rather than as a safe harbour', () => {
+    const runbook = read('docs/DEPLOYMENT.md');
+    const section = runbook.slice(runbook.indexOf('## Rollback principles'));
+    expect(section.length).toBeGreaterThan(0);
+
+    expect(section, 'the one-step target must be named').toContain(PREVIOUS_DEPLOYMENT);
+    expect(section, 'the stale environment binding must be called out').toMatch(
+      /pre-rotation `DATABASE_URL`/,
+    );
+    expect(section, 'the worst case must be stated as an outage, not a regression').toMatch(
+      /total database outage/i,
+    );
+    expect(section, 'one-step rollback must be declared unavailable').toMatch(
+      /[Tt]reat one-step rollback as unavailable/,
+    );
+  });
+
+  it('carries no credential into the new material', () => {
+    for (const file of ['docs/DEPLOYMENT.md', 'docs/A8_7_EVIDENCE.md', 'docs/MILESTONES.md']) {
+      const contents = read(file);
+      // `<...>` is excluded so the fully-placeholdered template in the connection strategy passes.
+      expect(contents, `${file} must record no connection string`).not.toMatch(
+        /postgresql:\/\/[^\s`"<>]*:[^\s`"<>]*@/,
+      );
+      expect(contents, `${file} must record no concrete pooler host`).not.toMatch(
+        /aws-[a-z0-9-]+\.pooler\.supabase\.com/,
+      );
+    }
   });
 });
