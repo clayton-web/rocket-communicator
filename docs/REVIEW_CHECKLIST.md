@@ -348,58 +348,101 @@ Gates for the due-date-driven Follow-up Engine (D102–D110). These record **exp
 - [x] The rollback target is identified **and its condition stated**, including whether it is defective or carries a stale environment binding
 - [x] The deployed commit's reachability is recorded, since it is not on `main`
 
-### Gate 5 — deploying the queued A8.4b–A8.6 code (apply when Gate 5 is executed)
+### Gate 5 — deploying the queued A8.4b–A8.6 code (historical — executed 2026-08-05)
 
-> **Not executed. Gate 5 is prepared, unauthorized, and unbegun.** These gates are unticked because nothing has been done, not because anything failed. Preparation was A8.7b-INCIDENT-1k. Runbook: [DEPLOYMENT.md § Gate 5](DEPLOYMENT.md#gate-5--deploying-the-queued-a84ba86-code). Evidence template: [A8_7_EVIDENCE.md § Gate 5](A8_7_EVIDENCE.md#gate-5--deploying-the-queued-a84ba86-code).
+> **✅ Executed 2026-08-05.** Production reached **`D3` / `F0`**. Evidence: [A8_7_EVIDENCE.md § Gate 5](A8_7_EVIDENCE.md#gate-5--deploying-the-queued-a84ba86-code). Runbook: [DEPLOYMENT.md § Gate 5](DEPLOYMENT.md#gate-5--deploying-the-queued-a84ba86-code). **Completing Gate 5 did not authorize Gate 6.**
 
-**Context.** Production is at **`D2`** — all fourteen migrations applied by Gate 4 on 2026-08-05 — while the deployed code is still `534959d`. Gate 5 deploys the queued A8.4b–A8.6 code so the code catches up to the schema, reaching `D3`/`F0` with every A8 feature inert. It runs **no migration**.
+**Context.** Gate 5 deployed the queued A8.4b–A8.6 code so the code caught up to the schema, reaching `D3`/`F0` with every A8 feature inert. It ran **no migration** and set **no flag**.
 
 **Authorization and prerequisites**
 
-- [ ] **Gate 5 has its own explicit Owner authorization.** Gate 4's does not carry into it
-- [ ] `pnpm verify` green at the deployment commit, run **before** the window opened
-- [ ] The **nine PostgreSQL suites** green at the deployment commit on `postgres:17` ([G5.3](DEPLOYMENT.md#g53-the-nine-postgresql-suites))
-- [ ] The **production bundle guards** green against a real local production build, not only the unit suite
-- [ ] `8588c5d` confirmed **redeployable**, read-only, before anything is deployed
-- [ ] The [build-command question](DEPLOYMENT.md#g513-the-build-command-question) is **resolved by the Owner** and recorded; no Vercel setting changed during the gate
+- [x] **Gate 5 has its own explicit Owner authorization.** Gate 4's does not carry into it
+- [x] `pnpm verify` green at the deployment commit, run **before** the window opened
+- [x] The **nine PostgreSQL suites** green at the deployment commit on `postgres:17` ([G5.3](DEPLOYMENT.md#g53-the-nine-postgresql-suites))
+- [x] The **production bundle guards** green against a real local production build, not only the unit suite
+- [x] `8588c5d` confirmed **redeployable**, read-only, before anything is deployed
+- [x] The [build-command question](DEPLOYMENT.md#g513-the-build-command-question) is **resolved by the Owner** and recorded; no Vercel setting changed during the gate
 
 **Commit and worktree**
 
-- [ ] The worktree is at the authorized commit and `git status --short` is **empty** — `vercel deploy` uploads the working tree
-- [ ] `534959d` **is** an ancestor of the deployment commit through `68bedff`, and **is not** an ancestor of `origin/main`; the reminder ETag fix is carried forward and **no cherry-pick was performed**
-- [ ] The worktree holds **exactly fourteen** migration directories, matching Production
+- [x] The worktree is at the authorized commit and `git status --short` is **empty** — `vercel deploy` uploads the working tree
+- [x] `534959d` **is** an ancestor of the deployment commit through `68bedff`, and **is not** an ancestor of `origin/main`; the reminder ETag fix is carried forward and **no cherry-pick was performed**
+- [x] The worktree holds **exactly fourteen** migration directories, matching Production
 
 **Baseline**
 
-- [ ] `D2` confirmed read-only **in this window**: fourteen finished migration rows, all four notification and reminder tables present, `QG` passing on the `public`-scoped reading
-- [ ] `Q1` **run and recorded** as the `tasks` before-baseline — Gate 4 deviation 3 exists because it was skipped there
-- [ ] All three A8 flags **absent**, and all cron-job.org jobs **inactive**, with no reminder or notification job existing
-- [ ] The Owner **no-use window** is open and its bounds recorded
+- [x] `D2` confirmed read-only **in this window**: fourteen finished migration rows, all four notification and reminder tables present, `QG` passing on the `public`-scoped reading
+- [x] `Q1` **run and recorded** as the `tasks` before-baseline — Gate 4 deviation 3 exists because it was skipped there
+- [x] All three A8 flags **absent**, and all cron-job.org jobs **inactive**, with no reminder or notification job existing
+- [x] The Owner **no-use window** is open and its bounds recorded
 
 **Deployment**
 
-- [ ] A **preview-target deployment was not promoted**, under any circumstances
-- [ ] `git push origin main` was **not** performed before validation — a push builds and promotes automatically with no inspection step
-- [ ] The deployment is **production-target**, created with `--skip-domain`. The immutable deployment URL exists from creation and is **not** made unreachable by it; deployment protection was confirmed enabled read-only
-- [ ] Before promotion: target `production`, state READY, commit SHA, route set **by name**, environment bindings, flag absence, Node version, and build command all recorded
-- [ ] **No migration ran during the build** — only `prisma generate` appears in the build log
-- [ ] The route set is verified as a **delta of exactly one** — `/api/v1/internal/notifications/process` present, nothing removed — and not by matching a total
+- [x] A **preview-target deployment was not promoted**, under any circumstances
+- [x] `git push origin main` was **not** performed before validation — a push builds and promotes automatically with no inspection step
+- [x] The deployment is **production-target**, created with `--skip-domain`. The immutable deployment URL exists from creation and is **not** made unreachable by it; deployment protection was confirmed enabled read-only
+- [x] Before promotion: target `production`, state READY, commit SHA, route set **by name**, environment bindings, flag absence, Node version, and build command all recorded
+- [x] **No migration ran during the build** — only `prisma generate` appears in the build log
+- [x] The route set is verified as a **delta of exactly one** — `/api/v1/internal/notifications/process` present, nothing removed — and not by matching a total
 
 **Validation and inertness**
 
-- [ ] Unauthenticated probes return typed `401` before any authenticated check is attempted
-- [ ] `/tasks` and `/tasks/{taskId}` render; reminder `GET` on a real Task returns 200, `no_due_date`, ETag ending `v0`
-- [ ] **`/attention` loads and does not reach its error boundary**, and **both** sections render empty
-- [ ] All three flags **still absent**; notification counts still `0`; `tasks`, `task_reminder_schedules`, and `reminder_delivery_attempts` unchanged
-- [ ] Migration history is **still exactly fourteen rows** — Gate 5 applies none
-- [ ] `/api/v1/internal/notifications/process` exists in the route set and **was invoked by nothing**
-- [ ] **No reminder was created or modified**, no email sent, and no Gmail API call made
+- [x] Unauthenticated probes return typed `401` before any authenticated check is attempted
+- [x] `/tasks` and `/tasks/{taskId}` render; reminder `GET` on a real Task returns 200, `no_due_date`, ETag ending `v0`
+- [x] **`/attention` loads and does not reach its error boundary**, and **both** sections render empty
+- [x] All three flags **still absent**; notification counts still `0`; `tasks`, `task_reminder_schedules`, and `reminder_delivery_attempts` unchanged
+- [x] Migration history is **still exactly fourteen rows** — Gate 5 applies none
+- [x] `/api/v1/internal/notifications/process` exists in the route set and **was invoked by nothing**
+- [x] **No reminder was created or modified**, no email sent, and no Gmail API call made
 
 **Containment and closure**
 
-- [ ] Containment, if any, was a **fresh production-target build of `534959d`** — not a one-step Instant Rollback, which is unavailable
-- [ ] The evidence record is filled with **no blank rows**, and every deviation is recorded honestly
-- [ ] **Gate 6 was not begun**: no flag set, no scheduler job created, and `origin/main` reconciliation treated as a separate Owner decision
+- [x] Containment, if any, was a **fresh production-target build of `534959d`** — not a one-step Instant Rollback, which is unavailable _(none required)_
+- [x] The evidence record is filled with **no blank rows**, and every deviation is recorded honestly
+- [x] **Gate 6 was not begun**: no flag set, no scheduler job created, and `origin/main` reconciliation treated as a separate Owner decision
+
+### Gate 6 — first controlled production enablement (apply when Gate 6 is executed)
+
+> **Not executed. Gate 6 is prepared, unauthorized, and unbegun.** These gates are unticked because nothing has been done, not because anything failed. Runbook: [DEPLOYMENT.md § Gate 6](DEPLOYMENT.md#gate-6--first-controlled-production-enablement-a87c-capture--f0--f1). **Live operator path:** [G6.15 Operator execution checklist](DEPLOYMENT.md#g615-operator-execution-checklist). Evidence template: [A8_7_EVIDENCE.md § Gate 6](A8_7_EVIDENCE.md#gate-6--first-controlled-production-enablement-a87c-capture--f0--f1).
+
+**Context.** Production is at **`D3` / `F0`** after Gate 5 — queued A8 code deployed, fourteen migrations applied, all three A8 flags **absent**. Gate 6 sets **only** `ENABLE_OWNER_EVENT_CAPTURE=true`, redeploys so the value binds, and reaches `F1`. It runs **no migration**, creates **no** scheduler job, and must not set delivery or reminder flags.
+
+**During a live window, follow [G6.15](DEPLOYMENT.md#g615-operator-execution-checklist) step-by-step** (preconditions P1–P8, execution EC-1–EC-12, stop/rollback tables, final verification, completion criteria). The boxes below are the post-window review gates; they do not replace G6.15.
+
+**Authorization and prerequisites**
+
+- [ ] **Gate 6 has its own explicit Owner authorization** (G6.15 checkpoint **A0**). Gate 5's does not carry into it
+- [ ] Gate 5 evidence shows Production at **`D3` / `F0`**, and the live Production deployment still matches that F0 baseline (or a documented inert successor)
+- [ ] Q8 four counts recorded in this window; Q21 recorded for reference
+- [ ] `ENABLE_OWNER_EVENT_DELIVERY` and `ENABLE_REMINDER_DELIVERY` **absent**
+- [ ] **No notification-processing job exists**
+- [ ] `/attention` loads with no error boundary
+- [ ] The Owner **no-use window** is open and its bounds recorded
+
+**Execution**
+
+- [ ] Checkpoint **A1** recorded before the flag set — authorization covers only capture + one binding redeploy
+- [ ] `ENABLE_OWNER_EVENT_CAPTURE` set to the exact lowercase string **`true`** in Vercel Production only — not `"1"`, `"TRUE"`, or `"yes"`
+- [ ] Other two A8 flags left **unset** (absent), not set to `false`
+- [ ] Redeploy is **production-target**; **preview-target promotion is prohibited**; **`git push origin main` is prohibited**
+- [ ] Pre-promotion / pre-reliance inspection records target `production`, READY, bound flag values, and no migration during build
+- [ ] If the alternative Production redeploy method was used, checkpoint **A2** was recorded first
+
+**Verification**
+
+- [ ] New deployment Ready and holding the production alias as intended
+- [ ] Capture flag is exactly `true`; other two flags still **absent**
+- [ ] `/attention` still loads; migration history still **fourteen** rows
+- [ ] `owner_notification_attempts` is **0**
+- [ ] Notification endpoint was **not** invoked; no notification job was created
+- [ ] No Owner/Recipient notification or reminder email; no Gmail API call for those paths
+- [ ] G6.15 final verification checklist fully checked
+
+**Containment and closure**
+
+- [ ] Rollback / containment path understood: unset capture + redeploy, or Instant Rollback to F0 while it remains one step back ([G6.12](DEPLOYMENT.md#g612-containment-and-rollback-posture)); G6.15 rollback trigger points observed
+- [ ] Evidence record filled with **no blank rows**; deviations recorded honestly
+- [ ] **A8.7d and A8.7e were not begun**; Stage 12 close-out treated per Gate 6 stop boundary (G6.15 completion criteria / checkpoint **A3**)
 
 ## Owner web experience foundation (P1; apply when P1 work is in scope)
 

@@ -78,9 +78,11 @@ describe('the runbook records the Production schema as it actually is', () => {
     expect(section, 'the four remaining migrations must be recorded as applied by Gate 4').toMatch(
       /remaining migrations were applied on 2026-08-05 by \[Gate 4\]/i,
     );
-    expect(section, 'the section must name the resulting state').toMatch(/is at `D2`/);
-    expect(section, 'deploying the consuming code must be named as Gate 5, and not begun').toMatch(
-      /\[Gate 5\][^\n]*which has not begun/,
+    expect(section, 'the section must name the resulting state after Gate 5').toMatch(
+      /left Production at `D3` \/ `F0`/,
+    );
+    expect(section, 'Gate 5 must be recorded as completed').toMatch(
+      /\[Gate 5\][^\n]*which completed on 2026-08-05/,
     );
     expect(section, 'the reminder routes must be recorded as functional, not future').toMatch(
       /lifecycle wiring \*\*are\*\* functional/,

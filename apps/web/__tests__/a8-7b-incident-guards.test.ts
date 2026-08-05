@@ -219,8 +219,11 @@ describe('A8.7b-INCIDENT-1c repaired state is recorded truthfully', () => {
     // Production passed through D1′ on 2026-08-05 and left it the same day when Gate 4 advanced
     // the schema. D1′ must survive as history — it is what 1c and 1d reached — but naming it the
     // current state would send an operator to verify against a Production that no longer exists.
-    expect(runbook, 'D2 must be recorded as the current state').toMatch(
-      /\*\*D2\*\*[^\n]*Current state/,
+    expect(runbook, 'D3 must be recorded as the current state').toMatch(
+      /\*\*D3\*\*[^\n]*Current state/,
+    );
+    expect(runbook, 'D2 must not be labelled current').not.toMatch(
+      /\*\*D2\*\*[^\n]*\*\*Current state\.\*\*/,
     );
     expect(runbook, 'D1′ must not be labelled current').not.toMatch(
       /\*\*D1′\*\*[^\n]*\*\*Current state\.\*\*/,

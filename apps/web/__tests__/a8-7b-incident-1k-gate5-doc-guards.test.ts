@@ -86,10 +86,12 @@ describe('the Gate 5 runbook exists and is bounded to a deployment', () => {
     }
   });
 
-  it('states that Gate 5 has not been executed and is not authorized here', () => {
+  it('states that Gate 5 was executed and does not authorize Gate 6', () => {
     const section = gate5Section();
-    expect(section).toMatch(/Gate 5 has not been executed/);
-    expect(section).toMatch(/this section does not authorize it/);
+    expect(section).toMatch(/Executed 2026-08-05/);
+    expect(section).toMatch(/Gate 5 is complete/);
+    expect(section).toMatch(/does not authorize/);
+    expect(section).toMatch(/Gate 6/);
   });
 
   it('requires its own Owner authorization and refuses to inherit Gate 4s', () => {
@@ -114,32 +116,37 @@ describe('the Gate 5 runbook exists and is bounded to a deployment', () => {
   });
 });
 
-describe('the D2 baseline must not regress to D1prime', () => {
-  it('records Production as D2 in the current-state section', () => {
+describe('the D3 / F0 baseline must not regress to D2-as-current', () => {
+  it('records Production as D3 / F0 in the current-state section', () => {
     const contents = runbook();
     const start = contents.indexOf('### Current production state');
     expect(start).toBeGreaterThan(-1);
     const rest = contents.slice(start);
     const section = rest.slice(0, rest.search(/\n### [^#]/));
 
-    expect(section, 'the current state is D2').toMatch(/\*\*D2\*\*/);
-    expect(section, 'Production holds all fourteen migrations').toMatch(/fourteen rows/);
+    expect(section, 'the current state is D3 / F0').toMatch(/\*\*D3\*\* \(`F0`\)|\*\*D3\*\* \/ `F0`|\*\*D3 \/ F0\*\*/);
+    expect(section, 'Production holds all fourteen migrations').toMatch(/fourteen/);
+    expect(section, 'all three flags remain absent').toMatch(/Absent/);
     // The exact stale claims this reconciliation removed must not come back.
     expect(section).not.toMatch(/State\s*\|\s*\*\*D1′\*\*/);
     expect(section).not.toMatch(/ten rows in `_prisma_migrations`/);
+    expect(section).not.toMatch(/State\s*\|\s*\*\*D2\*\*/);
   });
 
-  it('marks D2 as current and D1prime as left in the state matrix', () => {
+  it('marks D3 as current and D2 / D1prime as left in the state matrix', () => {
     const contents = runbook();
     const start = contents.indexOf('### Approved repair state matrix');
     const rest = contents.slice(start);
     const matrix = rest.slice(0, rest.search(/\n### [^#]/));
 
+    const d3Row = matrix.split('\n').find((line) => line.includes('**D3**'));
     const d2Row = matrix.split('\n').find((line) => line.includes('**D2**'));
     const d1PrimeRow = matrix.split('\n').find((line) => line.includes('**D1′**'));
-    expect(d2Row, 'D2 row must exist').toBeDefined();
+    expect(d3Row, 'D3 row must exist').toBeDefined();
+    expect(d2Row, 'D2 row must exist as history').toBeDefined();
     expect(d1PrimeRow, "D1' row must exist as history").toBeDefined();
-    expect(d2Row, 'D2 is the current state').toMatch(/Current state/);
+    expect(d3Row, 'D3 is the current state').toMatch(/Current state/);
+    expect(d2Row, 'D2 must not be labelled current').not.toMatch(/\*\*Current state\.\*\*/);
     expect(d1PrimeRow, "D1' must not be labelled current").not.toMatch(/\*\*Current state\.\*\*/);
   });
 
@@ -403,6 +410,52 @@ describe('Gate 6 separation', () => {
     expect(section).toMatch(/Explicitly not authorized by Gate 5/);
   });
 
+  it('is followed by a prepared Gate 6 first-activation runbook that is unbegun', () => {
+    const contents = runbook();
+    expect(contents).toContain('### Gate 6 — First controlled production enablement (A8.7c capture / F0 → F1)');
+    const start = contents.indexOf('### Gate 6 — First controlled production enablement');
+    const rest = contents.slice(start);
+    const section = rest.slice(0, rest.search(/\n### [^#]/));
+    expect(section).toMatch(/Gate 6 has not been executed/);
+    expect(section).toMatch(/this section does not authorize it/);
+    expect(section).toContain('ENABLE_OWNER_EVENT_CAPTURE');
+    expect(section).toMatch(/G6\.1/);
+    expect(section).toMatch(/G6\.14/);
+    expect(section).toMatch(/G6\.15/);
+    // Delivery and reminder must remain out of scope for the first activation.
+    expect(section).toMatch(/ENABLE_OWNER_EVENT_DELIVERY/);
+    expect(section).toMatch(/Out of scope/);
+  });
+
+  it('includes a deterministic Gate 6 operator execution checklist that does not authorize execution', () => {
+    const contents = runbook();
+    const start = contents.indexOf('#### G6.15 Operator execution checklist');
+    expect(start).toBeGreaterThan(-1);
+    const rest = contents.slice(start);
+    const section = rest.slice(0, rest.search(/\n### [^#]/));
+    expect(section).toMatch(/does not authorize Gate 6/);
+    expect(section).toMatch(/Documentation only/);
+    // Required operator surfaces from the Gate 6 checklist slice.
+    expect(section).toMatch(/Preconditions/);
+    expect(section).toMatch(/EC-1/);
+    expect(section).toMatch(/EC-12/);
+    expect(section).toMatch(/Expected result/);
+    expect(section).toMatch(/Evidence/);
+    expect(section).toMatch(/Explicit stop conditions/);
+    expect(section).toMatch(/Explicit rollback trigger points/);
+    expect(section).toMatch(/G6\.12/);
+    expect(section).toMatch(/Final verification checklist/);
+    expect(section).toMatch(/Gate completion criteria/);
+    expect(section).toMatch(/Owner authorization checkpoints/);
+    // First activation only — capture flag alone; later gates withheld.
+    expect(section).toContain('ENABLE_OWNER_EVENT_CAPTURE');
+    expect(section).toMatch(/ENABLE_OWNER_EVENT_DELIVERY/);
+    expect(section).toMatch(/A8\.7d/);
+    expect(section).toMatch(/A8\.7e/);
+    expect(section).toMatch(/never mark complete by doing these/);
+    expect(section).toMatch(/setting `ENABLE_OWNER_EVENT_DELIVERY` or `ENABLE_REMINDER_DELIVERY`/);
+  });
+
   it('names every Gate 6 action it withholds', () => {
     const section = gate5Section();
     for (const withheld of ['A8.7c', 'A8.7d', 'A8.7e']) {
@@ -529,8 +582,11 @@ describe('the Gate 5 evidence record', () => {
     expect(gate5, 'Gate 5 must precede A8.7c').toBeLessThan(stage11);
   });
 
-  it('is marked unfilled and not begun', () => {
-    expect(gate5EvidenceSection()).toMatch(/Not begun/);
+  it('is marked executed and complete at D3 / F0', () => {
+    const section = gate5EvidenceSection();
+    expect(section).toMatch(/Executed and verified 2026-08-05/);
+    expect(section).toMatch(/`D3` \(`F0`\)|\*\*`D3` \/ `F0`\*\*/);
+    expect(section).toMatch(/Gate 6 not begun/);
   });
 
   it('refuses reuse of the Gate 4 record, with the reason', () => {
