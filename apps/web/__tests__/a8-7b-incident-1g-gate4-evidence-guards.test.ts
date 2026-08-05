@@ -153,8 +153,8 @@ describe('Gate 4 has an evidence record of its own', () => {
   it('records the prohibitions that make Gate 4 a database-only gate', () => {
     const gate4 = gate4Evidence();
 
-    expect(gate4, 'the gate must be recorded as unperformed').toMatch(
-      /\*\*Pending\. Not authorized, not begun/i,
+    expect(gate4, 'the gate must be recorded as executed under its own authorization').toMatch(
+      /\*\*Executed and verified 2026-08-05 under explicit Owner authorization/i,
     );
     expect(gate4, 'the deployment ID must be unchanged').toMatch(
       /deployment ID unchanged \(y\/n\)/i,
