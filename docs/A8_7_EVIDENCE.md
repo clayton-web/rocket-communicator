@@ -49,7 +49,7 @@ Fill once per slice.
 | Reminder job state at start                        |       |
 | Docker required for this slice (y/n)               |       |
 
-**Migration endpoint** (A8.7b-INCIDENT-1c and [Gate 4](#gate-4--production-migrations-69) — the only two slices that connect to the Production database):
+**Migration endpoint** (A8.7b-INCIDENT-1c and [Gate 4](#gate-4--production-migrations-69) — the only two slices that run migrations. Later slices query the Production database read-only through Q15–Q21 but never migrate it):
 
 | Field                                      | Value |
 | ------------------------------------------ | ----- |
@@ -487,7 +487,7 @@ Fill every row. A blank row is an incomplete record, not an implied "nothing to 
 | **QG result (expect `2, 5, 1, 1, 2, 0, 0`)** (`gate4.objects_present`)                                                                               |       |
 | Q7 (**four** tables) · Q8 (`0, 0, 0, 0`) · Q9 (**four** rows, `relrowsecurity = true` on all four)                                                   |       |
 | Q11 — the **fifteen** named constraints from [recovery-tree entry 9](DEPLOYMENT.md#per-migration-recovery-decision-tree), each `convalidated = true` |       |
-| Q12 — all **eleven** enum types and all **three** new labels                                                                                         |       |
+| Q12 — all **eleven** enum types, plus the **two** labels this gate adds (`no_actionable_capability`, `repeated_ambiguous_outcomes`)                  |       |
 | Q13 — every named index `indisvalid = true`, including **eight** rows on the two notification tables                                                 |       |
 | RLS **policies** on the two new tables (**expect zero** — deny-by-default, approved)                                                                 |       |
 | Q6 still **0**, and no row rewritten or backfilled                                                                                                   |       |
