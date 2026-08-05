@@ -2,9 +2,9 @@
 
 Governed by [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md). Procedure: [DEPLOYMENT.md § A8.7 production rollout](DEPLOYMENT.md#a87-production-rollout). Milestone status: [MILESTONES.md](MILESTONES.md).
 
-**This file is a template, and no part of it has been performed against Production.** A8.7a created it; A8.7b-INCIDENT-1b restructured it around the open incident. Neither contacted any production system, database, scheduler, or provider.
+**This file is part record and part template.** Sections **1a** through **1d** are completed records: 1c and 1d were performed against Production on 2026-08-04 and 2026-08-05. **Gate 4 and everything after it is unfilled template**, and no part of it has been performed. A8.7a created this file; A8.7b-INCIDENT-1b restructured it around the incident.
 
-> **A8.7b is retired.** Its section is replaced by three incident sections: the completed local rehearsal (**1a**), this documentation correction (**1b**), and the pending Production repair (**1c**). The repair applies **five** migrations, not nine, and **deploys nothing**. Context: [MILESTONES.md](MILESTONES.md) incident notice.
+> **A8.7b is retired.** Its section is replaced by the incident sections below — the local rehearsal (**1a**), the runbook correction (**1b**), the Production schema repair (**1c**, five migrations, no deployment), and the reminder endpoint hotfix (**1d**). The remaining four migrations are **not** part of any of them: they are [Gate 4](#gate-4--production-migrations-69), which is pending and separately authorized. Context: [MILESTONES.md](MILESTONES.md) incident notice.
 
 ## How to use this record
 
@@ -29,27 +29,27 @@ The migration endpoint is recorded as a **redacted form plus its port**, for exa
 
 Fill once per slice.
 
-| Field                                        | Value |
-| -------------------------------------------- | ----- |
-| Slice (A8.7b-INCIDENT-1c / A8.7c / d / e)    |       |
-| Date (ISO, with timezone)                    |       |
-| Operator                                     |       |
-| Authorization reference                      |       |
-| Source commit (`git rev-parse HEAD`)         |       |
-| Working tree clean at start (y/n)            |       |
-| `pnpm verify` green on this commit, and when |       |
-| Production deployment ID at start            |       |
-| Production commit at start                   |       |
-| `ENABLE_OWNER_EVENT_CAPTURE` at start        |       |
-| `ENABLE_OWNER_EVENT_DELIVERY` at start       |       |
-| `ENABLE_REMINDER_DELIVERY` at start          |       |
-| Gmail-poll job state at start                |       |
-| Suggestion-processing job state at start     |       |
-| Notification job state at start              |       |
-| Reminder job state at start                  |       |
-| Docker required for this slice (y/n)         |       |
+| Field                                              | Value |
+| -------------------------------------------------- | ----- |
+| Slice (A8.7b-INCIDENT-1c / Gate 4 / A8.7c / d / e) |       |
+| Date (ISO, with timezone)                          |       |
+| Operator                                           |       |
+| Authorization reference                            |       |
+| Source commit (`git rev-parse HEAD`)               |       |
+| Working tree clean at start (y/n)                  |       |
+| `pnpm verify` green on this commit, and when       |       |
+| Production deployment ID at start                  |       |
+| Production commit at start                         |       |
+| `ENABLE_OWNER_EVENT_CAPTURE` at start              |       |
+| `ENABLE_OWNER_EVENT_DELIVERY` at start             |       |
+| `ENABLE_REMINDER_DELIVERY` at start                |       |
+| Gmail-poll job state at start                      |       |
+| Suggestion-processing job state at start           |       |
+| Notification job state at start                    |       |
+| Reminder job state at start                        |       |
+| Docker required for this slice (y/n)               |       |
 
-**Migration endpoint** (A8.7b-INCIDENT-1c only):
+**Migration endpoint** (A8.7b-INCIDENT-1c and [Gate 4](#gate-4--production-migrations-69) — the only two slices that connect to the Production database):
 
 | Field                                      | Value |
 | ------------------------------------------ | ----- |
@@ -434,6 +434,100 @@ The substitute, chosen with architecture approval mid-slice, was a **production-
 - **It did not deploy `main`.** `main` carries A8.5 and A8.6 code that requires migrations 6–9, which are not applied. Deploying it would have recreated the original incident in a worse form.
 - **It did not fix the second runtime-value import.** `PersistenceError` in `apps/web/lib/suggestions/process-service.ts` is the same defect class and is still latent in Production. It was analysed and recorded, and no repository evidence tied it to the reminder failure, so including it would have widened a hotfix built on a commit that had already reached Production.
 - **It did not merge or push to `main`, change any environment variable, touch Supabase, touch cron-job.org, enable any flag, or invoke any scheduler or provider route.**
+
+---
+
+## Gate 4 — Production migrations 6–9
+
+**Pending. Not authorized, not begun, and no row below has been filled.** Procedure: [DEPLOYMENT.md § Gate 4](DEPLOYMENT.md#gate-4--production-migrations-69). Gate 4 applies A8 migrations 6 through 9 to the Production database and does nothing else — no deployment, no environment variable, no feature flag, no scheduler job, no Gmail action, no mutation. It moves Production from **`D1′`** to **`D2`**.
+
+> **⚠ Do not record Gate 4 in the [1c capture record](#a87b-incident-1c--production-schema-compatibility-repair).** That record belongs to the five-migration repair, and two of its rows require migrations 6–9 and the notification tables to be **absent**. A correct Gate 4 makes both present, so filling it in there would record a successful gate as a boundary violation — and would overwrite the evidence that the repair boundary held. Use the table below.
+
+**What a correct Gate 4 records is the inversion of what 1c recorded.** Ten history rows become **fourteen**. "Notification objects absent" becomes **present**. The lock probe covers **`task_reminder_schedules`**, not `tasks`, because no Gate 4 migration touches `tasks` at all. A Gate 4 record that reads like the 1c record is evidence that the wrong procedure was followed.
+
+### Gate 4 capture record
+
+Fill every row. A blank row is an incomplete record, not an implied "nothing to report". Names in parentheses are the evidence fields the runbook uses.
+
+| Field                                                                                                                                                | Value |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------- | ----- |
+| Operator                                                                                                                                             |       |
+| **Authorization reference** — Gate 4 requires its own; no earlier authorization carries into it                                                      |       |
+| Verification window (start / end, ISO with timezone)                                                                                                 |       |
+| Owner no-use window (opened, closed, by whom)                                                                                                        |       |
+| Local `git rev-parse HEAD`                                                                                                                           |       |
+| Local `git rev-parse origin/main`                                                                                                                    |       |
+| Gate 4 worktree commit, detached (**`68bedff` or the recorded later documentation commit**)                                                          |       |
+| Worktree migration-directory count (**expect 14**)                                                                                                   |       |
+| `packages/db/.env` absent from the Gate 4 worktree (y/n)                                                                                             |       |
+| Prisma CLI version in the worktree (**expect 6.19.3**)                                                                                               |       |
+| Production deployment ID at start (**expect `dpl_3oder2T3PuDYdmp8pezy6u7RwPRm`**)                                                                    |       |
+| Production commit at start (**expect `534959d`**)                                                                                                    |       |
+| Flags at start (**expect all three absent**)                                                                                                         |       |
+| Scheduler baseline as found (both jobs inactive; **no** reminder job; **no** notification job)                                                       |       |
+| Containment `8588c5d` confirmed redeployable, read-only (y/n, how confirmed)                                                                         |       |
+| Endpoint classification (redacted host form, port **5432**, session mode, `pgbouncer=true` absent)                                                   |       |
+| Connection string taken **after** the 2026-08-04 rotation (y/n)                                                                                      |       |
+| **Credential not recorded anywhere (y/n)**                                                                                                           |       |
+| PostgreSQL major version, confirmed in this window (**expect 17**)                                                                                   |       |
+| Pre-migration history: row count (**expect 10**) and the ten names matching exactly (`migrations.status.before`)                                     |       |
+| `applied_steps_count = 1` on all ten — **never confirmed during 1c; Gate 4 confirms it**                                                             |       |
+| Failed or unfinished migration rows before (Q3, **expect none**)                                                                                     |       |
+| `migrate status` pending set (**expect exactly the four Gate 4 names**; exit code 1 is correct)                                                      |       |
+| Session activity before (Q4, judged against the allowlist)                                                                                           |       |
+| `tasks` row count before (Q1) (`tasks.count.before`)                                                                                                 |       |
+| `task_reminder_schedules` count and active count before (QR) (`gate4.schedules.before`)                                                              |       |
+| Populated-table branch taken (y/n) — **if y, the separate authorization reference**                                                                  |       |
+| Lock probe on `task_reminder_schedules` — acquired promptly, or timed out with the wait duration (`gate4.lock_probe`)                                |       |
+| Activity check and lock probe **repeated immediately before** `migrate deploy` (y/n)                                                                 |       |
+| Migration start time / end time / wall-clock duration                                                                                                |       |
+| Prisma output (**connection string redacted**)                                                                                                       |       |
+| Post-migration history: row count (**expect 14**), all finished, none rolled back, every `applied_steps_count = 1` (`migrations.status.after`)       |       |
+| **Migrations 6–9 present by exact name (y/n)**                                                                                                       |       |
+| **QG result (expect `2, 5, 1, 1, 2, 0, 0`)** (`gate4.objects_present`)                                                                               |       |
+| Q7 (**four** tables) · Q8 (`0, 0, 0, 0`) · Q9 (**four** rows, `relrowsecurity = true` on all four)                                                   |       |
+| Q11 — the **fifteen** named constraints from [recovery-tree entry 9](DEPLOYMENT.md#per-migration-recovery-decision-tree), each `convalidated = true` |       |
+| Q12 — all **eleven** enum types and all **three** new labels                                                                                         |       |
+| Q13 — every named index `indisvalid = true`, including **eight** rows on the two notification tables                                                 |       |
+| RLS **policies** on the two new tables (**expect zero** — deny-by-default, approved)                                                                 |       |
+| Q6 still **0**, and no row rewritten or backfilled                                                                                                   |       |
+| `tasks` row count after (**expect unchanged from Q1**)                                                                                               |       |
+| `task_reminder_schedules` count after (**expect unchanged from QR**) (`gate4.schedules.after`)                                                       |       |
+| Q15 through Q21 **not run** (y/n)                                                                                                                    |       |
+| Scheduler state after (**expect left inactive, none created or resumed**)                                                                            |       |
+| Flags after (**expect all three still absent**)                                                                                                      |       |
+| **Nothing deployed; deployment ID unchanged (y/n)**                                                                                                  |       |
+| **Nothing pushed (y/n)**                                                                                                                             |       |
+| Final state (**expect D2**)                                                                                                                          |       |
+| **Gate 5 not begun (y/n)**                                                                                                                           |       |
+
+### Deviations from the approved procedure
+
+Record every departure, including any that seemed harmless at the time. The 1c record exists in the form it does because five were recorded honestly.
+
+| #   | Deviation | Approved plan said | Status |
+| --- | --------- | ------------------ | ------ |
+|     |           |                    |        |
+
+### Stop conditions encountered
+
+Each hard stop in [G4.12](DEPLOYMENT.md#g412-stop-conditions) that fired, the physical state recorded at the time, and the decision taken. **A stop that was worked around rather than decided is itself the finding.**
+
+| Condition | Physical state recorded | Decision, and who authorized it |
+| --------- | ----------------------- | ------------------------------- |
+|           |                         |                                 |
+
+### What this gate must not do
+
+Confirm each explicitly; none is authorized by Gate 4:
+
+- No deployment, promotion, or rollback — the deployment ID is unchanged from before the gate to after it.
+- No push to `main`. **A push deploys automatically** and would replace the deployment serving `534959d`.
+- No environment variable or feature flag set, unset, or edited.
+- No scheduler job created, resumed, edited, or invoked, and no worker endpoint called manually.
+- No Owner or Recipient email, and no Gmail API call.
+- No `INSERT`, `UPDATE`, `DELETE`, or `migrate resolve` beyond one explicitly authorized in a stop.
+- **Gate 5 and Gate 6 are not begun**, and completing Gate 4 does not make either of them due.
 
 ---
 

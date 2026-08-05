@@ -667,14 +667,14 @@ Expected post-repair state is **D1**: `ee5e82a` code, pre-A8 plus A8 migrations 
 
 #### G4.1 Scope
 
-| In scope                                                               | Out of scope                                                                               |
-| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| One `prisma migrate deploy` applying exactly migrations 6, 7, 8, and 9 | Applying any other migration, or re-applying migrations 1–5                                |
-| Read-only Production preflight and post-migration verification SQL     | Any `INSERT`, `UPDATE`, `DELETE`, or `migrate resolve` not explicitly authorized in a stop |
-| Recording evidence in [A8_7_EVIDENCE.md](A8_7_EVIDENCE.md)             | Deploying, promoting, or rolling back any Vercel deployment                                |
-| Confirming the cron-job.org baseline read-only                         | Creating, resuming, or invoking any scheduler job                                          |
-|                                                                        | Setting, unsetting, or editing any environment variable or feature flag                    |
-|                                                                        | Any Owner or Recipient email, and any Gmail API call                                       |
+| In scope                                                                                             | Out of scope                                                                               |
+| ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| One `prisma migrate deploy` applying exactly migrations 6, 7, 8, and 9                               | Applying any other migration, or re-applying migrations 1–5                                |
+| Read-only Production preflight and post-migration verification SQL                                   | Any `INSERT`, `UPDATE`, `DELETE`, or `migrate resolve` not explicitly authorized in a stop |
+| Recording evidence in [A8_7_EVIDENCE.md § Gate 4](A8_7_EVIDENCE.md#gate-4--production-migrations-69) | Deploying, promoting, or rolling back any Vercel deployment                                |
+| Confirming the cron-job.org baseline read-only                                                       | Creating, resuming, or invoking any scheduler job                                          |
+|                                                                                                      | Setting, unsetting, or editing any environment variable or feature flag                    |
+|                                                                                                      | Any Owner or Recipient email, and any Gmail API call                                       |
 
 **The four migrations, in application order.** This is the complete Gate 4 set:
 
@@ -950,6 +950,8 @@ Expected **`2, 5, 1, 1, 2, 0, 0`**. Evidence field `gate4.objects_present`. **An
 
 **Also run, with their after-Gate-4 readings:** **Q2**, **Q3**, **Q7** (all four tables), **Q8** (`0, 0, 0, 0` — the full four-statement form is runnable for the first time), **Q9** (four rows, `relrowsecurity = true` on all four), **Q11** (every named constraint from the recovery tree, each `convalidated = true`), **Q12** (all eleven enum types and all three new values), **Q13** (every named index, each `indisvalid = true`), **Q1** and **QR** for the unchanged-count comparison.
 
+**Q11 and Q13 are name checks, and the names are published.** The two new tables contribute **fifteen named constraints** and **eight index rows** — six created explicitly plus two primary-key indexes — all listed in [recovery-tree entry 9](#per-migration-recovery-decision-tree). Check them by name against that inventory. **A count alone does not distinguish a complete migration 9 from a partial one that stopped part-way through its constraints.**
+
 **Do not run Q15 through Q21.** They describe capture and canary states that presuppose flags Gate 4 does not set. They will now execute rather than error, and they will report zeroes that mean nothing yet.
 
 **No unexpected data writes.** `Q1` and `QR` unchanged, `Q8` all zero, and `Q6` still exactly `0`. **Any change is a hard stop** — Gate 4's migrations backfill nothing and rewrite no row.
@@ -1001,7 +1003,7 @@ Expected **`2, 5, 1, 1, 2, 0, 0`**. Evidence field `gate4.objects_present`. **An
 
 **Gate 4 ends at verified `D2` plus recorded evidence.** When the post-migration checks pass:
 
-1. Record the evidence in [A8_7_EVIDENCE.md](A8_7_EVIDENCE.md), including the worktree commit, the four applied names, the fourteen-row history, `QG`, and the unchanged counts.
+1. Record the evidence in [A8_7_EVIDENCE.md § Gate 4](A8_7_EVIDENCE.md#gate-4--production-migrations-69), which has its own capture record, including the worktree commit, the four applied names, the fourteen-row history, `QG`, and the unchanged counts. **Do not record Gate 4 in the 1c capture record** — its rows require the notification objects to be absent, so a correct Gate 4 filled into it reads as a boundary violation.
 2. Close the Owner no-use window.
 3. **Stop.**
 
@@ -1096,7 +1098,7 @@ The accurate description of the operation is:
 
 All nine A8 migrations, in application order. All nine are additive; none drops anything.
 
-> **Migrations 1 through 5 are the [A8.7b-INCIDENT-1c repair set](#repair-boundary).** Migrations 6 through 9 are documented here for completeness and for the later rollout slice; **they must not be applied during the repair.**
+> **Entries 1 through 5 are history. Entries 6 through 9 are the live set.** Migrations 1–5 are the [A8.7b-INCIDENT-1c repair set](#repair-boundary); they were applied and verified on 2026-08-04, and their entries are retained as the reference for any later dispute about what was applied. **Migrations 6 through 9 are exactly the [Gate 4](#gate-4--production-migrations-69) set**, and their entries below are the authoritative recovery reference that [G4.12](#g412-stop-conditions) sends an operator to. Their prohibition ended with the repair and is replaced by Gate 4's own authorization, which is separate and does not yet exist.
 
 **The three physical-state classifications**, which every entry below uses:
 
@@ -1108,7 +1110,9 @@ All nine A8 migrations, in application order. All nine are additive; none drops 
 
 `migrate resolve --applied` is the dangerous one throughout: it tells Prisma to stop trying, permanently, and every later migration then runs against a schema nobody re-verified.
 
-**Escalation condition, common to all nine:** any state not exactly matching a case below, any doubt about which case applies, or any temptation to "just drop it and re-run" — stop, record the physical state, and get a second reviewer. Production holds no A8 rows, and the deployed code was already incompatible before the attempt began, so **waiting costs nothing and makes nothing worse**. There is no partial state below whose remedy is urgent.
+**Escalation condition, common to all nine:** any state not exactly matching a case below, any doubt about which case applies, or any temptation to "just drop it and re-run" — stop, record the physical state, and get a second reviewer.
+
+**Waiting still costs nothing, but not for the reason it originally did.** The first version of this rule reasoned that Production held no A8 rows and that its deployed code was already incompatible, so nothing could be made worse. **Both halves of that expired with the repair.** Production now holds A8 migrations 1–5 and serves the validated `534959d`. The conclusion survives on different grounds: **no deployed code reads anything migrations 6–9 create.** `ENABLE_OWNER_EVENT_CAPTURE` is absent, the notification tables are queried only by code that is not deployed, and an index changes no result. A stop during Gate 4 therefore leaves Production either in the validated `D1′` or in a partial state that nothing running touches. There is still no partial state below whose remedy is urgent.
 
 ---
 
@@ -1184,44 +1188,74 @@ Adds `reminder_delivery_attempts.schedule_settled_at`; backfills it on non-`clai
 
 ---
 
-**6. `20260802173000_a8_4b1_capability_skip_reason` — 1 statement.**
+**6. `20260802173000_a8_4b1_capability_skip_reason` — 1 statement. Gate 4 migration 1 of 4.**
 
 `ALTER TYPE "ReminderSkipReason" ADD VALUE IF NOT EXISTS 'no_actionable_capability'`.
 
-- **Idempotency:** **Fully idempotent.** Detection Q12. Re-run rather than resolve. **Some present** is not reachable.
+- **Idempotency:** **Fully idempotent** (`IF NOT EXISTS`).
+- **Likely failure points:** only a connection loss. A single-statement file cannot be partially applied.
+- **Detection:** Q12 with the label name, or the `m6_label` column of [QG](#g411-post-migration-verification).
+- **Clean re-execution safe?** **Yes, unconditionally.** Re-running is a no-op if the label is present.
+- **None present:** `migrate resolve --rolled-back`, re-run.
+- **All present:** re-running is a safer choice than `migrate resolve --applied`, and costs nothing.
+- **Some present:** **not reachable** — one statement, one label.
 
 ---
 
-**7. `20260802210000_a8_4b2_repeated_ambiguous_stop_reason` — 1 statement.**
+**7. `20260802210000_a8_4b2_repeated_ambiguous_stop_reason` — 1 statement. Gate 4 migration 2 of 4.**
 
 `ALTER TYPE "ReminderScheduleStopReason" ADD VALUE IF NOT EXISTS 'repeated_ambiguous_outcomes'`.
 
-- **Idempotency:** **Fully idempotent.** Detection Q12. Re-run rather than resolve. **Some present** is not reachable.
+- **Idempotency:** **Fully idempotent** (`IF NOT EXISTS`).
+- **Likely failure points:** only a connection loss. A single-statement file cannot be partially applied.
+- **Detection:** Q12 with the label name, or the `m7_label` column of [QG](#g411-post-migration-verification).
+- **Clean re-execution safe?** **Yes, unconditionally.** Re-running is a no-op if the label is present.
+- **None present:** `migrate resolve --rolled-back`, re-run.
+- **All present:** re-running is a safer choice than `migrate resolve --applied`, and costs nothing.
+- **Some present:** **not reachable** — one statement, one label.
 
 ---
 
-**8. `20260803090000_a8_4b3_advance_due_scan_index` — 1 statement.**
+**8. `20260803090000_a8_4b3_advance_due_scan_index` — 1 statement. Gate 4 migration 3 of 4, and the only migration in the gate that touches a table that already exists.**
 
-`CREATE INDEX IF NOT EXISTS "task_reminder_schedules_advance_due_scan_idx"` — a partial index on `("advance_occurrence_at", "id")`.
+`CREATE INDEX IF NOT EXISTS "task_reminder_schedules_advance_due_scan_idx"` — a partial index on `("advance_occurrence_at", "id")` where `"status" = 'active' AND "advance_disposition" = 'scheduled'`.
 
-- **Idempotency:** **Fully idempotent.**
-- **Likely failure points:** the index build takes a write lock on `task_reminder_schedules`. Empty in Production, so instantaneous.
-- **Detection:** Q13.
-- **Clean re-execution safe?** Yes. **If this ever runs against a populated table**, build it manually with `CREATE INDEX CONCURRENTLY` and let the `IF NOT EXISTS` turn the migration into a no-op.
-- **Some present:** a failed index build can leave an **invalid** index. Q13 reports `indisvalid`; an invalid index must be dropped before rebuilding.
+- **Idempotency:** **Fully idempotent**, with one trap: `IF NOT EXISTS` matches on the **name alone**, so an index carrying the right name and a wrong definition would satisfy it permanently and silently.
+- **Likely failure points:** the build takes a **`SHARE`** lock on `task_reminder_schedules` and holds it for the whole build, blocking every write to that table. Run the row count and the lock probe in [G4.8](#g48-lock-risk-checks) first; against an empty table the build is instantaneous.
+- **Detection:** Q13, reading **`indisvalid`** as well as existence.
+- **Clean re-execution safe?** Yes, from **none present** and from **all present** alike.
+- **None present:** the index does not exist under any name. `migrate resolve --rolled-back`, re-run. One statement means there is nothing else to undo first.
+- **All present:** the index exists **and** `indisvalid = true` **and** its definition matches the migration — same table, same column order, same partial predicate. Prove the definition, not the name.
+- **Some present:** a failed build leaves an **invalid** index, which satisfies `IF NOT EXISTS` while serving nothing. It must be removed with **`DROP INDEX CONCURRENTLY`** before any rebuild.
+- **If the table is populated:** this is **not** a free-hand manual build. The out-of-band `CREATE INDEX CONCURRENTLY` forward fix is specified, with its verification and its constraints, in [G4.9](#g49-the-populated-table-branch), and it **requires a second, separate Owner authorization before any write**. Gate 4's own authorization does not reach it.
 
 ---
 
-**9. `20260803120000_a8_5a_owner_notification_intents` — 28 statements.**
+**9. `20260803120000_a8_5a_owner_notification_intents` — 28 statements. Gate 4 migration 4 of 4, and the largest migration in the gate.**
 
-Creates five enum types and two tables — `owner_notification_intents` and `owner_notification_attempts` — with one foreign key, all CHECK constraints, five indexes, and RLS on both.
+Creates five enum types and two tables — `owner_notification_intents` and `owner_notification_attempts` — with fifteen named constraints, six indexes, and RLS on both. It alters no existing table.
 
-- **Idempotency:** **Not idempotent.** No `IF NOT EXISTS` anywhere.
+**The exact object inventory.** [G4.11](#g411-post-migration-verification) verifies Q11 and Q13 against "every named object from the recovery tree", and a partial application is caught by name rather than by count, so the names are written out here:
+
+| Kind                                                   | Names                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Enum types (5)                                         | `OwnerNotificationEventType`, `OwnerNotificationSubjectKind`, `OwnerNotificationState`, `OwnerNotificationSuppressionReason`, `OwnerNotificationAttemptOutcome`                                                                                                                                                                                                                                                                             |
+| Tables (2)                                             | `owner_notification_intents`, `owner_notification_attempts`                                                                                                                                                                                                                                                                                                                                                                                 |
+| Primary keys (2)                                       | `owner_notification_intents_pkey`, `owner_notification_attempts_pkey`                                                                                                                                                                                                                                                                                                                                                                       |
+| Foreign key (1)                                        | `owner_notification_attempts_intent_id_fkey` — `ON DELETE RESTRICT`, `ON UPDATE CASCADE`                                                                                                                                                                                                                                                                                                                                                    |
+| CHECK constraints on `owner_notification_intents` (8)  | `owner_notification_intents_settled_at_matches_state`, `owner_notification_intents_suppression_reason_matches_state`, `owner_notification_intents_failure_code_matches_state`, `owner_notification_intents_claim_fields_coherent`, `owner_notification_intents_claim_only_when_claimed`, `owner_notification_intents_claim_sequence_valid`, `owner_notification_intents_attempt_count_valid`, `owner_notification_intents_identity_present` |
+| CHECK constraints on `owner_notification_attempts` (4) | `owner_notification_attempts_attempt_number_valid`, `owner_notification_attempts_acceptance_matches_outcome`, `owner_notification_attempts_provider_call_recorded`, `owner_notification_attempts_failure_code_matches_outcome`                                                                                                                                                                                                              |
+| Indexes (6)                                            | `owner_notification_intents_identity_key` (unique), `owner_notification_intents_pending_idx` (partial on `state = 'pending'`), `owner_notification_intents_occurred_at_idx`, `owner_notification_intents_subject_idx`, `owner_notification_attempts_intent_attempt_key` (unique), `owner_notification_attempts_org_intent_idx`                                                                                                              |
+| RLS                                                    | enabled on both tables, with **zero policies** — deny-by-default                                                                                                                                                                                                                                                                                                                                                                            |
+
+**Q13 returns eight rows for these two tables, not six**, because the two primary-key indexes appear alongside the six created explicitly. Every one must report `indisvalid = true`.
+
+- **Idempotency:** **Not idempotent.** No `IF NOT EXISTS` anywhere, so re-running against a partial state fails on the first object that already exists.
 - **Likely failure points:** none involving existing data — it alters no existing table and backfills nothing. A failure here is a connection loss or a name collision.
-- **Detection:** Q7 for the tables, Q9 for RLS, Q11 for constraints, Q12 for the five enum types, Q13 for the indexes.
+- **Detection:** Q7 for the tables, Q9 for RLS, Q11 for constraints, Q12 for the five enum types, Q13 for the indexes; [QG](#g411-post-migration-verification) summarises the load-bearing subset in one row but **does not replace the per-name enumeration** for a recovery decision.
 - **Clean re-execution safe?** From **none present**, yes.
 - **None present:** `migrate resolve --rolled-back`, re-run.
-- **All present:** enumerate everything, including **RLS on both tables**, before considering `migrate resolve --applied`. RLS is the assertion most likely to be quietly missing, and the one whose absence is least visible.
+- **All present:** "all" means every row of the inventory above — all fifteen constraint names, all six indexes plus the two primary-key indexes valid, and **RLS on both tables** — before `migrate resolve --applied` may be considered. RLS is the assertion most likely to be quietly missing, and the one whose absence is least visible.
 - **Some present:** **stop and escalate.** The dangerous partial is tables present with RLS **not** enabled: deny-by-default is the only thing standing between these tables and the anon key.
 
 ### Production preflight and verification SQL

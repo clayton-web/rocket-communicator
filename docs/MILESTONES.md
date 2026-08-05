@@ -901,9 +901,13 @@ The failure model claimed more atomicity than exists. **No A8 migration contains
 | **A8.7b-INCIDENT-1b** | Incident runbook correction, credential safety, and repair-boundary guards                            | **Complete**             |
 | **A8.7b-INCIDENT-1c** | Production schema compatibility repair — five migrations from an `ee5e82a` worktree, no deployment    | **Complete 2026-08-04**  |
 | **A8.7b-INCIDENT-1d** | Reminder endpoint hotfix on top of `ee5e82a`, deployed and validated in Production                    | **Complete 2026-08-05**  |
-| **A8.7b-INCIDENT-1e** | Documentation reconciliation after the hotfix. **This slice.** No production contact                  | **Complete**             |
+| **A8.7b-INCIDENT-1e** | Documentation reconciliation after the hotfix. No production contact                                  | **Complete**             |
+| **A8.7b-INCIDENT-1f** | Gate 4 production migration runbook — the remaining four migrations, written out in full              | **Complete** (`31d0cd1`) |
+| **A8.7b-INCIDENT-1g** | Gate 4 evidence record and recovery reconciliation. **This slice.** No production contact             | **Complete**             |
 
 **A8.7b-INCIDENT-1a evidence:** [A8_7B_INCIDENT_1A_EVIDENCE.md](A8_7B_INCIDENT_1A_EVIDENCE.md). **1c and 1d evidence:** [A8_7_EVIDENCE.md](A8_7_EVIDENCE.md). **Repair procedure:** [DEPLOYMENT.md](DEPLOYMENT.md#a87b-incident-1c--production-schema-compatibility-repair). **Review gates:** [REVIEW_CHECKLIST.md](REVIEW_CHECKLIST.md).
+
+**Gate 4 is documented, unauthorized, and not begun.** Runbook: [DEPLOYMENT.md § Gate 4](DEPLOYMENT.md#gate-4--production-migrations-69). Evidence template: [A8_7_EVIDENCE.md § Gate 4](A8_7_EVIDENCE.md#gate-4--production-migrations-69). It applies A8 migrations 6–9 and moves Production from `D1′` to `D2`; it **deploys nothing**, and it authorizes neither Gate 5 nor the flag-staging slices behind it.
 
 **A8.7b-INCIDENT-1b acceptance criteria**
 
@@ -942,6 +946,19 @@ The failure model claimed more atomicity than exists. **No A8 migration contains
 - [x] The runtime-value import hazard is recorded as a permanent operational and architectural note, not as incident trivia
 - [x] Guards assert the corrected incident history, and no guard's scope was broadened beyond documentation accuracy
 - [x] No production contact, no implementation change, no migration, no deployment, no flag change, and no push
+- [ ] **Architecture review** — outstanding
+
+**A8.7b-INCIDENT-1g acceptance criteria**
+
+- [x] Gate 4 has its own evidence section, so the runbook's instruction to record evidence resolves to somewhere it can be recorded
+- [x] That section states that the 1c capture record must not be reused, because two of its rows require the objects a correct Gate 4 creates to be absent
+- [x] The evidence record no longer claims that no part of it has been performed against Production
+- [x] The per-migration recovery decision tree names entries 6–9 as the live Gate 4 set rather than as future reference, and its escalation rationale no longer rests on the expired pre-repair premise
+- [x] Entries 6, 7, and 8 carry the three physical-state classifications that [G4.12](DEPLOYMENT.md#g412-stop-conditions) instructs an operator to use
+- [x] Entry 8 routes a populated `task_reminder_schedules` to the separately authorized branch in [G4.9](DEPLOYMENT.md#g49-the-populated-table-branch) instead of to an unauthorized manual index build
+- [x] Migration 9's object inventory is written out by name and its index count corrected from five to six, so Q11 and Q13 have something to check against
+- [x] Guards derive that inventory from the migration SQL, so the documentation cannot drift from what the migration builds
+- [x] No production contact, no migration, no deployment, no flag change, no scheduler action, and no push
 - [ ] **Architecture review** — outstanding
 
 **A8.7c through A8.7e each require their own authorization.** Migrations 6–9 must be applied and verified before the local commits may be pushed, because a push to `main` deploys automatically — and because Production now serves a commit that is **not** on `main`, a push would also replace it.
