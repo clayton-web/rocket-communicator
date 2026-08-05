@@ -134,6 +134,9 @@ apps/web/e2e/.artifacts/
 .cursor/cache/
 .cursor/*.log
 
+# Local AI-spend measurement scripts (throwaway, not part of the build)
+.cursor-audit/
+
 # Supabase CLI local linkage / version cache (never commit)
 **/supabase/.temp/
 
