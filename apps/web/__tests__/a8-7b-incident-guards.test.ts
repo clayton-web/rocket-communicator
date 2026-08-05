@@ -216,22 +216,40 @@ describe('A8.7b-INCIDENT-1c repaired state is recorded truthfully', () => {
       );
     }
     const runbook = read('docs/DEPLOYMENT.md');
-    expect(runbook, 'D1′ must be recorded as the current state, not D1').toMatch(
-      /\*\*D1′\*\*[^\n]*Current state/,
+    // Production passed through D1′ on 2026-08-05 and left it the same day when Gate 4 advanced
+    // the schema. D1′ must survive as history — it is what 1c and 1d reached — but naming it the
+    // current state would send an operator to verify against a Production that no longer exists.
+    expect(runbook, 'D2 must be recorded as the current state').toMatch(
+      /\*\*D2\*\*[^\n]*Current state/,
     );
+    expect(runbook, 'D1′ must not be labelled current').not.toMatch(
+      /\*\*D1′\*\*[^\n]*\*\*Current state\.\*\*/,
+    );
+    expect(runbook, 'D1′ must still be recorded as the state 1d reached').toMatch(/\*\*D1′\*\*/);
   });
 
-  it('keeps the boundary visible: five applied, four still prohibited', () => {
+  /**
+   * The repair's boundary is now history on both sides: it held, and Gate 4 then applied the four
+   * it excluded. What the guard defends has therefore changed from "four are still prohibited" to
+   * "all nine are recorded as applied, each on the date and by the gate that applied it" — which
+   * is the fact an operator reading the migration list depends on.
+   */
+  it('keeps the boundary visible: five applied by the repair, four by Gate 4', () => {
     const runbook = read('docs/DEPLOYMENT.md');
 
-    const applied = runbook.match(/\*\*applied in production 2026-08-04\*\*/g) ?? [];
-    expect(applied, 'exactly the five repair migrations are marked applied').toHaveLength(
+    const byRepair = runbook.match(/\*\*applied in production 2026-08-04\*\*/g) ?? [];
+    expect(byRepair, 'exactly the five repair migrations are dated to the repair').toHaveLength(
       REPAIR_MIGRATIONS.length,
     );
 
-    const pending = runbook.match(/\*\*not yet applied in production\*\*/g) ?? [];
-    expect(pending, 'migrations 6–9 must still be marked unapplied').toHaveLength(
+    const byGate4 =
+      runbook.match(/\*\*applied in production 2026-08-05\*\* as Gate 4 migration/g) ?? [];
+    expect(byGate4, 'exactly the four Gate 4 migrations are dated to Gate 4').toHaveLength(
       PROHIBITED_MIGRATIONS.length,
+    );
+
+    expect(runbook, 'no migration may still be described as unapplied').not.toMatch(
+      /\*\*not yet applied in production\*\*/,
     );
   });
 

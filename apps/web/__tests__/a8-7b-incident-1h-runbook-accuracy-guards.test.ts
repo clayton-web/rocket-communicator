@@ -63,15 +63,24 @@ describe('the runbook records the Production schema as it actually is', () => {
     );
   });
 
-  it('still separates the applied repair set from the unapplied Gate 4 set', () => {
+  it('separates the repair set from the Gate 4 set, both now applied', () => {
     const contents = runbook();
     const heading = '### Reminder engine operations';
     const start = contents.indexOf(heading);
     expect(start, 'the reminder operations section must exist').toBeGreaterThan(-1);
     const section = contents.slice(start, contents.indexOf('### Owner notification worker'));
 
-    expect(section, 'the four remaining migrations must still be named as unapplied').toMatch(
-      /remaining migrations are \[Gate 4\][^\n]*still unapplied/i,
+    // Gate 4 applied the four on 2026-08-05, so the separation is now by date and gate rather
+    // than by applied-versus-pending. Losing the distinction would erase which gate did what.
+    expect(section, 'the repair set must stay dated to 2026-08-04').toMatch(
+      /applied to Production on 2026-08-04/,
+    );
+    expect(section, 'the four remaining migrations must be recorded as applied by Gate 4').toMatch(
+      /remaining migrations were applied on 2026-08-05 by \[Gate 4\]/i,
+    );
+    expect(section, 'the section must name the resulting state').toMatch(/is at `D2`/);
+    expect(section, 'deploying the consuming code must be named as Gate 5, and not begun').toMatch(
+      /\[Gate 5\][^\n]*which has not begun/,
     );
     expect(section, 'the reminder routes must be recorded as functional, not future').toMatch(
       /lifecycle wiring \*\*are\*\* functional/,

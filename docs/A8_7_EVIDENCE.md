@@ -2,7 +2,7 @@
 
 Governed by [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md). Procedure: [DEPLOYMENT.md § A8.7 production rollout](DEPLOYMENT.md#a87-production-rollout). Milestone status: [MILESTONES.md](MILESTONES.md).
 
-**This file is part record and part template.** Sections **1a** through **1d** are completed records: 1c and 1d were performed against Production on 2026-08-04 and 2026-08-05. **Gate 4 and everything after it is unfilled template**, and no part of it has been performed. A8.7a created this file; A8.7b-INCIDENT-1b restructured it around the incident.
+**This file is part record and part template.** Sections **1a** through **1d** and **Gate 4** are completed records: 1c, 1d, and Gate 4 were performed against Production on 2026-08-04 and 2026-08-05. **[Gate 5](#gate-5--deploying-the-queued-a84ba86-code) and everything after it is unfilled template**, and no part of it has been performed. A8.7a created this file; A8.7b-INCIDENT-1b restructured it around the incident.
 
 > **A8.7b is retired.** Its section is replaced by the incident sections below — the local rehearsal (**1a**), the runbook correction (**1b**), the Production schema repair (**1c**, five migrations, no deployment), and the reminder endpoint hotfix (**1d**). The remaining four migrations are **not** part of any of them: they are [Gate 4](#gate-4--production-migrations-69), which is pending and separately authorized. Context: [MILESTONES.md](MILESTONES.md) incident notice.
 
@@ -499,7 +499,7 @@ Fill every row. A blank row is an incomplete record, not an implied "nothing to 
 | **Nothing deployed; deployment ID unchanged (y/n)**                                                                                                  | **y** — no deployment, promotion, or rollback occurred at any point                                                                                                                                                                                                            |
 | **Nothing pushed (y/n)**                                                                                                                             | **y** — `origin/main` remains `ee5e82a`, twenty-seven commits behind local HEAD                                                                                                                                                                                                |
 | Final state (**expect D2**)                                                                                                                          | **`D2`** — schema at all nine A8 migrations, code unchanged on `534959d`                                                                                                                                                                                                       |
-| **Gate 5 not begun (y/n)**                                                                                                                           | **y** — not begun                                                                                                                                                                                                                                                              |
+| **Gate 5 not begun (y/n)**                                                                                                                           | **y** — not begun. Its runbook and capture record were written afterwards by the Gate 5 preparation slice; see [§ Gate 5](#gate-5--deploying-the-queued-a84ba86-code)                                                                                                          |
 
 ### Deviations from the approved procedure
 
@@ -531,6 +531,138 @@ Confirm each explicitly; none is authorized by Gate 4:
 - No Owner or Recipient email, and no Gmail API call.
 - No `INSERT`, `UPDATE`, `DELETE`, or `migrate resolve` beyond one explicitly authorized in a stop.
 - **Gate 5 and Gate 6 are not begun**, and completing Gate 4 does not make either of them due.
+
+---
+
+## Gate 5 — Deploying the queued A8.4b–A8.6 code
+
+**Not begun. This section is an unfilled template, and no part of it has been performed.** Procedure: [DEPLOYMENT.md § Gate 5](DEPLOYMENT.md#gate-5--deploying-the-queued-a84ba86-code). Gate 5 deploys the queued A8.4b–A8.6 code to Production and does nothing else — no migration, no environment variable, no feature flag, no scheduler job, no Gmail action, no database write. It moves Production from **`D2`** to **`D3`**, which is also **`F0`**.
+
+> **⚠ Do not record Gate 5 in the [Gate 4 capture record](#gate-4--production-migrations-69).** That record belongs to a database gate: its rows describe a worktree that ran `migrate deploy`, a lock probe, a migration-history transition from ten rows to fourteen, and a pending set. **Gate 5 runs no migration at all.** A deployment filled into it would read as a gate that migrated something, and would overwrite the evidence that Gate 4's boundary held. Use the table below.
+
+**What a correct Gate 5 records is a deployment, not a migration.** The migration history must be **unchanged** at fourteen rows before and after. The row counts must be **unchanged**. The artifact of the gate is a **deployment ID**, not an applied migration name. **A Gate 5 record that reports a schema change is evidence that the wrong procedure was followed.**
+
+### Gate 5 capture record
+
+Fill every row. A blank row is an incomplete record, not an implied "nothing to report" — two of Gate 4's four deviations exist because fields went unfilled. Names in parentheses are the evidence fields the runbook uses.
+
+| Field                                                                                                                                                                                                                                                                | Value |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- |
+| Operator                                                                                                                                                                                                                                                             |       |
+| **Authorization reference** — Gate 5 requires its own; Gate 4's does not carry into it                                                                                                                                                                               |       |
+| Execution window (start / end, ISO with timezone)                                                                                                                                                                                                                    |       |
+| Owner no-use window (opened, closed, by whom)                                                                                                                                                                                                                        |       |
+| **Exact deployed commit** (full 40-character SHA)                                                                                                                                                                                                                    |       |
+| Local `git rev-parse HEAD` at the time of authorization                                                                                                                                                                                                              |       |
+| Local `git rev-parse origin/main` (**expect `ee5e82a`, unpushed**)                                                                                                                                                                                                   |       |
+| `534959d` is an ancestor of the deployment commit (y/n), and the merge that carried it (**expect `68bedff`**)                                                                                                                                                        |       |
+| `534959d` is **not** an ancestor of `origin/main` (y/n)                                                                                                                                                                                                              |       |
+| Deployment worktree path                                                                                                                                                                                                                                             |       |
+| Worktree `git status --short` empty (y/n)                                                                                                                                                                                                                            |       |
+| Worktree migration-directory count (**expect 14**, matching Production)                                                                                                                                                                                              |       |
+| `.vercel/project.json` present and linked (y/n)                                                                                                                                                                                                                      |       |
+| **Prerequisite** — `pnpm verify` green at the commit, run before the window opened (y/n, when)                                                                                                                                                                       |       |
+| **Prerequisite** — nine PostgreSQL suites green at the commit, on `postgres:17` (y/n, when, pass counts)                                                                                                                                                             |       |
+| **Prerequisite** — production bundle guards green against a real local build (y/n)                                                                                                                                                                                   |       |
+| **Prerequisite** — `8588c5d` confirmed redeployable, read-only (y/n)                                                                                                                                                                                                 |       |
+| **D2 baseline** — Q2 migration history (**expect exactly 14**, all finished, none rolled back, `applied_steps_count = 1`)                                                                                                                                            |       |
+| **D2 baseline** — Q7 (**expect all four notification and reminder tables present**)                                                                                                                                                                                  |       |
+| **D2 baseline** — QG positive assertion, `public`-scoped (pass/fail, readings)                                                                                                                                                                                       |       |
+| **D2 baseline** — Q1 `tasks` count before (`tasks.count.before`). **Gate 4 deviation 3 exists because this was skipped — do not repeat it**                                                                                                                          |       |
+| **D2 baseline** — `task_reminder_schedules` count before                                                                                                                                                                                                             |       |
+| **D2 baseline** — `reminder_delivery_attempts` count before (**expect 0**)                                                                                                                                                                                           |       |
+| **D2 baseline** — `owner_notification_intents` count before (**expect 0**)                                                                                                                                                                                           |       |
+| **D2 baseline** — `owner_notification_attempts` count before (**expect 0**)                                                                                                                                                                                          |       |
+| Flags before the build (**expect all three absent**)                                                                                                                                                                                                                 |       |
+| Scheduler state before (both jobs inactive; **no** reminder job; **no** notification job)                                                                                                                                                                            |       |
+| Vercel deployment protection on immutable URLs confirmed enabled, read-only (y/n)                                                                                                                                                                                    |       |
+| **Previous deployment ID** (**expect `dpl_3oder2T3PuDYdmp8pezy6u7RwPRm`**) and its commit (**expect `534959d`**)                                                                                                                                                     |       |
+| Deployment command used (**expect `vercel deploy --prod --skip-domain --yes`**)                                                                                                                                                                                      |       |
+| **New deployment ID**                                                                                                                                                                                                                                                |       |
+| Immutable deployment URL (recorded; it exists from creation and is not suppressed by `--skip-domain`)                                                                                                                                                                |       |
+| **Deployment target** (**expect `production`** — anything else must not be promoted)                                                                                                                                                                                 |       |
+| **Deployment state** (**expect READY**) and created-at timestamp                                                                                                                                                                                                     |       |
+| **Commit SHA bound to the deployment**, from deployment metadata (**must equal the authorized commit**)                                                                                                                                                              |       |
+| Build command, from project settings                                                                                                                                                                                                                                 |       |
+| Build command matches the Owner's [G5.13](DEPLOYMENT.md#g513-the-build-command-question) decision (y/n, which)                                                                                                                                                       |       |
+| Node version, from project settings                                                                                                                                                                                                                                  |       |
+| **Migration during build (expect none)** — only `prisma generate` may appear in the build log                                                                                                                                                                        |       |
+| **Route count** — build log (**expect 51 route lines plus a separate `Proxy (Middleware)` line**) and `routes-manifest.json` (**expect 52**). See [G5.12](DEPLOYMENT.md#g512-the-expected-route-set): the two differ by `/_global-error` and describe the same build |       |
+| **Route delta** — `/api/v1/internal/notifications/process` **present** (y/n); nothing removed (y/n)                                                                                                                                                                  |       |
+| `/attention`, `/tasks/[taskId]`, and `/api/v1/tasks/[taskId]/reminder` present in the route set (y/n)                                                                                                                                                                |       |
+| **Environment binding** — all five Production-only variables present, `DATABASE_URL` among them (y/n)                                                                                                                                                                |       |
+| **Flags in the deployment environment** (**expect all three absent**)                                                                                                                                                                                                |       |
+| **Pre-promotion inspection** — every [G5.11](DEPLOYMENT.md#g511-pre-promotion-inspection) row passed (y/n)                                                                                                                                                           |       |
+| Preview promotion considered or used (**expect: no, never**)                                                                                                                                                                                                         |       |
+| `git push origin main` performed before validation (**expect n**)                                                                                                                                                                                                    |       |
+| **Promotion command and result**; production domain resolves to the new deployment (y/n)                                                                                                                                                                             |       |
+| Previous deployment retained, not deleted (y/n)                                                                                                                                                                                                                      |       |
+| **Smoke 1** — `GET /api/v1/tasks` unauthenticated (**expect typed 401**)                                                                                                                                                                                             |       |
+| **Smoke 2** — `GET /api/v1/tasks/{taskId}/reminder` unauthenticated (**expect typed 401**)                                                                                                                                                                           |       |
+| **Smoke 3** — `GET /api/v1/session` (**expect 200, `owner`, `axford`**)                                                                                                                                                                                              |       |
+| **Smoke 4** — `GET /api/v1/tasks` (**expect 200, cursor page shape**)                                                                                                                                                                                                |       |
+| **Smoke 5** — Owner `/tasks` renders (y/n)                                                                                                                                                                                                                           |       |
+| **Smoke 6** — Owner `/tasks/{taskId}` renders, notes, outcome, reminder state (y/n)                                                                                                                                                                                  |       |
+| **Smoke 7** — reminder `GET` on a real Task (**expect 200, `state=no_due_date`, ETag ending `v0`**). This is the 1d regression check                                                                                                                                 |       |
+| **Smoke 8** — reminder `GET` on an unknown Task (**expect typed `NOT_FOUND`**)                                                                                                                                                                                       |       |
+| **Smoke 9** — `/attention` loads and **does not reach its error boundary** (y/n)                                                                                                                                                                                     |       |
+| **Smoke 10** — `/attention` section one renders, empty (y/n)                                                                                                                                                                                                         |       |
+| **Smoke 11** — `/attention` section two renders, empty (y/n)                                                                                                                                                                                                         |       |
+| **Smoke 12** — `GET /c/{token}` capability page renders, non-mutating (y/n)                                                                                                                                                                                          |       |
+| **Inertness** — flags after (**expect all three still absent**)                                                                                                                                                                                                      |       |
+| **Inertness** — `owner_notification_intents` count after (**expect 0, unchanged**)                                                                                                                                                                                   |       |
+| **Inertness** — `owner_notification_attempts` count after (**expect 0, unchanged**)                                                                                                                                                                                  |       |
+| **Inertness** — `task_reminder_schedules` count after (**expect unchanged from baseline**)                                                                                                                                                                           |       |
+| **Inertness** — `reminder_delivery_attempts` count after (**expect 0, unchanged**)                                                                                                                                                                                   |       |
+| **Inertness** — `tasks` count after (**expect unchanged from Q1**)                                                                                                                                                                                                   |       |
+| **Inertness** — Q2 migration history after (**expect still exactly 14 rows; Gate 5 applies none**)                                                                                                                                                                   |       |
+| **Inertness** — scheduler state after (**expect unchanged; no job created, resumed, or invoked**)                                                                                                                                                                    |       |
+| **Inertness** — `/api/v1/internal/notifications/process` invoked by nothing (y/n)                                                                                                                                                                                    |       |
+| **Inertness** — Gmail connected, untouched, no API call (y/n)                                                                                                                                                                                                        |       |
+| No reminder created or modified during the window (y/n)                                                                                                                                                                                                              |       |
+| **Nothing migrated (y/n)**                                                                                                                                                                                                                                           |       |
+| **Nothing pushed (y/n)** — `origin/main` still `ee5e82a`                                                                                                                                                                                                             |       |
+| **No environment variable or feature flag set, unset, or edited (y/n)**                                                                                                                                                                                              |       |
+| Final state (**expect `D3`, equivalently `F0`**)                                                                                                                                                                                                                     |       |
+| **Gate 6 not begun (y/n)**                                                                                                                                                                                                                                           |       |
+
+### Deviations from the approved procedure
+
+Record every departure, including any that seemed harmless at the time. The 1c record exists in the form it does because five were recorded honestly, and two of Gate 4's four are unfilled fields rather than wrong actions.
+
+| #   | Deviation | Approved plan said | Status |
+| --- | --------- | ------------------ | ------ |
+|     |           |                    |        |
+
+### Stop conditions encountered
+
+Each hard stop in [G5.17](DEPLOYMENT.md#g517-stop-conditions) that fired, the physical state recorded at the time, and the decision taken. **A stop that was worked around rather than decided is itself the finding.**
+
+| Condition | Physical state recorded | Decision, and who authorized it |
+| --------- | ----------------------- | ------------------------------- |
+|           |                         |                                 |
+
+### Containment actions taken
+
+**Expect none.** If any was taken, record what was done, why, and under whose authorization. Per [G5.18](DEPLOYMENT.md#g518-containment-and-rollback-posture), primary containment is a **fresh production-target build of `534959d`**, not a one-step rollback; `8588c5d` is the universal fallback and is a redeployment.
+
+| Action | Trigger | Authorized by | Resulting deployment ID | Resulting state |
+| ------ | ------- | ------------- | ----------------------- | --------------- |
+|        |         |               |                         |                 |
+
+### What this gate must not do
+
+Confirm each explicitly; none is authorized by Gate 5:
+
+- **No migration of any kind**, and no `migrate deploy`, `migrate resolve`, or schema change. The migration history must read fourteen rows before and after.
+- **No `INSERT`, `UPDATE`, or `DELETE`**, and no Owner reminder created or modified.
+- **No push to `main`.** A push deploys automatically and would bypass the inspection gate this whole procedure is built around.
+- **No promotion of a preview-target deployment**, under any circumstances.
+- No environment variable or feature flag set, unset, or edited. All three A8 flags stay absent.
+- No scheduler job created, resumed, edited, or invoked, and no worker endpoint called manually — including the notification endpoint this gate ships.
+- No Owner or Recipient email, and no Gmail API call.
+- No Vercel project setting changed, including the build command. If [G5.13](DEPLOYMENT.md#g513-the-build-command-question) is resolved by changing it, that happens before the gate under its own authorization.
+- **Gate 6 is not begun**, and completing Gate 5 does not make it due.
 
 ---
 

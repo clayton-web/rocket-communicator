@@ -334,7 +334,7 @@ Gates for the due-date-driven Follow-up Engine (D102–D110). These record **exp
 **Deployment**
 
 - [x] A **preview-target deployment was not promoted.** The Preview environment lacks `DATABASE_URL` and four other Production-only variables, so promoting one is an outage
-- [x] The deployment is **production-target**, created with `--skip-domain` so it could be inspected before serving traffic
+- [x] The deployment is **production-target**, created with `--skip-domain` so it could be inspected before the production domain was moved to it. `--skip-domain` withholds the alias; it does not make the immutable deployment URL unreachable
 - [x] Before promotion: commit SHA, target, build state, route set, environment-variable names, Node version, and build command were all recorded
 - [x] **No migration ran during the build** — only `prisma generate` appears in the build log
 - [x] The deployment corresponds to exactly the reviewed commit and carries no queued `main` commits
@@ -347,6 +347,59 @@ Gates for the due-date-driven Follow-up Engine (D102–D110). These record **exp
 - [x] **No reminder was created or modified**, and no scheduler or provider route was invoked
 - [x] The rollback target is identified **and its condition stated**, including whether it is defective or carries a stale environment binding
 - [x] The deployed commit's reachability is recorded, since it is not on `main`
+
+### Gate 5 — deploying the queued A8.4b–A8.6 code (apply when Gate 5 is executed)
+
+> **Not executed. Gate 5 is prepared, unauthorized, and unbegun.** These gates are unticked because nothing has been done, not because anything failed. Preparation was A8.7b-INCIDENT-1k. Runbook: [DEPLOYMENT.md § Gate 5](DEPLOYMENT.md#gate-5--deploying-the-queued-a84ba86-code). Evidence template: [A8_7_EVIDENCE.md § Gate 5](A8_7_EVIDENCE.md#gate-5--deploying-the-queued-a84ba86-code).
+
+**Context.** Production is at **`D2`** — all fourteen migrations applied by Gate 4 on 2026-08-05 — while the deployed code is still `534959d`. Gate 5 deploys the queued A8.4b–A8.6 code so the code catches up to the schema, reaching `D3`/`F0` with every A8 feature inert. It runs **no migration**.
+
+**Authorization and prerequisites**
+
+- [ ] **Gate 5 has its own explicit Owner authorization.** Gate 4's does not carry into it
+- [ ] `pnpm verify` green at the deployment commit, run **before** the window opened
+- [ ] The **nine PostgreSQL suites** green at the deployment commit on `postgres:17` ([G5.3](DEPLOYMENT.md#g53-the-nine-postgresql-suites))
+- [ ] The **production bundle guards** green against a real local production build, not only the unit suite
+- [ ] `8588c5d` confirmed **redeployable**, read-only, before anything is deployed
+- [ ] The [build-command question](DEPLOYMENT.md#g513-the-build-command-question) is **resolved by the Owner** and recorded; no Vercel setting changed during the gate
+
+**Commit and worktree**
+
+- [ ] The worktree is at the authorized commit and `git status --short` is **empty** — `vercel deploy` uploads the working tree
+- [ ] `534959d` **is** an ancestor of the deployment commit through `68bedff`, and **is not** an ancestor of `origin/main`; the reminder ETag fix is carried forward and **no cherry-pick was performed**
+- [ ] The worktree holds **exactly fourteen** migration directories, matching Production
+
+**Baseline**
+
+- [ ] `D2` confirmed read-only **in this window**: fourteen finished migration rows, all four notification and reminder tables present, `QG` passing on the `public`-scoped reading
+- [ ] `Q1` **run and recorded** as the `tasks` before-baseline — Gate 4 deviation 3 exists because it was skipped there
+- [ ] All three A8 flags **absent**, and all cron-job.org jobs **inactive**, with no reminder or notification job existing
+- [ ] The Owner **no-use window** is open and its bounds recorded
+
+**Deployment**
+
+- [ ] A **preview-target deployment was not promoted**, under any circumstances
+- [ ] `git push origin main` was **not** performed before validation — a push builds and promotes automatically with no inspection step
+- [ ] The deployment is **production-target**, created with `--skip-domain`. The immutable deployment URL exists from creation and is **not** made unreachable by it; deployment protection was confirmed enabled read-only
+- [ ] Before promotion: target `production`, state READY, commit SHA, route set **by name**, environment bindings, flag absence, Node version, and build command all recorded
+- [ ] **No migration ran during the build** — only `prisma generate` appears in the build log
+- [ ] The route set is verified as a **delta of exactly one** — `/api/v1/internal/notifications/process` present, nothing removed — and not by matching a total
+
+**Validation and inertness**
+
+- [ ] Unauthenticated probes return typed `401` before any authenticated check is attempted
+- [ ] `/tasks` and `/tasks/{taskId}` render; reminder `GET` on a real Task returns 200, `no_due_date`, ETag ending `v0`
+- [ ] **`/attention` loads and does not reach its error boundary**, and **both** sections render empty
+- [ ] All three flags **still absent**; notification counts still `0`; `tasks`, `task_reminder_schedules`, and `reminder_delivery_attempts` unchanged
+- [ ] Migration history is **still exactly fourteen rows** — Gate 5 applies none
+- [ ] `/api/v1/internal/notifications/process` exists in the route set and **was invoked by nothing**
+- [ ] **No reminder was created or modified**, no email sent, and no Gmail API call made
+
+**Containment and closure**
+
+- [ ] Containment, if any, was a **fresh production-target build of `534959d`** — not a one-step Instant Rollback, which is unavailable
+- [ ] The evidence record is filled with **no blank rows**, and every deviation is recorded honestly
+- [ ] **Gate 6 was not begun**: no flag set, no scheduler job created, and `origin/main` reconciliation treated as a separate Owner decision
 
 ## Owner web experience foundation (P1; apply when P1 work is in scope)
 

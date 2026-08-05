@@ -238,18 +238,29 @@ describe('the runbook and the evidence record point at each other', () => {
   });
 });
 
-describe('the recovery tree is usable as Gate 4 recovery reference', () => {
-  it('names entries 6 through 9 as the live Gate 4 set', () => {
+describe('the recovery tree records which gate applied each entry', () => {
+  /**
+   * Gate 4 completed on 2026-08-05, so the tree stopped being a live procedure and became a
+   * reference. What it must still do is attribute every entry to the gate that applied it — an
+   * operator investigating a schema question needs to know whether an object arrived with the
+   * repair or with Gate 4, and no other document records that mapping.
+   */
+  it('attributes entries 1–5 to the repair and 6–9 to Gate 4, both complete', () => {
     const tree = recoveryTree();
 
     expect(tree, 'entries 6–9 must be identified as the Gate 4 set').toMatch(
-      /[Mm]igrations 6 through 9 are exactly the \[Gate 4\]/,
+      /[Mm]igrations 6–9 are the \[Gate 4\]/,
     );
-    expect(tree, 'the repair entries must be marked as history').toMatch(
-      /[Ee]ntries 1 through 5 are history/i,
+    expect(tree, 'the repair entries must be attributed to the repair').toMatch(
+      /[Mm]igrations 1–5 are the \[A8\.7b-INCIDENT-1c repair set\]/,
     );
-    expect(tree, 'the repair-era prohibition must be recorded as ended').toMatch(
-      /prohibition ended with the repair/i,
+    expect(tree, 'the repair date must be recorded').toMatch(/2026-08-04/);
+    expect(tree, 'the Gate 4 date must be recorded').toMatch(/2026-08-05/);
+    expect(tree, 'the whole tree must be marked history rather than pending work').toMatch(
+      /now history/i,
+    );
+    expect(tree, 'no migration may be described as pending against Production').toMatch(
+      /No migration in this repository is pending against Production/,
     );
   });
 
