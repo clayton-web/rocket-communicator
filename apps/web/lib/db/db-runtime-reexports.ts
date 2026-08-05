@@ -27,6 +27,7 @@ export {
   handoffInProgress,
   invalidState,
   isPersistedCapabilityActionable,
+  isPersistenceError,
   isUnresolvedHandoffAttemptForAdminIssuance,
   getCommunicationAccountById,
   getCommunicationAccountByOrganization,

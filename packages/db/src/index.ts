@@ -20,6 +20,7 @@ export {
   handoffInProgress,
   domainConflict,
   invalidState,
+  isPersistenceError,
   isSerializationFailure,
 } from './errors/persistence-errors.js';
 

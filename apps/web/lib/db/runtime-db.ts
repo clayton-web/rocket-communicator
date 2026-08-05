@@ -73,6 +73,10 @@ const REQUIRED_EXPORTS = [
   'invalidState',
   'handoffInProgress',
   'isPersistedCapabilityActionable',
+  // A8.7b-INCIDENT-1j. The suggestion processor classifies persistence failures through this
+  // predicate instead of importing the `PersistenceError` class, so the bundle losing it must fail
+  // loudly at load rather than by silently misclassifying a `UNIQUE_VIOLATION` as retryable.
+  'isPersistenceError',
   'revokeCapabilityRecord',
   'updateActiveAssignmentCapabilityBinding',
   'updateTaskWithExpectedVersion',

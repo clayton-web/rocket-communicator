@@ -19,6 +19,7 @@ export {
   handoffInProgress,
   domainConflict,
   invalidState,
+  isPersistenceError,
 } from './errors/persistence-errors.js';
 
 export {

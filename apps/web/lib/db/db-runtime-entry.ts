@@ -91,6 +91,13 @@ export type TracedRuntimeModule = {
   isUnresolvedHandoffAttemptForAdminIssuance: typeof TracedRuntimeBindings.isUnresolvedHandoffAttemptForAdminIssuance;
   assertAdminIssuanceNotBlockedByHandoff: typeof TracedRuntimeBindings.assertAdminIssuanceNotBlockedByHandoff;
   isPersistedCapabilityActionable: typeof TracedRuntimeBindings.isPersistedCapabilityActionable;
+  /**
+   * The persistence-error predicate, carried across the bridge rather than left to `instanceof`.
+   * `apps/web` must not import the `PersistenceError` class from the externalized package: the
+   * binding may not survive the build, and the traced runtime and `@aicaa/db` are different entry
+   * files whose class identity is not guaranteed to match in the deployed layout.
+   */
+  isPersistenceError: typeof TracedRuntimeBindings.isPersistenceError;
   revokeCapabilityRecord: typeof TracedRuntimeBindings.revokeCapabilityRecord;
   updateActiveAssignmentCapabilityBinding: typeof TracedRuntimeBindings.updateActiveAssignmentCapabilityBinding;
   updateTaskWithExpectedVersion: typeof TracedRuntimeBindings.updateTaskWithExpectedVersion;
@@ -210,6 +217,7 @@ export async function loadTracedRuntimeModule(): Promise<TracedRuntimeModule> {
       tracedRuntime.isUnresolvedHandoffAttemptForAdminIssuance,
     assertAdminIssuanceNotBlockedByHandoff: tracedRuntime.assertAdminIssuanceNotBlockedByHandoff,
     isPersistedCapabilityActionable: tracedRuntime.isPersistedCapabilityActionable,
+    isPersistenceError: tracedRuntime.isPersistenceError,
     revokeCapabilityRecord: tracedRuntime.revokeCapabilityRecord,
     updateActiveAssignmentCapabilityBinding: tracedRuntime.updateActiveAssignmentCapabilityBinding,
     updateTaskWithExpectedVersion: tracedRuntime.updateTaskWithExpectedVersion,

@@ -69,6 +69,32 @@ export function invalidState(message: string): PersistenceError {
 }
 
 /**
+ * Whether a thrown error is a `PersistenceError`, decided inside this module.
+ *
+ * The predicate exists so that callers outside `packages/db` never need the class itself. Two
+ * distinct hazards make that worth a function.
+ *
+ * The first is packaging. `@aicaa/db` is listed in `serverExternalPackages`, so a *value* imported
+ * from it by `apps/web` does not reliably survive the Next build — A8.7b-INCIDENT-1d shipped
+ * `NO_SCHEDULE_REMINDER_VERSION` as an undeclared free variable and every reminder verb threw
+ * `ReferenceError`. A class used only for `instanceof` is exactly that kind of value.
+ *
+ * The second is module identity, and it is the one a source reviewer cannot see. `apps/web` reaches
+ * persistence through the traced `dist/runtime.js`, resolved at runtime from a file path, while a
+ * static `@aicaa/db` import resolves through `dist/index.js`. Those are different entry files, and
+ * in the deployed Lambda layout there is no guarantee they share one module graph. If they do not,
+ * `error instanceof PersistenceError` is silently **false** for an error this package threw — no
+ * crash, no diagnostic, just a `UNIQUE_VIOLATION` that stops being recognised as one.
+ *
+ * Deciding it here removes both: the comparison happens in the same module instance that
+ * constructed the error, and the caller imports a function through the runtime bridge instead of a
+ * class through the bundler.
+ */
+export function isPersistenceError(error: unknown): error is PersistenceError {
+  return error instanceof PersistenceError;
+}
+
+/**
  * Whether a thrown error is PostgreSQL refusing to serialize concurrent writes.
  *
  * Deadlock (`40P01`) and serialization failure (`40001`) are not faults — they are the database

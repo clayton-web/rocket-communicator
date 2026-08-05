@@ -21,7 +21,6 @@ import {
   type TaskSuggestion,
 } from '@aicaa/domain';
 import type { CreateAuditEventInput, DbClient } from '@aicaa/db';
-import { PersistenceError } from '@aicaa/db';
 import { loadDbRuntime } from '@/lib/db/runtime-db';
 import { evaluateSuggestionRelevance } from './heuristic';
 
@@ -53,10 +52,6 @@ function claimOwnerFromRequestId(requestId: string): string {
 
 function addMs(iso: string, ms: number): string {
   return new Date(new Date(iso).getTime() + ms).toISOString();
-}
-
-function isPersistenceError(error: unknown): error is PersistenceError {
-  return error instanceof PersistenceError;
 }
 
 function systemAudit(input: {
@@ -164,6 +159,23 @@ export interface ProcessSuggestionsDeps {
 /**
  * Bounded Application Suggestion Engine invocation (D081, D084, D085).
  * Independent of Gmail History sync. Soft deadline stops new claims/AI work.
+ *
+ * ## Persistence errors are classified through the runtime, not through `instanceof`
+ *
+ * This module used to import the `PersistenceError` class from `@aicaa/db` and test errors with
+ * `instanceof`. That is the defect class A8.7b-INCIDENT-1d shipped to Production: `@aicaa/db` is
+ * listed in `serverExternalPackages`, so a value imported from it statically may be emitted into
+ * the server chunk as an undeclared free variable. Here the failure would have been worse than the
+ * reminder one, because both call sites sit **inside** `catch` blocks — a `ReferenceError` there
+ * replaces the persistence failure being handled with a meaningless one, and the original error is
+ * gone. The `UNIQUE_VIOLATION` branch below is the idempotent re-claim path, so losing it turns a
+ * benign duplicate into a retryable failure that burns an attempt against the D084 ceiling.
+ *
+ * `runtime.isPersistenceError` closes a second gap that `instanceof` could not. Persistence errors
+ * are thrown by the traced `dist/runtime.js`, while the old static import resolved `dist/index.js`;
+ * those are different entry files and the deployed Lambda layout does not guarantee they share one
+ * module graph. A mismatch makes `instanceof` silently false with no crash to notice. Asking the
+ * runtime decides the question inside the module instance that constructed the error.
  */
 export async function runInternalSuggestionProcess(input: {
   db: DbClient;
@@ -344,7 +356,7 @@ export async function runInternalSuggestionProcess(input: {
         });
         suggestionsCreated += 1;
       } catch (persistError) {
-        if (isPersistenceError(persistError) && persistError.code === 'UNIQUE_VIOLATION') {
+        if (runtime.isPersistenceError(persistError) && persistError.code === 'UNIQUE_VIOLATION') {
           const existing = await runtime.getTaskSuggestionBySourceEventId(
             input.db,
             event.organizationId,
@@ -414,7 +426,7 @@ export async function runInternalSuggestionProcess(input: {
 
       const errorCode = isAiProviderError(error)
         ? error.code
-        : isPersistenceError(error)
+        : runtime.isPersistenceError(error)
           ? error.code
           : 'AI_UNKNOWN_RETRYABLE';
       const retryNote =
