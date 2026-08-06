@@ -44,7 +44,7 @@ Use this table with [MILESTONES.md](MILESTONES.md). OpenAPI may describe future 
 
 Committed outputs; `pnpm contracts:generate` / `contracts:check-drift` (D044). Kotlin generation removes stale orphans via `cleanup-kotlin-orphans.mjs`.
 
-Kotlin (D047): model-only (`apis=false`, `supportingFiles=false`); `library=jvm-okhttp4`; `serializationLibrary=moshi`; no HTTP client runtime. Android networking client deferred.
+Kotlin (D047): model-only (`apis=false`, `supportingFiles=false`); `library=jvm-okhttp4`; `serializationLibrary=moshi`; no HTTP client runtime. **A9.1 (D148):** Android uses a hand-written OkHttp networking foundation in `apps/android` (`OwnerApiExecutor` / `OwnerApiRepository`) that consumes generated models only — still no generated HTTP client.
 
 ### Generating clients locally
 

@@ -448,6 +448,52 @@ Gates for the due-date-driven Follow-up Engine (D102–D110). These record **exp
 
 > **✅ Complete (docs-only).** Product Constitution and roadmap sequencing lock (**D137–D144**). Canonical: [P2_0_OWNER_EXPERIENCE_FOUNDATION.md](P2_0_OWNER_EXPERIENCE_FOUNDATION.md). **No code, no production contact, no feature-flag change.** Forward next-work order: A9.0 → A9.1 → A9.2 Android Task Capture → A9.3 → Owner Acceptance Week → P2.2 → Stage 12 → A8.7d → A8.7e (**D140**). Stage 12 / A8.7d / A8.7e remain unauthorized.
 
+### A9.0 — Android Owner foundation (complete)
+
+> **✅ Implementation complete; device evidence pending operator run.** Native Google Workspace auth via Supabase; secure session storage; Bearer JWT through the single shared Owner pipeline (**D145**); `GET /api/v1/session` probe; session restore; minimum authenticated shell; **LOCAL** sign-out (**D147** — does not invalidate web sessions); auth-scoped connectivity (**D146**). Architecture diagram in [ARCHITECTURE.md](ARCHITECTURE.md). Device runbook: [A9_0_DEVICE_VERIFICATION.md](A9_0_DEVICE_VERIFICATION.md). Cookie Owner auth unchanged; no duplicate auth pipeline. **Not in A9.0:** Task surfaces, capture (A9.2), organize/assign (A9.3), FCM, offline sync, Stage 12 / A8.7d / A8.7e.
+
+### A9.1 — Authenticated Android networking foundation (complete)
+
+> **✅ Networking substrate complete (D148).** Hand-written OkHttp `OwnerApiExecutor` / `OwnerApiRepository`; Bearer via A9.0 `AccessTokenProvider`; centralized errors; connectivity awareness; safe logging (no tokens). Session probe uses the shared stack. Task list/detail were **not** in the A9.1 authorization and were delivered later in **A9.3 (D150)**.
+
+### A9.2 — Android Task Capture (complete)
+
+> **✅ Create-only capture complete (D149).** Shell Capture entry → `TaskCaptureScreen` / `TaskCaptureViewModel` → `CaptureTaskUseCase` → `TaskOwnerRepository` → existing `OwnerApiExecutor` → `POST /api/v1/tasks`. Success only after server `201`. Empty drafts never send. Draft preserved on connectivity failure. IME speech-to-text into the capture field (not A12). At A9.2 closure, View Task / list / assign were deferred to A9.3 (now complete under D150).
+
+- [x] Capture reachable in one tap from the authenticated shell
+- [x] No success claim before server confirmation
+- [x] No duplicate networking or authentication stacks
+- [x] A9.3 was not started inside the A9.2 authorization (boundary held)
+
+### A9.3 — Android organize, assign, and follow-through (complete)
+
+> **✅ Complete (D150).** Task list (organizational workspace), Task detail (natural continuation after capture), lifecycle with Task `If-Match`, progressive Open Task / optional Assign from capture success, handoff only via existing `POST …/handoff` with D037 confirmation and idempotent retry. Unassigned = Owner work. Auth/networking/capture foundations unchanged. **Not in A9.3:** reminders UI/delivery, notifications, push, reassignment, offline sync, Stage 12 / A8.7d / A8.7e, A10+.
+
+### Owner Acceptance Week (formal product gate — not started)
+
+> **Planned. Not executed.** Canonical plan: [OWNER_ACCEPTANCE_WEEK.md](OWNER_ACCEPTANCE_WEEK.md) (**D142**). Validates ordinary-day Android Owner use after A9.0–A9.3. **No feature work during OAW.** Findings feed P2.2. Does not authorize Stage 12 / A8.7d / A8.7e.
+
+- [ ] OAW window executed per [OWNER_ACCEPTANCE_WEEK.md](OWNER_ACCEPTANCE_WEEK.md)
+- [ ] Exit criteria E1–E9 recorded (PASS or FAIL)
+- [ ] Issue log complete with severities
+- [ ] Owner explicit Go / No-Go for P2.2 entry
+- [ ] Owner explicit approve / withhold for later Stage 12 path (still does not start Stage 12)
+- [ ] No P2.2 / Stage 12 / A8.7d / A8.7e begun inside the OAW authorization
+
+- [x] Capture remains Capture → Save → server confirmation; Capture another stays primary
+- [x] Open Task does not force Task list
+- [x] Assignment uses only the existing handoff API
+- [x] No success claim before server confirmation (including handoff)
+- [x] A10 / Stage 12 / A8.7d / A8.7e not started
+
+- [x] Product Constitution exists (mission, principles, feature filter, definition of success)
+- [x] Android-first philosophy documented; web = administration / review / debugging / fallback
+- [x] Owner Acceptance Week defined as a formal product gate with measurable exit criteria
+- [x] P2.2 Remove Friction exists on the roadmap
+- [x] A9.2 renamed/bounded as **Android Task Capture** (not A12 / not AI capture)
+- [x] Historical A8/P1/Gate evidence preserved; sequencing supersession notes added
+- [x] No architecture redesign; no contract change; no production procedure rewrite; Stage 12 / A8.7d / A8.7e not begun
+
 ## Owner web experience foundation (P1; apply when P1 work is in scope)
 
 Gates for D111–D126. Record **expected behaviour and required proof**; no specific implementation is pre-approved.

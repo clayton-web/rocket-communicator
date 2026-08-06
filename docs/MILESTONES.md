@@ -1066,7 +1066,97 @@ The failure model claimed more atomicity than exists. **No A8 migration contains
 
 ### A9 — Android authentication and Owner interface
 
-Sideload Owner app; approve suggestions, manage Tasks/delegation, and deliver Event Notifications (push remains D017-gated). Manual Task creation remains available but is not the primary goal.
+**Status:** A9.0–A9.3 complete. Sequenced immediately after P2.0 (D140). Android is the product (D139); web remains administration, review, debugging, and fallback. **A9.0 (D145–D147), A9.1 (D148), A9.2 (D149), and A9.3 (D150) are complete.** Next formal gate: Owner Acceptance Week (D142).
+
+Sideload Owner app; approve suggestions, manage Tasks/delegation, and — when later authorized — deliver Event Notifications (push remains D017-gated). Capture is first-class (A9.2). Manual typed capture remains available.
+
+| Slice | Name | Status |
+| ----- | ---- | ------ |
+| **A9.0** | Android Owner foundation | **Complete** — Supabase Google Workspace auth; secure storage; Bearer JWT via shared Owner pipeline (D145); `GET /api/v1/session` probe; session restore; minimum shell; **LOCAL** sign-out (D147); auth-scoped connectivity (D146). Device runbook: [A9_0_DEVICE_VERIFICATION.md](A9_0_DEVICE_VERIFICATION.md) |
+| **A9.1** | Android Owner shell and ordinary-day Task surfaces | **Networking foundation complete (D148)**; Task list/detail delivered in **A9.3 (D150)** |
+| **A9.2** | **Android Task Capture** — typed capture; Android speech-to-text into fields. **Not** A12 voice pipeline, automatic transcription, or AI capture | **Complete (D149)** |
+| **A9.3** | Android organize, assign, and follow-through | **Complete (D150)** |
+
+**Historical naming note.** Informal “Android Task Creation” is retired in favour of **Android Task Capture** (D141).
+
+#### A9.0 — Android Owner foundation (complete)
+
+**Delivered:**
+
+- Single shared Owner auth pipeline on the server accepts SSR cookies and `Authorization: Bearer <supabase_access_jwt>` (D145)
+- Android native Google Workspace sign-in via Supabase Auth (Custom Tabs + `aicaa://auth-callback`)
+- Platform secure credential storage; online-first session restore; simple refresh (startup / natural auth failure only)
+- Canonical API probe `GET /api/v1/session`; minimum authenticated shell
+- **Session-local sign-out** (`SignOutScope.LOCAL`, D147) — revokes the Android session only; does not end web sessions
+- Sideloadable debug APK baseline (`minSdk` 31)
+- Architecture diagram: [ARCHITECTURE.md](ARCHITECTURE.md) → Owner authentication pipeline (A9.0)
+- Real-device verification runbook: [A9_0_DEVICE_VERIFICATION.md](A9_0_DEVICE_VERIFICATION.md)
+
+**Formal closure remaining:** operator execution of [A9_0_DEVICE_VERIFICATION.md](A9_0_DEVICE_VERIFICATION.md) on a real device with recorded evidence (V0–V8). Implementation and documentation locks (D145–D147) are in place.
+
+**Not delivered in A9.0:** Task surfaces, capture, etc.
+
+#### A9.1 — Authenticated networking foundation (D148)
+
+**Delivered:**
+
+- Hand-written OkHttp Owner API client with Bearer integration from A9.0 auth (`AccessTokenProvider`)
+- Shared `ApiConfig`, centralized `OwnerApiExecutor` request/response handling, `OwnerApiResult` error mapping
+- Connectivity awareness (online-first, D132); development-safe HTTP logging (no tokens/credentials)
+- `OwnerApiRepository` / `SessionOwnerRepository` substrate for future Owner routes
+- A9.0 session probe routed through the shared networking layer (no duplicate HTTP stack)
+
+**Not delivered:** Task list, Task detail, Task capture, assignment, offline sync, local business DB, push. Ordinary-day Task surfaces named in P2.0/D141 remain **not started**.
+
+#### A9.2 — Android Task Capture (D149)
+
+**Delivered:**
+
+- Capture entry from the authenticated shell (one tap)
+- `TaskCaptureScreen` + `TaskCaptureViewModel` — single free-text field; Save; server-confirmed success only
+- `CaptureTaskUseCase` + `TaskOwnerRepository.createCapturedTask()` via existing `OwnerApiExecutor` → `POST /api/v1/tasks`
+- Default body: one `confirmed_fact` summary point (trimmed typed / IME-dictated text); no extra required fields
+- Truthful connectivity and HTTP error handling; draft preserved on failure where appropriate
+- Unauthorized after refresh returns through the existing A9.0 authentication flow
+- Capture another after confirmed success
+- IME speech-to-text through the standard Android keyboard (not A12 voice pipeline)
+
+**Explicitly deferred from A9.2 and delivered in A9.3 where in scope:** Task list; Task detail / Open Task; assignment handoff; recipient picker (thin create). Still deferred beyond A9.3: due dates / reminder UI; priority UI; AI extraction; voice recording; offline sync; local business storage; notifications.
+
+#### A9.3 — Android organize, assign, and follow-through (D150)
+
+**Delivered:**
+
+- Task list as the organizational workspace (`GET /api/v1/tasks`) via existing A9.1 networking
+- Task detail as the natural continuation after capture (`GET /api/v1/tasks/{taskId}`)
+- Lifecycle actions with Task `If-Match`: start, waiting, resume, complete, dismiss, note
+- Capture success keeps **Capture another** primary; progressive **Open Task** and optional **Assign** (does not force Task list)
+- Assignment only through `POST /api/v1/tasks/{taskId}/handoff` with `handoff_confirmed_v1`, persisted `If-Match` + `Idempotency-Key`, truthful pending/ambiguous/retry UX
+- Gmail connection gating; send re-consent via Owner web browser + manual in-app retry
+- Thin Recipient create when the active list is empty (D087); unassigned remains Owner work (D094)
+
+**Explicitly out of scope / not started:** reminder configuration or delivery; notifications; push; reassignment; offline sync; local business DB; Stage 12; A8.7d; A8.7e; A10+.
+
+### Owner Acceptance Week
+
+**Status:** Planned formal product gate after A9.3 and before P2.2 (**D142**). **Not started.** Canonical plan: [OWNER_ACCEPTANCE_WEEK.md](OWNER_ACCEPTANCE_WEEK.md).
+
+**Exit criteria (all required):**
+
+1. Rocket is the Owner's primary task system during the window
+2. Real work captured daily on Android
+3. Real Recipient handoff completed
+4. External notes no longer required for ordinary follow-through
+5. Usability issues documented
+6. Owner explicitly approves (or withholds) resuming operational enablement (Stage 12 → A8.7d → A8.7e); silence is not approval
+
+P2.2 entry requires OAW PASS (or recorded conditional Go) plus Owner explicit Go — see [OWNER_ACCEPTANCE_WEEK.md §13](OWNER_ACCEPTANCE_WEEK.md#13-go--no-go-criteria-for-p22).
+
+### P2.2 — Remove Friction
+
+**Status:** Planned after Owner Acceptance Week and before Stage 12 (**D143**).
+
+Improve the Android experience using OAW findings. No major features. Examples: reduce taps, improve wording, navigation, consistency, visual polish, performance, ergonomics.
 
 ### A10 — Google Messages notification capture
 

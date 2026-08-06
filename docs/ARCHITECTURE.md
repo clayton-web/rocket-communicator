@@ -243,7 +243,7 @@ It is a documented constant, not a database field: no `Organization` model or ti
 
 | Path                                                    | Responsibility                                                                                                                                                                                                                                                                                                                                                                         |
 | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `apps/android`                                          | Kotlin + Jetpack Compose Owner UX (auth/task UI in later milestones; A1 shell + A2 api-contract module exist)                                                                                                                                                                                                                                                                          |
+| `apps/android`                                          | Kotlin + Jetpack Compose Owner UX. **A9.0:** auth, secure session, Bearer, minimum shell. **A9.1 (D148):** reusable authenticated networking (`OwnerApiExecutor` / `OwnerApiRepository`). **A9.2 (D149):** create-only Task capture. **A9.3 (D150):** Task list/detail, lifecycle, optional handoff assignment.                                                                                              |
 | `apps/web`                                              | Next.js App Router: Owner session APIs; Owner task HTTP; Owner Recipient management HTTP; Owner handoff HTTP (`…/handoff`); capability runtime; Recipient capability APIs and `/c/[token]` page                                                                                                                                                                                        |
 | `packages/contracts`                                    | Canonical OpenAPI 3.1; generated TypeScript and Kotlin DTOs (D007)                                                                                                                                                                                                                                                                                                                     |
 | `packages/domain`                                       | Pure TypeScript state machines, policies, retention helpers—no I/O                                                                                                                                                                                                                                                                                                                     |
@@ -260,9 +260,9 @@ Do not share Zod types with Kotlin. Generate clients from OpenAPI. Neon is not u
 
 | Component                                                | Responsibility                                                                                                                                                                                   |
 | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Android app                                              | Capture, voice, Owner task UI (later); Owner session credentials only                                                                                                                            |
-| Next.js                                                  | Owner auth, Owner APIs, capability runtime, Recipient capability routes/pages, mailer, workers                                                                                                   |
-| Supabase Auth                                            | Google Workspace sign-in for the **Owner only** (D048)                                                                                                                                           |
+| Android app                                              | A9.0 auth; A9.1 networking; A9.2 capture; A9.3 organize/assign/follow-through; later voice/push; Owner session credentials only (Bearer JWT); no direct business-row writes to Supabase (D033, D146) |
+| Next.js                                                  | Owner auth (cookie + Bearer via one pipeline, D145), Owner APIs, capability runtime, Recipient capability routes/pages, mailer, workers                                                           |
+| Supabase Auth                                            | Google Workspace sign-in for the **Owner only** (D048); web SSR cookies and Android native session share this IdP                                                                                |
 | Supabase Postgres                                        | System of record                                                                                                                                                                                 |
 | Prisma                                                   | Server data access only                                                                                                                                                                          |
 | Gmail API                                                | Ingest, assignment mail, forward-with-attachments                                                                                                                                                |
@@ -271,7 +271,7 @@ Do not share Zod types with Kotlin. Generate clients from OpenAPI. Neon is not u
 
 ## Platform directions
 
-**Android:** `minSdk` 31; application id `com.aicommunication.assistant`; private sideload (D019, D040). Device target Galaxy S24+; dialer parsing OPEN #1. Does not write core business rows directly to Supabase—calls Owner session APIs. FCM deferred (D017).
+**Android:** `minSdk` 31; application id `com.aicommunication.assistant`; private sideload (D019, D040). Device target Galaxy S24+; dialer parsing OPEN #1. Does not write core business rows directly to Supabase—calls Owner session APIs with Bearer JWT after Supabase Auth (D033, D145, D146). OAuth return deep link: `aicaa://auth-callback`. FCM deferred (D017). **A9.0** delivers authentication, secure session handling, and the minimum authenticated shell. **A9.1 (D148)** delivers the reusable authenticated networking foundation. **A9.2 (D149)** delivers create-only Task capture (`POST /api/v1/tasks`). **A9.3 (D150)** delivers Task list/detail, lifecycle follow-through, and optional Recipient handoff via existing `POST …/handoff`.
 
 **Android is online-first (D132).** The Owner experience runs over the online Owner APIs, and the application is the only source of truth (D131). A **temporary** loss of connectivity must degrade gracefully rather than silently: the interface stays stable and truthful, in-progress drafts are preserved where appropriate, duplicate actions are prevented, a write that did not reach the server is never presented as successful, retry is deliberate and runs **through** the existing idempotency and concurrency machinery, and reconnecting never produces duplicate Task mutations. This is a reliability requirement, **not** an offline feature: no offline store of business records, service-worker caching of authenticated business data, mutation queue, background synchronization, or conflict-resolution layer is in scope (D111, D132), a preserved local draft is never a completed server write, and no surface may claim the application works offline.
 
@@ -383,6 +383,69 @@ Do not share Zod types with Kotlin. Generate clients from OpenAPI. Neon is not u
 | Recipient | Capability token (authorization only; no account) |
 
 Full rules: [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md).
+
+### Owner authentication pipeline (A9.0 — built)
+
+Single shared Owner identity path (D145–D147). Android presents Bearer JWT; web presents SSR cookies. Both enter the same extraction and validation pipeline. Android sign-out is **session-local** (D147) and does not terminate web sessions.
+
+```mermaid
+flowchart TB
+  GW["Google Workspace"]
+  SA["Supabase Auth"]
+  Cred{"Credential<br/>SSR cookie or Bearer JWT"}
+  Ext["extractOwnerCredential()"]
+  Own["getAuthenticatedOwner()<br/>getUser + allowlist + org"]
+  APIs["Owner APIs<br/>GET /api/v1/session …"]
+  UI["Android UI<br/>presentation only"]
+
+  GW --> SA
+  SA --> Cred
+  Cred --> Ext
+  Ext --> Own
+  Own --> APIs
+  APIs --> UI
+```
+
+Device verification procedure: [A9_0_DEVICE_VERIFICATION.md](A9_0_DEVICE_VERIFICATION.md).
+
+### Android Owner networking foundation (A9.1 — built)
+
+Hand-written OkHttp stack (D047, D148). Future Owner API repositories extend `OwnerApiRepository` and call through `OwnerApiExecutor` — no second HTTP client.
+
+```mermaid
+flowchart LR
+  UI["Android UI"]
+  Repo["OwnerApiRepository"]
+  Exec["OwnerApiExecutor"]
+  Tok["AccessTokenProvider<br/>A9.0 Supabase session"]
+  Net["OkHttp + safe logger"]
+  API["Owner APIs"]
+
+  UI --> Repo --> Exec
+  Tok --> Exec
+  Exec --> Net --> API
+```
+
+### Android Task Capture (A9.2 — built)
+
+Create-only Owner capture (D149). Presentation on device; identity and business rules on the server. Path: Capture → Save → `POST /api/v1/tasks` → confirm only on `201`. IME speech-to-text fills the same field (not A12). A9.3 adds progressive **Open Task** / optional **Assign** on success without changing the create path.
+
+### Android organize, assign, and follow-through (A9.3 — built)
+
+Task list is the organizational workspace; Task detail is the natural continuation after capture (D150). Lifecycle mutations use Task `If-Match`. Assignment is progressive and optional: only `POST /api/v1/tasks/{taskId}/handoff` with `handoff_confirmed_v1`, retained idempotency key, and truthful pending/ambiguous outcomes. Unassigned Tasks remain Owner work (D094). Reminder UI/delivery, reassignment, offline sync, and push remain out of scope.
+
+```mermaid
+flowchart LR
+  Shell["Authenticated shell"]
+  CapUI["TaskCaptureScreen"]
+  VM["TaskCaptureViewModel"]
+  UC["CaptureTaskUseCase"]
+  Repo["TaskOwnerRepository"]
+  Exec["OwnerApiExecutor"]
+  API["POST /api/v1/tasks"]
+
+  Shell -->|"one tap"| CapUI --> VM --> UC --> Repo --> Exec --> API
+```
 
 ## Diagram
 
