@@ -116,7 +116,7 @@ describe('the Gate 5 runbook exists and is bounded to a deployment', () => {
   });
 });
 
-describe('the D3 / F0 baseline must not regress to D2-as-current', () => {
+describe('the D3 / F0 baseline must not regress to D2-as-current or drift to F1-as-current', () => {
   it('records Production as D3 / F0 in the current-state section', () => {
     const contents = runbook();
     const start = contents.indexOf('### Current production state');
@@ -124,9 +124,31 @@ describe('the D3 / F0 baseline must not regress to D2-as-current', () => {
     const rest = contents.slice(start);
     const section = rest.slice(0, rest.search(/\n### [^#]/));
 
-    expect(section, 'the current state is D3 / F0').toMatch(/\*\*D3\*\* \(`F0`\)|\*\*D3\*\* \/ `F0`|\*\*D3 \/ F0\*\*/);
+    expect(section, 'the current state is D3 / F0').toMatch(
+      /\*\*D3\*\* \(`F0`\)|\*\*D3\*\* \/ `F0`|\*\*D3 \/ F0\*\*/,
+    );
     expect(section, 'Production holds all fourteen migrations').toMatch(/fourteen/);
     expect(section, 'all three flags remain absent').toMatch(/Absent/);
+
+    // The partial Gate 6 attempt is why these three exist. A READY production-target build is not
+    // the live site, and recording one as `F1` is the exact error this section had to be corrected
+    // for. The live deployment, the non-live Gate 6 artifact, and the absent capture flag must all
+    // stay stated here, because losing any one of them makes the other two readable as F1.
+    expect(section, 'the live deployment is the Gate 5 one').toContain(
+      'dpl_6cVssNpaZeKPBEVGDynd61AoS9nS',
+    );
+    expect(section, 'the non-live Gate 6 deployment is named and marked not live').toContain(
+      'dpl_7X5r5ypWbq6ipmWMpver6p99p5Xz',
+    );
+    expect(section, 'capture is absent, not true').toMatch(
+      /ENABLE_OWNER_EVENT_CAPTURE`?\s*\|\s*Absent/,
+    );
+    expect(section, 'capture must not be recorded as enabled').not.toMatch(
+      /ENABLE_OWNER_EVENT_CAPTURE`?\s*\|\s*\*\*`?true`?\*\*/,
+    );
+    expect(section, 'the omitted custom-domain alias assignment is recorded').toMatch(
+      /custom domain/i,
+    );
     // The exact stale claims this reconciliation removed must not come back.
     expect(section).not.toMatch(/State\s*\|\s*\*\*D1′\*\*/);
     expect(section).not.toMatch(/ten rows in `_prisma_migrations`/);
@@ -410,14 +432,26 @@ describe('Gate 6 separation', () => {
     expect(section).toMatch(/Explicitly not authorized by Gate 5/);
   });
 
-  it('is followed by a prepared Gate 6 first-activation runbook that is unbegun', () => {
+  it('is followed by a Gate 6 first-activation runbook recorded as incomplete and never live', () => {
     const contents = runbook();
-    expect(contents).toContain('### Gate 6 — First controlled production enablement (A8.7c capture / F0 → F1)');
+    expect(contents).toContain(
+      '### Gate 6 — First controlled production enablement (A8.7c capture / F0 → F1)',
+    );
     const start = contents.indexOf('### Gate 6 — First controlled production enablement');
     const rest = contents.slice(start);
     const section = rest.slice(0, rest.search(/\n### [^#]/));
-    expect(section).toMatch(/Gate 6 has not been executed/);
+    expect(section).toMatch(/Gate 6 has not been completed/);
     expect(section).toMatch(/this section does not authorize it/);
+    // The gate was genuinely authorized and partially executed; recording it as never attempted
+    // would be as untrue as recording it as complete.
+    expect(section).toMatch(/partially executed/);
+    expect(section).toMatch(/did not complete|never became live/);
+    // A production-target build that holds no custom domain is not the live site. This is the
+    // distinction the partial attempt was recorded as complete for missing.
+    expect(section).toContain('autoAssignCustomDomains=false');
+    expect(section).toContain('dpl_7X5r5ypWbq6ipmWMpver6p99p5Xz');
+    expect(section).toContain('dpl_6cVssNpaZeKPBEVGDynd61AoS9nS');
+    expect(section, 'Gate 6 must not be recorded as complete').not.toMatch(/Gate 6 is complete\./);
     expect(section).toContain('ENABLE_OWNER_EVENT_CAPTURE');
     expect(section).toMatch(/G6\.1/);
     expect(section).toMatch(/G6\.14/);
@@ -466,6 +500,89 @@ describe('Gate 6 separation', () => {
 
   it('treats reconciling origin/main as a separate Owner decision', () => {
     expect(gate5Section()).toMatch(/Reconciling `origin\/main`/);
+  });
+});
+
+describe('Stage 12 separation', () => {
+  it('keeps a prepared Stage 12 observation runbook that is unbegun and not currently reachable', () => {
+    const contents = runbook();
+    expect(contents).toContain('### Stage 12 — Capture-only observation (A8.7c / F1)');
+    const start = contents.indexOf('### Stage 12 — Capture-only observation (A8.7c / F1)');
+    expect(start).toBeGreaterThan(-1);
+    const rest = contents.slice(start);
+    const section = rest.slice(0, rest.search(/\n### [^#]/));
+    expect(section).toMatch(/Stage 12 has not been executed/);
+    expect(section).toMatch(/this section does not authorize it/);
+    expect(section).toMatch(/does not enable delivery/);
+    // Every `F1` in this section is a precondition of a window that cannot open, not a reading of
+    // Production. Without this the section reads as a description of a live capture-only state.
+    expect(section, 'the F1 premise must be marked unmet').toMatch(/not currently reachable/);
+    expect(section, 'live Production must be named as F0').toMatch(/`D3` \/ `F0`/);
+    expect(section).toMatch(/G12\.1/);
+    expect(section).toMatch(/G12\.12/);
+    expect(section).toMatch(/G12\.13/);
+    expect(section).toContain('ENABLE_OWNER_EVENT_CAPTURE');
+    expect(section).toMatch(/ENABLE_OWNER_EVENT_DELIVERY/);
+    expect(section).toMatch(/owner_notification_attempts/);
+    expect(section).toMatch(/Q15/);
+    expect(section).toMatch(/Q8/);
+  });
+
+  it('includes a Stage 12 operator checklist that does not authorize execution', () => {
+    const contents = runbook();
+    const start = contents.indexOf('#### G12.9 Operator execution checklist');
+    expect(start).toBeGreaterThan(-1);
+    const rest = contents.slice(start);
+    const section = rest.slice(0, rest.search(/\n### [^#]/));
+    expect(section).toMatch(/does not authorize Stage 12/);
+    expect(section).toMatch(/Documentation only/);
+    expect(section).toMatch(/Owner authorization checkpoints/);
+    expect(section).toMatch(/S1/);
+    expect(section).toMatch(/S8/);
+    expect(section).toMatch(/Explicit stop conditions/);
+    expect(section).toMatch(/A8\.7d/);
+    expect(section).toMatch(
+      /POST \/api\/v1\/internal\/notifications\/process|notifications\/process/,
+    );
+  });
+
+  it('keeps a Stage 12 evidence template that refuses Gate 6 reuse', () => {
+    const contents = evidence();
+    const start = contents.indexOf('### Stage 12 — Capture-only observation');
+    expect(start, 'the Stage 12 evidence record must exist').toBeGreaterThan(-1);
+    const rest = contents.slice(start);
+    const section = rest.slice(0, rest.search(/\n## [^#]/));
+    expect(section).toMatch(/Not begun\. Prepared only/);
+    expect(section).toMatch(/Do not record Stage 12 into the/);
+    expect(section).toMatch(/owner_notification_attempts/);
+    expect(section).toMatch(/A8\.7d \/ A8\.7e not begun/);
+    expect(section, 'the unmet F1 precondition must be stated').toMatch(
+      /precondition is not currently met/,
+    );
+  });
+
+  it('records Gate 6 in the evidence file as incomplete rather than complete', () => {
+    const contents = evidence();
+    const start = contents.indexOf(
+      '## Gate 6 — First controlled production enablement (A8.7c capture / F0 → F1)',
+    );
+    expect(start, 'the Gate 6 evidence record must exist').toBeGreaterThan(-1);
+    const rest = contents.slice(start);
+    const section = rest.slice(0, rest.search(/\n## [^#]/));
+
+    expect(section, 'the disposition is INCOMPLETE').toMatch(/Gate 6 is INCOMPLETE/);
+    expect(section, 'the gate was authorized and partially executed').toMatch(
+      /Authorized and partially executed/,
+    );
+    expect(section, 'the omitted completion step is named').toMatch(
+      /custom-domain alias assignment/,
+    );
+    expect(section, 'the non-live artifact is named').toContain('dpl_7X5r5ypWbq6ipmWMpver6p99p5Xz');
+    expect(section, 'the deployment that kept the custom domain is named').toContain(
+      'dpl_6cVssNpaZeKPBEVGDynd61AoS9nS',
+    );
+    expect(section, 'the subsequent flag removal is recorded').toMatch(/removed/);
+    expect(section, 'F1 must not be claimed as reached').toMatch(/`F1` not reached/);
   });
 });
 

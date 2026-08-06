@@ -64,12 +64,12 @@ Distinct from Supabase Owner authentication. Server-only; never `NEXT_PUBLIC_*`.
 
 ### Diagnostics (normally off)
 
-| Variable                        | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ENABLE_DB_RUNTIME_DIAGNOSTICS` | When exactly `true`, enables structured **server-side** database runtime diagnostics for Owner routes. **Disabled in Production** by default. Does not add public `X-AICAA-DB-*` response headers.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| `ENABLE_OWNER_EVENT_CAPTURE`    | When exactly `true`, allows a Task mutation to record Owner Event Notification intent (D135). **Absent everywhere, including Production, and must stay that way** until [Gate 6](#gate-6--first-controlled-production-enablement-a87c-capture--f0--f1) is separately authorized — the A8.5 migration is already applied (Gate 4), and the capture code is already deployed (Gate 5). The capture site runs inside `persistCapabilityAction`, which Production executes on every Task mutation. With the flag absent the decision is made before the transaction opens, so no statement reaches an A8.5 table. Since A8.5d it governs all ten producers rather than one: a clarification request, a return to Owner, a terminal handoff failure, a Gmail channel transition, three reminder stops, an unassigned reminder skip, and a capability expiry are each gated by it, and each decides before its transaction opens. Since A8.5e it also gates the Owner notification worker's capability-expiry capture phase, which is the only thing that observes expiry without a Recipient presenting a lapsed link. Capture records intent only; it delivers nothing, and `ENABLE_OWNER_EVENT_DELIVERY` is a separate flag |
-| `ENABLE_OWNER_EVENT_DELIVERY`   | When exactly `true`, allows the Owner notification worker to claim and process intents (D135). **Absent everywhere, including Production, and must stay that way.** With it unset `POST /api/v1/internal/notifications/process` performs no delivery work at all: no scan, no claim, no attempt row, no transport, and no Gmail configuration read. Since A8.5e that endpoint also has a capture phase under the separate flag above, so "both flags unset" rather than this flag alone is what means the invocation opens no database connection. **Since A8.5c a real Gmail adapter exists behind this flag**, so it is now the only thing preventing Owner notification mail: enabling it where intents exist and the migration is applied would send from the organization's connected Gmail account to itself. Entirely separate from `ENABLE_OWNER_EVENT_CAPTURE`: capture writes intents, delivery processes them, and neither implies the other. `"1"`, `"TRUE"`, `"yes"`, and whitespace variants all leave it **off**                                                                |
-| `ENABLE_REMINDER_DELIVERY`      | When exactly `true`, allows reminder occurrence processing to claim and write **and** is the sole condition under which a real Gmail reminder transport is constructed at all (A8.4b.1). **Set nowhere, including Production**, and gated by [Reminder engine operations](#reminder-engine-operations-a8--not-operational). With it unset the route builds no transport, so no access resolver exists, no refresh token is decrypted, and no token exchange is attempted; processing returns a zero-work response. Turning it on additionally requires `OWNER_ORGANIZATION_ID`, a connected Gmail account, and an External Scheduler job — none of which exist. **Unlike the notification worker, a disabled reminder invocation still opens a database connection**: `getDb()` is awaited before the flag is consulted, so the route connects and then issues no scan, claim, or write. Do not cite it as an example of "disabled implies no database contact".                                                                                                                               |
+| Variable                        | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ENABLE_DB_RUNTIME_DIAGNOSTICS` | When exactly `true`, enables structured **server-side** database runtime diagnostics for Owner routes. **Disabled in Production** by default. Does not add public `X-AICAA-DB-*` response headers.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `ENABLE_OWNER_EVENT_CAPTURE`    | When exactly `true`, allows a Task mutation to record Owner Event Notification intent (D135). **Absent from the Vercel Production environment, and absent from the deployment the public custom domain serves** — the A8.5 migration is already applied (Gate 4), and the capture code is already deployed (Gate 5). [Gate 6](#gate-6--first-controlled-production-enablement-a87c-capture--f0--f1) temporarily created this variable in Vercel Production and built a READY production-target deployment carrying it, but that deployment never received the public custom domain, so the value never became live; the variable was subsequently removed under separate authorization. The capture site runs inside `persistCapabilityAction`, which Production executes on every Task mutation. With the flag absent the decision is made before the transaction opens, so no statement reaches an A8.5 table. Since A8.5d it governs all ten producers rather than one: a clarification request, a return to Owner, a terminal handoff failure, a Gmail channel transition, three reminder stops, an unassigned reminder skip, and a capability expiry are each gated by it, and each decides before its transaction opens. Since A8.5e it also gates the Owner notification worker's capability-expiry capture phase, which is the only thing that observes expiry without a Recipient presenting a lapsed link. Capture records intent only; it delivers nothing, and `ENABLE_OWNER_EVENT_DELIVERY` is a separate flag |
+| `ENABLE_OWNER_EVENT_DELIVERY`   | When exactly `true`, allows the Owner notification worker to claim and process intents (D135). **Absent everywhere, including Production, and must stay that way.** With it unset `POST /api/v1/internal/notifications/process` performs no delivery work at all: no scan, no claim, no attempt row, no transport, and no Gmail configuration read. Since A8.5e that endpoint also has a capture phase under the separate flag above, so "both flags unset" rather than this flag alone is what means the invocation opens no database connection. **Since A8.5c a real Gmail adapter exists behind this flag**, so it is now the only thing preventing Owner notification mail: enabling it where intents exist and the migration is applied would send from the organization's connected Gmail account to itself. Entirely separate from `ENABLE_OWNER_EVENT_CAPTURE`: capture writes intents, delivery processes them, and neither implies the other. `"1"`, `"TRUE"`, `"yes"`, and whitespace variants all leave it **off**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `ENABLE_REMINDER_DELIVERY`      | When exactly `true`, allows reminder occurrence processing to claim and write **and** is the sole condition under which a real Gmail reminder transport is constructed at all (A8.4b.1). **Set nowhere, including Production**, and gated by [Reminder engine operations](#reminder-engine-operations-a8--not-operational). With it unset the route builds no transport, so no access resolver exists, no refresh token is decrypted, and no token exchange is attempted; processing returns a zero-work response. Turning it on additionally requires `OWNER_ORGANIZATION_ID`, a connected Gmail account, and an External Scheduler job — none of which exist. **Unlike the notification worker, a disabled reminder invocation still opens a database connection**: `getDb()` is awaited before the flag is consulted, so the route connects and then issues no scan, claim, or write. Do not cite it as an example of "disabled implies no database contact".                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 
 Local Prisma CLI may additionally use `packages/db/.env` with `DATABASE_URL` only (see package README).
 
@@ -161,7 +161,7 @@ A8.3a reminder persistence migration: `packages/db/prisma/migrations/20260731040
 
 **A8.6b widens that page dependency to the Task detail page.** Its server component loads reminder state on every Task view, so an unapplied migration takes out `/tasks/{taskId}` — the most-used Owner page in the product — rather than one panel within it. This is the same deliberate loudness, and the same reason applies: a Task page that silently rendered "no reminders are scheduled" against a missing table would tell an Owner their automation is idle when the truth is that Rocket cannot see it. Applying the migration restores the page and every panel truthfully reports no schedule, because none has ever been created in Production. **A8.6b still adds no migration of its own**; it is a consumer of the A8.3a chain.
 
-**A8.6c adds a second migration dependency to the same page, and that dependency is now satisfied.** `/attention` also reads `owner_notification_intents`, so the page depends on the **A8.5a migration** — migration 9, deliberately not applied by the repair — as well as the A8.3a chain, and either one being absent takes the page to its error boundary. **[Gate 4](#gate-4--production-migrations-69) applied migration 9 on 2026-08-05, so the blocker is cleared and A8.6c can ship in [Gate 5](#gate-5--deploying-the-queued-a84ba86-code).** The loudness is again deliberate: a section headed "things Rocket could not tell you about" rendering empty against a missing table would assure the Owner that nothing went undelivered on the strength of a table that does not exist. With both migrations applied the page loads with two truthfully empty sections, because Production has never created a reminder schedule or captured a notification intent — `ENABLE_OWNER_EVENT_CAPTURE` has never been set. **A8.6c adds no migration and no index of its own**; like A8.6a and A8.6b it is a consumer.
+**A8.6c adds a second migration dependency to the same page, and that dependency is now satisfied.** `/attention` also reads `owner_notification_intents`, so the page depends on the **A8.5a migration** — migration 9, deliberately not applied by the repair — as well as the A8.3a chain, and either one being absent takes the page to its error boundary. **[Gate 4](#gate-4--production-migrations-69) applied migration 9 on 2026-08-05, so the blocker is cleared and A8.6c can ship in [Gate 5](#gate-5--deploying-the-queued-a84ba86-code).** The loudness is again deliberate: a section headed "things Rocket could not tell you about" rendering empty against a missing table would assure the Owner that nothing went undelivered on the strength of a table that does not exist. With both migrations applied the page loads with two truthfully empty sections, because Production has never created a reminder schedule or captured a notification intent — `ENABLE_OWNER_EVENT_CAPTURE` has never been live on the public custom domain. **A8.6c adds no migration and no index of its own**; like A8.6a and A8.6b it is a consumer.
 
 > **This is the ordering argument for the whole rollout, stated once.** Gate 4 had to precede Gate 5 because `/attention` reads `owner_notification_intents` on every load and **consults no flag before doing so** — gating a read of durable state on a flag would hide rows that genuinely exist. There was therefore no flag that could have made the page safe against a missing table, and no deployment order other than migrate-then-deploy. That is why `D2` exists as its own state rather than being collapsed into the deployment.
 
@@ -295,6 +295,8 @@ After deploy, confirm (authenticated Owner session required for protected routes
 | Recipient capability `POST` | Mutations require `confirmation: "confirmed"` and `If-Match` |
 | Owner `/tasks` (browser)    | Task list renders; Task detail renders notes and outcome     |
 
+**Bearer candidate (immutable URL) auth smoke.** A read-only Bearer / missing-Authorization probe against unaliased Production-target candidate `dpl_HpAZDkgUS6zj2fRES91YUqp3pUBb` is recorded in [BEARER_CANDIDATE_AUTH_SMOKE_EVIDENCE.md](BEARER_CANDIDATE_AUTH_SMOKE_EVIDENCE.md). Cookie auth on that protected candidate is **deferred**. **That record does not authorize promotion or any production mutation.**
+
 Full Owner↔Recipient production E2E is classified **`A4_FULL_E2E_PASS`**. The A7 handoff E2E (both delivery paths + Recipient capability completion + Owner-visible notes) passed at closure; see [MILESTONES.md](MILESTONES.md). Retained operator E2E artifacts are intentional runbook data—not repository secrets.
 
 ## Gmail polling operations (A5.5)
@@ -374,7 +376,7 @@ Operator notes:
 - Handoff idempotency is durable. A repeated same-key call replays the single attempt; it does not send a second message.
 - Recipients are currently managed through the A7.6 Owner Recipient endpoints; there is no Recipient management UI yet (A7 deferred backlog).
 
-**A8.0 documentation Decision Lock** recorded (D095–D101) and partly superseded. **A8.1 documentation Decision Lock** recorded (**D102–D110**): A8 is a **due-date-driven** reminder model. Do not enable any A8 feature until the specific gate or slice is authorized. **P1.0 documentation Decision Lock** recorded (**D111–D120**): the Owner web experience foundation is scoped; **P1.1 through P1.5 are implemented**; **P1 is COMPLETE** — implemented, deployed, and production-validated with one documented evidence limitation ([P1_5_EVIDENCE.md](P1_5_EVIDENCE.md)). Roadmap: **A7 → A8 → A9** (no early separate A9.0); **P1** was sequenced before the remaining A8 implementation slices and is now closed. **A8 is the current milestone:** A8.1–A8.6 code and all nine A8 migrations are in Production at **`D3` / `F0`** after Gate 4 and Gate 5; **[Gate 6](#gate-6--first-controlled-production-enablement-a87c-capture--f0--f1) (first capture enablement) is prepared and unauthorized**; A8.7d and A8.7e are not started. **Nothing in A8 is operational:** all three A8 flags are absent, so neither the real Gmail reminder transport nor the Owner notification transport is ever constructed, and no cron job exists for either worker. Current state: [Current production state](#current-production-state).
+**A8.0 documentation Decision Lock** recorded (D095–D101) and partly superseded. **A8.1 documentation Decision Lock** recorded (**D102–D110**): A8 is a **due-date-driven** reminder model. Do not enable any A8 feature until the specific gate or slice is authorized. **P1.0 documentation Decision Lock** recorded (**D111–D120**): the Owner web experience foundation is scoped; **P1.1 through P1.5 are implemented**; **P1 is COMPLETE** — implemented, deployed, and production-validated with one documented evidence limitation ([P1_5_EVIDENCE.md](P1_5_EVIDENCE.md)). **P2.0 documentation Decision Lock** recorded (**D137–D144**): Owner Experience Foundation / Product Constitution — [P2_0_OWNER_EXPERIENCE_FOUNDATION.md](P2_0_OWNER_EXPERIENCE_FOUNDATION.md). **Roadmap sequencing supersession (D140):** next-work order is **P2.0 → A9.0 → A9.1 → A9.2 → A9.3 → Owner Acceptance Week → P2.2 → Stage 12 → A8.7d → A8.7e → A10+**. This supersedes the prior next-work shorthand **A7 → A8 → A9** (no early separate A9.0) for sequencing only — milestone identifiers unchanged; architecture unchanged; **this section does not change Gate 6 / Stage 12 procedures or authorize any flag change**. **P1** was sequenced before the remaining A8 implementation slices and is now closed. **A8 engines are in Production at `D3` / `F0`** after Gate 4 and Gate 5; **[Gate 6](#gate-6--first-controlled-production-enablement-a87c-capture--f0--f1) (first capture enablement) was authorized and partially executed but is incomplete and never became live** — the capture flag is absent from Vercel Production and from the deployment the public custom domain serves; Stage 12, A8.7d, and A8.7e remain unauthorized and unbegun (paused under D140). **Nothing in A8 is operational:** all three A8 flags are absent, so neither the real Gmail reminder transport nor the Owner notification transport is ever constructed, and no cron job exists for either worker. Current state: [Current production state](#current-production-state).
 
 ### Owner web experience foundation operations (P1)
 
@@ -382,7 +384,7 @@ Operator notes:
 
 P1.5 was deployed and production-validated on 2026-07-30 as commit `8588c5d260176b24c8ecf6fb16e026c5c6034359`, via the automatic Vercel production deployment `dpl_7vmnL71Lck7JLeftgsJkYVJ4uw82` (stable alias `https://rocket-communicator-web.vercel.app`). No manual deployment action was required. Evidence: [P1_5_EVIDENCE.md](P1_5_EVIDENCE.md).
 
-> **Production has since advanced past `8588c5d`.** It now serves Gate 5's `d369c6d` at **`D3` / `F0`** — see [Current production state](#current-production-state). The paragraph above is the P1.5 historical record, not a statement about what is running today.
+> **Production has since advanced past `8588c5d`.** It now serves Gate 5's `d369c6d` via `dpl_6cVssNpaZeKPBEVGDynd61AoS9nS` at **`D3` / `F0`** — see [Current production state](#current-production-state). The paragraph above is the P1.5 historical record, not a statement about what is running today.
 
 **Rollback deployment retained:** `dpl_3sp18eqYRQH6bjKdXC72Tue263V1` (commit `243895f`, the P1.4 closeout documentation; application code identical to the P1.4 validated build). The earlier P1.4 deployment `dpl_F5zjNcc4zwiwbr25CSdMGA3zDy8c` (commit `a38c8574`) also remains available. No rollback condition was triggered and no rollback was performed.
 
@@ -406,7 +408,7 @@ P1.5 was deployed and production-validated on 2026-07-30 as commit `8588c5d26017
 
 **No reminder has ever been sent, and no worker in this subsection is operational.** The distinction that matters after the incident is between _deployed_, _functional_, and _operational_: **A8 reminder code through A8.4b is deployed in Production** at `d369c6d` (Gate 5), including `POST /api/v1/internal/reminders/process`, the A8.3b Owner reminder routes, the Task-lifecycle reminder wiring, and the real overdue/advance Gmail transport behind the flag. Since the 1c schema repair and the 1d hotfix, **the A8.3b Owner reminder routes are functional**: `GET`, `PUT`, and `DELETE` all work against a real Task. Nothing else is live — **no scheduler job invokes the worker endpoint and `ENABLE_REMINDER_DELIVERY` is set in no environment.**
 
-**The A8 persistence tables (`task_reminder_schedules`, `reminder_delivery_attempts`, and `tasks.due_local_date`) were applied to Production on 2026-08-04** by [A8.7b-INCIDENT-1c](#a87b-incident-1c--production-schema-compatibility-repair). Their absence was the incident, not a benign pending step, because the deployed code expected them and no flag guarded the Task path that reaches them. **The four remaining migrations were applied on 2026-08-05 by [Gate 4](#gate-4--production-migrations-69), so Production holds all fourteen.** Current state: [Current production state](#current-production-state). **Deploying the code that consumes them was [Gate 5](#gate-5--deploying-the-queued-a84ba86-code), which completed on 2026-08-05 and left Production at `D3` / `F0`.** Reminder delivery remains flag-disabled.
+**The A8 persistence tables (`task_reminder_schedules`, `reminder_delivery_attempts`, and `tasks.due_local_date`) were applied to Production on 2026-08-04** by [A8.7b-INCIDENT-1c](#a87b-incident-1c--production-schema-compatibility-repair). Their absence was the incident, not a benign pending step, because the deployed code expected them and no flag guarded the Task path that reaches them. **The four remaining migrations were applied on 2026-08-05 by [Gate 4](#gate-4--production-migrations-69), so Production holds all fourteen.** Current state: [Current production state](#current-production-state). **Deploying the code that consumes them was [Gate 5](#gate-5--deploying-the-queued-a84ba86-code), which completed on 2026-08-05 and left Production at `D3` / `F0`.** [Gate 6](#gate-6--first-controlled-production-enablement-a87c-capture--f0--f1) did not complete, so Production remains at `F0`. Reminder delivery remains flag-disabled.
 
 With that repair and the 1d hotfix in place, the A8.3b routes and the lifecycle wiring **are** functional, so the enablement gate below is not theoretical: **the Owner must not create or modify a reminder until the later rollout is authorized.**
 
@@ -465,58 +467,61 @@ Each flag is matched as the exact string `true`, independently. `"1"`, `"TRUE"`,
 
 **Nothing schedules the capture phase.** The sweep is invoked by this endpoint and by nothing else, and no cron job invokes this endpoint. **Do not describe capability expiry as scheduled.** With capture absent — which it is everywhere — expiry is still observed only on the Recipient path, exactly as before A8.5d.
 
-**Counts against `owner_notification_intents` and `owner_notification_attempts` are valid in Production** — the A8.5a migration was applied by Gate 4. None of A8.5b, A8.5c, A8.5d, or A8.5e adds a migration of its own. After Gate 5 the tables exist and remain empty while capture stays absent.
+**Counts against `owner_notification_intents` and `owner_notification_attempts` are valid in Production** — the A8.5a migration was applied by Gate 4. None of A8.5b, A8.5c, A8.5d, or A8.5e adds a migration of its own. After Gate 5 the tables exist and remain empty while capture stays absent from live Production.
 
 ## A8.7 production rollout
 
 > **A8.7b as originally written is retired.** It was designed for a Production that served pre-A8 code against an unmigrated database. That premise was false. Production is serving **A8 code** against an unmigrated database, which is an incident rather than a starting point. The migrate-then-deploy rollout it described cannot be run, because the deploy already happened. Everything A8.7b covered is superseded by [A8.7b-INCIDENT-1c](#a87b-incident-1c--production-schema-compatibility-repair), which repairs the schema and deploys nothing.
 >
-> A8.7c, A8.7d, and A8.7e remain as written but now sit behind the repair, behind [Gate 4](#gate-4--production-migrations-69) — which applied the remaining migrations on 2026-08-05 and is complete — and behind [Gate 5](#gate-5--deploying-the-queued-a84ba86-code), which deployed the queued code on 2026-08-05 and is complete. **The first activation inside that path is [Gate 6](#gate-6--first-controlled-production-enablement-a87c-capture--f0--f1) and has not begun.**
+> A8.7c, A8.7d, and A8.7e remain as written but now sit behind the repair, behind [Gate 4](#gate-4--production-migrations-69) — which applied the remaining migrations on 2026-08-05 and is complete — and behind [Gate 5](#gate-5--deploying-the-queued-a84ba86-code), which deployed the queued code on 2026-08-05 and is complete. **The first activation inside that path is [Gate 6](#gate-6--first-controlled-production-enablement-a87c-capture--f0--f1), which was authorized and partially executed on 2026-08-05 but did not complete: capture never became live. Stage 12, A8.7d, and A8.7e have not begun.**
 
-**A8.7a contacted no production system.** Later authorized slices (1c, 1d, Gate 4, Gate 5) did, under their own authorizations, and their evidence is recorded. **No A8 feature flag has been enabled.** Every flag-staging command below is an instruction to a future operator working under a separate authorization for [Gate 6](#gate-6--first-controlled-production-enablement-a87c-capture--f0--f1) or later.
+**A8.7a contacted no production system.** Later authorized slices (1c, 1d, Gate 4, Gate 5, and the partial Gate 6 attempt) did, under their own authorizations, and their evidence is recorded. **No A8 feature flag is enabled in live Production** — the capture variable Gate 6 created was subsequently removed, and the deployment that carried it never held the public custom domain. Every flag-staging command below is an instruction to a future operator working under a separate authorization.
 
 Read this section as a whole before starting any part of it. It is deliberately written so that the decision points are settled while nobody is under pressure.
 
 ### A8.7 slice structure
 
-| Slice                 | Scope                                                                                                                                                      | Production contact                       |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
-| **A8.7a**             | Rollout preparation, recovery procedures, verification classification                                                                                      | **None**                                 |
-| **A8.7b**             | **Retired.** Superseded by the incident slices below                                                                                                       | —                                        |
-| **A8.7b-INCIDENT-1a** | Local PostgreSQL 17 rehearsal of the repair migration path. **Complete** ([evidence](A8_7B_INCIDENT_1A_EVIDENCE.md))                                       | **None**                                 |
-| **A8.7b-INCIDENT-1b** | Incident runbook correction. **Complete**                                                                                                                  | **None**                                 |
-| **A8.7b-INCIDENT-1c** | Production schema compatibility repair — five migrations, no deployment. **Complete 2026-08-04**                                                           | Database only                            |
-| **A8.7b-INCIDENT-1d** | Reminder endpoint hotfix on `ee5e82a`, deployed and validated. **Complete 2026-08-05**                                                                     | Deployment only                          |
-| **A8.7b-INCIDENT-1e** | Documentation reconciliation after the hotfix. **This documentation**                                                                                      | **None**                                 |
-| **Gate 4**            | Remaining four migrations — 6 through 9 — and nothing else. **Complete 2026-08-05** ([runbook](#gate-4--production-migrations-69))                         | Database only                            |
-| **Gate 5**            | Deployment of the queued A8.4b–A8.6 code, reaching `D3` / `F0`. **Complete 2026-08-05** ([runbook](#gate-5--deploying-the-queued-a84ba86-code))            | Deployment only                          |
-| **Gate 6**            | First controlled production enablement — `ENABLE_OWNER_EVENT_CAPTURE` only (`F0` → `F1`). **Prepared; unauthorized and unbegun** ([runbook](#gate-6--first-controlled-production-enablement-a87c-capture--f0--f1)) | One environment variable, one deployment |
-| **A8.7c**             | Owner-event capture enablement and observation (Stage 11 = Gate 6; Stage 12 follows)                                                                       | One environment variable, one deployment |
-| **A8.7d**             | Zero-send notification rehearsal, single-notification canary, Gmail-loop proof, notification scheduler creation                                            | Gmail send, scheduler creation           |
-| **A8.7e**             | Reminder preflight, single-reminder canary, reminder scheduler creation                                                                                    | Recipient email, scheduler creation      |
+| Slice                 | Scope                                                                                                                                                                                                                                                   | Production contact                       |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| **A8.7a**             | Rollout preparation, recovery procedures, verification classification                                                                                                                                                                                   | **None**                                 |
+| **A8.7b**             | **Retired.** Superseded by the incident slices below                                                                                                                                                                                                    | —                                        |
+| **A8.7b-INCIDENT-1a** | Local PostgreSQL 17 rehearsal of the repair migration path. **Complete** ([evidence](A8_7B_INCIDENT_1A_EVIDENCE.md))                                                                                                                                    | **None**                                 |
+| **A8.7b-INCIDENT-1b** | Incident runbook correction. **Complete**                                                                                                                                                                                                               | **None**                                 |
+| **A8.7b-INCIDENT-1c** | Production schema compatibility repair — five migrations, no deployment. **Complete 2026-08-04**                                                                                                                                                        | Database only                            |
+| **A8.7b-INCIDENT-1d** | Reminder endpoint hotfix on `ee5e82a`, deployed and validated. **Complete 2026-08-05**                                                                                                                                                                  | Deployment only                          |
+| **A8.7b-INCIDENT-1e** | Documentation reconciliation after the hotfix. **This documentation**                                                                                                                                                                                   | **None**                                 |
+| **Gate 4**            | Remaining four migrations — 6 through 9 — and nothing else. **Complete 2026-08-05** ([runbook](#gate-4--production-migrations-69))                                                                                                                      | Database only                            |
+| **Gate 5**            | Deployment of the queued A8.4b–A8.6 code, reaching `D3` / `F0`. **Complete 2026-08-05** ([runbook](#gate-5--deploying-the-queued-a84ba86-code))                                                                                                         | Deployment only                          |
+| **Gate 6**            | First controlled production enablement — `ENABLE_OWNER_EVENT_CAPTURE` only (`F0` → `F1`). **Authorized and partially executed 2026-08-05; incomplete and never live** ([runbook](#gate-6--first-controlled-production-enablement-a87c-capture--f0--f1)) | One environment variable, one deployment |
+| **A8.7c**             | Owner-event capture enablement and observation (Stage 11 = Gate 6, **incomplete**; Stage 12 observation **prepared, unauthorized, unbegun** — [G12](#stage-12--capture-only-observation-a87c--f1))                                                      | One environment variable, one deployment |
+| **A8.7d**             | Zero-send notification rehearsal, single-notification canary, Gmail-loop proof, notification scheduler creation                                                                                                                                         | Gmail send, scheduler creation           |
+| **A8.7e**             | Reminder preflight, single-reminder canary, reminder scheduler creation                                                                                                                                                                                 | Recipient email, scheduler creation      |
 
 **Each slice requires its own authorization.** A8.7d is the first slice in the project's history that can send mail on Rocket's initiative, and A8.7e is the first that can send mail to somebody who is not the Owner. Those are different thresholds and are deliberately not crossed in one slice.
 
 ### Current production state
 
-**The incident is closed, and Production is at `D3` (`F0`).** The schema was repaired on 2026-08-04 by applying the five A8 migrations from `ee5e82a` in one `prisma migrate deploy` from the bounded worktree. The repair exposed a separate, pre-existing packaging defect in the reminder endpoint, which was fixed and validated on 2026-08-05. [Gate 4](#gate-4--production-migrations-69) then applied the remaining four migrations on 2026-08-05, moving Production from `D1′` to **`D2`**. [Gate 5](#gate-5--deploying-the-queued-a84ba86-code) deployed the queued A8.4b–A8.6 code on 2026-08-05, moving Production from `D2` to **`D3` / `F0`**. Evidence: [A8_7_EVIDENCE.md § A8.7b-INCIDENT-1c](A8_7_EVIDENCE.md#a87b-incident-1c--production-schema-compatibility-repair), [§ A8.7b-INCIDENT-1d](A8_7_EVIDENCE.md#a87b-incident-1d--production-reminder-endpoint-hotfix), [§ Gate 4](A8_7_EVIDENCE.md#gate-4--production-migrations-69), and [§ Gate 5](A8_7_EVIDENCE.md#gate-5--deploying-the-queued-a84ba86-code).
+**The incident is closed, and Production is at `D3` (`F0`).** The schema was repaired on 2026-08-04 by applying the five A8 migrations from `ee5e82a` in one `prisma migrate deploy` from the bounded worktree. The repair exposed a separate, pre-existing packaging defect in the reminder endpoint, which was fixed and validated on 2026-08-05. [Gate 4](#gate-4--production-migrations-69) then applied the remaining four migrations on 2026-08-05, moving Production from `D1′` to **`D2`**. [Gate 5](#gate-5--deploying-the-queued-a84ba86-code) deployed the queued A8.4b–A8.6 code on 2026-08-05, moving Production from `D2` to **`D3` / `F0`**. [Gate 6](#gate-6--first-controlled-production-enablement-a87c-capture--f0--f1) was authorized and partially executed the same day but **did not complete**, so Production never left `F0`. Evidence: [A8_7_EVIDENCE.md § A8.7b-INCIDENT-1c](A8_7_EVIDENCE.md#a87b-incident-1c--production-schema-compatibility-repair), [§ A8.7b-INCIDENT-1d](A8_7_EVIDENCE.md#a87b-incident-1d--production-reminder-endpoint-hotfix), [§ Gate 4](A8_7_EVIDENCE.md#gate-4--production-migrations-69), [§ Gate 5](A8_7_EVIDENCE.md#gate-5--deploying-the-queued-a84ba86-code), and [§ Gate 6](A8_7_EVIDENCE.md#gate-6--first-controlled-production-enablement-a87c-capture--f0--f1).
 
-| Property                      | Value                                                                                                                                                                                                                                     |
-| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Production commit             | `d369c6d567c595ac0fb91b36744a2afb58717ecb` — queued A8.4b–A8.6 code, including the reminder ETag fix via ancestor `534959d`                                                                                                              |
-| Commit reachability           | On local `main`. **`534959d` is an ancestor** through merge `68bedff`. **Not** an ancestor of `origin/main`, which is still `ee5e82a` — see [commit ancestry](#commit-ancestry-of-the-deployed-hotfix)                                    |
-| Production deployment         | `dpl_6cVssNpaZeKPBEVGDynd61AoS9nS`, created 2026-08-05T22:24:39Z, target `production`, alias-holding                                                                                                                                      |
-| Previous deployment           | `dpl_3oder2T3PuDYdmp8pezy6u7RwPRm` (`534959d`) — retained; one-step Instant Rollback from the Gate 5 deployment lands here                                                                                                                |
-| Production schema             | **All fourteen migrations — five pre-A8 plus all nine A8 — fourteen rows in `_prisma_migrations`.** Unchanged by Gate 5                                                                                                                   |
-| `ENABLE_OWNER_EVENT_CAPTURE`  | Absent                                                                                                                                                                                                                                    |
-| `ENABLE_OWNER_EVENT_DELIVERY` | Absent                                                                                                                                                                                                                                    |
-| `ENABLE_REMINDER_DELIVERY`    | Absent                                                                                                                                                                                                                                    |
-| Gmail                         | **Connected.** No recorded sync run since 2026-07-20                                                                                                                                                                                      |
-| Scheduler jobs                | External, at cron-job.org. Gmail-poll and suggestion-processing both **disabled** as found; **no** notification job; **no** reminder job                                                                                                   |
-| Database credential           | **Rotated 2026-08-04**, outside the approved plan. Vercel Production `DATABASE_URL` updated                                                                                                                                               |
-| State                         | **D3 / F0** — see the [state matrix](#approved-repair-state-matrix) and [flag-staging states](#flag-staging-states-a87ca87e). Code and schema aligned; every A8 feature inert                                                             |
+| Property                                           | Value                                                                                                                                                                                                                                                                                                                             |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Production commit                                  | `d369c6d567c595ac0fb91b36744a2afb58717ecb` — queued A8.4b–A8.6 code, including the reminder ETag fix via ancestor `534959d`                                                                                                                                                                                                       |
+| Commit reachability                                | On local `main`. **`534959d` is an ancestor** through merge `68bedff`. **Not** an ancestor of `origin/main`, which is still `ee5e82a` — see [commit ancestry](#commit-ancestry-of-the-deployed-hotfix)                                                                                                                            |
+| Production deployment                              | `dpl_6cVssNpaZeKPBEVGDynd61AoS9nS`, created 2026-08-05T22:24:39Z, target `production`, **holds the public custom domain**                                                                                                                                                                                                         |
+| Previous deployment                                | `dpl_3oder2T3PuDYdmp8pezy6u7RwPRm` (`534959d`) — retained; one-step Instant Rollback from the live deployment lands here                                                                                                                                                                                                          |
+| Gate 6 production-target deployment (**not live**) | `dpl_7X5r5ypWbq6ipmWMpver6p99p5Xz` — built successfully and **READY**, target `production`, carrying `ENABLE_OWNER_EVENT_CAPTURE` in its immutable environment snapshot. It received **only the two default `.vercel.app` aliases** and **never** the public custom domain, so nothing it contains has ever served public traffic |
+| Production schema                                  | **All fourteen migrations — five pre-A8 plus all nine A8 — fourteen rows in `_prisma_migrations`.** Unchanged by Gate 5 and by the partial Gate 6                                                                                                                                                                                 |
+| `ENABLE_OWNER_EVENT_CAPTURE`                       | Absent                                                                                                                                                                                                                                                                                                                            |
+| `ENABLE_OWNER_EVENT_DELIVERY`                      | Absent                                                                                                                                                                                                                                                                                                                            |
+| `ENABLE_REMINDER_DELIVERY`                         | Absent                                                                                                                                                                                                                                                                                                                            |
+| Gmail                                              | **Connected.** No recorded sync run since 2026-07-20                                                                                                                                                                                                                                                                              |
+| Scheduler jobs                                     | External, at cron-job.org. Gmail-poll and suggestion-processing both **disabled** as found; **no** notification job; **no** reminder job                                                                                                                                                                                          |
+| Database credential                                | **Rotated 2026-08-04**, outside the approved plan. Vercel Production `DATABASE_URL` updated                                                                                                                                                                                                                                       |
+| State                                              | **D3 / F0** — see the [state matrix](#approved-repair-state-matrix) and [flag-staging states](#flag-staging-states-a87ca87e). Code and schema aligned; every A8 feature inert                                                                                                                                                     |
 
-**`D3` / `F0` is the designated safe harbour for flag staging, and that is structural rather than merely observed.** The queued A8 code is deployed against all fourteen migrations, and all three A8 flags remain absent, so capture writes nothing, the notification worker opens no database connection when both of its flags are absent, and reminder delivery constructs no transport. **Nothing about `F0` creates time pressure on [Gate 6](#gate-6--first-controlled-production-enablement-a87c-capture--f0--f1).**
+> **Why Gate 6 is incomplete even though its deployment succeeded.** Gate 6 was explicitly authorized, `ENABLE_OWNER_EVENT_CAPTURE` was temporarily created in the Vercel Production environment, and the production-target deployment `dpl_7X5r5ypWbq6ipmWMpver6p99p5Xz` built and reached **READY** with that value baked into its immutable environment snapshot. A production-target build is not by itself the live site. The project has **`autoAssignCustomDomains=false`**, so a new deployment receives only the two default `.vercel.app` aliases and the public custom domain moves only by an **explicit alias assignment**. That assignment never occurred. The public custom domain therefore stayed on `dpl_6cVssNpaZeKPBEVGDynd61AoS9nS`, whose own environment snapshot predates the capture flag, and **capture never became live on the public production site**. The capture variable was subsequently removed from the Vercel Production environment under separate authorization. **Gate 6 is incomplete; live Production is `D3` / `F0`.** This record authorizes no production action.
+
+**`D3` / `F0` is the designated safe harbour for flag staging, and that is structural rather than merely observed.** The queued A8 code is deployed against all fourteen migrations, and all three A8 flags remain absent, so capture writes nothing, the notification worker opens no database connection when both of its flags are absent, and reminder delivery constructs no transport. **Nothing about `F0` creates time pressure on [Gate 6](#gate-6--first-controlled-production-enablement-a87c-capture--f0--f1), Stage 12, A8.7d, or A8.7e.**
 
 ##### Commit ancestry of the deployed hotfix
 
@@ -548,20 +553,20 @@ Read this section as a whole before starting any part of it. It is deliberately 
 
 **Environment-variable changes affect only deployments created after the change.** A running deployment holds the values it was built and bound with; editing a variable in the Vercel dashboard does nothing until something redeploys. Correspondingly, **Instant Rollback restores the target deployment together with its original environment variables** — it does not re-bind current values onto an old build. Rolling back to a deployment built with a flag set restores that flag.
 
-| State   | Code                   | Schema                     | Flags  | Meaning                                                                                                            |
-| ------- | ---------------------- | -------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------ |
-| **D0**  | `ee5e82a`              | five pre-A8 migrations     | none   | The incident state. **Left on 2026-08-04**                                                                         |
-| **D1**  | `ee5e82a`              | pre-A8 + A8 migrations 1–5 | none   | **Schema-repaired but defective.** Held 2026-08-04 to 08-05. **Never a validated baseline**                        |
-| **D1′** | `534959d`              | pre-A8 + A8 migrations 1–5 | none   | Reached 2026-08-05 by A8.7b-INCIDENT-1d. Schema and application validated. **Left the same day**                   |
-| **D2**  | `534959d`              | all nine A8 migrations     | none   | Reached 2026-08-05 by [Gate 4](#gate-4--production-migrations-69). Schema ahead of code. **Left the same day** by Gate 5 |
-| **D3**  | queued A8 code (`d369c6d`) | all nine A8 migrations | none   | **Current state.** Reached 2026-08-05 by [Gate 5](#gate-5--deploying-the-queued-a84ba86-code). Equals `F0`          |
-| **D4+** | later code and schema  | as required                | staged | Capture and delivery rollout (A8.7c, A8.7d, A8.7e) — not begun; first step is [Gate 6](#gate-6--first-controlled-production-enablement-a87c-capture--f0--f1) |
+| State   | Code                       | Schema                     | Flags  | Meaning                                                                                                                                                                                                   |
+| ------- | -------------------------- | -------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **D0**  | `ee5e82a`                  | five pre-A8 migrations     | none   | The incident state. **Left on 2026-08-04**                                                                                                                                                                |
+| **D1**  | `ee5e82a`                  | pre-A8 + A8 migrations 1–5 | none   | **Schema-repaired but defective.** Held 2026-08-04 to 08-05. **Never a validated baseline**                                                                                                               |
+| **D1′** | `534959d`                  | pre-A8 + A8 migrations 1–5 | none   | Reached 2026-08-05 by A8.7b-INCIDENT-1d. Schema and application validated. **Left the same day**                                                                                                          |
+| **D2**  | `534959d`                  | all nine A8 migrations     | none   | Reached 2026-08-05 by [Gate 4](#gate-4--production-migrations-69). Schema ahead of code. **Left the same day** by Gate 5                                                                                  |
+| **D3**  | queued A8 code (`d369c6d`) | all nine A8 migrations     | none   | **Current state.** Reached 2026-08-05 by [Gate 5](#gate-5--deploying-the-queued-a84ba86-code). Equals `F0`                                                                                                |
+| **D4+** | later code and schema      | as required                | staged | Capture and delivery rollout (A8.7c, A8.7d, A8.7e) — not complete; [Gate 6](#gate-6--first-controlled-production-enablement-a87c-capture--f0--f1) / Stage 11 was partially executed and never became live |
 
 **D1 and D1′ are deliberately separate rows.** `D1` was the state the repair was designed to reach, and Production genuinely occupied it for about a day — but the reminder endpoint answered `INTERNAL_ERROR` throughout, so `D1` was never a state anyone validated or would want to return to. Collapsing the two would let a future operator read a validated baseline into a commit that never had one.
 
 Rules that follow from the binding model:
 
-- **`D3` / `F0` is the flag-staging safe harbour** once the queued code is deployed: that code with every A8 feature inert. **`534959d` remains the validated pre-`D3` code harbour** for a heavier code rollback, and is the immediately previous deployment behind Gate 5's `dpl_6cVssNpaZeKPBEVGDynd61AoS9nS`.
+- **`D3` / `F0` is the flag-staging safe harbour** once the queued code is deployed: that code with every A8 feature inert. **It is also where live Production sits today**, on `dpl_6cVssNpaZeKPBEVGDynd61AoS9nS`, because [Gate 6](#gate-6--first-controlled-production-enablement-a87c-capture--f0--f1) never moved the public custom domain off it. **`534959d` remains the validated pre-`D3` code harbour** for a heavier code rollback, and is the immediately previous deployment behind Gate 5's `dpl_6cVssNpaZeKPBEVGDynd61AoS9nS`.
 - **`D1′` is history, not a destination.** Production passed through it on 2026-08-05 and left it the same day when Gate 4 advanced the schema. **`D1′` is no longer reachable at all**, because reaching it would require unapplying migrations 6–9, and schema is forward-only.
 - **`D2` is history, not the current state.** Production left it when Gate 5 deployed. Rolling Instant Rollback one step from current `D3` lands on `534959d` (`D2`-shaped code) — usable as containment, but it re-opens the `/attention` consumer gap Gate 5 closed.
 - **No `D` state is reachable backwards by rollback.** Schema is reached only by forward migration, and a rollback moves code alone.
@@ -1364,7 +1369,7 @@ Then confirm, before moving on:
 
 **Check 9 is the check Gate 5 exists to satisfy, and it is the one that must not be waved through.** `/attention` is `force-dynamic` and runs two reads in parallel on every load: `listReminderSchedulesRequiringOwnerAttention` against `task_reminder_schedules`, and `listUndeliveredOwnerNotifications` against `owner_notification_intents` — the table **migration 9** created in Gate 4. The page deliberately has **no error catch**; a database failure propagates to the segment error boundary untouched, because rendering an empty state instead would turn a missing table into the sentence "nothing needs your attention", which is the single worst thing this page could say while wrong.
 
-**Two empty sections are the correct result, and the reason each is empty is different.** Section one is empty because no reminder schedule has ever been created in Production. Section two is empty because no notification intent has ever been captured — `ENABLE_OWNER_EVENT_CAPTURE` has never been set. **An error boundary on this page is a hard stop**, and it means the deployed code cannot see something Gate 4 created.
+**Two empty sections are the correct result, and the reason each is empty is different.** Section one is empty because no reminder schedule has ever been created in Production. Section two is empty because no notification intent has ever been captured — `ENABLE_OWNER_EVENT_CAPTURE` has never been live. **An error boundary on this page is a hard stop**, and it means the deployed code cannot see something Gate 4 created.
 
 #### G5.16 Inertness verification
 
@@ -1429,7 +1434,7 @@ Then confirm, before moving on:
 Five properties hold regardless of which path is taken:
 
 - **Rolling back does not undo a migration.** Schema is forward-only, so Production stays at `D2` through any code action. There is no code state Gate 5 can return to that makes the schema move.
-- **A deployment carries the environment variables it was built with.** Rolling back to a build made with a flag set restores that flag. All three flags are absent everywhere today, so this is currently harmless — it stops being harmless the moment Gate 6 begins.
+- **A deployment carries the environment variables it was built with.** Rolling back to a build made with a flag set restores that flag. All three flags were absent everywhere during Gate 5, so this was harmless then. **It is no longer universally true:** the partial Gate 6 attempt left one READY production-target deployment, `dpl_7X5r5ypWbq6ipmWMpver6p99p5Xz`, whose immutable snapshot still contains `ENABLE_OWNER_EVENT_CAPTURE`, even though the variable has since been removed from the Vercel Production environment. Aliasing the public custom domain to that deployment would make capture live — see [Current production state](#current-production-state).
 - **Rollback does not disable an external scheduler job.** cron-job.org keeps calling whatever it was calling. Pausing a job is a separate action in a separate system.
 - **Rolling back does not unsend an email.** Not reachable in Gate 5, since all three flags stay absent — which is exactly why they stay absent.
 - **Environment bindings and scheduler state are separate concerns from the deployment**, and each needs its own action, its own confirmation, and its own record.
@@ -1464,9 +1469,13 @@ Five properties hold regardless of which path is taken:
 
 ### Gate 6 — First controlled production enablement (A8.7c capture / F0 → F1)
 
+> **⚠ Gate 6 was authorized and partially executed on 2026-08-05, and it did not complete. Capture never became live, and live Production remains `D3` / `F0`.** `ENABLE_OWNER_EVENT_CAPTURE` was temporarily created in Vercel Production and the production-target deployment `dpl_7X5r5ypWbq6ipmWMpver6p99p5Xz` built and reached READY carrying it, but that deployment received only the two default `.vercel.app` aliases. Because the project has `autoAssignCustomDomains=false`, the public custom domain moves only by an explicit alias assignment, and that assignment did not occur — the domain stayed on `dpl_6cVssNpaZeKPBEVGDynd61AoS9nS`, whose snapshot predates the flag. The capture variable was subsequently removed from Vercel Production under separate authorization. Evidence and the recorded gap: [A8_7_EVIDENCE.md § Gate 6](A8_7_EVIDENCE.md#gate-6--first-controlled-production-enablement-a87c-capture--f0--f1); state summary: [Current production state](#current-production-state). **Nothing here authorizes resuming, completing, or re-running Gate 6, and nothing here authorizes Stage 12, A8.7d, or A8.7e.**
+
 **Gate 6 enables exactly one feature flag — `ENABLE_OWNER_EVENT_CAPTURE` — in Production, redeploys so the value binds, verifies the result, and does nothing else.** No migration, no second flag, no scheduler job, no Gmail action, no Owner or Recipient email, no push to `main`. It moves Production from **`F0`** to **`F1`** in the [flag-staging states](#flag-staging-states-a87ca87e): capture writes notification intents and audit rows; delivery and reminder remain inert.
 
-**Gate 6 has not been executed, and this section does not authorize it.** It is written out in full so that an operator can execute it from this repository alone, with no reference to any conversation. Completing [Gate 5](#gate-5--deploying-the-queued-a84ba86-code) did not make it due.
+**Gate 6 has not been completed, and this section does not authorize it.** It is written out in full so that an operator can execute it from this repository alone, with no reference to any conversation. Completing [Gate 5](#gate-5--deploying-the-queued-a84ba86-code) did not make it due, and the partial 2026-08-05 attempt did not make its remainder due either.
+
+> **⚠ A production-target deployment is not the live site.** The partial Gate 6 attempt is the reason this is now stated here rather than assumed: a build that reaches READY with a flag in its environment snapshot serves nothing until the **public custom domain** points at it. With `autoAssignCustomDomains=false`, a new production-target deployment holds only its two default `.vercel.app` aliases. **Verify the live custom domain's deployment ID, not merely the newest READY deployment**, before recording any flag as live.
 
 > **⚠ Gate 6 is a flag-binding deployment, not a code deploy and not a migration.** The Production code at `D3` already contains the capture path. What changes is one environment variable and the deployment that carries it. An operator who reaches for `prisma migrate deploy`, who sets a second A8 flag, who creates a notification cron job, or who pushes to `main` is following the wrong procedure. Everything labelled `G5.x` describes the inert code deploy and must not be re-run here to "be safe."
 
@@ -1474,16 +1483,16 @@ Five properties hold regardless of which path is taken:
 
 #### G6.1 Scope
 
-| In scope                                                                                                                         | Out of scope                                                                                          |
-| -------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| Setting `ENABLE_OWNER_EVENT_CAPTURE` to the exact lowercase string `true` in Vercel **Production only**                          | Setting, unsetting, or editing `ENABLE_OWNER_EVENT_DELIVERY` or `ENABLE_REMINDER_DELIVERY`             |
-| One production-target redeploy that binds the new value (inspect before aliased traffic when using `--skip-domain`)              | `git push origin main`, which deploys automatically and removes the inspection gate                   |
-| Read-only preflight counts (Q8, Q21) and read-only post-activation verification                                                  | Any migration, `migrate deploy`, `migrate resolve`, or schema change                                  |
-| Recording evidence in [A8_7_EVIDENCE.md § Gate 6](A8_7_EVIDENCE.md#gate-6--first-controlled-production-enablement-a87c-capture--f0--f1) | Promoting a **preview-target** deployment, under any circumstances                                    |
-| Confirming scheduler inactivity read-only                                                                                        | Creating, resuming, editing, or invoking any scheduler job, including the notification job            |
-|                                                                                                                                  | Invoking `POST /api/v1/internal/notifications/process` (manual or scheduled)                          |
-|                                                                                                                                  | Stage 12 observation window close-out as a separate decision beyond immediate verification            |
-|                                                                                                                                  | A8.7d (delivery, Gmail canary, notification scheduler) and A8.7e (reminder delivery)                  |
+| In scope                                                                                                                                | Out of scope                                                                               |
+| --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Setting `ENABLE_OWNER_EVENT_CAPTURE` to the exact lowercase string `true` in Vercel **Production only**                                 | Setting, unsetting, or editing `ENABLE_OWNER_EVENT_DELIVERY` or `ENABLE_REMINDER_DELIVERY` |
+| One production-target redeploy that binds the new value (inspect before aliased traffic when using `--skip-domain`)                     | `git push origin main`, which deploys automatically and removes the inspection gate        |
+| Read-only preflight counts (Q8, Q21) and read-only post-activation verification                                                         | Any migration, `migrate deploy`, `migrate resolve`, or schema change                       |
+| Recording evidence in [A8_7_EVIDENCE.md § Gate 6](A8_7_EVIDENCE.md#gate-6--first-controlled-production-enablement-a87c-capture--f0--f1) | Promoting a **preview-target** deployment, under any circumstances                         |
+| Confirming scheduler inactivity read-only                                                                                               | Creating, resuming, editing, or invoking any scheduler job, including the notification job |
+|                                                                                                                                         | Invoking `POST /api/v1/internal/notifications/process` (manual or scheduled)               |
+|                                                                                                                                         | Stage 12 observation window close-out as a separate decision beyond immediate verification |
+|                                                                                                                                         | A8.7d (delivery, Gmail canary, notification scheduler) and A8.7e (reminder delivery)       |
 
 #### G6.2 Prerequisites
 
@@ -1508,26 +1517,26 @@ Every one of these must hold, and each must be confirmed rather than assumed:
 
 Record these read-only before touching any environment variable:
 
-| Check                                                         | Expectation                                      |
-| ------------------------------------------------------------- | ------------------------------------------------ |
-| Current deployment ID and commit                              | Gate 5 artifact (or documented successor at F0)  |
-| All three A8 flags                                            | **Absent**                                       |
-| Q2 migration history                                          | Still exactly **fourteen** finished rows         |
-| Q8 four table counts                                          | **`0, 0, 0, 0`** unless an accepted exception is recorded |
-| Q21 expired capabilities                                      | Recorded (informational)                         |
-| Notification job                                              | **Does not exist**                               |
-| Reminder / Gmail-poll / suggestion jobs                       | Inactive as found; none created or resumed       |
-| `/attention`                                                  | Loads; neither section reaches the error boundary |
+| Check                                   | Expectation                                               |
+| --------------------------------------- | --------------------------------------------------------- |
+| Current deployment ID and commit        | Gate 5 artifact (or documented successor at F0)           |
+| All three A8 flags                      | **Absent**                                                |
+| Q2 migration history                    | Still exactly **fourteen** finished rows                  |
+| Q8 four table counts                    | **`0, 0, 0, 0`** unless an accepted exception is recorded |
+| Q21 expired capabilities                | Recorded (informational)                                  |
+| Notification job                        | **Does not exist**                                        |
+| Reminder / Gmail-poll / suggestion jobs | Inactive as found; none created or resumed                |
+| `/attention`                            | Loads; neither section reaches the error boundary         |
 
 **Do not skip the baseline because Gate 5 already recorded zeros.** Gate 4 deviation 3 and Gate 5 evidence discipline both exist because a prior window's numbers are not evidence about this window.
 
 #### G6.5 Required other-flag absence
 
-| Flag                            | Required state | Why                                                                 |
-| ------------------------------- | -------------- | ------------------------------------------------------------------- |
-| `ENABLE_OWNER_EVENT_CAPTURE`    | **Absent → `true`** | The only flag this gate sets                                   |
-| `ENABLE_OWNER_EVENT_DELIVERY`   | **Absent**     | Delivery is live ammunition; A8.5c can send Owner mail              |
-| `ENABLE_REMINDER_DELIVERY`      | **Absent**     | Reminder send path; not part of A8.7c                               |
+| Flag                          | Required state      | Why                                                    |
+| ----------------------------- | ------------------- | ------------------------------------------------------ |
+| `ENABLE_OWNER_EVENT_CAPTURE`  | **Absent → `true`** | The only flag this gate sets                           |
+| `ENABLE_OWNER_EVENT_DELIVERY` | **Absent**          | Delivery is live ammunition; A8.5c can send Owner mail |
+| `ENABLE_REMINDER_DELIVERY`    | **Absent**          | Reminder send path; not part of A8.7c                  |
 
 **Exact-string rule.** Only the lowercase string `true` enables an A8 flag. `"1"`, `"TRUE"`, `"yes"`, and whitespace leave the flag **off**. Discovering a wrong spelling after an hour of "observation" wastes the window and is a stop under [G6.11](#g611-stop-conditions).
 
@@ -1571,15 +1580,15 @@ Perform in this order. Do not reorder. The operator-facing expansion with exact 
 
 Before relying on the new deployment (and before `vercel promote` when using `--skip-domain`):
 
-| Check                         | Expectation                                                                 |
-| ----------------------------- | --------------------------------------------------------------------------- |
-| Deployment target             | **`production`**                                                            |
-| Deployment state              | **READY**                                                                   |
-| Commit SHA                    | Authorized commit (worktree / metadata)                                     |
-| `ENABLE_OWNER_EVENT_CAPTURE`  | **`true`** in the deployment's Production env binding                       |
-| Other two A8 flags            | **Absent**                                                                  |
-| Migration during build        | **None** — only `prisma generate`, as in Gate 5                             |
-| Route set                     | Still includes `/api/v1/internal/notifications/process` and `/attention`    |
+| Check                        | Expectation                                                              |
+| ---------------------------- | ------------------------------------------------------------------------ |
+| Deployment target            | **`production`**                                                         |
+| Deployment state             | **READY**                                                                |
+| Commit SHA                   | Authorized commit (worktree / metadata)                                  |
+| `ENABLE_OWNER_EVENT_CAPTURE` | **`true`** in the deployment's Production env binding                    |
+| Other two A8 flags           | **Absent**                                                               |
+| Migration during build       | **None** — only `prisma generate`, as in Gate 5                          |
+| Route set                    | Still includes `/api/v1/internal/notifications/process` and `/attention` |
 
 If any row fails, **do not promote / do not continue**. Unset the capture flag if it was set, and leave Production on the previous F0 deployment.
 
@@ -1600,17 +1609,17 @@ Run immediately after the new deployment is the alias-holding Production deploym
 
 #### G6.11 Stop conditions
 
-| Condition                                                                 | Action                                                                 |
-| ------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| Either other A8 flag is present or became set                             | **Hard stop.** Unset capture if set; do not continue                   |
-| Capture value is anything other than exact `true`                         | **Hard stop.** Fix spelling only under re-authorization                |
-| Preview-target deployment created or promoted                             | **Hard stop.** Do not promote; discard                                 |
-| Push to `main` performed                                                  | **Hard stop.** Treat as unauthorized deploy; follow containment        |
-| `/attention` error boundary                                               | **Hard stop.** Contain per [G6.12](#g612-containment-and-rollback-posture) |
-| `owner_notification_attempts` non-zero                                    | **Hard stop.** Something delivered; contain immediately                |
-| Notification job created or endpoint invoked                              | **Hard stop.** Pause/remove job if created; unset delivery if set      |
-| Migration history changed                                                 | **Hard stop.** Wrong procedure was followed                            |
-| Production alias on an unexpected deployment                              | **Hard stop.** Resolve alias before any further change                 |
+| Condition                                         | Action                                                                     |
+| ------------------------------------------------- | -------------------------------------------------------------------------- |
+| Either other A8 flag is present or became set     | **Hard stop.** Unset capture if set; do not continue                       |
+| Capture value is anything other than exact `true` | **Hard stop.** Fix spelling only under re-authorization                    |
+| Preview-target deployment created or promoted     | **Hard stop.** Do not promote; discard                                     |
+| Push to `main` performed                          | **Hard stop.** Treat as unauthorized deploy; follow containment            |
+| `/attention` error boundary                       | **Hard stop.** Contain per [G6.12](#g612-containment-and-rollback-posture) |
+| `owner_notification_attempts` non-zero            | **Hard stop.** Something delivered; contain immediately                    |
+| Notification job created or endpoint invoked      | **Hard stop.** Pause/remove job if created; unset delivery if set          |
+| Migration history changed                         | **Hard stop.** Wrong procedure was followed                                |
+| Production alias on an unexpected deployment      | **Hard stop.** Resolve alias before any further change                     |
 
 #### G6.12 Containment and rollback posture
 
@@ -1667,12 +1676,12 @@ Fill [A8_7_EVIDENCE.md § Gate 6](A8_7_EVIDENCE.md#gate-6--first-controlled-prod
 
 **Owner authorization checkpoints** (must each be recorded before the named action):
 
-| Checkpoint | Must hold before | Trace |
-| ---------- | ---------------- | ----- |
-| **A0** — Explicit Gate 6 authorization exists (Gate 5's does not carry) | Any production contact for this gate | [G6.3](#g63-owner-authorization-boundary) |
-| **A1** — Authorization covers setting **only** `ENABLE_OWNER_EVENT_CAPTURE=true` and one binding redeploy | Step EC-7 (flag set) | [G6.1](#g61-scope), [G6.3](#g63-owner-authorization-boundary) |
-| **A2** — If using the alternative redeploy method, Owner authorized that method for this window | Step EC-9 alternative | [G6.8](#g68-execution-sequence) item 4 |
-| **A3** — Any action outside this checklist (second flag, scheduler, push, Stage 12 close-out, A8.7d/e) requires a **new** Owner decision | Never during Gate 6 | [G6.14](#g614-stop-before-stage-12-close-out-and-before-a87d) |
+| Checkpoint                                                                                                                               | Must hold before                     | Trace                                                         |
+| ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ | ------------------------------------------------------------- |
+| **A0** — Explicit Gate 6 authorization exists (Gate 5's does not carry)                                                                  | Any production contact for this gate | [G6.3](#g63-owner-authorization-boundary)                     |
+| **A1** — Authorization covers setting **only** `ENABLE_OWNER_EVENT_CAPTURE=true` and one binding redeploy                                | Step EC-7 (flag set)                 | [G6.1](#g61-scope), [G6.3](#g63-owner-authorization-boundary) |
+| **A2** — If using the alternative redeploy method, Owner authorized that method for this window                                          | Step EC-9 alternative                | [G6.8](#g68-execution-sequence) item 4                        |
+| **A3** — Any action outside this checklist (second flag, scheduler, push, Stage 12 close-out, A8.7d/e) requires a **new** Owner decision | Never during Gate 6                  | [G6.14](#g614-stop-before-stage-12-close-out-and-before-a87d) |
 
 **Rollback procedure reference (standing).** Primary containment: unset `ENABLE_OWNER_EVENT_CAPTURE` and redeploy, **or** — while F0 is still the immediately previous deployment — Instant Rollback to that F0 deployment. Full posture: [G6.12](#g612-containment-and-rollback-posture). Rollback does not unapply migrations, pause external scheduler jobs, or unsend mail.
 
@@ -1682,16 +1691,16 @@ Fill [A8_7_EVIDENCE.md § Gate 6](A8_7_EVIDENCE.md#gate-6--first-controlled-prod
 
 Trace: [G6.2](#g62-prerequisites), [G6.4](#g64-production-f0-baseline), [G6.5](#g65-required-other-flag-absence), [G6.6](#g66-scheduler-inactivity).
 
-| # | Precondition | How confirmed | Expected | Evidence field | Stop if |
-| - | ------------ | ------------- | -------- | -------------- | ------- |
-| P1 | Checkpoint **A0** recorded | Owner authorization reference written into the evidence table | Non-blank authorization reference naming Gate 6 | `Authorization reference` | Missing, or only Gate 5 authorization cited |
-| P2 | Gate 5 complete at `D3` / `F0` | Read [A8_7_EVIDENCE.md § Gate 5](A8_7_EVIDENCE.md#gate-5--deploying-the-queued-a84ba86-code) | Gate 5 record shows complete; flags were absent | (reference only) | Gate 5 incomplete or flags were set |
-| P3 | Live Production still matches Gate 5 F0 (or documented inert F0 successor) | Vercel Production deployment ID + commit | Gate 5 artifact `dpl_6cVssNpaZeKPBEVGDynd61AoS9nS` / `d369c6d`, or documented F0 successor with all three flags absent | `F0 baseline — previous deployment ID and commit` | Production commit/flags diverge without a recorded F0 successor |
-| P4 | Worktree clean at authorized commit family | See EC-1 commands | Clean tree; HEAD is authorized Gate 5 commit family (or Owner-authorized later commit that does not change flag semantics) | Operator notes / deviations | Dirty tree, or unauthorized commit |
-| P5 | Other two A8 flags absent | Vercel Production env (dashboard) | `ENABLE_OWNER_EVENT_DELIVERY` and `ENABLE_REMINDER_DELIVERY` **absent** (not `false`) | `F0 baseline — all three A8 flags` | Either present |
-| P6 | Capture flag currently absent | Vercel Production env | `ENABLE_OWNER_EVENT_CAPTURE` **absent** before enablement | same row | Already `true` or any other value — do not "fix" without re-authorization ([G6.11](#g611-stop-conditions)) |
-| P7 | No notification-processing job | cron-job.org (or corroborating evidence if dashboard unreadable — [G6.7](#g67-operator-notes--mistakes-already-paid-for) item 10) | Job **does not exist** | `F0 baseline — notification job absent` | Job exists |
-| P8 | Reminder / Gmail-poll / suggestion jobs inactive as found | Same scheduler source | None created or resumed for this gate | Scheduler notes in evidence / deviations | Any job created or resumed for Gate 6 |
+| #   | Precondition                                                               | How confirmed                                                                                                                     | Expected                                                                                                                   | Evidence field                                    | Stop if                                                                                                    |
+| --- | -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| P1  | Checkpoint **A0** recorded                                                 | Owner authorization reference written into the evidence table                                                                     | Non-blank authorization reference naming Gate 6                                                                            | `Authorization reference`                         | Missing, or only Gate 5 authorization cited                                                                |
+| P2  | Gate 5 complete at `D3` / `F0`                                             | Read [A8_7_EVIDENCE.md § Gate 5](A8_7_EVIDENCE.md#gate-5--deploying-the-queued-a84ba86-code)                                      | Gate 5 record shows complete; flags were absent                                                                            | (reference only)                                  | Gate 5 incomplete or flags were set                                                                        |
+| P3  | Live Production still matches Gate 5 F0 (or documented inert F0 successor) | Vercel Production deployment ID + commit                                                                                          | Gate 5 artifact `dpl_6cVssNpaZeKPBEVGDynd61AoS9nS` / `d369c6d`, or documented F0 successor with all three flags absent     | `F0 baseline — previous deployment ID and commit` | Production commit/flags diverge without a recorded F0 successor                                            |
+| P4  | Worktree clean at authorized commit family                                 | See EC-1 commands                                                                                                                 | Clean tree; HEAD is authorized Gate 5 commit family (or Owner-authorized later commit that does not change flag semantics) | Operator notes / deviations                       | Dirty tree, or unauthorized commit                                                                         |
+| P5  | Other two A8 flags absent                                                  | Vercel Production env (dashboard)                                                                                                 | `ENABLE_OWNER_EVENT_DELIVERY` and `ENABLE_REMINDER_DELIVERY` **absent** (not `false`)                                      | `F0 baseline — all three A8 flags`                | Either present                                                                                             |
+| P6  | Capture flag currently absent                                              | Vercel Production env                                                                                                             | `ENABLE_OWNER_EVENT_CAPTURE` **absent** before enablement                                                                  | same row                                          | Already `true` or any other value — do not "fix" without re-authorization ([G6.11](#g611-stop-conditions)) |
+| P7  | No notification-processing job                                             | cron-job.org (or corroborating evidence if dashboard unreadable — [G6.7](#g67-operator-notes--mistakes-already-paid-for) item 10) | Job **does not exist**                                                                                                     | `F0 baseline — notification job absent`           | Job exists                                                                                                 |
+| P8  | Reminder / Gmail-poll / suggestion jobs inactive as found                  | Same scheduler source                                                                                                             | None created or resumed for this gate                                                                                      | Scheduler notes in evidence / deviations          | Any job created or resumed for Gate 6                                                                      |
 
 **Do not begin EC-1 until every precondition row passes.**
 
@@ -1701,12 +1710,12 @@ Trace: [G6.2](#g62-prerequisites), [G6.4](#g64-production-f0-baseline), [G6.5](#
 
 ###### EC-1 — Confirm authorized worktree
 
-| | |
-| - | - |
-| **Trace** | [G6.2](#g62-prerequisites), [G6.7](#g67-operator-notes--mistakes-already-paid-for) items 1 and 4 |
-| **Checkpoint** | **A0** already recorded (P1) |
-| **Expected result** | `HEAD` equals the authorized commit (Gate 5 family or Owner-authorized successor). `git status --short` is empty. |
-| **Evidence** | Commit SHA; confirmation worktree was clean; note of worktree path |
+|                             |                                                                                                                                                 |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Trace**                   | [G6.2](#g62-prerequisites), [G6.7](#g67-operator-notes--mistakes-already-paid-for) items 1 and 4                                                |
+| **Checkpoint**              | **A0** already recorded (P1)                                                                                                                    |
+| **Expected result**         | `HEAD` equals the authorized commit (Gate 5 family or Owner-authorized successor). `git status --short` is empty.                               |
+| **Evidence**                | Commit SHA; confirmation worktree was clean; note of worktree path                                                                              |
 | **Stop / rollback trigger** | Dirty tree, wrong commit, or deploy attempted from `apps/web` alone → **stop**. Do not set any flag. No rollback needed if nothing was changed. |
 
 Commands (documentation only):
@@ -1719,75 +1728,75 @@ git status --short
 
 ###### EC-2 — Record Production F0 baseline (read-only)
 
-| | |
-| - | - |
-| **Trace** | [G6.4](#g64-production-f0-baseline) |
+|                                   |                                                                                                                                                                                                                                                                                                                                                 |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Trace**                         | [G6.4](#g64-production-f0-baseline)                                                                                                                                                                                                                                                                                                             |
 | **Commands** (documentation only) | In Supabase SQL editor or least-privilege `psql`, run **Q2**, **Q8**, and **Q21** exactly as defined in [verification queries](#verification-queries). Separately, record from the Vercel dashboard: current Production deployment ID, commit, and all three A8 flag states. Confirm `/attention` loads. Confirm notification job absence (P7). |
-| **Expected result** | Q2 → exactly **fourteen** finished rows. Q8 → **`0, 0, 0, 0`** unless an Owner-accepted exception is already recorded. Q21 → recorded (informational). All three A8 flags **absent**. `/attention` loads with neither section on the error boundary. Notification job absent. |
-| **Evidence** | All `F0 baseline — *` rows in the Gate 6 capture record |
-| **Stop / rollback trigger** | Any [G6.11](#g611-stop-conditions) baseline failure (wrong migration count, other flag present, `/attention` error boundary, notification job present) → **hard stop**. Do not set capture. |
+| **Expected result**               | Q2 → exactly **fourteen** finished rows. Q8 → **`0, 0, 0, 0`** unless an Owner-accepted exception is already recorded. Q21 → recorded (informational). All three A8 flags **absent**. `/attention` loads with neither section on the error boundary. Notification job absent.                                                                   |
+| **Evidence**                      | All `F0 baseline — *` rows in the Gate 6 capture record                                                                                                                                                                                                                                                                                         |
+| **Stop / rollback trigger**       | Any [G6.11](#g611-stop-conditions) baseline failure (wrong migration count, other flag present, `/attention` error boundary, notification job present) → **hard stop**. Do not set capture.                                                                                                                                                     |
 
 ###### EC-3 — Open Owner no-use window
 
-| | |
-| - | - |
-| **Trace** | [G6.8](#g68-execution-sequence) item 2; same discipline class as [G5.9](#g59-owner-no-use-window) |
-| **Action** | Open the Owner no-use window; record start time, timezone, and who opened it. |
-| **Expected result** | Window bounds recorded before any environment-variable change. |
-| **Evidence** | `Owner no-use window (opened, closed, by whom)` — opened portion |
-| **Stop / rollback trigger** | Window not opened or bounds not recorded → **stop** before EC-7. |
+|                             |                                                                                                   |
+| --------------------------- | ------------------------------------------------------------------------------------------------- |
+| **Trace**                   | [G6.8](#g68-execution-sequence) item 2; same discipline class as [G5.9](#g59-owner-no-use-window) |
+| **Action**                  | Open the Owner no-use window; record start time, timezone, and who opened it.                     |
+| **Expected result**         | Window bounds recorded before any environment-variable change.                                    |
+| **Evidence**                | `Owner no-use window (opened, closed, by whom)` — opened portion                                  |
+| **Stop / rollback trigger** | Window not opened or bounds not recorded → **stop** before EC-7.                                  |
 
 ###### EC-4 — Reconfirm other-flag absence immediately before mutation
 
-| | |
-| - | - |
-| **Trace** | [G6.5](#g65-required-other-flag-absence) |
-| **Action** | Re-read Vercel Production environment variables for all three A8 flags. |
-| **Expected result** | Capture still **absent**; delivery and reminder still **absent**. |
-| **Evidence** | Note in deviations if anything changed since EC-2; otherwise confirm in flag rows |
+|                             |                                                                                                     |
+| --------------------------- | --------------------------------------------------------------------------------------------------- |
+| **Trace**                   | [G6.5](#g65-required-other-flag-absence)                                                            |
+| **Action**                  | Re-read Vercel Production environment variables for all three A8 flags.                             |
+| **Expected result**         | Capture still **absent**; delivery and reminder still **absent**.                                   |
+| **Evidence**                | Note in deviations if anything changed since EC-2; otherwise confirm in flag rows                   |
 | **Stop / rollback trigger** | Either other flag present, or capture already set → **hard stop** ([G6.11](#g611-stop-conditions)). |
 
 ###### EC-5 — Scheduler inactivity final check
 
-| | |
-| - | - |
-| **Trace** | [G6.6](#g66-scheduler-inactivity) |
-| **Action** | Read-only check: no notification job; no job created/resumed/edited/invoked for this gate. |
-| **Expected result** | Notification-processing job **does not exist**. Gmail-poll / suggestion / reminder jobs inactive as found. |
-| **Evidence** | `F0 baseline — notification job absent` confirmed; scheduler notes |
-| **Stop / rollback trigger** | Notification job exists or any job was created/resumed for Gate 6 → **hard stop**. |
+|                             |                                                                                                            |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| **Trace**                   | [G6.6](#g66-scheduler-inactivity)                                                                          |
+| **Action**                  | Read-only check: no notification job; no job created/resumed/edited/invoked for this gate.                 |
+| **Expected result**         | Notification-processing job **does not exist**. Gmail-poll / suggestion / reminder jobs inactive as found. |
+| **Evidence**                | `F0 baseline — notification job absent` confirmed; scheduler notes                                         |
+| **Stop / rollback trigger** | Notification job exists or any job was created/resumed for Gate 6 → **hard stop**.                         |
 
 ###### EC-6 — Owner authorization checkpoint before flag set
 
-| | |
-| - | - |
-| **Trace** | [G6.3](#g63-owner-authorization-boundary) |
-| **Checkpoint** | **A1** — confirm aloud/on-record that the only authorized mutation is `ENABLE_OWNER_EVENT_CAPTURE=true` plus one binding redeploy |
-| **Expected result** | A1 recorded; operator proceeds only on that scope |
-| **Evidence** | Authorization reference row already filled; optional operator note that A1 was reconfirmed |
-| **Stop / rollback trigger** | Scope creep requested (second flag, scheduler, push, worker invoke) → **stop**; requires checkpoint **A3** / new Owner decision |
+|                             |                                                                                                                                   |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **Trace**                   | [G6.3](#g63-owner-authorization-boundary)                                                                                         |
+| **Checkpoint**              | **A1** — confirm aloud/on-record that the only authorized mutation is `ENABLE_OWNER_EVENT_CAPTURE=true` plus one binding redeploy |
+| **Expected result**         | A1 recorded; operator proceeds only on that scope                                                                                 |
+| **Evidence**                | Authorization reference row already filled; optional operator note that A1 was reconfirmed                                        |
+| **Stop / rollback trigger** | Scope creep requested (second flag, scheduler, push, worker invoke) → **stop**; requires checkpoint **A3** / new Owner decision   |
 
 ###### EC-7 — Set capture flag (the only feature-flag mutation)
 
-| | |
-| - | - |
-| **Trace** | [G6.8](#g68-execution-sequence) item 3; [G6.5](#g65-required-other-flag-absence) |
-| **Checkpoint** | **A1** |
-| **Action** | In the **Vercel dashboard → Production environment**, set `ENABLE_OWNER_EVENT_CAPTURE` to exactly the lowercase string `true`. Leave `ENABLE_OWNER_EVENT_DELIVERY` and `ENABLE_REMINDER_DELIVERY` **unset** (absent) — do **not** set them to `false`. |
-| **Ambiguity** | The canonical runbook specifies the **dashboard** for this set ([G6.8](#g68-execution-sequence) item 3). It does not authorize a CLI `vercel env` write as a substitute. If dashboard access is unavailable, **stop** and obtain Owner direction rather than inventing a CLI procedure. |
-| **Expected result** | Production env shows capture = `true` (exact). Other two flags remain absent. **Running Production traffic is unchanged until a new deployment binds the value** ([G6.7](#g67-operator-notes--mistakes-already-paid-for) item 6). |
-| **Evidence** | `ENABLE_OWNER_EVENT_CAPTURE` set to exact string; both other-flag-after rows |
-| **Stop / rollback trigger** | Value is not exact `true`, or either other flag was touched → **hard stop**. Unset capture if it was set incorrectly; do not redeploy a bad binding. Containment: [G6.12](#g612-containment-and-rollback-posture). |
+|                             |                                                                                                                                                                                                                                                                                         |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Trace**                   | [G6.8](#g68-execution-sequence) item 3; [G6.5](#g65-required-other-flag-absence)                                                                                                                                                                                                        |
+| **Checkpoint**              | **A1**                                                                                                                                                                                                                                                                                  |
+| **Action**                  | In the **Vercel dashboard → Production environment**, set `ENABLE_OWNER_EVENT_CAPTURE` to exactly the lowercase string `true`. Leave `ENABLE_OWNER_EVENT_DELIVERY` and `ENABLE_REMINDER_DELIVERY` **unset** (absent) — do **not** set them to `false`.                                  |
+| **Ambiguity**               | The canonical runbook specifies the **dashboard** for this set ([G6.8](#g68-execution-sequence) item 3). It does not authorize a CLI `vercel env` write as a substitute. If dashboard access is unavailable, **stop** and obtain Owner direction rather than inventing a CLI procedure. |
+| **Expected result**         | Production env shows capture = `true` (exact). Other two flags remain absent. **Running Production traffic is unchanged until a new deployment binds the value** ([G6.7](#g67-operator-notes--mistakes-already-paid-for) item 6).                                                       |
+| **Evidence**                | `ENABLE_OWNER_EVENT_CAPTURE` set to exact string; both other-flag-after rows                                                                                                                                                                                                            |
+| **Stop / rollback trigger** | Value is not exact `true`, or either other flag was touched → **hard stop**. Unset capture if it was set incorrectly; do not redeploy a bad binding. Containment: [G6.12](#g612-containment-and-rollback-posture).                                                                      |
 
 ###### EC-8 — Create production-target deployment (preferred method)
 
-| | |
-| - | - |
-| **Trace** | [G6.8](#g68-execution-sequence) item 4 preferred path; [G6.7](#g67-operator-notes--mistakes-already-paid-for) items 1–4 |
-| **Expected result** | A new deployment is created with target **`production`**, state progressing to **READY**. Production domain alias remains on the previous F0 deployment until promote. Immutable deployment URL exists (inspection window, not invisibility). |
-| **Evidence** | `Redeploy method`; `New deployment ID`; preliminary target/state notes |
+|                             |                                                                                                                                                                                                                                                              |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Trace**                   | [G6.8](#g68-execution-sequence) item 4 preferred path; [G6.7](#g67-operator-notes--mistakes-already-paid-for) items 1–4                                                                                                                                      |
+| **Expected result**         | A new deployment is created with target **`production`**, state progressing to **READY**. Production domain alias remains on the previous F0 deployment until promote. Immutable deployment URL exists (inspection window, not invisibility).                |
+| **Evidence**                | `Redeploy method`; `New deployment ID`; preliminary target/state notes                                                                                                                                                                                       |
 | **Stop / rollback trigger** | Preview target created → **hard stop**; do not promote; discard ([G6.11](#g611-stop-conditions)). Push to `main` performed → **hard stop**; unauthorized deploy containment. Deploy from `apps/web` alone fails or is attempted → **stop** and correct path. |
-| **Prohibited** | `git push origin main`. Promoting a preview-target deployment. |
+| **Prohibited**              | `git push origin main`. Promoting a preview-target deployment.                                                                                                                                                                                               |
 
 Commands (documentation only):
 
@@ -1799,35 +1808,35 @@ vercel inspect <deployment-url> --logs
 
 ###### EC-9 — Alternative redeploy method (only if Owner-authorized)
 
-| | |
-| - | - |
-| **Trace** | [G6.8](#g68-execution-sequence) item 4 alternative |
-| **Checkpoint** | **A2** |
-| **Action** | Only if A2 is recorded for this window: perform a Vercel Production redeploy of the current Production commit after the variable is set. |
-| **Expected result** | New deployment ID; target `production`; READY; bound flag values recorded. |
-| **Evidence** | Same deployment rows; method named as Production redeploy |
-| **Stop / rollback trigger** | Alternative used without A2 → **hard stop**. Treat as unauthorized method. |
-| **Skip** | If EC-8 preferred path is used, record "N/A — preferred path" and continue to EC-10. |
+|                             |                                                                                                                                          |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| **Trace**                   | [G6.8](#g68-execution-sequence) item 4 alternative                                                                                       |
+| **Checkpoint**              | **A2**                                                                                                                                   |
+| **Action**                  | Only if A2 is recorded for this window: perform a Vercel Production redeploy of the current Production commit after the variable is set. |
+| **Expected result**         | New deployment ID; target `production`; READY; bound flag values recorded.                                                               |
+| **Evidence**                | Same deployment rows; method named as Production redeploy                                                                                |
+| **Stop / rollback trigger** | Alternative used without A2 → **hard stop**. Treat as unauthorized method.                                                               |
+| **Skip**                    | If EC-8 preferred path is used, record "N/A — preferred path" and continue to EC-10.                                                     |
 
 ###### EC-10 — Pre-promotion / pre-reliance inspection
 
-| | |
-| - | - |
-| **Trace** | [G6.9](#g69-pre-promotion-inspection) |
-| **Action** | Before `vercel promote` (preferred path) or before relying on the new deployment, confirm every G6.9 row. |
-| **Expected result** | Target `production`; state READY; commit authorized; `ENABLE_OWNER_EVENT_CAPTURE=true` in the deployment's Production env binding; other two A8 flags **absent**; build log shows **no** migration (only `prisma generate`); routes still include `/api/v1/internal/notifications/process` and `/attention`. |
-| **Evidence** | Deployment target, state, commit bound, flag bindings, promote readiness notes |
-| **Stop / rollback trigger** | Any G6.9 row fails → **do not promote / do not continue**. Unset the capture flag if it was set; leave Production on the previous F0 deployment ([G6.9](#g69-pre-promotion-inspection), [G6.12](#g612-containment-and-rollback-posture)). |
+|                             |                                                                                                                                                                                                                                                                                                              |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Trace**                   | [G6.9](#g69-pre-promotion-inspection)                                                                                                                                                                                                                                                                        |
+| **Action**                  | Before `vercel promote` (preferred path) or before relying on the new deployment, confirm every G6.9 row.                                                                                                                                                                                                    |
+| **Expected result**         | Target `production`; state READY; commit authorized; `ENABLE_OWNER_EVENT_CAPTURE=true` in the deployment's Production env binding; other two A8 flags **absent**; build log shows **no** migration (only `prisma generate`); routes still include `/api/v1/internal/notifications/process` and `/attention`. |
+| **Evidence**                | Deployment target, state, commit bound, flag bindings, promote readiness notes                                                                                                                                                                                                                               |
+| **Stop / rollback trigger** | Any G6.9 row fails → **do not promote / do not continue**. Unset the capture flag if it was set; leave Production on the previous F0 deployment ([G6.9](#g69-pre-promotion-inspection), [G6.12](#g612-containment-and-rollback-posture)).                                                                    |
 
 ###### EC-11 — Promote only if alias not already on the new deployment
 
-| | |
-| - | - |
-| **Trace** | [G6.8](#g68-execution-sequence) item 4; [G6.7](#g67-operator-notes--mistakes-already-paid-for) item 3 |
-| **Expected result** | Production alias points at the intended new deployment ID. **Confirm what actually holds the production alias** before and after — Gate 5 deviation 1: aliases may assign at creation despite `--skip-domain`. |
-| **Evidence** | `Promotion / production alias result` |
+|                             |                                                                                                                                                                                                                                                                                   |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Trace**                   | [G6.8](#g68-execution-sequence) item 4; [G6.7](#g67-operator-notes--mistakes-already-paid-for) item 3                                                                                                                                                                             |
+| **Expected result**         | Production alias points at the intended new deployment ID. **Confirm what actually holds the production alias** before and after — Gate 5 deviation 1: aliases may assign at creation despite `--skip-domain`.                                                                    |
+| **Evidence**                | `Promotion / production alias result`                                                                                                                                                                                                                                             |
 | **Stop / rollback trigger** | Alias on unexpected deployment → **hard stop** ([G6.11](#g611-stop-conditions)). Resolve alias before any further change. Rollback trigger: Instant Rollback to F0 while it remains one step back, or unset capture + redeploy ([G6.12](#g612-containment-and-rollback-posture)). |
-| **Skip note** | If the production alias is already on the inspected deployment, record that fact and do not issue a redundant promote. |
+| **Skip note**               | If the production alias is already on the inspected deployment, record that fact and do not issue a redundant promote.                                                                                                                                                            |
 
 Command (documentation only):
 
@@ -1837,13 +1846,13 @@ vercel promote <deployment-id> --yes
 
 ###### EC-12 — Post-activation verification
 
-| | |
-| - | - |
-| **Trace** | [G6.10](#g610-post-activation-verification) |
+|                                            |                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Trace**                                  | [G6.10](#g610-post-activation-verification)                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | **Commands / checks** (documentation only) | 1. Vercel Production env: capture exactly `true`; other two **absent**. 2. Deployment Ready; alias on intended ID. 3. Unauthenticated `GET /api/v1/tasks` → typed `401 UNAUTHORIZED`. 4. Owner `/attention` loads; no error boundary. 5. Q2 → still fourteen rows. 6. Q8: `owner_notification_attempts` is **0** (intent count may still be 0 — acceptable). 7. No notification job; endpoint not invoked. 8. No Gmail contact for Owner-notification or reminder send. |
-| **Expected result** | All eight G6.10 checks pass. State is **`F1`** — capture-only; code remains `D3`; delivery and reminder flags absent. |
-| **Evidence** | Every `Verification — *` row; `Final state` = `F1` / code still `D3`; attempts count **0** |
-| **Stop / rollback trigger** | Any [G6.11](#g611-stop-conditions) row — especially attempts non-zero, other flag present, `/attention` error boundary, migration history changed, endpoint invoked, or notification job created → **hard stop** and contain per [G6.12](#g612-containment-and-rollback-posture). |
+| **Expected result**                        | All eight G6.10 checks pass. State is **`F1`** — capture-only; code remains `D3`; delivery and reminder flags absent.                                                                                                                                                                                                                                                                                                                                                   |
+| **Evidence**                               | Every `Verification — *` row; `Final state` = `F1` / code still `D3`; attempts count **0**                                                                                                                                                                                                                                                                                                                                                                              |
+| **Stop / rollback trigger**                | Any [G6.11](#g611-stop-conditions) row — especially attempts non-zero, other flag present, `/attention` error boundary, migration history changed, endpoint invoked, or notification job created → **hard stop** and contain per [G6.12](#g612-containment-and-rollback-posture).                                                                                                                                                                                       |
 
 ---
 
@@ -1851,26 +1860,26 @@ vercel promote <deployment-id> --yes
 
 Trace: [G6.11](#g611-stop-conditions). Any row is a hard stop; do not continue the checklist.
 
-| Condition | Immediate action |
-| --------- | ---------------- |
-| Either other A8 flag is present or became set | Unset capture if set; do not continue |
-| Capture value is anything other than exact `true` | Fix spelling only under re-authorization |
-| Preview-target deployment created or promoted | Do not promote; discard |
-| Push to `main` performed | Treat as unauthorized deploy; follow containment |
-| `/attention` error boundary | Contain per [G6.12](#g612-containment-and-rollback-posture) |
-| `owner_notification_attempts` non-zero | Something delivered; contain immediately |
-| Notification job created or endpoint invoked | Pause/remove job if created; unset delivery if set |
-| Migration history changed | Wrong procedure was followed |
-| Production alias on an unexpected deployment | Resolve alias before any further change |
+| Condition                                         | Immediate action                                            |
+| ------------------------------------------------- | ----------------------------------------------------------- |
+| Either other A8 flag is present or became set     | Unset capture if set; do not continue                       |
+| Capture value is anything other than exact `true` | Fix spelling only under re-authorization                    |
+| Preview-target deployment created or promoted     | Do not promote; discard                                     |
+| Push to `main` performed                          | Treat as unauthorized deploy; follow containment            |
+| `/attention` error boundary                       | Contain per [G6.12](#g612-containment-and-rollback-posture) |
+| `owner_notification_attempts` non-zero            | Something delivered; contain immediately                    |
+| Notification job created or endpoint invoked      | Pause/remove job if created; unset delivery if set          |
+| Migration history changed                         | Wrong procedure was followed                                |
+| Production alias on an unexpected deployment      | Resolve alias before any further change                     |
 
 ##### Explicit rollback trigger points
 
-| After step | Trigger | Rollback action |
-| ---------- | ------- | --------------- |
-| EC-7 | Bad or non-exact capture value; other flag touched | Unset capture; do not redeploy a bad binding |
-| EC-8 / EC-9 | Preview target; wrong commit; inspection failure before alias move | Do not promote; discard build; unset capture if set; leave alias on F0 |
-| EC-11 | Alias on unexpected deployment; post-promote verification failing | Instant Rollback to F0 while one step back, **or** unset capture + redeploy ([G6.12](#g612-containment-and-rollback-posture)) |
-| EC-12 | Any G6.11 condition after F1 binding | Same as G6.12 primary containment |
+| After step  | Trigger                                                            | Rollback action                                                                                                               |
+| ----------- | ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| EC-7        | Bad or non-exact capture value; other flag touched                 | Unset capture; do not redeploy a bad binding                                                                                  |
+| EC-8 / EC-9 | Preview target; wrong commit; inspection failure before alias move | Do not promote; discard build; unset capture if set; leave alias on F0                                                        |
+| EC-11       | Alias on unexpected deployment; post-promote verification failing  | Instant Rollback to F0 while one step back, **or** unset capture + redeploy ([G6.12](#g612-containment-and-rollback-posture)) |
+| EC-12       | Any G6.11 condition after F1 binding                               | Same as G6.12 primary containment                                                                                             |
 
 **Do not** treat F2 as a rollback target. **Do not** use code containment to `534959d` as the first response to a capture-flag mistake.
 
@@ -1907,6 +1916,233 @@ Gate 6 is complete **only** when all of the following are true:
 5. Operator **stops**. No Stage 12 close-out, A8.7d, A8.7e, second flag, scheduler creation, worker invoke, or `origin/main` reconciliation is performed under this checklist.
 
 **Explicitly out of this checklist (never mark complete by doing these):** setting `ENABLE_OWNER_EVENT_DELIVERY` or `ENABLE_REMINDER_DELIVERY`; creating or invoking any notification/reminder scheduler job; Stage 12 observation close-out as a product decision; A8.7d; A8.7e; `git push origin main`.
+
+### Stage 12 — Capture-only observation (A8.7c / F1)
+
+**Stage 12 would observe capture-only behaviour at Production `D3` / `F1` and do nothing else.** No second flag, no scheduler job, no worker invocation, no Gmail send, no migration, no push to `main`. Capture remains the only enabled A8 feature. Delivery and reminder stay absent.
+
+**Stage 12 has not been executed, and this section does not authorize it.** It is the single normative operator procedure for the observation window. Prefer this `G12.x` section when it and the [stage-runbook Stage 12 body](#stage-12--capture-only-observation-a87c) differ in specificity; do not run both as separate procedures.
+
+> **⚠ Stage 12 is not currently reachable, and this section does not make it so.** Live Production is **`D3` / `F0`** — [Gate 6](#gate-6--first-controlled-production-enablement-a87c-capture--f0--f1) was authorized and partially executed but never became live, and the capture flag has since been removed from Vercel Production. Every `F1` statement below is therefore a **precondition of a hypothetical authorized window**, not a description of Production today. See [Current production state](#current-production-state).
+
+> **⚠ Stage 12 does not enable delivery.** Setting `ENABLE_OWNER_EVENT_DELIVERY` or `ENABLE_REMINDER_DELIVERY`, creating or invoking any notification or reminder scheduler job, or calling `POST /api/v1/internal/notifications/process` is an A8.7d (or later) decision and is a hard stop here.
+
+#### G12.1 Objective
+
+Confirm, over an Owner-authorized observation window at **`D3` / `F1`**, that:
+
+1. Capture may write `owner_notification_intents` when genuine notifiable events occur.
+2. **`owner_notification_attempts` remains exactly 0** for the whole window (hard invariant — zero delivery attempts).
+3. No Owner-notification or reminder email is sent (confirmed by attempts = 0, not by mailbox inspection alone).
+4. No notification-processing job exists or is created; the notification endpoint is never invoked.
+5. `ENABLE_OWNER_EVENT_DELIVERY` and `ENABLE_REMINDER_DELIVERY` remain **absent**.
+
+#### G12.2 Scope
+
+| In scope                                                                                                 | Out of scope                                                                                      |
+| -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Read-only verification (Q15, Q8; flags; deployment; scheduler inactivity; `/attention`)                  | Setting, unsetting, or editing `ENABLE_OWNER_EVENT_DELIVERY` or `ENABLE_REMINDER_DELIVERY`        |
+| Passive observation of ordinary Owner and Recipient activity already occurring in Production             | Creating or invoking any scheduler job, including the notification job                            |
+| Recording evidence in [A8_7_EVIDENCE.md § Stage 12](A8_7_EVIDENCE.md#stage-12--capture-only-observation) | Invoking `POST /api/v1/internal/notifications/process` (manual or scheduled)                      |
+| Closing the observation window with attempts still at 0                                                  | Any migration, deploy, promote, or `git push origin main`                                         |
+|                                                                                                          | A deliberate single-event canary (that is [Stage 14](#stage-14--single-notification-canary-a87d)) |
+|                                                                                                          | Zero-send rehearsal, Gmail round-trip proof, A8.7d, A8.7e                                         |
+
+#### G12.3 Prerequisites
+
+Every one of these must hold and be confirmed rather than assumed:
+
+- **Gate 6 is complete and verified** at **`D3` / `F1`**. Evidence: [A8_7_EVIDENCE.md § Gate 6](A8_7_EVIDENCE.md#gate-6--first-controlled-production-enablement-a87c-capture--f0--f1). **This prerequisite is currently unmet:** Gate 6 is incomplete and the recorded evidence says so.
+- **The deployment holding the public custom domain is an `F1` deployment** whose own environment snapshot has capture = `true` and the other two flags absent. **Currently unmet:** the custom domain is on `dpl_6cVssNpaZeKPBEVGDynd61AoS9nS`, an `F0` deployment. `dpl_7X5r5ypWbq6ipmWMpver6p99p5Xz` is READY but holds only default `.vercel.app` aliases, so it is **not** the live site and does not satisfy this check.
+- **`ENABLE_OWNER_EVENT_CAPTURE` is exactly `true`**; **`ENABLE_OWNER_EVENT_DELIVERY` and `ENABLE_REMINDER_DELIVERY` are absent**.
+- **No notification-processing job exists.** Creating one is an A8.7d decision.
+- Gmail Poll and Suggestion Processing remain **inactive as found**. Do not resume them for Stage 12.
+- Q8 was **`0, 0, 0, 0`** at the last recorded Production reading. Stage 12 starts from a freshly taken baseline, not from a remembered one.
+
+#### G12.4 Owner authorization boundary
+
+- **Stage 12 requires its own explicit Owner authorization.** Gate 6's completion authorizes nothing here.
+- Authorization must cover at least: (1) opening and closing an observation window of a **stated duration or completion trigger**, (2) read-only SQL and dashboard checks listed below, and (3) recording Stage 12 evidence.
+- **Stage 12 does not authorize A8.7d, A8.7e, any second flag, any scheduler creation, any worker invoke, any deploy, or reconciling `origin/main`.**
+
+#### G12.5 Permitted observation mode
+
+**Traced to the existing Stage 12 execution text:** observe while **normal Owner and Recipient activity proceeds**. Capture on ordinary mutations does not require a worker invocation ([G6.6](#g66-scheduler-inactivity)).
+
+| Mode                                                                                           | Stage 12 status                                                                                                                                                                |
+| ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Passive observation** of ordinary Owner/Recipient activity that already occurs in Production | **Permitted and sufficient**                                                                                                                                                   |
+| **Deliberate capturing mutation** / forced single producer event                               | **Not required. Not defined here.** Choosing and performing a single reviewed canary event is [Stage 14](#stage-14--single-notification-canary-a87d) under A8.7d authorization |
+| Invoking the notification worker "to exercise capture"                                         | **Prohibited** — hard stop                                                                                                                                                     |
+
+**Intent count may remain 0** for the whole window if no capturing activity occurs. That is acceptable for Stage 12 completion provided **`owner_notification_attempts` stays 0** and no stop condition fires. When intents do appear, each observed `event_type` must correspond to a genuine event that occurred (existing Stage 12 verification text).
+
+#### G12.6 Observation-window open and close
+
+**Open (in order):**
+
+1. Confirm [G12.3](#g123-prerequisites) and record the [G12.7](#g127-baseline-at-window-open) baseline.
+2. Record the Owner-authorized **window duration or completion trigger** (ISO bounds when known). Stage 12 does **not** invent a fixed duration; the Owner states it. A window long enough for pending intents to age into Q15's `over_24h` bucket is useful later for A8.7d Stage 13, but **is not a Stage 12 completion requirement**.
+3. Record that the window is **open**.
+
+**During the window:**
+
+4. At Owner-authorized intervals, run [G12.8](#g128-sql-order-and-expected-results) and record each observation into the evidence table.
+5. Do not change flags, schedulers, or deployments.
+
+**Close (in order):**
+
+6. Run the final [G12.8](#g128-sql-order-and-expected-results) observation.
+7. Confirm [G12.10](#g1210-final-verification) and fill [A8_7_EVIDENCE.md § Stage 12](A8_7_EVIDENCE.md#stage-12--capture-only-observation).
+8. Record that the window is **closed**.
+9. **Stop** before A8.7d ([G12.12](#g1212-stop-before-a87d)).
+
+#### G12.7 Baseline at window open
+
+| Check                                           | Expectation                                                                                               |
+| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Deployment holding the **public custom domain** | An `F1` deployment. Record the ID the custom domain actually resolves to, not the newest READY deployment |
+| `ENABLE_OWNER_EVENT_CAPTURE`                    | Exact `true`                                                                                              |
+| `ENABLE_OWNER_EVENT_DELIVERY`                   | **Absent**                                                                                                |
+| `ENABLE_REMINDER_DELIVERY`                      | **Absent**                                                                                                |
+| Notification-processing job                     | **Does not exist**                                                                                        |
+| Gmail Poll / Suggestion Processing              | Inactive as found                                                                                         |
+| Q8                                              | Record all four counts; **`owner_notification_attempts` = 0**; **`reminder_delivery_attempts` = 0**       |
+| Q15                                             | Record `under_1h`, `h1_to_24`, `over_24h` (may all be 0)                                                  |
+| `/attention`                                    | Loads; neither section reaches the error boundary                                                         |
+
+#### G12.8 SQL order and expected results
+
+Run from the Supabase SQL editor or least-privilege `psql`. **Copy each query exactly** from [verification queries](#verification-queries). Do not invent SQL.
+
+**Order at every observation (open, each interval, close):**
+
+1. **Q15** — exact SQL from the verification-queries table (`notifications.pending.buckets`).
+2. **Q8** — exact SQL from the verification-queries table (four `count(*)` statements).
+
+| Query (canonical IDs only)         | Stage 12 expected result                                                                                                                                                                                                                            | Hard stop                                                                 |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Q15 pending buckets                | Recorded buckets. May be `0, 0, 0`. Growth in `under_1h` / `h1_to_24` is acceptable when genuine events occurred. `over_24h` may become non-zero if the window is long enough — expected for later Stage 13 prep, not required to complete Stage 12 | Intent growth **wildly out of proportion** to known activity              |
+| Q8 → `task_reminder_schedules`     | Recorded (often 0)                                                                                                                                                                                                                                  | Not a Stage 12 hard stop by itself                                        |
+| Q8 → `reminder_delivery_attempts`  | **0**                                                                                                                                                                                                                                               | **Any non-zero — hard stop** (reminder delivery must not occur)           |
+| Q8 → `owner_notification_intents`  | Recorded (may be 0 or growing)                                                                                                                                                                                                                      | An intent whose `event_type` does not match a genuine event that occurred |
+| Q8 → `owner_notification_attempts` | **0**                                                                                                                                                                                                                                               | **Any non-zero — hard stop** (nothing should be delivering)               |
+
+**Do not run** delivery-path or canary-prep queries as Stage 12 steps: no Q16/Q17/Q18/Q19/Q20 requirement here, and **Q21 is not a Stage 12 stop** (it becomes a hard stop before the A8.7d canary, not during capture-only observation).
+
+#### G12.9 Operator execution checklist
+
+> **⚠ Documentation only. This checklist does not authorize Stage 12 and must not be executed until the Owner has given Stage 12 its own explicit authorization.**
+
+##### Owner authorization checkpoints
+
+| Checkpoint                                                                                                                            | Before                          | Trace                                            |
+| ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- | ------------------------------------------------ |
+| **A0** — Explicit Stage 12 authorization exists (Gate 6's does not carry)                                                             | Any Stage 12 production contact | [G12.4](#g124-owner-authorization-boundary)      |
+| **A1** — Authorization states the window duration or completion trigger                                                               | Window open                     | [G12.6](#g126-observation-window-open-and-close) |
+| **A2** — Any action outside this checklist (second flag, scheduler, worker invoke, deploy, A8.7d/e) requires a **new** Owner decision | Never during Stage 12           | [G12.12](#g1212-stop-before-a87d)                |
+
+##### Preconditions (P1–P8)
+
+| #   | Check                                                       | Expected                                                                                                                                                            |
+| --- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| P1  | Gate 6 evidence complete at `F1`                            | [A8_7_EVIDENCE.md § Gate 6](A8_7_EVIDENCE.md#gate-6--first-controlled-production-enablement-a87c-capture--f0--f1) shows complete. **Currently shows incomplete**    |
+| P2  | The **public custom domain** resolves to an `F1` deployment | Capture `true` in that deployment's snapshot; other two flags absent. **Currently unmet — the domain is on the `F0` deployment `dpl_6cVssNpaZeKPBEVGDynd61AoS9nS`** |
+| P3  | Notification job absent                                     | Job does not exist                                                                                                                                                  |
+| P4  | Gmail Poll / Suggestion Processing inactive as found        | Inactive; not resumed                                                                                                                                               |
+| P5  | Q8 attempts = 0                                             | `owner_notification_attempts` = 0; `reminder_delivery_attempts` = 0                                                                                                 |
+| P6  | `/attention` loads                                          | No error boundary                                                                                                                                                   |
+| P7  | Owner duration / completion trigger recorded                | Explicit                                                                                                                                                            |
+| P8  | Checkpoint **A0** recorded                                  | Stage 12's own authorization                                                                                                                                        |
+
+##### Execution steps (S1–S8)
+
+| Step | Action                                                                                                                  | Expected result                            | Evidence                           | Stop / rollback trigger                                                          |
+| ---- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ | ---------------------------------- | -------------------------------------------------------------------------------- |
+| S1   | Confirm P1–P8; record [G12.7](#g127-baseline-at-window-open)                                                            | Baseline matches F1 capture-only           | Baseline rows in Stage 12 evidence | Any prerequisite fails → **hard stop**; do not open the window                   |
+| S2   | Record window open + authorized duration/trigger (checkpoint **A1**)                                                    | Window open recorded                       | Window from/to                     | Missing authorization → **hard stop**                                            |
+| S3   | Run **Q15**, then **Q8** (open observation)                                                                             | Attempts = 0; buckets recorded             | Evidence table row                 | Attempts non-zero → [G12.11](#g1211-containment-and-rollback)                    |
+| S4   | At each authorized interval: Q15, then Q8; note event types if intents grew                                             | Attempts = 0 throughout                    | One evidence row per interval      | Attempts non-zero; unmatched event_type; disproportionate growth → **hard stop** |
+| S5   | Confirm still: capture `true`; delivery absent; reminder absent; no notification job; endpoint not invoked              | Unchanged                                  | Flag/scheduler confirmation rows   | Any second flag set or job created → **hard stop**                               |
+| S6   | Final Q15, then Q8 (close observation)                                                                                  | Attempts = 0                               | Final evidence row                 | Attempts non-zero → **hard stop**                                                |
+| S7   | Fill [A8_7_EVIDENCE.md § Stage 12](A8_7_EVIDENCE.md#stage-12--capture-only-observation) with no blank load-bearing rows | Evidence complete                          | Evidence file                      | Blank attempts/bucket rows → incomplete; do not mark complete                    |
+| S8   | Record window closed; stop before A8.7d                                                                                 | Stage 12 complete at `F1`; A8.7d not begun | Final state row                    | —                                                                                |
+
+##### Explicit stop conditions
+
+| Condition                                                                         | Action                                                               |
+| --------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `owner_notification_attempts` non-zero                                            | **Hard stop.** Contain per [G12.11](#g1211-containment-and-rollback) |
+| `reminder_delivery_attempts` non-zero                                             | **Hard stop.** Contain per G12.11                                    |
+| `ENABLE_OWNER_EVENT_DELIVERY` or `ENABLE_REMINDER_DELIVERY` present               | **Hard stop.** Unset if set under this window; do not continue       |
+| Notification job created or `POST /api/v1/internal/notifications/process` invoked | **Hard stop.** Pause/remove job if created; contain                  |
+| Intent whose event did not occur                                                  | **Hard stop.** Investigate; do not proceed to A8.7d                  |
+| Intent growth wildly out of proportion to activity                                | **Hard stop.** Investigate                                           |
+| Deploy / promote / push performed during the window                               | **Hard stop.** Unauthorized change                                   |
+
+##### Explicit rollback trigger points
+
+| Step  | Trigger                     | Action                                                                               |
+| ----- | --------------------------- | ------------------------------------------------------------------------------------ |
+| S3–S6 | Attempts non-zero           | [G12.11](#g1211-containment-and-rollback) primary containment                        |
+| S5    | Second flag or job appeared | Unset delivery/reminder if set; remove/pause job; unset capture + redeploy if needed |
+| Any   | G12.10 stop condition       | Contain; do not close Stage 12 as successful                                         |
+
+#### G12.10 Final verification
+
+Re-confirm after S6–S7:
+
+- [ ] Capture flag still exact `true`; other two A8 flags **absent**
+- [ ] Production still on the intended F1 deployment (or documented successor)
+- [ ] `owner_notification_attempts` = **0** at every observation including final
+- [ ] `reminder_delivery_attempts` = **0** at every observation including final
+- [ ] Notification job still absent; endpoint never invoked
+- [ ] No Owner-notification or reminder email sent (attempts invariant)
+- [ ] Evidence table filled; window duration recorded
+- [ ] A8.7d and A8.7e **not begun**
+
+**Required final state:** **`D3` / `F1`** — capture only; delivery and reminder absent; no notification scheduler; attempts = 0.
+
+#### G12.11 Containment and rollback
+
+**Primary containment:** unset `ENABLE_OWNER_EVENT_CAPTURE` and redeploy, returning toward **F0** (existing Stage 12 immediate containment / Gate 6 rollback posture).
+
+- Captured intents remain and are harmless: an intent older than 24 hours terminalizes as suppressed without contacting anything when delivery is later rehearsed (Stage 13).
+- Instant Rollback to the Gate 5 F0 deployment (`dpl_6cVssNpaZeKPBEVGDynd61AoS9nS`) remains available only while it is still one step back from the alias-holding deployment.
+- **Rollback does not unapply migrations, pause external scheduler jobs by itself, or unsend mail.** Schema stays at fourteen rows. No mail should have been sent in Stage 12; if any was, that is already a hard stop.
+
+#### G12.12 Stop before A8.7d
+
+**Stage 12 ends at a closed observation window with attempts = 0 and recorded evidence.** When final verification passes:
+
+1. Record the evidence.
+2. Close the window.
+3. **Stop.**
+
+**Explicitly not authorized by Stage 12:**
+
+- **A8.7d** — zero-send rehearsal, notification canary, Gmail round-trip proof, notification scheduler creation
+- **A8.7e** — reminder delivery
+- Setting `ENABLE_OWNER_EVENT_DELIVERY` or `ENABLE_REMINDER_DELIVERY`
+- Creating or invoking any notification or reminder scheduler job
+- Unsetting capture to age the queue for Stage 13 (that is an A8.7d precondition action under A8.7d authorization)
+- Reconciling `origin/main`
+
+**A8.7c ends here.** A8.7d requires separate authorization, and it is the first slice that can send mail on Rocket's initiative.
+
+#### G12.13 Evidence recording
+
+Fill [A8_7_EVIDENCE.md § Stage 12](A8_7_EVIDENCE.md#stage-12--capture-only-observation) in the same window. Required categories:
+
+- Authorization reference (Stage 12's own)
+- Window open/close (duration or completion trigger)
+- F1 baseline (deployment, flags, Q8, Q15, scheduler state)
+- Every observation row: time, Q15 buckets, Q8 four counts (attempts expect 0), event types observed
+- Explicit confirmation endpoint never invoked; no notification job created
+- Deviations, stop conditions, containment
+- Final state: still `D3` / `F1`; A8.7d not begun
+
+**Secrets never appear in evidence.**
 
 ### Verification gate classification
 
@@ -1964,7 +2200,7 @@ Start the container for the suites, then stop it. **A container left running thr
 
 **These states all sit inside `D4+` of the [approved repair state matrix](#approved-repair-state-matrix), and they use their own `F` namespace deliberately.** The `D` states describe how far the _code and schema_ have advanced; the `F` states describe which _flags_ are set once both are in place. They were a single sequence before the incident, and merging them again would reintroduce the ambiguity that let a deployment be described as a migration prerequisite.
 
-**Every `F` state presupposes `D3`**: the queued A8 code deployed against all nine migrations. **Gate 5 completed on 2026-08-05, so Production is at `F0`.** None of `F1`–`F4` is reachable until [Gate 6](#gate-6--first-controlled-production-enablement-a87c-capture--f0--f1) (and later A8.7 slices) are separately authorized. `F0` and `D3` describe the same Production today: the code deployed, every flag absent.
+**Every `F` state presupposes `D3`**: the queued A8 code deployed against all nine migrations. **Gate 5 completed on 2026-08-05, so Production is at `F0`.** None of `F1`–`F4` is reachable until [Gate 6](#gate-6--first-controlled-production-enablement-a87c-capture--f0--f1) (and later A8.7 slices) are separately authorized and actually completed. `F0` and `D3` describe the same Production today: the code deployed, every flag absent. **A flag set on a production-target deployment that does not hold the public custom domain does not advance the `F` state** — that is what the partial Gate 6 attempt demonstrated.
 
 | State                          | Commit         | Capture | Delivery | Reminder | Scheduler jobs                            | Valid rollback target                        |
 | ------------------------------ | -------------- | ------- | -------- | -------- | ----------------------------------------- | -------------------------------------------- |
@@ -2021,7 +2257,7 @@ All nine A8 migrations, in application order. All nine are additive; none drops 
 
 **Waiting still costs nothing, but not for the reason it originally did.** The first version of this rule reasoned that Production held no A8 rows and that its deployed code was already incompatible, so nothing could be made worse. **Both halves of that expired with the repair.** The conclusion survived on different grounds: **no deployed code reads anything migrations 6–9 create.** `ENABLE_OWNER_EVENT_CAPTURE` is absent, the notification tables are queried only by code that is not deployed, and an index changes no result. A stop during Gate 4 would therefore have left Production either in the validated `D1′` or in a partial state that nothing running touches.
 
-**That reasoning is why `D2` was a safe resting place after Gate 4, and it did not expire when Gate 4 completed.** Gate 5 has since moved Production to `D3` / `F0`. **Nothing creates urgency around [Gate 6](#gate-6--first-controlled-production-enablement-a87c-capture--f0--f1).**
+**That reasoning is why `D2` was a safe resting place after Gate 4, and it did not expire when Gate 4 completed.** Gate 5 has since moved Production to `D3` / `F0`. **Nothing creates urgency around [Gate 6](#gate-6--first-controlled-production-enablement-a87c-capture--f0--f1), Stage 12, A8.7d, or A8.7e.**
 
 ---
 
@@ -2254,7 +2490,7 @@ Twenty-one stages. Each uses the same seven headings, and no heading is omitted 
 
 **Stages 1 through 10 are the detailed expansion of the [A8.7b-INCIDENT-1c sequence](#a87b-incident-1c--production-schema-compatibility-repair)** and are labelled for that slice. Where the two differ in wording they do not differ in effect; where a stage was written for the retired A8.7b and no longer applies, it says so in place rather than being deleted, so that a reader comparing against an older review finds the correction rather than a gap.
 
-> **Stages 1 through 10 were executed on 2026-08-04 and are retained as the historical procedure.** Their preconditions describe the pre-repair world — five migration rows, no A8 objects, a deployment serving `ee5e82a` — and every one of those statements is now deliberately out of date. Do not read them as a description of Production. **Gate 4 and Gate 5 are complete.** **Stages 11 onward are still pending** — Stage 11's canonical procedure is [Gate 6](#gate-6--first-controlled-production-enablement-a87c-capture--f0--f1) — and their preconditions remain live against Production at `D3` / `F0`.
+> **Stages 1 through 10 were executed on 2026-08-04 and are retained as the historical procedure.** Their preconditions describe the pre-repair world — five migration rows, no A8 objects, a deployment serving `ee5e82a` — and every one of those statements is now deliberately out of date. Do not read them as a description of Production. **Gate 4 and Gate 5 are complete; Gate 6 (Stage 11) was partially executed and is incomplete.** **Stages 11 onward remain pending** — Stage 11's canonical procedure is [Gate 6](#gate-6--first-controlled-production-enablement-a87c-capture--f0--f1) — and their preconditions remain live against Production at `D3` / `F0`.
 
 ---
 
@@ -2509,13 +2745,13 @@ The retired A8.7b assumed Production served pre-A8 code, so a deployment was nee
 
 #### Stage 11 — Owner-event capture enablement (A8.7c)
 
-> **Canonical procedure:** [Gate 6 — First controlled production enablement](#gate-6--first-controlled-production-enablement-a87c-capture--f0--f1) (`G6.1`–`G6.15`). Stage 11 is the same activation event under the stage-runbook numbering. **Do not execute enablement from this stage body.**
+> **Canonical procedure:** [Gate 6 — First controlled production enablement](#gate-6--first-controlled-production-enablement-a87c-capture--f0--f1) (`G6.1`–`G6.15`). Stage 11 is the same activation event under the stage-runbook numbering. **It was authorized and partially executed on 2026-08-05 and did not complete — capture never became live.** Evidence: [A8_7_EVIDENCE.md § Gate 6](A8_7_EVIDENCE.md#gate-6--first-controlled-production-enablement-a87c-capture--f0--f1). **Do not execute enablement from this stage body.**
 
 **Preconditions.** See [G6.2](#g62-prerequisites) and [G6.4](#g64-production-f0-baseline).
 
 **Execution.** See [G6.8](#g68-execution-sequence) and the operator checklist [G6.15](#g615-operator-execution-checklist).
 
-**Verification.** See [G6.10](#g610-post-activation-verification).
+**Verification.** See [G6.10](#g610-post-activation-verification). The partial attempt never reached verified `F1` on the public custom domain.
 
 **Stop/go criteria.** See [G6.11](#g611-stop-conditions).
 
@@ -2523,27 +2759,29 @@ The retired A8.7b assumed Production served pre-A8 code, so a deployment was nee
 
 **Recovery or rollback.** See [G6.12](#g612-containment-and-rollback-posture).
 
-**Evidence to record.** See [G6.13](#g613-evidence-recording) and [A8_7_EVIDENCE.md § Gate 6](A8_7_EVIDENCE.md#gate-6--first-controlled-production-enablement-a87c-capture--f0--f1).
+**Evidence to record.** See [G6.13](#g613-evidence-recording) and [A8_7_EVIDENCE.md § Gate 6](A8_7_EVIDENCE.md#gate-6--first-controlled-production-enablement-a87c-capture--f0--f1), which records the partial attempt and the omitted completion step.
 
 ---
 
 #### Stage 12 — Capture-only observation (A8.7c)
 
-**Preconditions.** Stage 11 / [Gate 6](#gate-6--first-controlled-production-enablement-a87c-capture--f0--f1) complete and verified at `F1`. **No notification scheduler job exists and none may be created during this stage.**
+> **Canonical procedure:** [Stage 12 — Capture-only observation](#stage-12--capture-only-observation-a87c--f1) (`G12.1`–`G12.13`). This stage body is the same observation under the stage-runbook numbering. **Do not execute observation from this stage body.** Stage 12 is prepared, unauthorized, and unbegun.
 
-**Execution.** Observe for the authorized window while normal Owner and Recipient activity proceeds. Run Q15 and Q8 at the start, at intervals, and at the end. Do **not** invoke `POST /api/v1/internal/notifications/process`. Do not enable delivery.
+**Preconditions.** See [G12.3](#g123-prerequisites).
 
-**Verification.** `owner_notification_intents` accumulates rows whose `event_type` matches events that genuinely occurred. `owner_notification_attempts` stays at **0**. No email is sent — confirm by the attempts count, not by inspecting a mailbox. Intents older than the window begin appearing in Q15's `over_24h` bucket, which is expected and is what the zero-send rehearsal will exercise.
+**Execution.** See [G12.6](#g126-observation-window-open-and-close) and the operator checklist [G12.9](#g129-operator-execution-checklist).
 
-**Stop/go criteria.** **Stop** if `owner_notification_attempts` becomes non-zero — nothing should be delivering. **Stop** if an intent appears whose event did not occur. **Stop** if intent growth is wildly out of proportion to activity. Go when the window closes with attempts at zero.
+**Verification.** See [G12.8](#g128-sql-order-and-expected-results) and [G12.10](#g1210-final-verification).
 
-**Immediate containment.** Unset `ENABLE_OWNER_EVENT_CAPTURE` and redeploy.
+**Stop/go criteria.** See [G12.9](#g129-operator-execution-checklist) explicit stop conditions.
 
-**Recovery or rollback.** Return to **F0** by unsetting and redeploying. Captured intents stay and expire into suppression on their own.
+**Immediate containment.** See [G12.11](#g1211-containment-and-rollback).
 
-**Evidence to record.** `notifications.pending.buckets` at each observation, `owner_notification_attempts` at each observation (expected 0 throughout), the observed event types, and the window duration.
+**Recovery or rollback.** See [G12.11](#g1211-containment-and-rollback).
 
-**A8.7c ends here.** A8.7d requires separate authorization, and it is the slice that can send mail.
+**Evidence to record.** See [G12.13](#g1213-evidence-recording) and [A8_7_EVIDENCE.md § Stage 12](A8_7_EVIDENCE.md#stage-12--capture-only-observation).
+
+**A8.7c ends at Stage 12 close.** A8.7d requires separate authorization, and it is the slice that can send mail.
 
 ---
 

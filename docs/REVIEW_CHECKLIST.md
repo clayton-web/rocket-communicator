@@ -401,48 +401,48 @@ Gates for the due-date-driven Follow-up Engine (D102–D110). These record **exp
 - [x] The evidence record is filled with **no blank rows**, and every deviation is recorded honestly
 - [x] **Gate 6 was not begun**: no flag set, no scheduler job created, and `origin/main` reconciliation treated as a separate Owner decision
 
-### Gate 6 — first controlled production enablement (apply when Gate 6 is executed)
+### Gate 6 — first controlled production enablement (authorized, partially executed, INCOMPLETE)
 
-> **Not executed. Gate 6 is prepared, unauthorized, and unbegun.** These gates are unticked because nothing has been done, not because anything failed. Runbook: [DEPLOYMENT.md § Gate 6](DEPLOYMENT.md#gate-6--first-controlled-production-enablement-a87c-capture--f0--f1). **Live operator path:** [G6.15 Operator execution checklist](DEPLOYMENT.md#g615-operator-execution-checklist). Evidence template: [A8_7_EVIDENCE.md § Gate 6](A8_7_EVIDENCE.md#gate-6--first-controlled-production-enablement-a87c-capture--f0--f1).
+> **⚠ Not complete. Gate 6 was authorized and partially executed on 2026-08-05 and never became live.** `ENABLE_OWNER_EVENT_CAPTURE` was temporarily created in Vercel Production and production-target deployment `dpl_7X5r5ypWbq6ipmWMpver6p99p5Xz` reached READY carrying it, but it received only the two default `.vercel.app` aliases. With `autoAssignCustomDomains=false`, the required explicit custom-domain alias assignment never occurred, the public custom domain stayed on `dpl_6cVssNpaZeKPBEVGDynd61AoS9nS`, and the capture variable was subsequently removed. **Live Production is `D3` / `F0`.** Boxes below are ticked only where the step genuinely happened; the unticked ones are why the gate is incomplete. Runbook: [DEPLOYMENT.md § Gate 6](DEPLOYMENT.md#gate-6--first-controlled-production-enablement-a87c-capture--f0--f1). **Live operator path:** [G6.15 Operator execution checklist](DEPLOYMENT.md#g615-operator-execution-checklist). Evidence: [A8_7_EVIDENCE.md § Gate 6](A8_7_EVIDENCE.md#gate-6--first-controlled-production-enablement-a87c-capture--f0--f1). **Nothing here authorizes resuming Gate 6, Stage 12, A8.7d, or A8.7e.**
 
-**Context.** Production is at **`D3` / `F0`** after Gate 5 — queued A8 code deployed, fourteen migrations applied, all three A8 flags **absent**. Gate 6 sets **only** `ENABLE_OWNER_EVENT_CAPTURE=true`, redeploys so the value binds, and reaches `F1`. It runs **no migration**, creates **no** scheduler job, and must not set delivery or reminder flags.
-
-**During a live window, follow [G6.15](DEPLOYMENT.md#g615-operator-execution-checklist) step-by-step** (preconditions P1–P8, execution EC-1–EC-12, stop/rollback tables, final verification, completion criteria). The boxes below are the post-window review gates; they do not replace G6.15.
+**Context.** Production was — and still is — at **`D3` / `F0`** after Gate 5: queued A8 code deployed, fourteen migrations applied, all three A8 flags **absent**. Gate 6 sets **only** `ENABLE_OWNER_EVENT_CAPTURE=true`, redeploys so the value binds, **and puts the public custom domain on that deployment** so `F1` is what the live site serves. It runs **no migration**, creates **no** scheduler job, and must not set delivery or reminder flags.
 
 **Authorization and prerequisites**
 
-- [ ] **Gate 6 has its own explicit Owner authorization** (G6.15 checkpoint **A0**). Gate 5's does not carry into it
-- [ ] Gate 5 evidence shows Production at **`D3` / `F0`**, and the live Production deployment still matches that F0 baseline (or a documented inert successor)
-- [ ] Q8 four counts recorded in this window; Q21 recorded for reference
-- [ ] `ENABLE_OWNER_EVENT_DELIVERY` and `ENABLE_REMINDER_DELIVERY` **absent**
-- [ ] **No notification-processing job exists**
-- [ ] `/attention` loads with no error boundary
-- [ ] The Owner **no-use window** is open and its bounds recorded
+- [x] **Gate 6 has its own explicit Owner authorization** (G6.15 checkpoint **A0**). Gate 5's does not carry into it
+- [x] Gate 5 evidence shows Production at **`D3` / `F0`**, and the live Production deployment matched that F0 baseline
+- [x] Q8 four counts recorded in this window (`0, 0, 0, 0`); Q21 informational reading not transcribed (evidence deviation 2)
+- [x] `ENABLE_OWNER_EVENT_DELIVERY` and `ENABLE_REMINDER_DELIVERY` **absent**
+- [x] **No notification-processing job exists**
+- [x] `/attention` loads with no error boundary (unauthenticated redirects to Owner sign-in)
+- [ ] The Owner **no-use window** and its bounds recorded — observed but **not transcribed** (evidence deviation 2)
 
 **Execution**
 
-- [ ] Checkpoint **A1** recorded before the flag set — authorization covers only capture + one binding redeploy
-- [ ] `ENABLE_OWNER_EVENT_CAPTURE` set to the exact lowercase string **`true`** in Vercel Production only — not `"1"`, `"TRUE"`, or `"yes"`
-- [ ] Other two A8 flags left **unset** (absent), not set to `false`
-- [ ] Redeploy is **production-target**; **preview-target promotion is prohibited**; **`git push origin main` is prohibited**
-- [ ] Pre-promotion / pre-reliance inspection records target `production`, READY, bound flag values, and no migration during build
-- [ ] If the alternative Production redeploy method was used, checkpoint **A2** was recorded first
+- [x] Checkpoint **A1** covered — authorization covers only capture + one binding redeploy
+- [x] `ENABLE_OWNER_EVENT_CAPTURE` set to the exact lowercase string **`true`** in Vercel Production only — not `"1"`, `"TRUE"`, or `"yes"`. **Subsequently removed** under separate authorization
+- [x] Other two A8 flags left **unset** (absent), not set to `false`
+- [x] Redeploy is **production-target**; **preview-target promotion is prohibited**; **`git push origin main` is prohibited**
+- [x] Pre-promotion / pre-reliance inspection: target `production`, READY, bound flag values; no migration (fourteen rows unchanged)
+- [ ] Redeploy method named exactly (CLI vs dashboard not separately recorded — evidence deviation 2)
 
 **Verification**
 
-- [ ] New deployment Ready and holding the production alias as intended
-- [ ] Capture flag is exactly `true`; other two flags still **absent**
-- [ ] `/attention` still loads; migration history still **fourteen** rows
-- [ ] `owner_notification_attempts` is **0**
-- [ ] Notification endpoint was **not** invoked; no notification job was created
-- [ ] No Owner/Recipient notification or reminder email; no Gmail API call for those paths
-- [ ] G6.15 final verification checklist fully checked
+- [x] New deployment **Ready** — `dpl_7X5r5ypWbq6ipmWMpver6p99p5Xz` built successfully
+- [ ] **New deployment holding the public custom domain as intended — DID NOT HAPPEN.** It held only the two default `.vercel.app` aliases; the domain stayed on `dpl_6cVssNpaZeKPBEVGDynd61AoS9nS` (evidence deviation 3). **This is the omitted completion step**
+- [ ] **`F1` verified on the live site — NOT REACHED.** The live custom domain served an `F0` deployment throughout
+- [x] Other two flags still **absent**
+- [x] `/attention` still loads; migration history still **fourteen** rows (all finished, none rolled back, `applied_steps_count = 1`)
+- [x] `owner_notification_attempts` is **0**
+- [x] Notification endpoint was **not** invoked; no notification job was created; Gmail Poll and Suggestion Processing inactive
+- [x] No Owner/Recipient notification or reminder email; no Gmail API call for those paths
+- [ ] G6.15 final verification checklist fully checked — one documented verification deviation: unauthenticated `GET /api/v1/tasks` returned HTTP **302** to Vercel SSO under Deployment Protection (not an application failure)
 
 **Containment and closure**
 
-- [ ] Rollback / containment path understood: unset capture + redeploy, or Instant Rollback to F0 while it remains one step back ([G6.12](DEPLOYMENT.md#g612-containment-and-rollback-posture)); G6.15 rollback trigger points observed
-- [ ] Evidence record filled with **no blank rows**; deviations recorded honestly
-- [ ] **A8.7d and A8.7e were not begun**; Stage 12 close-out treated per Gate 6 stop boundary (G6.15 completion criteria / checkpoint **A3**)
+- [x] Rollback / containment path understood ([G6.12](DEPLOYMENT.md#g612-containment-and-rollback-posture)); **no containment was required, because the live site never changed**
+- [x] Evidence record filled; deviations recorded honestly (Deployment Protection 302; partial ISO/Q21/method transcription; the incompletion itself; the subsequent flag removal)
+- [x] **A8.7d and A8.7e were not begun**; Stage 12 was not begun
 
 ### P2.0 — Owner Experience Foundation (documentation lock — complete)
 
@@ -493,6 +493,40 @@ Gates for the due-date-driven Follow-up Engine (D102–D110). These record **exp
 - [x] A9.2 renamed/bounded as **Android Task Capture** (not A12 / not AI capture)
 - [x] Historical A8/P1/Gate evidence preserved; sequencing supersession notes added
 - [x] No architecture redesign; no contract change; no production procedure rewrite; Stage 12 / A8.7d / A8.7e not begun
+
+### Stage 12 — capture-only observation (apply when Stage 12 is executed)
+
+> **Not executed. Stage 12 is prepared, unauthorized, and unbegun.** These gates are unticked because nothing has been done, not because anything failed. Canonical procedure: [DEPLOYMENT.md § Stage 12](DEPLOYMENT.md#stage-12--capture-only-observation-a87c--f1) (`G12.1`–`G12.13`). **Live operator path:** [G12.9 Operator execution checklist](DEPLOYMENT.md#g129-operator-execution-checklist). Evidence template: [A8_7_EVIDENCE.md § Stage 12](A8_7_EVIDENCE.md#stage-12--capture-only-observation). **Stage 12 does not enable delivery.** **P2.0 / D140 further sequences Stage 12 after Owner Acceptance Week and P2.2** — still requiring its own authorization.
+
+**Context.** Live Production is at **`D3` / `F0`**, so **Stage 12's `F1` precondition is unmet** — Gate 6 is incomplete and never became live. If an authorized `F1` is ever reached, Stage 12 opens an Owner-authorized observation window, runs Q15 then Q8 at open / intervals / close, and confirms **`owner_notification_attempts` stays 0**. It creates **no** scheduler job, invokes **no** worker, and must not set delivery or reminder flags.
+
+**During a live window, follow [G12.9](DEPLOYMENT.md#g129-operator-execution-checklist) step-by-step.** The boxes below are the post-window review gates; they do not replace G12.9.
+
+**Authorization and prerequisites**
+
+- [ ] **Stage 12 has its own explicit Owner authorization** (G12.9 checkpoint **A0**). Gate 6's does not carry into it
+- [ ] Authorization states the window **duration or completion trigger** (checkpoint **A1**)
+- [ ] Gate 6 evidence shows Production at **`D3` / `F1`**, and the **public custom domain** resolves to that F1 deployment. **Currently unmet — Gate 6 is incomplete and the domain is on the `F0` deployment `dpl_6cVssNpaZeKPBEVGDynd61AoS9nS`**
+- [ ] Capture = exact `true`; delivery and reminder flags **absent**
+- [ ] **No notification-processing job exists**
+- [ ] Observation mode is **passive** (normal Owner/Recipient activity); no deliberate Stage 14 canary
+
+**Observation**
+
+- [ ] Baseline at window open recorded (deployment, flags, Q8, Q15, scheduler)
+- [ ] Q15 then Q8 run at open, at each authorized interval, and at close — SQL copied exactly from [verification queries](DEPLOYMENT.md#verification-queries)
+- [ ] `owner_notification_attempts` = **0** at every observation
+- [ ] `reminder_delivery_attempts` = **0** at every observation
+- [ ] When intents appear, observed `event_type` values match genuine events
+- [ ] Notification endpoint was **not** invoked; no notification job was created
+- [ ] No Owner/Recipient notification or reminder email
+
+**Containment and closure**
+
+- [ ] Rollback / containment path understood: unset capture + redeploy ([G12.11](DEPLOYMENT.md#g1211-containment-and-rollback))
+- [ ] Evidence record filled; deviations recorded honestly
+- [ ] Final state still **`D3` / `F1`** (capture only)
+- [ ] **A8.7d and A8.7e were not begun** (G12.12 / checkpoint **A2**)
 
 ## Owner web experience foundation (P1; apply when P1 work is in scope)
 
