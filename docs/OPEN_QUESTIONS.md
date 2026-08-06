@@ -29,6 +29,17 @@ Workspace domain allowlist for Owner sign-in is environment-local configuration 
 | Backlog flush when delivery is enabled           | **D135** — a **24-hour** staleness horizon: an older intent is terminalized as suppressed with a truthful reason and no provider call, so enablement order cannot produce a burst of stale mail                                                                                                                                                                                                                                                                                                        |
 | Gmail self-ingestion of Owner notifications      | **D136** — a narrow `X-Rocket-Generated` marker from the controlled MIME builder, excluded at ingest. Excluding all `SENT` mail, or all mail whose sender equals the connected account, was rejected because both narrow D068 for genuine Owner mail                                                                                                                                                                                                                                                   |
 
+## Closed in P2.0 documentation Decision Lock
+
+| Topic | Resolution |
+| ----- | ---------- |
+| What kind of product we are building | **D138–D139** — Owner's trusted external memory; Android is the product; web is administration / review / debugging / fallback. Canonical: [P2_0_OWNER_EXPERIENCE_FOUNDATION.md](P2_0_OWNER_EXPERIENCE_FOUNDATION.md) |
+| Whether Stage 12 / A8.7d / A8.7e remain next after Gate 6 | **D140** — **no** for next-work order. Forward sequence is P2.0 → A9.0–A9.3 → Owner Acceptance Week → P2.2 → Stage 12 → A8.7d → A8.7e → A10+. Stage 12 / A8.7d / A8.7e stay unauthorized and unbegun. Architecture unchanged |
+| A9.2 naming and capture scope | **D141** — **Android Task Capture**; typed + OS speech-to-text into fields; not A12 voice pipeline, automatic transcription, or AI capture |
+| Owner Acceptance Week status | **D142** — formal product gate with measurable exit criteria; silence is not approval |
+| Friction work after OAW | **D143** — **P2.2 Remove Friction**; no major features |
+| Broader operational enablement readiness | **D144** — ordinary-day Android confidence without external notes; web for admin/fallback only; does not by itself authorize Stage 12 or flag changes |
+
 ## Closed in P1.5
 
 | Topic                                                                                              | Resolution                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |

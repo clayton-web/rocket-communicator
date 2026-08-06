@@ -198,7 +198,7 @@ Handoff work deliberately **descoped from A7** at closure. None of it blocks A8,
 
 ### Delivery sequence
 
-Sequencing only — **no milestone is renumbered**. A8, A9, and later milestone identifiers are unchanged.
+Sequencing only — **no milestone is renumbered**. A8, A9, and later milestone identifiers are unchanged. **P2.0 introduces named A9.0–A9.3 slices and P2.2** without renumbering A9 or A8.
 
 1. **P1** — Application Experience Foundation (distinct milestone; **not** part of A8 and not folded into it). **COMPLETE** — P1.0 decision lock complete (D111–D120); P1.1 through P1.5 implemented; deployed and production-validated with one documented evidence limitation. Scope: [P1](#p1--application-experience-foundation). Evidence: [P1_5_EVIDENCE.md](P1_5_EVIDENCE.md).
 2. **A8.1** — documentation and decision lock (**complete**)
@@ -237,6 +237,23 @@ A8.4 is split for the same reason. **A8.4a** builds the concurrency machinery �
 P1 precedes the A8 Owner UI so the due-date control and schedule panel are built once on a settled experience foundation. Documentation precedes A8 code (Engineering Rule #1).
 
 **Honest dependency note.** A8.2, A8.3, A8.4, and A8.5 do not touch the Owner interface and are not technically blocked by P1's visible work. What P1 genuinely owes A8 is narrower and specific: the observability seam and correlation reference before a scheduler exists in production (D115), the generic Owner attention and operational-status destination required by D108 (D118), and the organization-timezone-aware display formatter (D117). P1 nevertheless runs first under Implementation Rule #1 (one milestone at a time) so the token layer and shell do not compete with new A8.6 UI code.
+
+
+#### Forward roadmap after P2.0
+
+**Authority:** D137–D144. Detail: [P2_0_OWNER_EXPERIENCE_FOUNDATION.md](P2_0_OWNER_EXPERIENCE_FOUNDATION.md).
+
+1. **P2.0** — Owner Experience Foundation (**COMPLETE**, documentation only). Product Constitution, mission, Android-first philosophy, OAW gate, P2.2, A9.2 rename/boundary, sequencing lock.
+2. **A9.0** — Android Owner foundation (authentication / sideload baseline / minimum shell). **Complete (D145–D147).**
+3. **A9.1** — Authenticated Android networking foundation (**D148** complete).
+4. **A9.2** — **Android Task Capture** (typed capture; Android speech-to-text into fields). **Not** A12 voice pipeline, automatic transcription, or AI capture. **Complete (D149).**
+5. **A9.3** — Android organize, assign, and follow-through. **Complete (D150).**
+6. **Owner Acceptance Week** — formal product gate with measurable exit criteria (D142). **Not started.**
+7. **P2.2** — Remove Friction (OAW-driven Android UX improvements; no major features). **Not started.**
+8. **Stage 12** — capture-only observation at `F1` — prepared, **unauthorized**, **unbegun** (own authorization required; not started by P2.0).
+9. **A8.7d** — notification delivery / Gmail-loop gate — **unauthorized**, **unbegun**.
+10. **A8.7e** — reminder delivery — **unauthorized**, **unbegun**.
+11. **A10+** — later milestones (Messages capture, calls, voice pipeline, retention, learning, hardening).
 
 ### P1 — Application Experience Foundation
 
@@ -1031,6 +1048,22 @@ The failure model claimed more atomicity than exists. **No A8 migration contains
 
 **A8.7c through A8.7e each require their own authorization.** Migrations 6–9 must be applied and verified before the local commits may be pushed, because a push to `main` deploys automatically — and because Production now serves a commit that is **not** on `main`, a push would also replace it.
 
+### P2.0 — Owner Experience Foundation
+
+**Status:** **COMPLETE** (documentation and constitutional lock only; **D137–D144**). Canonical document: [P2_0_OWNER_EXPERIENCE_FOUNDATION.md](P2_0_OWNER_EXPERIENCE_FOUNDATION.md).
+
+**Purpose.** Answer “What kind of product are we building?” and lock the Owner-experience Product Constitution before Android implementation.
+
+**Delivered:**
+
+- Product Constitution (mission, seven principles, feature filter, definition of success)
+- Intentional roadmap re-sequencing after Gate 6 (D140)
+- A9 slice map; **A9.2 Android Task Capture** naming and boundary (D141)
+- Owner Acceptance Week as a formal product gate (D142)
+- **P2.2 — Remove Friction** on the roadmap (D143)
+
+**Explicitly not delivered / not authorized:** Android code; API changes; production contact; feature-flag changes; Stage 12; A8.7d; A8.7e; architecture redesign.
+
 ### A9 — Android authentication and Owner interface
 
 Sideload Owner app; approve suggestions, manage Tasks/delegation, and deliver Event Notifications (push remains D017-gated). Manual Task creation remains available but is not the primary goal.
@@ -1046,6 +1079,8 @@ Always prompt on missed call when detected; completed-call prompts only for know
 ### A12 — Voice capture and transcription
 
 Record → transcribe → confirm; audio delete on success; voice never creates Tasks directly (D038).
+
+**Boundary vs A9.2:** Android OS speech-to-text **into fields** is part of **A9.2 Android Task Capture**. A12 is the later voice **pipeline** (record → transcribe → confirm). A9.2 does not implement A12, automatic transcription as a product pipeline, or AI capture (D141).
 
 ### A13 — Retention workers
 

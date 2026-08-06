@@ -4,17 +4,17 @@ Governed by [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md). Terms: [GLOSSARY
 
 ## Objective
 
-Private Android-first **AI Communication Action Assistant** that captures Owner communications, proposes Task Suggestions, requires Owner approval before Tasks and Recipient handoffs, delivers work via Capability Links, runs the **Follow-up Engine** and **Event Notification Engine**, records outcomes, and learns Owner preferences—without becoming a conventional task manager, calendar manager, general-purpose reminder application, or permanent communication archive.
+Private Android-first **AI Communication Action Assistant** and the Owner's **trusted external memory** (P2.0 / D138): it captures Owner communications, proposes Task Suggestions, requires Owner approval before Tasks and Recipient handoffs, delivers work via Capability Links, runs the **Follow-up Engine** and **Event Notification Engine**, records outcomes, and learns Owner preferences—without becoming a conventional task manager, calendar manager, general-purpose reminder application, inbox replacement, or permanent communication archive.
 
 Under the narrow constitutional exception (D102), an **explicitly selected Task due date may drive deterministic follow-through on delegated communication work**. That exception does not make the product a calendar or reminder application: general-purpose personal reminders, arbitrary recurrence, escalation ladders, Owner CC ladders, silent AI-controlled scheduling, and general calendar management all remain excluded.
 
-The product exists to ensure communications are followed through until conclusion.
+Rocket **replaces the Owner's follow-through habit**. It does **not** replace Gmail, Messages, or the Phone app. It **remembers what must happen next**. The product exists to ensure communications are followed through until conclusion. Product Constitution: [P2_0_OWNER_EXPERIENCE_FOUNDATION.md](P2_0_OWNER_EXPERIENCE_FOUNDATION.md).
 
 ## Roles
 
 Roles and permissions: [GLOSSARY.md](GLOSSARY.md) (Owner, Recipient, Administrator label). Security matrix: [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md).
 
-Android is the Owner’s **intended** primary interface (capture, review, voice) and remains **A9** by name. Web serves Owner auth/APIs, Owner handoff surfaces (A7.8), and the minimal Recipient capability view; it is the currently-operational Owner instrument. **P1** makes that web Owner surface reliable — a shared application shell, truthful experience states, organization-local display, and operational observability (D111–D120) — without displacing the Android plan and without adding product features. Details: [MILESTONES.md](MILESTONES.md).
+**Android is the product** (P2.0 / D139): the Owner’s primary interface for capture, organize, assign, and follow-through is Android (**A9.0–A9.3**; capture **D149**, organize/assign/follow-through **D150**). Web serves Owner auth/APIs, administration, review, debugging, fallback, Owner handoff surfaces (A7.8), and the minimal Recipient capability view. **P1** made the web surface reliable (D111–D120) without displacing the Android plan. **P2.0** locks the Owner-experience constitution; next formal product gate is Owner Acceptance Week (D142). Details: [MILESTONES.md](MILESTONES.md), [P2_0_OWNER_EXPERIENCE_FOUNDATION.md](P2_0_OWNER_EXPERIENCE_FOUNDATION.md).
 
 ## Included communication sources (v1)
 
@@ -54,3 +54,5 @@ Schema/architecture may later support multiple Recipients, additional sources, t
 ## MVP complete when
 
 Privately sideloaded Android + backend + Recipient capability web loop can: ingest Gmail/Messages into suggestions; require approval to create/assign/forward; forward Gmail with attachments after approval; support call prompts and voice proposals; run the Follow-up Engine and Event Notification Engine; enforce 7-day/30-day application retention; record learning signals without a permanent archive.
+
+**Broader operational enablement readiness (D144):** the Owner can confidently manage an ordinary working day using the Android application without depending on memory or external notes, while using the web application only for administration or fallback — after Owner Acceptance Week explicit approval (D142), and still subject to Stage 12 / A8.7d / A8.7e authorization gates.

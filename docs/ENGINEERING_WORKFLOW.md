@@ -1,6 +1,6 @@
 # Engineering workflow
 
-How future development proceeds on this repository. Subordinate to [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md) and [AI_CONSTITUTION.md](AI_CONSTITUTION.md). Milestone sequence: [MILESTONES.md](MILESTONES.md). Review gate: [REVIEW_CHECKLIST.md](REVIEW_CHECKLIST.md).
+How future development proceeds on this repository. Subordinate to [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md) and [AI_CONSTITUTION.md](AI_CONSTITUTION.md). Owner-experience Product Constitution: [P2_0_OWNER_EXPERIENCE_FOUNDATION.md](P2_0_OWNER_EXPERIENCE_FOUNDATION.md) (D137–D144). Milestone sequence: [MILESTONES.md](MILESTONES.md) — forward order after Gate 6 is P2.0 → A9 → Owner Acceptance Week → P2.2 → Stage 12 → A8.7d → A8.7e (D140). Review gate: [REVIEW_CHECKLIST.md](REVIEW_CHECKLIST.md).
 
 ---
 
@@ -45,6 +45,8 @@ Next milestone
 4. **No undocumented behaviour** — if users can observe it, docs must describe it.
 5. **Documentation updated before completion** — milestone is incomplete until docs are verified.
 6. **Stop when scope is exceeded** — park discoveries in OPEN_QUESTIONS or a future milestone; do not absorb them quietly.
+7. **Feature filter (P2.0 / D139)** — prefer work that makes it easier for the Owner to capture, organize, assign, or follow through on real work during an ordinary day; otherwise it likely belongs later.
+8. **Do not resume paused A8 delivery enablement early** — Stage 12, A8.7d, and A8.7e remain unauthorized until their own gates after Owner Acceptance Week and P2.2 (D140, D142).
 
 ## Environment Guard
 

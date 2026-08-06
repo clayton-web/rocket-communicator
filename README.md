@@ -2,15 +2,16 @@
 
 Private, Android-first assistant that turns personal business communications into temporary, actionable work for one authenticated **Owner** and delegated **Recipients** who act through task-specific **capability links**—no Recipient application accounts.
 
-The product exists to ensure communications are followed through until conclusion. It is not a conventional task manager, calendar manager, or general-purpose reminder application. Under one narrow exception (D102), an explicitly selected Task due date may drive deterministic follow-through on delegated work.
+Rocket exists to become the Owner's **trusted external memory**: capture, organize, assign, and follow through on real work from an Android phone throughout an ordinary day. It replaces the Owner's follow-through habit — not Gmail, Messages, or Phone. It is not a conventional task manager, calendar manager, or general-purpose reminder application. Under one narrow exception (D102), an explicitly selected Task due date may drive deterministic follow-through on delegated work.
 
-**Governing document:** [docs/PROJECT_CONSTITUTION.md](docs/PROJECT_CONSTITUTION.md)
+**Governing document:** [docs/PROJECT_CONSTITUTION.md](docs/PROJECT_CONSTITUTION.md)  
+**Product Constitution (P2.0):** [docs/P2_0_OWNER_EXPERIENCE_FOUNDATION.md](docs/P2_0_OWNER_EXPERIENCE_FOUNDATION.md)
 
 ## Purpose
 
 Answer: what needs action, what matters, who should handle it, when to follow up, whether it completed, how it completed, and whether completion created further work.
 
-Not a permanent communication archive.
+Not a permanent communication archive. Not an inbox replacement.
 
 ## Current status
 
@@ -108,6 +109,7 @@ Authority: [docs/DOCUMENTATION_INDEX.md](docs/DOCUMENTATION_INDEX.md)
 | HTTP surface                           | [API_CONTRACT](docs/API_CONTRACT.md)                                                               |
 | Flows                                  | [WORKFLOWS](docs/WORKFLOWS.md)                                                                     |
 | Scope / MVP                            | [PRODUCT_SCOPE](docs/PRODUCT_SCOPE.md)                                                             |
+| Product Constitution (P2.0)             | [P2_0_OWNER_EXPERIENCE_FOUNDATION](docs/P2_0_OWNER_EXPERIENCE_FOUNDATION.md)                       |
 | Retention                              | [DATA_RETENTION](docs/DATA_RETENTION.md)                                                           |
 | AI behaviour                           | [AI_CONSTITUTION](docs/AI_CONSTITUTION.md)                                                         |
 | Plan                                   | [MILESTONES](docs/MILESTONES.md)                                                                   |

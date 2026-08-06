@@ -2,7 +2,7 @@
 
 Use this checklist before completing any implementation milestone or merging behaviour-changing work. Answer every section. “N/A” is allowed only with a one-line reason.
 
-Governing references: [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md) · [AI_CONSTITUTION.md](AI_CONSTITUTION.md) · [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW.md)
+Governing references: [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md) · [P2_0_OWNER_EXPERIENCE_FOUNDATION.md](P2_0_OWNER_EXPERIENCE_FOUNDATION.md) · [AI_CONSTITUTION.md](AI_CONSTITUTION.md) · [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW.md)
 
 ---
 
@@ -443,6 +443,10 @@ Gates for the due-date-driven Follow-up Engine (D102–D110). These record **exp
 - [ ] Rollback / containment path understood: unset capture + redeploy, or Instant Rollback to F0 while it remains one step back ([G6.12](DEPLOYMENT.md#g612-containment-and-rollback-posture)); G6.15 rollback trigger points observed
 - [ ] Evidence record filled with **no blank rows**; deviations recorded honestly
 - [ ] **A8.7d and A8.7e were not begun**; Stage 12 close-out treated per Gate 6 stop boundary (G6.15 completion criteria / checkpoint **A3**)
+
+### P2.0 — Owner Experience Foundation (documentation lock — complete)
+
+> **✅ Complete (docs-only).** Product Constitution and roadmap sequencing lock (**D137–D144**). Canonical: [P2_0_OWNER_EXPERIENCE_FOUNDATION.md](P2_0_OWNER_EXPERIENCE_FOUNDATION.md). **No code, no production contact, no feature-flag change.** Forward next-work order: A9.0 → A9.1 → A9.2 Android Task Capture → A9.3 → Owner Acceptance Week → P2.2 → Stage 12 → A8.7d → A8.7e (**D140**). Stage 12 / A8.7d / A8.7e remain unauthorized.
 
 ## Owner web experience foundation (P1; apply when P1 work is in scope)
 

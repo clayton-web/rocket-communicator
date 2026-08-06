@@ -5,14 +5,15 @@ Navigation only. Definitions: [GLOSSARY.md](GLOSSARY.md). Governing authority: [
 ## Read order
 
 1. [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md)
-2. [GLOSSARY.md](GLOSSARY.md)
-3. [PRODUCT_SCOPE.md](PRODUCT_SCOPE.md)
-4. [DECISIONS.md](DECISIONS.md)
-5. [ARCHITECTURE.md](ARCHITECTURE.md)
-6. [STATE_MACHINE.md](STATE_MACHINE.md) · [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md) · [API_CONTRACT.md](API_CONTRACT.md)
-7. [WORKFLOWS.md](WORKFLOWS.md) · [DATA_RETENTION.md](DATA_RETENTION.md) · [AI_CONSTITUTION.md](AI_CONSTITUTION.md)
-8. [MILESTONES.md](MILESTONES.md) · [DEPLOYMENT.md](DEPLOYMENT.md) · [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW.md) · [REVIEW_CHECKLIST.md](REVIEW_CHECKLIST.md)
-9. [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md)
+2. [P2_0_OWNER_EXPERIENCE_FOUNDATION.md](P2_0_OWNER_EXPERIENCE_FOUNDATION.md) — Product Constitution (“What kind of product are we building?”)
+3. [GLOSSARY.md](GLOSSARY.md)
+4. [PRODUCT_SCOPE.md](PRODUCT_SCOPE.md)
+5. [DECISIONS.md](DECISIONS.md)
+6. [ARCHITECTURE.md](ARCHITECTURE.md)
+7. [STATE_MACHINE.md](STATE_MACHINE.md) · [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md) · [API_CONTRACT.md](API_CONTRACT.md)
+8. [WORKFLOWS.md](WORKFLOWS.md) · [DATA_RETENTION.md](DATA_RETENTION.md) · [AI_CONSTITUTION.md](AI_CONSTITUTION.md)
+9. [MILESTONES.md](MILESTONES.md) · [DEPLOYMENT.md](DEPLOYMENT.md) · [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW.md) · [REVIEW_CHECKLIST.md](REVIEW_CHECKLIST.md)
+10. [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md)
 
 Root entry: [../README.md](../README.md)
 
@@ -23,6 +24,9 @@ Contributor process controls (Environment Guard, Docker requirement indicator, v
 | Topic                                                                                                                          | Document                                                                                                                                        |
 | ------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | Mission, engineering rules, complete Architecture Principles                                                                   | PROJECT_CONSTITUTION                                                                                                                            |
+| **Product Constitution — what kind of product we are building (P2.0)**                                                         | [P2_0_OWNER_EXPERIENCE_FOUNDATION.md](P2_0_OWNER_EXPERIENCE_FOUNDATION.md) (D137–D144); PROJECT_CONSTITUTION amended                             |
+| **Forward roadmap after Gate 6 (Android before further A8 delivery enablement)**                                               | MILESTONES → Forward roadmap after P2.0; D140                                                                                                   |
+| **P2.2 Remove Friction**                                                                                                       | MILESTONES → P2.2; D143                                                                                                                         |
 | Term definitions                                                                                                               | GLOSSARY                                                                                                                                        |
 | Product scope / MVP / exclusions                                                                                               | PRODUCT_SCOPE                                                                                                                                   |
 | Binding decisions (incl. P1.0 D111–D120 and A8.1 D102–D110, superseding parts of A8.0 D095–D101)                               | DECISIONS                                                                                                                                       |
