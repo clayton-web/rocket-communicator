@@ -14,9 +14,7 @@ import { headers } from 'next/headers';
  * to take the JWT path.
  */
 
-export type OwnerCredential =
-  | { kind: 'bearer'; accessToken: string }
-  | { kind: 'cookie' };
+export type OwnerCredential = { kind: 'bearer'; accessToken: string } | { kind: 'cookie' };
 
 const BEARER_PATTERN = /^Bearer\s+(\S+)$/i;
 
