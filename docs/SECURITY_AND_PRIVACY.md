@@ -18,6 +18,7 @@ Governed by [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md). Definitions: [GL
 - One Authenticated User: the Owner (D048).
 - Workspace domain allowlist via secure env (`OWNER_WORKSPACE_DOMAIN`); not hard-coded.
 - Recipients do not authenticate (D049).
+- **A9.0 / D145–D147:** One shared Owner authentication pipeline on the server. Web continues to present the Supabase session as SSR cookies; Android presents the Supabase access JWT as `Authorization: Bearer`. Both are verified with `auth.getUser()` and the same allowlist/org binding — never trusted as raw credentials. `GET /api/v1/session` is the canonical authenticated API probe. Android stores session tokens in platform secure storage, restores on launch, refreshes only when required at startup or when authentication fails naturally (no background refresh scheduler), and signs out with Supabase **`SignOutScope.LOCAL`** — revoking only that device's session and clearing local credentials (D147). Android sign-out does **not** end web sessions. Browser `POST /auth/sign-out` remains web-only (D123).
 
 ## Recipient authorization
 

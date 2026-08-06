@@ -66,6 +66,8 @@ After either generate path, `pnpm contracts:check-drift` must pass — committed
 Owner Session vs Recipient Capability: [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md).
 
 - Owner routes: `bearerAuth` / Supabase SSR cookies. `organizationId` from `OWNER_ORGANIZATION_ID`; `OWNER_WORKSPACE_DOMAIN` gates sign-in only.
+- **A9.0 / D145:** One shared Owner authentication pipeline. Credential extraction prefers `Authorization: Bearer <supabase_access_jwt>` when present; otherwise the existing SSR cookie session is used. Both paths call the same server-verified Supabase `getUser()` + workspace allowlist + org binding. Owner JWTs never authorize internal cron routes (`InternalCronBearer` / `CRON_SECRET`).
+- **Canonical API probe:** `GET /api/v1/session` confirms authenticated API access, workspace validation, organization resolution, and role resolution after Supabase has established identity. Native Android clients use Bearer JWT (D146); the browser continues to use SSR cookies.
 - Capability routes: path `{token}` (`CapabilityToken`). OpenAPI `security: []` because path apiKeys cannot be expressed. Browser `GET /c/[token]` is non-mutating; mutations are POST after confirm.
 - Recipients do **not** have application accounts (D049).
 
@@ -85,7 +87,7 @@ Full rules: [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md).
 
 ### Owner session routes
 
-**Status: implemented and production-verified (A3 + A4 baseline).**
+**Status: implemented and production-verified (A3 + A4 baseline).** **A9.0:** Bearer JWT accepted through the shared Owner pipeline (D145); remains the canonical authenticated API probe for Android.
 
 | Method | Path              | Purpose               | Status              |
 | ------ | ----------------- | --------------------- | ------------------- |

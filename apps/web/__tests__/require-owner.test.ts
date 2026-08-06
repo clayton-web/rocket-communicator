@@ -4,6 +4,7 @@ import { createGoogleSupabaseUser } from './fixtures/supabase-user';
 
 const getUser = vi.fn();
 const getSession = vi.fn();
+const extractOwnerCredential = vi.fn();
 
 vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(async () => ({
@@ -14,6 +15,16 @@ vi.mock('@/lib/supabase/server', () => ({
   })),
 }));
 
+vi.mock('@/lib/auth/owner-credential', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/auth/owner-credential')>(
+    '@/lib/auth/owner-credential',
+  );
+  return {
+    ...actual,
+    extractOwnerCredential: (...args: unknown[]) => extractOwnerCredential(...args),
+  };
+});
+
 describe('require-owner authenticated request validation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -22,6 +33,7 @@ describe('require-owner authenticated request validation', () => {
     process.env.NEXT_PUBLIC_APP_URL = 'http://localhost:3000';
     process.env.OWNER_WORKSPACE_DOMAIN = 'example.com';
     process.env.OWNER_ORGANIZATION_ID = 'org_test_123';
+    extractOwnerCredential.mockResolvedValue({ kind: 'cookie' });
   });
 
   it('uses auth.getUser() and does not rely on getSession()', async () => {
@@ -35,8 +47,64 @@ describe('require-owner authenticated request validation', () => {
     const owner = await getAuthenticatedOwner();
 
     expect(getUser).toHaveBeenCalledOnce();
+    expect(getUser).toHaveBeenCalledWith();
     expect(getSession).not.toHaveBeenCalled();
     expect(owner?.session.ownerId).toBe('11111111-2222-3333-4444-555555555555');
+  });
+
+  it('verifies Bearer JWT through the same getUser + allowlist pipeline', async () => {
+    extractOwnerCredential.mockResolvedValue({
+      kind: 'bearer',
+      accessToken: 'supabase-access-jwt',
+    });
+    getUser.mockResolvedValue({
+      data: {
+        user: createGoogleSupabaseUser({ email: 'owner@example.com', hostedDomain: 'example.com' }),
+      },
+      error: null,
+    });
+
+    const owner = await getAuthenticatedOwner();
+
+    expect(getUser).toHaveBeenCalledOnce();
+    expect(getUser).toHaveBeenCalledWith('supabase-access-jwt');
+    expect(owner?.session).toEqual({
+      ownerId: '11111111-2222-3333-4444-555555555555',
+      organizationId: 'org_test_123',
+      role: 'owner',
+      displayName: expect.any(String),
+    });
+  });
+
+  it('rejects Bearer users without a verified hosted domain claim', async () => {
+    extractOwnerCredential.mockResolvedValue({
+      kind: 'bearer',
+      accessToken: 'supabase-access-jwt',
+    });
+    getUser.mockResolvedValue({
+      data: {
+        user: createGoogleSupabaseUser({
+          email: 'owner@example.com',
+          hostedDomain: null,
+        }),
+      },
+      error: null,
+    });
+
+    await expect(getAuthenticatedOwner()).resolves.toBeNull();
+  });
+
+  it('rejects when Bearer getUser reports an auth error', async () => {
+    extractOwnerCredential.mockResolvedValue({
+      kind: 'bearer',
+      accessToken: 'invalid-jwt',
+    });
+    getUser.mockResolvedValue({
+      data: { user: null },
+      error: { message: 'invalid JWT' },
+    });
+
+    await expect(getAuthenticatedOwner()).resolves.toBeNull();
   });
 
   it('rejects users without a verified hosted domain claim', async () => {

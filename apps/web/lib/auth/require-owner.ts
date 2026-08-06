@@ -2,6 +2,7 @@ import { cache } from 'react';
 import { AuthConfigError } from '@/lib/auth/errors';
 import { getAuthConfig } from '@/lib/auth/config';
 import { isWorkspaceDomainPermitted, workspaceIdentityFromUser } from '@/lib/auth/domain-allowlist';
+import { extractOwnerCredential } from '@/lib/auth/owner-credential';
 import { mapSupabaseUserToOwnerActor, mapSupabaseUserToSession } from '@/lib/auth/session';
 import { getRequestContext, type RequestDiagnosticContext } from '@/lib/observability';
 import { createClient } from '@/lib/supabase/server';
@@ -54,7 +55,8 @@ const resolveOwnerForRenderPass = cache(resolveAuthenticatedOwner);
  * Resolve the Owner for the current request.
  *
  * Identity is always established by a server-verified `auth.getUser()` call; the cookie
- * session is never trusted on its own, and no caller-supplied identity is accepted.
+ * session and Bearer JWT are never trusted on their own, and no caller-supplied identity
+ * is accepted. Credential extraction (D145) feeds one shared validation pipeline.
  */
 export async function getAuthenticatedOwner(): Promise<AuthenticatedOwner | null> {
   const requestContext = getRequestContext();
@@ -87,15 +89,19 @@ async function resolveAuthenticatedOwner(): Promise<AuthenticatedOwner | null> {
   }
 
   const supabase = await createClient();
+  const credential = await extractOwnerCredential();
 
   // A corrupted or foreign `sb-*-auth-token` cookie makes the Supabase cookie storage
   // throw while decoding rather than report an auth error, so an unreadable cookie must
   // be treated as "no session" here. Anything other than a verified user is a rejection,
   // and failing closed keeps a bad cookie from turning every Owner request into a 500 the
-  // signed-out user cannot clear.
+  // signed-out user cannot clear. The Bearer path uses the same fail-closed rule.
   let user: User | null = null;
   try {
-    const result = await supabase.auth.getUser();
+    const result =
+      credential.kind === 'bearer'
+        ? await supabase.auth.getUser(credential.accessToken)
+        : await supabase.auth.getUser();
     user = result.error ? null : result.data.user;
   } catch {
     return null;
