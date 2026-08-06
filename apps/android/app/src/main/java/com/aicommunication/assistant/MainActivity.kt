@@ -1,71 +1,90 @@
 package com.aicommunication.assistant
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
+import androidx.activity.viewModels
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import com.aicommunication.assistant.auth.OwnerAuthViewModel
+import com.aicommunication.assistant.capture.TaskCaptureViewModel
+import com.aicommunication.assistant.tasks.TaskDetailViewModel
+import com.aicommunication.assistant.tasks.TaskHandoffViewModel
+import com.aicommunication.assistant.tasks.TaskListViewModel
+import com.aicommunication.assistant.ui.OwnerAppRoot
 
 class MainActivity : ComponentActivity() {
+    private val authViewModel: OwnerAuthViewModel by viewModels {
+        val app = application as AicaaApplication
+        OwnerAuthViewModel.Factory(app, app.authRepository)
+    }
+
+    private val captureViewModel: TaskCaptureViewModel by viewModels {
+        val app = application as AicaaApplication
+        TaskCaptureViewModel.Factory(
+            application = app,
+            captureTask = app.captureTaskUseCase,
+            onSessionInvalidated = authViewModel::notifySessionInvalidated
+        )
+    }
+
+    private val taskListViewModel: TaskListViewModel by viewModels {
+        val app = application as AicaaApplication
+        TaskListViewModel.Factory(
+            application = app,
+            repository = app.taskOwnerRepository,
+            onSessionInvalidated = authViewModel::notifySessionInvalidated
+        )
+    }
+
+    private val taskDetailViewModel: TaskDetailViewModel by viewModels {
+        val app = application as AicaaApplication
+        TaskDetailViewModel.Factory(
+            application = app,
+            repository = app.taskOwnerRepository,
+            onSessionInvalidated = authViewModel::notifySessionInvalidated
+        )
+    }
+
+    private val taskHandoffViewModel: TaskHandoffViewModel by viewModels {
+        val app = application as AicaaApplication
+        TaskHandoffViewModel.Factory(
+            application = app,
+            taskRepository = app.taskOwnerRepository,
+            recipientRepository = app.recipientOwnerRepository,
+            gmailRepository = app.gmailOwnerRepository,
+            pendingStore = app.pendingHandoffStore,
+            onSessionInvalidated = authViewModel::notifySessionInvalidated
+        )
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        authViewModel.onOAuthIntent(intent)
         enableEdgeToEdge()
+        val app = application as AicaaApplication
         setContent {
             AicaaFoundationTheme {
-                Surface(modifier = Modifier.fillMaxSize()) {
-                    FoundationPlaceholder()
-                }
+                OwnerAppRoot(
+                    authViewModel = authViewModel,
+                    captureViewModel = captureViewModel,
+                    taskListViewModel = taskListViewModel,
+                    taskDetailViewModel = taskDetailViewModel,
+                    taskHandoffViewModel = taskHandoffViewModel,
+                    apiConfig = app.apiConfig
+                )
             }
         }
     }
-}
 
-@Composable
-fun FoundationPlaceholder(modifier: Modifier = Modifier) {
-    Column(
-        modifier =
-        modifier
-            .fillMaxSize()
-            .background(Color(0xFFF5F5F4))
-            .padding(horizontal = 24.dp, vertical = 48.dp)
-            .testTag("foundation_placeholder"),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Text(
-            text = "AI Communication Action Assistant",
-            fontSize = 28.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = Color(0xFF1C1917),
-            modifier = Modifier.semantics { heading() }
-        )
-        Text(
-            text = "Android foundation is active.",
-            fontSize = 16.sp,
-            color = Color(0xFF57534E)
-        )
-        Text(
-            text = "No communication capture is enabled.",
-            fontSize = 15.sp,
-            color = Color(0xFF0F766E)
-        )
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        authViewModel.onOAuthIntent(intent)
     }
 }
 
@@ -82,12 +101,4 @@ fun AicaaFoundationTheme(content: @Composable () -> Unit) {
         ),
         content = content
     )
-}
-
-@Preview(showBackground = true)
-@Composable
-private fun FoundationPlaceholderPreview() {
-    AicaaFoundationTheme {
-        FoundationPlaceholder()
-    }
 }
