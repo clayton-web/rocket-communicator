@@ -8,14 +8,15 @@
 
 ## Governance (read first)
 
-| Rule                                    | Meaning                                                                                                                                                                                                                                                                                                                                 |
-| --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Guidance, not redesign authority        | This file describes identity, voice, and visual _policy_. It does **not** authorize restyling Android, web, tokens, or components.                                                                                                                                                                                                      |
-| Application changes need their own gate | UI, token, or copy changes require separate roadmap authorization (Decision and/or milestone slice).                                                                                                                                                                                                                                    |
-| Next formal product gate                | **Owner Acceptance Week** (D142), after physical-device verification of the A9 Android surface.                                                                                                                                                                                                                                         |
-| After OAW                               | **P2.2 — Remove Friction** (D143). Nothing after OAW is authorized without a separate decision.                                                                                                                                                                                                                                         |
-| Recipient list filtering                | Accepted as a future need; **deferred to P2.2** unless OAW records it as a Blocker. Preferred future shape (not authorized now): keep recency order; Android-first filter All / Owner work / one Recipient; server-side filter so cursor pagination stays truthful; no alphabetical sort, grouping, or Recipient task-detail pages yet. |
-| Naming                                  | Brand language in this guide uses **Rocket Communicator** / **Rocket**. The repository’s formal product-name Decision (**D120**) remains **Open**. Until D120 closes, do not rename contracts, package titles, or store listings from this file alone.                                                                                  |
+| Rule                                    | Meaning                                                                                                                                                                                                                                                                                                                                     |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Guidance, not redesign authority        | This file describes identity, voice, and visual _policy_. It does **not** authorize restyling Android, web, tokens, or components.                                                                                                                                                                                                          |
+| Application changes need their own gate | UI, token, or copy changes require separate roadmap authorization (Decision and/or milestone slice).                                                                                                                                                                                                                                        |
+| Next formal product gate                | **Owner Acceptance Week** (D142), after physical-device verification of the A9 Android surface.                                                                                                                                                                                                                                             |
+| After OAW                               | **P2.2 — Remove Friction** (D143). Nothing after OAW is authorized without a separate decision.                                                                                                                                                                                                                                             |
+| P2.2a — People (planning)               | Planned first slice inside P2.2 after OAW + Owner Go (**D151**). Canonical: [docs/P2_2A_PEOPLE.md](docs/P2_2A_PEOPLE.md). **Planning only — does not authorize implementation** and does not move the next execution gate past OAW.                                                                                                         |
+| People filter (Task list)               | Approved future shape under P2.2a: keep recency (`updatedAt` DESC, `id` DESC); Android-first **People** filter **Everyone / Me / individual Recipients**; server-side so cursor pagination stays truthful; display names primary; Android local remember of last filter; no Task sorting, search, Recipient pages, or server prefs in P2.2. |
+| Naming                                  | Brand language in this guide uses **Rocket Communicator** / **Rocket**. The repository’s formal product-name Decision (**D120**) remains **Open**. Until D120 closes, do not rename contracts, package titles, or store listings from this file alone.                                                                                      |
 
 Label certainty honestly:
 
@@ -206,10 +207,16 @@ Guidance for tone and behavior. **Not** a component library and **not** a redesi
 
 ### Task list
 
-- Preserve server recency order (`updatedAt` descending) unless a later Decision changes list semantics.
+- Preserve server recency order (`updatedAt` descending, then `id` descending) unless a later Decision changes list semantics. Recency is not replaced by alternate sorts.
 - Show status and ownership (Owner work vs assigned) in plain language.
+- Prefer Recipient **display name** as the primary human identifier; show email as secondary (e.g. name on the first line, email on the second).
 - Avoid inventing filters or sorts in the client that lie across paginated pages.
-- Recipient filtering (All / Owner work / one Recipient), if built later under P2.2, must be server-side and Android-first.
+- **People** filter (Everyone / Me / individual Recipients), when built under planned **P2.2a** after OAW, must be server-side and Android-first; changing the filter resets pagination ([P2_2A_PEOPLE.md](docs/P2_2A_PEOPLE.md), D151).
+
+### Reduce decisions
+
+- Rocket should reduce decisions, not create them.
+- When two designs solve the same problem, prefer the one that removes choices, screens, and controls while preserving truthful information.
 
 ### Status labels
 
@@ -251,6 +258,7 @@ Guidance for tone and behavior. **Not** a component library and **not** a redesi
 
 ```text
 physical-device verification → Owner Acceptance Week → P2.2 Remove Friction
+                                                      └─ planned first slice: P2.2a People (docs only until authorized)
 ```
 
 Stage 12 / further delivery enablement remain separately authorized and are outside this guide.

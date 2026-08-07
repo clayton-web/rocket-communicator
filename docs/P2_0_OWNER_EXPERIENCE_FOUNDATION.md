@@ -27,15 +27,15 @@ It **remembers what must happen next**.
 
 ### Constitutional principles
 
-| # | Principle | Meaning |
-| - | --------- | ------- |
-| 1 | **Android is the product** | The Owner's primary instrument is the Android application. Web exists for administration, review, debugging, and fallback — not as the intended day-to-day Owner surface. |
-| 2 | **Rocket is an external memory, not an inbox replacement** | Rocket remembers what must happen next. It does not become the place the Owner reads mail, chats, or takes calls. |
-| 3 | **Truth over automation** | Prefer a truthful, incomplete state over a polished guess. Interfaces state what is true (D112). Humans own decisions. Automation never silently invents work or outcomes. |
-| 4 | **Capture before complexity** | Getting real work into Rocket reliably beats elaborate organization, AI pipelines, or secondary surfaces that do not help capture. |
-| 5 | **One-handed first** | Ordinary-day use on an Android phone must be workable with one hand. Interaction cost is a product constraint, not polish. |
-| 6 | **Simple by default** | Default paths stay short. Power and edge cases may exist later; they must not obstruct the ordinary day. |
-| 7 | **Every feature must justify its existence** | A feature earns a place only if it makes capture, organize, assign, or follow-through easier during an ordinary day — or is required for safety, truthfulness, or administration. |
+| #   | Principle                                                  | Meaning                                                                                                                                                                           |
+| --- | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | **Android is the product**                                 | The Owner's primary instrument is the Android application. Web exists for administration, review, debugging, and fallback — not as the intended day-to-day Owner surface.         |
+| 2   | **Rocket is an external memory, not an inbox replacement** | Rocket remembers what must happen next. It does not become the place the Owner reads mail, chats, or takes calls.                                                                 |
+| 3   | **Truth over automation**                                  | Prefer a truthful, incomplete state over a polished guess. Interfaces state what is true (D112). Humans own decisions. Automation never silently invents work or outcomes.        |
+| 4   | **Capture before complexity**                              | Getting real work into Rocket reliably beats elaborate organization, AI pipelines, or secondary surfaces that do not help capture.                                                |
+| 5   | **One-handed first**                                       | Ordinary-day use on an Android phone must be workable with one hand. Interaction cost is a product constraint, not polish.                                                        |
+| 6   | **Simple by default**                                      | Default paths stay short. Power and edge cases may exist later; they must not obstruct the ordinary day.                                                                          |
+| 7   | **Every feature must justify its existence**               | A feature earns a place only if it makes capture, organize, assign, or follow-through easier during an ordinary day — or is required for safety, truthfulness, or administration. |
 
 ### Product philosophy (feature filter)
 
@@ -44,6 +44,13 @@ Future features should answer:
 > Does this make it easier for the Owner to **capture, organize, assign, or follow through** on real work during an ordinary day?
 
 If not, it likely belongs later.
+
+**Reduce decisions:**
+
+> Rocket should reduce decisions, not create them.  
+> When two designs solve the same problem, prefer the one that removes choices, screens, and controls while preserving truthful information.
+
+(Applied concretely to the planned P2.2a People slice — planning only; see [P2_2A_PEOPLE.md](P2_2A_PEOPLE.md) / **D151**. Does not authorize implementation or advance past Owner Acceptance Week.)
 
 ### Definition of success (broader operational enablement)
 
@@ -108,13 +115,13 @@ A10+
 
 ### Explicitly paused
 
-| Item | Status after P2.0 |
-| ---- | ----------------- |
-| Stage 12 | Prepared, **unauthorized**, **unbegun** — not continued by P2.0 |
-| A8.7d | **Unauthorized**, **unbegun** — not continued by P2.0 |
-| A8.7e | **Unauthorized**, **unbegun** — not continued by P2.0 |
-| Production flag changes | **None** authorized by P2.0 |
-| Architecture redesign | **None** — sequencing change only |
+| Item                    | Status after P2.0                                               |
+| ----------------------- | --------------------------------------------------------------- |
+| Stage 12                | Prepared, **unauthorized**, **unbegun** — not continued by P2.0 |
+| A8.7d                   | **Unauthorized**, **unbegun** — not continued by P2.0           |
+| A8.7e                   | **Unauthorized**, **unbegun** — not continued by P2.0           |
+| Production flag changes | **None** authorized by P2.0                                     |
+| Architecture redesign   | **None** — sequencing change only                               |
 
 ---
 
@@ -122,12 +129,12 @@ A10+
 
 A9 delivers the Owner's primary instrument. Detail for each implementation slice is established when that slice is authorized. P2.0 locks names, order, and the A9.2 capture boundary.
 
-| Slice | Name | Intent |
-| ----- | ---- | ------ |
-| **A9.0** | Android Owner foundation | Sideloadable Owner app foundation: authentication against existing Owner session APIs, secure session handling, and the minimum shell needed to begin ordinary-day work. Decision and contract alignment as required by Engineering Rule #1 — still no production enablement of paused A8 delivery. |
-| **A9.1** | Android Owner shell and Task surfaces | Navigation and day-to-day Task / suggestion surfaces so the Owner can review, open, and act on real work on the phone. |
-| **A9.2** | **Android Task Capture** | Reliable capture of real work on Android. |
-| **A9.3** | Android organize, assign, and follow-through | Organize, assign/handoff, and follow through on captured work from Android so an ordinary day can close without depending on web. |
+| Slice    | Name                                         | Intent                                                                                                                                                                                                                                                                                              |
+| -------- | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **A9.0** | Android Owner foundation                     | Sideloadable Owner app foundation: authentication against existing Owner session APIs, secure session handling, and the minimum shell needed to begin ordinary-day work. Decision and contract alignment as required by Engineering Rule #1 — still no production enablement of paused A8 delivery. |
+| **A9.1** | Android Owner shell and Task surfaces        | Navigation and day-to-day Task / suggestion surfaces so the Owner can review, open, and act on real work on the phone.                                                                                                                                                                              |
+| **A9.2** | **Android Task Capture**                     | Reliable capture of real work on Android.                                                                                                                                                                                                                                                           |
+| **A9.3** | Android organize, assign, and follow-through | Organize, assign/handoff, and follow through on captured work from Android so an ordinary day can close without depending on web.                                                                                                                                                                   |
 
 ### A9.2 — Android Task Capture (locked naming and boundary)
 
@@ -189,22 +196,25 @@ Failing OAW does **not** authorize skipping to Stage 12. Findings feed **P2.2 �
 - Performance
 - Ergonomics (including one-handed use)
 
+**Planned first slice (documentation only):** **P2.2a — People** (**D151**). Canonical plan: [P2_2A_PEOPLE.md](P2_2A_PEOPLE.md). Direction: keep recency order; add a server-side **People** filter (Everyone / Me / individual Recipients); display names as primary identifiers; Android-local remember of the last filter. **Not started. Not authorized for implementation.** Owner Acceptance Week remains the next execution gate. P2.2a does not replace OAW-driven polish and does not pull sort/search/Recipient-page/CRM work into P2.2.
+
 **Success:** Documented OAW friction items that block ordinary-day confidence are addressed or explicitly deferred with Owner acknowledgment, such that the Definition of success above remains credible before Stage 12 authorization is considered.
 
 ---
 
 ## Binding decisions
 
-| ID | Topic |
-| -- | ----- |
+| ID       | Topic                                                       |
+| -------- | ----------------------------------------------------------- |
 | **D137** | P2.0 scope — documentation-only Owner Experience Foundation |
-| **D138** | Core mission — trusted external memory |
-| **D139** | Product Constitution principles |
-| **D140** | Intentional roadmap re-sequencing after Gate 6 |
-| **D141** | A9 slice map; A9.2 = Android Task Capture |
-| **D142** | Owner Acceptance Week as formal product gate |
-| **D143** | P2.2 — Remove Friction |
-| **D144** | Definition of success for broader operational enablement |
+| **D138** | Core mission — trusted external memory                      |
+| **D139** | Product Constitution principles                             |
+| **D140** | Intentional roadmap re-sequencing after Gate 6              |
+| **D141** | A9 slice map; A9.2 = Android Task Capture                   |
+| **D142** | Owner Acceptance Week as formal product gate                |
+| **D143** | P2.2 — Remove Friction                                      |
+| **D144** | Definition of success for broader operational enablement    |
+| **D151** | P2.2a — People (planning lock only; after OAW)              |
 
 ---
 

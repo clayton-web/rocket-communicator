@@ -1,6 +1,6 @@
 # Engineering workflow
 
-How future development proceeds on this repository. Subordinate to [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md) and [AI_CONSTITUTION.md](AI_CONSTITUTION.md). Owner-experience Product Constitution: [P2_0_OWNER_EXPERIENCE_FOUNDATION.md](P2_0_OWNER_EXPERIENCE_FOUNDATION.md) (D137–D144). Milestone sequence: [MILESTONES.md](MILESTONES.md) — forward order after Gate 6 is P2.0 → A9 → Owner Acceptance Week → P2.2 → Stage 12 → A8.7d → A8.7e (D140). Review gate: [REVIEW_CHECKLIST.md](REVIEW_CHECKLIST.md).
+How future development proceeds on this repository. Subordinate to [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md) and [AI_CONSTITUTION.md](AI_CONSTITUTION.md). Owner-experience Product Constitution: [P2_0_OWNER_EXPERIENCE_FOUNDATION.md](P2_0_OWNER_EXPERIENCE_FOUNDATION.md) (D137–D144). Milestone sequence: [MILESTONES.md](MILESTONES.md) — forward order after Gate 6 is P2.0 → A9 → Owner Acceptance Week → P2.2 → Stage 12 → A8.7d → A8.7e (D140). Planned first P2.2 slice (docs only, not authorized): [P2_2A_PEOPLE.md](P2_2A_PEOPLE.md) (**D151**). Review gate: [REVIEW_CHECKLIST.md](REVIEW_CHECKLIST.md).
 
 ---
 

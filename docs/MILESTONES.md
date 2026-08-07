@@ -254,8 +254,8 @@ P1 precedes the A8 Owner UI so the due-date control and schedule panel are built
 3. **A9.1** — Authenticated Android networking foundation (**D148** complete).
 4. **A9.2** — **Android Task Capture** (typed capture; Android speech-to-text into fields). **Not** A12 voice pipeline, automatic transcription, or AI capture. **Complete (D149).**
 5. **A9.3** — Android organize, assign, and follow-through. **Complete (D150).**
-6. **Owner Acceptance Week** — formal product gate with measurable exit criteria (D142). **Not started.**
-7. **P2.2** — Remove Friction (OAW-driven Android UX improvements; no major features). **Not started.**
+6. **Owner Acceptance Week** — formal product gate with measurable exit criteria (D142). **Not started.** **Next execution milestone.**
+7. **P2.2** — Remove Friction (OAW-driven Android UX improvements; no major features). **Not started.** Planned first slice inside P2.2 (after OAW + Owner Go): **P2.2a — People** (planning only; **D151**; [P2_2A_PEOPLE.md](P2_2A_PEOPLE.md)) — not authorized for implementation.
 8. **Stage 12** — capture-only observation at `F1` — prepared, **unauthorized**, **unbegun** (own authorization required; not started by P2.0). **Its `F1` precondition is unmet: Gate 6 is incomplete and Production is `F0`.**
 9. **A8.7d** — notification delivery / Gmail-loop gate — **unauthorized**, **unbegun**.
 10. **A8.7e** — reminder delivery — **unauthorized**, **unbegun**.
@@ -1163,9 +1163,26 @@ P2.2 entry requires OAW PASS (or recorded conditional Go) plus Owner explicit Go
 
 ### P2.2 — Remove Friction
 
-**Status:** Planned after Owner Acceptance Week and before Stage 12 (**D143**).
+**Status:** Planned after Owner Acceptance Week and before Stage 12 (**D143**). **Not started. Not authorized for implementation.** Owner Acceptance Week remains the next execution milestone.
 
 Improve the Android experience using OAW findings. No major features. Examples: reduce taps, improve wording, navigation, consistency, visual polish, performance, ergonomics.
+
+#### P2.2a — People (planned first slice; planning only)
+
+**Status:** Planning / documentation only (**D151**). **Not started. Not authorized for implementation.** Canonical: [P2_2A_PEOPLE.md](P2_2A_PEOPLE.md).
+
+Approved direction for the first friction-removal slice inside P2.2 (after OAW PASS/conditional Go and Owner Go for P2.2, plus a later implementation authorization):
+
+- Keep Task list order: `updatedAt` DESC, then `id` DESC — **no alternate Task sorts**
+- Add a **People** filter: **Everyone** / **Me** / individual Recipients — **server-side**; filter change resets pagination; truthful cursors only
+- Display names as the primary human identifier (email secondary)
+- Android **locally** remembers the last People filter — **no** server preference store
+- Design principle: reduce decisions, not create them
+- Optional later: simple workload counts beside filter options (not analytics; not minimum P2.2a)
+
+**Explicitly not in P2.2 / P2.2a:** alphabetical Task sorting; sort by Recipient / created / due; search; Recipient pages; kanban; dashboards; CRM; server-synced preferences — future backlog unless OAW proves necessity.
+
+**Planned implementation order** (when separately authorized): see [P2_2A_PEOPLE.md](P2_2A_PEOPLE.md). This subsection does not authorize code, contracts, or database work and does not reorder D140.
 
 ### A10 — Google Messages notification capture
 

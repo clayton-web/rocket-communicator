@@ -471,7 +471,7 @@ Gates for the due-date-driven Follow-up Engine (D102–D110). These record **exp
 
 ### Owner Acceptance Week (formal product gate — not started)
 
-> **Planned. Not executed.** Canonical plan: [OWNER_ACCEPTANCE_WEEK.md](OWNER_ACCEPTANCE_WEEK.md) (**D142**). Validates ordinary-day Android Owner use after A9.0–A9.3. **No feature work during OAW.** Findings feed P2.2. Does not authorize Stage 12 / A8.7d / A8.7e.
+> **Planned. Not executed.** Canonical plan: [OWNER_ACCEPTANCE_WEEK.md](OWNER_ACCEPTANCE_WEEK.md) (**D142**). Validates ordinary-day Android Owner use after A9.0–A9.3. **No feature work during OAW.** Findings feed P2.2. Does not authorize Stage 12 / A8.7d / A8.7e. **Next execution milestone.**
 
 - [ ] OAW window executed per [OWNER_ACCEPTANCE_WEEK.md](OWNER_ACCEPTANCE_WEEK.md)
 - [ ] Exit criteria E1–E9 recorded (PASS or FAIL)
@@ -493,6 +493,20 @@ Gates for the due-date-driven Follow-up Engine (D102–D110). These record **exp
 - [x] A9.2 renamed/bounded as **Android Task Capture** (not A12 / not AI capture)
 - [x] Historical A8/P1/Gate evidence preserved; sequencing supersession notes added
 - [x] No architecture redesign; no contract change; no production procedure rewrite; Stage 12 / A8.7d / A8.7e not begun
+
+### P2.2a — People (planning lock — docs only)
+
+> **✅ Complete (docs-only planning).** Canonical: [P2_2A_PEOPLE.md](P2_2A_PEOPLE.md) (**D151**). Records approved People direction inside P2.2. **No code, no OpenAPI, no database, no Android/web implementation, no production contact, no feature-flag change.** Does **not** advance past Owner Acceptance Week or authorize P2.2 / P2.2a implementation.
+
+- [x] P2.2a People recorded as planned first friction-removal slice after OAW
+- [x] People filter shape documented: Everyone / Me / individual Recipients
+- [x] Recency order preserved (`updatedAt` DESC, `id` DESC); no Task sorting in P2.2
+- [x] Server-side filter + truthful cursor pagination required; client-side partial-page filtering prohibited
+- [x] Display names primary; Android-local filter memory; no server preference store
+- [x] Explicit exclusions recorded (search, Recipient pages, sorts, kanban, dashboards, CRM, server prefs)
+- [x] “Reduce decisions, not create them” principle documented
+- [x] Implementation order recorded as planning only
+- [x] Owner Acceptance Week remains next execution milestone; milestone order unchanged (D140)
 
 ### Stage 12 — capture-only observation (apply when Stage 12 is executed)
 
