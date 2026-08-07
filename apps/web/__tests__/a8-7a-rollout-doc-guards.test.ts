@@ -25,6 +25,39 @@ const A8_FLAGS = [
 
 const EXAMPLE_ENV_FILES = ['apps/web/.env.example', 'packages/db/.env.example'] as const;
 
+/**
+ * Plausible leaked Bearer credential in documentation.
+ * Requires a token-shaped payload (≥8 allowed characters and at least one digit, '.', or '_')
+ * so ordinary prose such as "Bearer promotion" or "Bearer successor" is not flagged.
+ */
+const BEARER_CREDENTIAL_LEAK =
+  /Bearer\s+(?=[A-Za-z0-9._-]{8,})(?=[A-Za-z0-9._-]*[0-9._])[A-Za-z0-9._-]+/;
+
+describe('A8.7a Bearer credential leak pattern', () => {
+  it('rejects a plausible JWT-shaped Bearer credential', () => {
+    expect(
+      BEARER_CREDENTIAL_LEAK.test(
+        'Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.signature',
+      ),
+    ).toBe(true);
+  });
+
+  it('rejects an opaque token-like Bearer payload with digits', () => {
+    expect(BEARER_CREDENTIAL_LEAK.test('Bearer abcd1234efgh5678')).toBe(true);
+  });
+
+  it('allows ordinary Bearer-related prose', () => {
+    for (const prose of [
+      'Bearer promotion',
+      'Bearer successor',
+      'Bearer authorization',
+      'Bearer integration',
+    ]) {
+      expect(BEARER_CREDENTIAL_LEAK.test(prose), prose).toBe(false);
+    }
+  });
+});
+
 describe('A8.7a scheduler configuration guards', () => {
   it('keeps root vercel.json empty, so no worker gains a schedule by configuration', () => {
     const raw = read('vercel.json');
@@ -94,7 +127,7 @@ describe('A8.7a rollout documentation guards', () => {
   it('keeps the evidence template free of anything resembling a credential', () => {
     const contents = read('docs/A8_7_EVIDENCE.md');
     expect(contents).not.toMatch(/postgresql:\/\//);
-    expect(contents).not.toMatch(/Bearer\s+[A-Za-z0-9._-]{8,}/);
+    expect(contents).not.toMatch(BEARER_CREDENTIAL_LEAK);
   });
 
   it('gives every A8.7 stage all seven normalized headings', () => {

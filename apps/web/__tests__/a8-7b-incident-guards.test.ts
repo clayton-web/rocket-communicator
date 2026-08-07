@@ -43,6 +43,39 @@ const PROHIBITED_MIGRATIONS = [
   '20260803120000_a8_5a_owner_notification_intents',
 ] as const;
 
+/**
+ * Plausible leaked Bearer credential in documentation.
+ * Requires a token-shaped payload (≥8 allowed characters and at least one digit, '.', or '_')
+ * so ordinary prose such as "Bearer promotion" or "Bearer successor" is not flagged.
+ */
+const BEARER_CREDENTIAL_LEAK =
+  /Bearer\s+(?=[A-Za-z0-9._-]{8,})(?=[A-Za-z0-9._-]*[0-9._])[A-Za-z0-9._-]+/;
+
+describe('A8.7b-INCIDENT Bearer credential leak pattern', () => {
+  it('rejects a plausible JWT-shaped Bearer credential', () => {
+    expect(
+      BEARER_CREDENTIAL_LEAK.test(
+        'Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.signature',
+      ),
+    ).toBe(true);
+  });
+
+  it('rejects an opaque token-like Bearer payload with digits', () => {
+    expect(BEARER_CREDENTIAL_LEAK.test('Bearer abcd1234efgh5678')).toBe(true);
+  });
+
+  it('allows ordinary Bearer-related prose', () => {
+    for (const prose of [
+      'Bearer promotion',
+      'Bearer successor',
+      'Bearer authorization',
+      'Bearer integration',
+    ]) {
+      expect(BEARER_CREDENTIAL_LEAK.test(prose), prose).toBe(false);
+    }
+  });
+});
+
 describe('A8.7b-INCIDENT baseline truthfulness', () => {
   it('records the production commit and the unmigrated schema as the incident baseline', () => {
     const runbook = read('docs/DEPLOYMENT.md');
@@ -190,9 +223,7 @@ describe('A8.7b-INCIDENT review and evidence structure', () => {
       expect(contents, `${file} must carry no connection string`).not.toMatch(
         /postgresql:\/\/[^\s`"]*:[^\s`"]*@/,
       );
-      expect(contents, `${file} must carry no bearer token`).not.toMatch(
-        /Bearer\s+[A-Za-z0-9._-]{8,}/,
-      );
+      expect(contents, `${file} must carry no bearer token`).not.toMatch(BEARER_CREDENTIAL_LEAK);
     }
   });
 });
@@ -437,7 +468,8 @@ describe('A8.7b-INCIDENT-1c verification SQL is scoped to five migrations', () =
 
 const HOTFIX_COMMIT = '534959d';
 const HOTFIX_DEPLOYMENT = 'dpl_3oder2T3PuDYdmp8pezy6u7RwPRm';
-const PREVIOUS_DEPLOYMENT = 'dpl_AnUKqdGj3gBw7N56yUT4pMBAVbac';
+/** Pre-hotfix alias holder (`ee5e82a`); unsafe one-step rollback target from the 1d / D2 era. */
+const PRE_HOTFIX_DEPLOYMENT = 'dpl_AnUKqdGj3gBw7N56yUT4pMBAVbac';
 
 describe('A8.7b-INCIDENT-1e reconciled production baseline', () => {
   it('records the validated baseline: commit, deployment, and rollback target', () => {
@@ -450,8 +482,15 @@ describe('A8.7b-INCIDENT-1e reconciled production baseline', () => {
     ] as const) {
       expect(contents, `${name} must name the deployed hotfix commit`).toContain(HOTFIX_COMMIT);
       expect(contents, `${name} must name the promoted deployment`).toContain(HOTFIX_DEPLOYMENT);
-      expect(contents, `${name} must name the previous deployment`).toContain(PREVIOUS_DEPLOYMENT);
     }
+
+    // The pre-hotfix alias holder remains the documented unsafe one-step rollback target from
+    // when Production served the 1d hotfix. It belongs in the runbook rollback narrative; the
+    // live Production summary in MILESTONES correctly names Gate 5 / Bearer successors instead.
+    expect(
+      runbook,
+      'docs/DEPLOYMENT.md must retain the pre-hotfix deployment as the unsafe one-step rollback target',
+    ).toContain(PRE_HOTFIX_DEPLOYMENT);
 
     expect(
       runbook,
@@ -561,7 +600,7 @@ describe('A8.7b-INCIDENT-1e reconciled production baseline', () => {
     const section = runbook.slice(runbook.indexOf('## Rollback principles'));
     expect(section.length).toBeGreaterThan(0);
 
-    expect(section, 'the one-step target must be named').toContain(PREVIOUS_DEPLOYMENT);
+    expect(section, 'the one-step target must be named').toContain(PRE_HOTFIX_DEPLOYMENT);
     expect(section, 'the stale environment binding must be called out').toMatch(
       /pre-rotation `DATABASE_URL`/,
     );

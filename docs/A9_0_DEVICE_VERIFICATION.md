@@ -10,13 +10,13 @@ Record evidence in a dated note or evidence appendix: build SHA, APK path, devic
 
 ## Preconditions
 
-| Item | Requirement |
-| ---- | ----------- |
-| Device | Physical Android 12+ device (API 31+), preferably Galaxy S24+ |
-| Workstation | JDK 17, Android SDK, `adb`, repo checkout |
-| Backend | Reachable Owner API host (local Next.js or deployed HTTPS) with working Supabase Google Workspace auth |
-| Accounts | Owner Google Workspace account on the allowlisted domain; optional second browser session for web-independence check (D147) |
-| Secrets | Never commit `local.properties`, anon keys, or access/refresh tokens into evidence |
+| Item        | Requirement                                                                                                                 |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Device      | Physical Android 12+ device (API 31+), preferably Galaxy S24+                                                               |
+| Workstation | JDK 17, Android SDK, `adb`, repo checkout                                                                                   |
+| Backend     | Reachable Owner API host (local Next.js or deployed HTTPS) with working Supabase Google Workspace auth                      |
+| Accounts    | Owner Google Workspace account on the allowlisted domain; optional second browser session for web-independence check (D147) |
+| Secrets     | Never commit `local.properties`, anon keys, or access/refresh tokens into evidence                                          |
 
 ---
 
