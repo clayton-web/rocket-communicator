@@ -130,11 +130,20 @@ describe('the D3 / F0 baseline must not regress to D2-as-current or drift to F1-
     expect(section, 'Production holds all fourteen migrations').toMatch(/fourteen/);
     expect(section, 'all three flags remain absent').toMatch(/Absent/);
 
-    // The partial Gate 6 attempt is why these three exist. A READY production-target build is not
-    // the live site, and recording one as `F1` is the exact error this section had to be corrected
-    // for. The live deployment, the non-live Gate 6 artifact, and the absent capture flag must all
-    // stay stated here, because losing any one of them makes the other two readable as F1.
-    expect(section, 'the live deployment is the Gate 5 one').toContain(
+    // Live public Production is the promoted Bearer F0 successor. Gate 5 and the non-live Gate 6
+    // artifact remain named so history is not collapsed into the current alias-holder.
+    expect(section, 'the live deployment is the promoted Bearer one').toContain(
+      'dpl_Cs2TrnDsy1KSB3wipCCUt82Hpf8D',
+    );
+    expect(section, 'the live commit is the Bearer RC').toContain(
+      'eb8cabe0619146087850802d4217dd8c3ce55119',
+    );
+    expect(section, 'the live tree hash is recorded').toContain(
+      '2e244a832b5715592e3aa46919deda5b9ea185de',
+    );
+    expect(section, 'the public alias is recorded').toContain('rocket-communicator-web.vercel.app');
+    expect(section, 'Bearer provenance gate is recorded').toContain('rcGate=bearer-stage6');
+    expect(section, 'the Gate 5 F0 artifact remains named as previous').toContain(
       'dpl_6cVssNpaZeKPBEVGDynd61AoS9nS',
     );
     expect(section, 'the non-live Gate 6 deployment is named and marked not live').toContain(
@@ -153,6 +162,13 @@ describe('the D3 / F0 baseline must not regress to D2-as-current or drift to F1-
     expect(section).not.toMatch(/State\s*\|\s*\*\*D1′\*\*/);
     expect(section).not.toMatch(/ten rows in `_prisma_migrations`/);
     expect(section).not.toMatch(/State\s*\|\s*\*\*D2\*\*/);
+    // Gate 5 must not be re-asserted as the deployment that holds the public alias.
+    expect(section, 'Bearer deployment holds the public alias').toMatch(
+      /dpl_Cs2TrnDsy1KSB3wipCCUt82Hpf8D[^\n]*holds the public alias/,
+    );
+    expect(section, 'Gate 5 artifact must be recorded as no longer holding the alias').toMatch(
+      /dpl_6cVssNpaZeKPBEVGDynd61AoS9nS[^\n]*\*\*no longer\*\* holds the public alias/,
+    );
   });
 
   it('marks D3 as current and D2 / D1prime as left in the state matrix', () => {
@@ -578,11 +594,15 @@ describe('Stage 12 separation', () => {
       /custom-domain alias assignment/,
     );
     expect(section, 'the non-live artifact is named').toContain('dpl_7X5r5ypWbq6ipmWMpver6p99p5Xz');
-    expect(section, 'the deployment that kept the custom domain is named').toContain(
+    expect(section, 'Gate 5 kept the custom domain through the Gate 6 window').toContain(
       'dpl_6cVssNpaZeKPBEVGDynd61AoS9nS',
     );
     expect(section, 'the subsequent flag removal is recorded').toMatch(/removed/);
     expect(section, 'F1 must not be claimed as reached').toMatch(/`F1` not reached/);
+    // Present-tense live Production must not be pinned to the Gate 5 deployment ID alone.
+    expect(section, 'Bearer F0 successor is acknowledged after Gate 6 close').toContain(
+      'dpl_Cs2TrnDsy1KSB3wipCCUt82Hpf8D',
+    );
   });
 });
 

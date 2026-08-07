@@ -1,8 +1,10 @@
 # Bearer candidate authentication smoke-test evidence
 
-**Status:** authenticated Bearer path **PASS**; missing-Authorization negative path **PASS**; cookie authentication **DEFERRED** (not failed); candidate promotion **NOT AUTHORIZED**.
+**Status:** authenticated Bearer path **PASS**; missing-Authorization negative path **PASS**; cookie authentication **DEFERRED** (not failed); **this smoke did not authorize promotion**.
 
-This records a **read-only** authentication smoke test against an immutable, unaliased Production-target Bearer release-candidate deployment. It does **not** authorize promotion, alias changes, environment changes, cron changes, Stage 12, A8.7d, A8.7e, or any other production mutation.
+This records a **read-only** authentication smoke test against an immutable, unaliased Production-target Bearer release-candidate deployment. **At the time of this smoke**, it did **not** authorize promotion, alias changes, environment changes, cron changes, Stage 12, A8.7d, A8.7e, or any other production mutation.
+
+> **Later production record (not part of this smoke):** under separate authorization, the Bearer candidate was promoted to public Production as deployment `dpl_Cs2TrnDsy1KSB3wipCCUt82Hpf8D` at commit `eb8cabe0619146087850802d4217dd8c3ce55119` (tree `2e244a832b5715592e3aa46919deda5b9ea185de`; provenance `rcGate=bearer-stage6`; public alias `rocket-communicator-web.vercel.app`; state **READY**; target `production`; posture **`F0`** — all A8 flags absent; no cron changes). See [DEPLOYMENT.md § Current production state](DEPLOYMENT.md#current-production-state). The smoke candidate below (`dpl_HpAZDkgUS6zj2fRES91YUqp3pUBb`) remains the historical probe target for this evidence file.
 
 Related authority: **D145** (shared Owner pipeline accepts Bearer JWT); canonical probe `GET /api/v1/session` — [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md), [API_CONTRACT.md](API_CONTRACT.md). Candidate creation context: Phase 3.1 / 3.1a / 3.2 operator sessions (unaliased deploy, default-alias restore, smoke-test preparation).
 
@@ -43,7 +45,7 @@ Operator handoff for this smoke:
 - No cron jobs were created.
 - No application data was modified.
 
-**Repository note (resolved after this smoke, and not a smoke finding):** at the time of this smoke, uncommitted working-tree edits asserted Gate 6 complete at **`D3` / `F1`** with alias-holding deployment `dpl_7X5r5ypWbq6ipmWMpver6p99p5Xz`. That claim was **false**. The subsequent documentation reconciliation records the verified truth: Gate 6 was authorized and partially executed, `dpl_7X5r5ypWbq6ipmWMpver6p99p5Xz` reached READY as a production-target build but held only the two default `.vercel.app` aliases, the public custom domain never moved off Gate 5's `dpl_6cVssNpaZeKPBEVGDynd61AoS9nS` (`d369c6d`, F0), and the capture flag was later removed from the Vercel Production environment. See [DEPLOYMENT.md § Current production state](DEPLOYMENT.md#current-production-state) and [A8_7_EVIDENCE.md § Gate 6](A8_7_EVIDENCE.md#gate-6--first-controlled-production-enablement-a87c-capture--f0--f1). **That reconciliation is documentation only.** This smoke itself made **no** production change: it did not promote the candidate, move any alias, or mutate Production, and the flag removal was a separate authorized action, not part of this smoke.
+**Repository note (resolved after this smoke, and not a smoke finding):** at the time of this smoke, uncommitted working-tree edits asserted Gate 6 complete at **`D3` / `F1`** with alias-holding deployment `dpl_7X5r5ypWbq6ipmWMpver6p99p5Xz`. That claim was **false**. The subsequent documentation reconciliation records the verified truth: Gate 6 was authorized and partially executed, `dpl_7X5r5ypWbq6ipmWMpver6p99p5Xz` reached READY as a production-target build but held only the two default `.vercel.app` aliases, the public custom domain never moved off Gate 5's `dpl_6cVssNpaZeKPBEVGDynd61AoS9nS` (`d369c6d`, F0) during that window, and the capture flag was later removed from the Vercel Production environment. See [DEPLOYMENT.md § Current production state](DEPLOYMENT.md#current-production-state) and [A8_7_EVIDENCE.md § Gate 6](A8_7_EVIDENCE.md#gate-6--first-controlled-production-enablement-a87c-capture--f0--f1). **A still-later authorized Bearer promotion** (separate from this smoke and from Gate 6) placed the public alias on `dpl_Cs2TrnDsy1KSB3wipCCUt82Hpf8D` / `eb8cabe` at **`F0`**. **Those reconciliations are documentation of already-authorized production facts.** This smoke itself made **no** production change: it did not promote the candidate, move any alias, or mutate Production, and the flag removal was a separate authorized action, not part of this smoke.
 
 ---
 
@@ -83,14 +85,14 @@ Cookie Owner authentication on the immutable protected candidate URL remains **d
 
 ## 4. Conclusions (authoritative for this slice)
 
-| Item                                                   | Disposition                                                                           |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------------- |
-| Authenticated Bearer smoke (`GET /api/v1/session`)     | **PASS**                                                                              |
-| Missing-Authorization negative smoke                   | **PASS**                                                                              |
-| Cookie authentication on immutable protected candidate | **DEFERRED** — not failed                                                             |
-| Candidate promotion                                    | **NOT AUTHORIZED**                                                                    |
-| Production / F0 posture from this smoke                | **Unchanged by this smoke** — no promote, no alias move, no env/flag/cron/data change |
-| Next production step                                   | **None authorized by this record**                                                    |
+| Item                                                   | Disposition                                                                                                                           |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Authenticated Bearer smoke (`GET /api/v1/session`)     | **PASS**                                                                                                                              |
+| Missing-Authorization negative smoke                   | **PASS**                                                                                                                              |
+| Cookie authentication on immutable protected candidate | **DEFERRED** — not failed                                                                                                             |
+| Candidate promotion                                    | **Not authorized by this smoke** — a later separate authorization promoted a Bearer deployment to public Production (see header note) |
+| Production / F0 posture from this smoke                | **Unchanged by this smoke** — no promote, no alias move, no env/flag/cron/data change during the smoke                                |
+| Next production step                                   | **None authorized by this smoke record**                                                                                              |
 
 ---
 
@@ -100,4 +102,4 @@ Cookie Owner authentication on the immutable protected candidate URL remains **d
 - Does **not** authorize Android activation or Owner Acceptance Week.
 - Does **not** replace [A9_0_DEVICE_VERIFICATION.md](A9_0_DEVICE_VERIFICATION.md) device evidence.
 - Does **not** claim cookie auth was proven on the candidate.
-- Does **not** authorize merging `release/bearer-on-d369c6d` or promoting `dpl_HpAZDkgUS6zj2fRES91YUqp3pUBb`.
+- Does **not** (as a smoke record) authorize merging `release/bearer-on-d369c6d` or promoting `dpl_HpAZDkgUS6zj2fRES91YUqp3pUBb`. A later separate authorization promoted public Production to `dpl_Cs2TrnDsy1KSB3wipCCUt82Hpf8D` / `eb8cabe` — see [DEPLOYMENT.md § Current production state](DEPLOYMENT.md#current-production-state).
