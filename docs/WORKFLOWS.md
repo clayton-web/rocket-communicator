@@ -95,17 +95,17 @@ Authoritative A8 product rules (D095–D101). Do not duplicate this specificatio
 
 **D107's lifecycle rules are enforced.** A Task's status decides whether a due date may carry _active_ scheduling — a completed or dismissed Task refuses a reminder outright, and a Waiting Task's schedule is created directly in `suspended_waiting` with no claimable occurrence ([STATE_MACHINE.md](STATE_MACHINE.md) §Due date) — and, since the A8 lifecycle wiring, a status **transition** moves an existing schedule in the same transaction that commits the status: entering Waiting suspends, leaving Waiting resumes from the next occurrence strictly after the resume instant with no backlog and no new generation, and completion or dismissal stops with a truthful reason. A terminal or Waiting Task therefore cannot hold a claimable occurrence at any committed point, and the A8.4a processing service re-checks the same eligibility immediately before invoking its transport, because a claim proves exclusivity and not eligibility — the Owner may have completed the Task in between. Real delivery is no longer gated on an undecided question — D130 and D129 answered the capability-link envelope and the non-success limit — but it remains **switched off**: A8.4b.1 implements the overdue send, and nothing enables it anywhere.
 
-**Purpose:** follow through on **delegated** communication work using the Owner-selected Task due date, so communications reach conclusion. Authorized by the narrow constitutional exception in D102: an explicitly selected Task due date may drive deterministic follow-through on delegated work. This is **not** calendar management, not a general-purpose reminder application, and not an escalation ladder.
+**Purpose:** follow through on **delegated** communication work using the Owner-selected Task due date, so communications reach conclusion. This section is the **current A8 Follow-up Engine** specification (due-date-driven Recipient reminders). It is **one** reminder/follow-through mechanism. **Approved product direction (D152):** Owner-controlled Task reminders may additionally exist independently of deadlines; that capability is **not implemented** here and must not be inferred from this section. Escalation ladders and Owner CC ladders remain prohibited.
 
 **Superseded model:** the A8.0 Phase 1 preset / Phase 2 standard-interval model (D095) and `dueAt` scheduling independence (D098) are **no longer product law**. Preset intervals (24h / 48h / 72h / 1 week) are retired. See [DECISIONS.md](DECISIONS.md) D095, D096, D098, D099 for truthful supersession history.
 
-#### Due date (D102, D103)
+#### Due date (D102, D103) — current A8 Follow-up Engine
 
 1. A Task may carry an **optional** due date, selected from a calendar.
-2. The due date is an Owner-**organization-local calendar date** — not an instant. The Owner selects **no** due time, and there is **no** reminder-time picker.
-3. If **no** due date exists: no advance reminder, no overdue follow-up, no schedule.
+2. The due date is an Owner-**organization-local calendar date** — not an instant. The Owner selects **no** due time, and there is **no** reminder-time picker **in this engine**.
+3. If **no** due date exists: no A8 advance reminder, no A8 overdue follow-up, no A8 Reminder Schedule. (**D152 product direction:** Owner-controlled Task reminders may exist without a deadline once a separately authorized implementation ships; that is **not** this engine and is **not** claimed here.)
 4. The schedule is **established when the Owner sets a due date** — on Task creation, on suggestion approval, or on a later Task update. Nothing about handoff creates, activates, or advances it (D104, §2).
-5. AI may **recommend** a due date. Only an explicit Owner selection has effect. AI may never create, activate, alter, or suppress a schedule (D027, D102).
+5. AI may **recommend** a due date. Only an explicit Owner selection has effect. AI may never create, activate, alter, or suppress a schedule (D027, D102, D152).
 
 #### Occurrence computation (D103)
 
@@ -185,9 +185,9 @@ The application owns the engine: it claims eligible schedules, **rechecks Task, 
 
 Scheduler and delivery code **may** merge behind a **disabled** production feature flag before the Event Notification Engine is finished. **Production reminder delivery must not be enabled until both the Event Notification Engine and the minimum Owner schedule-status UI are operational.** A Task-page status alone is not sufficient: the Owner must not have to inspect Tasks continually to discover that an automation stopped.
 
-#### Out of scope for the initial slice (D110)
+#### Out of scope for the initial A8 slice (D110 sequencing; product-authorized by D152)
 
-Preset reminder choices; Owner-created additional reminders and their routes and UI; recurrence editor; reminder-time picker; arbitrary rules or cron expressions; general calendar manager; separate pause mechanism; Recipient reminder preferences; Android reminder UI; AI-controlled scheduling. Owner-created additional **dated** reminders are **deferred to a separately authorized future slice** and are **not** part of A8's first implementation.
+Preset reminder choices; Owner-created additional reminders and their routes and UI; recurrence editor; reminder-time picker; arbitrary rules or cron expressions; general calendar manager; separate pause mechanism; Recipient reminder preferences; Android reminder UI; AI-controlled scheduling. **Owner-controlled Task reminders are product-authorized (D152)** — deadline and reminder are separate concepts — but remain **deferred to a separately authorized future implementation slice** and are **not** part of A8's first implementation and are **not** claimed by this section. Existing A8 `TaskReminderSchedule` was built for due-date-driven Recipient follow-through and still needs architecture/design work before multi-reminder support.
 
 ### 10b. Event Notification Engine (event-driven)
 

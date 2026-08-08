@@ -190,7 +190,7 @@ Replaceable integration layer for hosting, scheduling, storage, messaging, or cl
 
 ### Follow-up Engine
 
-**Due-date-driven, Task-scoped** engine that sends **Recipient** reminders derived from the Owner-selected Task due date (D102). Authorized by the narrow constitutional exception for delegated communication work; it is **not** a calendar manager, a general-purpose reminder application, or an escalation engine. Authoritative rules: [WORKFLOWS.md](WORKFLOWS.md) §10a. **Not implemented.**
+**Due-date-driven, Task-scoped** engine that sends **Recipient** reminders derived from the Owner-selected Task due date (D102). This is the **current A8 implementation** of due-date-driven follow-through — one reminder/follow-through mechanism, not an escalation engine, and **not** a product-law bar on Owner-controlled Task reminders (D152). Authoritative engine rules: [WORKFLOWS.md](WORKFLOWS.md) §10a.
 
 ### Follow-up Policy
 

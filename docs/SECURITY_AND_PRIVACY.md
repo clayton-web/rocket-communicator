@@ -38,21 +38,21 @@ Governed by [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md). Definitions: [GL
 
 ## Permission matrix (v1)
 
-| Action                                                        | Owner (Session)             | Recipient (Capability)   |
-| ------------------------------------------------------------- | --------------------------- | ------------------------ |
-| Connect Gmail                                                 | Yes                         | No                       |
-| Approve/dismiss/merge suggestions                             | Yes                         | No                       |
-| Approve assignment + Gmail forward / handoff (D037, D090)     | Yes                         | No                       |
-| Manage Recipients (minimal list/create/update/inactive, D087) | Yes                         | No                       |
-| Create standalone Task (typed)                                | Yes                         | No                       |
-| Create Task via voice                                         | No (Suggestions only, D038) | No                       |
-| Work request → Suggestion                                     | No (Owner review only)      | Yes                      |
-| View assigned Task via link                                   | Via Owner APIs              | Yes (scoped)             |
-| Complete / waiting / notes / return / clarification           | Yes                         | Yes (POST after confirm) |
-| Set / change / remove the Task due date driving reminders     | Yes (D102, D104)            | No                       |
-| Pause reminders other than via Waiting                        | No (D101, D107)             | No                       |
-| Configure reminder times or add custom reminders              | No (D103, D110)             | No                       |
-| Approve learning / policies / automations                     | Yes (D054)                  | No                       |
+| Action                                                                 | Owner (Session)                                                                                   | Recipient (Capability)   |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | ------------------------ |
+| Connect Gmail                                                          | Yes                                                                                               | No                       |
+| Approve/dismiss/merge suggestions                                      | Yes                                                                                               | No                       |
+| Approve assignment + Gmail forward / handoff (D037, D090)              | Yes                                                                                               | No                       |
+| Manage Recipients (minimal list/create/update/inactive, D087)          | Yes                                                                                               | No                       |
+| Create standalone Task (typed)                                         | Yes                                                                                               | No                       |
+| Create Task via voice                                                  | No (Suggestions only, D038)                                                                       | No                       |
+| Work request → Suggestion                                              | No (Owner review only)                                                                            | Yes                      |
+| View assigned Task via link                                            | Via Owner APIs                                                                                    | Yes (scoped)             |
+| Complete / waiting / notes / return / clarification                    | Yes                                                                                               | Yes (POST after confirm) |
+| Set / change / remove the Task due date driving A8 Recipient reminders | Yes (D102, D104)                                                                                  | No                       |
+| Pause reminders other than via Waiting                                 | No (D101, D107)                                                                                   | No                       |
+| Configure Owner-created Task reminder dates/times                      | Product-authorized (D152); **not implemented** (A8 APIs expose due-date engine only — D103, D110) | No                       |
+| Approve learning / policies / automations                              | Yes (D054)                                                                                        | No                       |
 
 ## Server enforcement
 

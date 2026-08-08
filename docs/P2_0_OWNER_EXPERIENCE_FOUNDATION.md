@@ -63,7 +63,7 @@ This is a **product readiness statement**. It does not authorize Stage 12, A8.7d
 - [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md) remains the highest-level governing document. P2.0 **amends** its product mission and Android-primary philosophy; it does not replace engineering rules, Architecture Principles, or AI law.
 - [AI_CONSTITUTION.md](AI_CONSTITUTION.md) remains authoritative for AI behaviour. P2.0 does not authorize AI capture, automatic transcription, or silent automation.
 - A0–A8.6, P1, Gate 6, production safety, documentation, evidence, contracts, and architecture remain valid.
-- D102's narrow due-date exception, D111–D120 (P1 web foundation), D131 (sole system of record), and D132 (online-first) remain operative.
+- D102's due-date-driven A8 Follow-up Engine rules (operative engine clauses), **D152** (Owner-controlled Task reminders authorized; supersedes in part D102's former personal-reminder prohibition), D111–D120 (P1 web foundation), D131 (sole system of record), and D132 (online-first) remain operative as cited.
 
 ---
 

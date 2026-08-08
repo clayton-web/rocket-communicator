@@ -110,7 +110,7 @@ Approved autonomous behaviour
 | Structuring a voice next-action suggestion                | Sending assignment email implied by voice next action                                |
 | Recommending a due date                                   | Setting the due date, creating/activating a Reminder Schedule, or sending a reminder |
 
-Reminder sends, Event Notification Engine sends, and retention are **not** AI-controlled; they follow deterministic policies (D027, D102–D110). AI may only **recommend** a due date and related fields for explicit Owner selection, and may never create, activate, alter, or suppress a Reminder Schedule (D102).
+Reminder sends, Event Notification Engine sends, and retention are **not** AI-controlled; they follow deterministic policies (D027, D102–D110). AI may only **recommend** a due date and related fields for explicit Owner selection, and may never create, activate, alter, or suppress a Reminder Schedule (D102). **D152** reinforces: AI must not invent reminder times or silently schedule Owner-controlled Task reminders; future AI reminder suggestions require a separately approved product decision.
 
 ## Voice and multi-intent structuring
 
