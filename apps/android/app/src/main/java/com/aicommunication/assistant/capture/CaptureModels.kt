@@ -4,11 +4,12 @@ import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 
 /**
- * Wire DTOs for A9.2 typed capture.
+ * Wire DTOs for A9.2 typed capture and A9.3 Task list/detail decoding.
  *
  * Generated [com.aicommunication.assistant.contracts.models.TaskSummaryPoint] is an awkward
  * polymorphic interface unsuitable for Moshi create/parse without a custom adapter stack.
- * These DTOs match the production create body / confirmation fields only.
+ * These DTOs cover create bodies (value-bearing) and response shapes where some kinds
+ * (`amount`, `deadline`, `missing_information`) omit `value` per the shared OpenAPI contract.
  */
 @JsonClass(generateAdapter = false)
 data class CaptureCreateRequest(
@@ -26,8 +27,9 @@ data class CaptureSummaryPointWire(
     val label: String,
     @Json(name = "order")
     val order: Int,
+    /** Present for text-bearing kinds; absent/null for amount/deadline/missing_information. */
     @Json(name = "value")
-    val value: String
+    val value: String? = null
 )
 
 @JsonClass(generateAdapter = false)

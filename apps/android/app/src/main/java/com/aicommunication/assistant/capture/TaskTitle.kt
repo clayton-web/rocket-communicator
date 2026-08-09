@@ -11,7 +11,8 @@ fun deriveCapturedTaskTitle(taskId: String, summaryPoints: List<CaptureSummaryPo
         summaryPoints
             ?.asSequence()
             ?.map { point ->
-                point.value.trim().ifEmpty { point.label.trim() }
+                val valueText = point.value?.trim().orEmpty()
+                if (valueText.isNotEmpty()) valueText else point.label.trim()
             }
             ?.firstOrNull { it.isNotEmpty() }
 
