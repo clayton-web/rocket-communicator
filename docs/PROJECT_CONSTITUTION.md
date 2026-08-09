@@ -110,27 +110,29 @@ Permanent product non-goals only. **Milestone scope is not a constitutional non-
 | **Reduce decisions**                         | Rocket should reduce decisions, not create them. Where two designs solve the same problem, prefer the one that removes choices, screens, and controls while preserving truthful information (D151).                        |
 | **Every feature must justify its existence** | Earn a place only by aiding capture, organize, assign, or follow-through — or by safety, truthfulness, or administration (D139).                                                                                           |
 
-## Owner authority and AI-first capture (D154)
+## Owner authority and AI-first capture (D154, D161)
 
 **AI proposes. The Owner decides.**
 
 - **Manual typed or dictated capture is intended to be AI-first.** Owner natural-language input is interpreted before canonical work exists.
-- **One natural-language input may yield zero, one, or multiple independent proposed Tasks.** A single utterance is not assumed to be a single Task.
-- **The first-pass interpretation is context-free.** It must not inject prior Owner preferences, prior Owner edits, assignment history, or previously created Tasks.
-- **Only an Owner act creates a canonical Task.** The Owner reviews the proposals and decides **Keep for me** or **Assign**.
+- **One natural-language input may yield zero, one, or multiple independent proposed Tasks.** A single utterance is not assumed to be a single Task. Zero proposals is truthful success for Owner-initiated interpretation (D161).
+- **Interpretation is an occurrence.** Rocket persists one interpretation-occurrence concept as grouping/provenance truth (not canonical Task truth). One occurrence may produce 0..N proposals. Multiple legitimate occurrences may reference the same source. There is no invariant of one interpretation forever per source (D161).
+- **The first-pass interpretation is context-free.** It must not inject prior Owner preferences, prior Owner edits, assignment history, or previously created Tasks. BC property-management/workspace context is a later assistance layer and is not authorized here.
+- **Only an Owner act creates a canonical Task.** The Owner reviews the proposals and decides **Keep for me** or **Assign**. Keep is affirmative and is never inferred from absence of assignment (D155).
 - **Current implementation is interim.** The shipped direct Owner capture path was valid for its milestone and is **current implementation**, not permanent product architecture (D158: current implementation truth is not automatically product law).
+- **Representation is not authorization.** Representing an Owner-review trigger in architecture or schema does not authorize Owner-review APIs, Review-with-Rocket UI, exclusions, automatic-processing changes, notifications, cron, or Production flags (D161).
 
 This section states product law and authorizes no implementation. AI behaviour detail: [AI_CONSTITUTION.md](AI_CONSTITUTION.md).
 
 ## Learning: observation now, personalization later (D155)
 
-Rocket **records learning evidence now** — the initial AI proposal, the Owner's edits, the final approved version, whether the Task was kept or assigned, and the recipient when assigned. That evidence is **dormant**: it must not alter prompts, personalize the first-pass interpretation, auto-assign, silently modify behaviour, or feed online training. **Personalization is deferred** and requires its own approved decision. D113 holds unchanged: operational telemetry is not learning, passive behaviour is never approval, and behaviour must never silently change. Detail: [AI_CONSTITUTION.md](AI_CONSTITUTION.md).
+Rocket **records learning evidence now**: the AI proposal as presented to the Owner (revision 0), the Owner's later edits as append-only revisions, the finally accepted revision, whether the Task was **explicitly** kept or assigned, and the recipient when assignment successfully occurs. That evidence is **dormant**: it must not alter prompts, personalize the first-pass interpretation, auto-assign, silently modify behaviour, or feed online training. **Personalization is deferred** and requires its own approved decision. D113 holds unchanged: operational telemetry is not learning, passive behaviour is never approval, and behaviour must never silently change. Detail: [AI_CONSTITUTION.md](AI_CONSTITUTION.md); retention of manual raw input for review: **D162**.
 
 ## One canonical domain (D157)
 
 - **One canonical Task domain.**
-- **One shared proposal/candidate path.**
-- **One shared interpretation capability.**
+- **One shared proposal path** (`TaskSuggestion` is the single shared proposal domain — no parallel CandidateTask store).
+- **One shared interpretation capability**, with distinct AI jobs for automated A6 extraction and Owner/shared interpretation where their contracts differ (D161).
 - **Every native and web client uses the same backend Task and intelligence system.**
 - **Existing infrastructure is evolved rather than duplicated** unless an explicit approved architecture decision replaces it.
 

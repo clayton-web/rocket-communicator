@@ -10,14 +10,26 @@ Governs **all** AI behaviour in **Rocket Communicator**: interpretation of Owner
 
 AI extracts **operational meaning** into strict structured, point-form outputs and **recommends** next steps. AI does not own business decisions. Deterministic application rules own the **Follow-up Engine**, **Event Notification Engine**, retention, and state transitions after human approval gates (D027, D102–D110).
 
-## Manual capture is AI-first (D154)
+## Manual capture is AI-first (D154, D161)
 
 **AI proposes. The Owner decides.** Owner typed or dictated input is intended to reach **interpretation before a canonical Task exists**.
 
 - **One natural-language input may produce zero, one, or multiple independent proposed Tasks.** AI must not force one utterance into exactly one Task, and must not merge unrelated intents to keep the count at one.
-- **The first-pass interpretation is context-free.** It must not inject prior Owner preferences, prior Owner edits, assignment history, or previously created Tasks. Interpretation quality comes from the input and the output contract, not from the Owner's history.
-- **Proposals are proposals.** The Owner reviews them and decides **Keep for me** or **Assign**; only that Owner act creates canonical work (D008, D038).
-- **Nothing here authorizes implementation**, and the shipped direct Owner capture path remains **current implementation** rather than the target architecture (D154).
+- **Zero proposals is successful Owner-initiated interpretation** when no actionable Task was found. Represent that outcome on the interpretation occurrence. Do not invent a fake proposal, rename the outcome `skipped_irrelevant`, or treat empty proposals as failure (D161).
+- **The first-pass interpretation is context-free.** It must not inject prior Owner preferences, prior Owner edits, assignment history, previously created Tasks, or BC property-management/workspace context. Interpretation quality comes from the input and the output contract, not from the Owner's history.
+- **Proposals are proposals.** The Owner reviews them and decides **Keep for me** or **Assign**; only that Owner act creates canonical work (D008, D038). Keep is affirmative and is never inferred from missing assignment (D155).
+- **Nothing here authorizes implementation**, and the shipped direct Owner capture path remains **current implementation** rather than the target architecture (D154). Representing `owner_review` as a trigger does not authorize Owner-review product surfaces (D161).
+
+## Distinct AI jobs: A6 extraction vs Owner/shared interpretation (D161)
+
+Do **not** collapse automated A6 `SuggestionExtractionResult` semantics into Owner/shared `InterpretationResult`.
+
+| Job                             | Contract posture                                                                                                                      |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| **Automated A6 extraction**     | Existing heuristic prefilter; existing A6 extraction contract; existing `AI_EMPTY_OUTPUT` semantics after that prefilter remain valid |
+| **Owner/shared interpretation** | Context-free `InterpretationInput`; `InterpretationResult`; `tasks: []` is successful; 0..N proposals                                 |
+
+They should share provider transport, error, retry, and JSON infrastructure where appropriate. Consolidating duplicated OpenAI-compatible transport is desirable engineering later and is **not** authorized or required by this constitution section alone.
 
 ## AI must NEVER
 
@@ -80,7 +92,14 @@ The four operational data classes are distinct and defined in [GLOSSARY.md](GLOS
 
 **Observation and adaptation are separate.** Recording evidence is authorized; changing behaviour from it is not.
 
-**Rocket may record learning evidence now:** the initial AI proposal, the Owner's edits, the final approved version, whether the Task was kept or assigned, and the recipient when assigned.
+**Rocket may record learning evidence now:**
+
+- revision 0 — the immutable AI-authored proposal **as presented to the Owner** (must include `summaryPoints`; include `proposedDueAt`, `proposedPriority`, and resolved `proposedRecipientId` only when they were part of that presented proposal);
+- later Owner edits as append-only revisions, with the finally accepted revision identifiable;
+- whether the Task was **explicitly** kept or assigned;
+- the recipient when assignment **successfully** occurs.
+
+Do **not** require durable preservation of `peopleHints`, `proposedRecipientHint`, standalone `deadlineExpression`, provider raw JSON, prompts, diagnostic fingerprints, token metadata, retries, or other provider intermediates merely because a model produced them. Do **not** use AuditEvent as the revision/evidence store. Keep must never be inferred from absence of TaskAssignment. Manual raw capture input retained for review is not dormant learning evidence (D162).
 
 **Recorded evidence is dormant.** It must **not**:
 

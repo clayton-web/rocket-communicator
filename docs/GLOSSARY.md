@@ -52,7 +52,11 @@ Phone number treated as recognized for completed-call prompts (contact match, Ow
 
 ### Task Suggestion
 
-Candidate work that is **not** yet a Task. Requires Owner approve/edit/dismiss/merge. Voice-originated work starts here (D038). Recipient work requests become Suggestions. A6 approve creates an **unassigned Task** only (D080); Recipient handoff is A7 via `POST /api/v1/tasks/{taskId}/handoff` (D037, D090). Optional AI `proposedRecipientHint` may map to `proposedRecipientId` only via deterministic match to an active Recipient—never auto-assign (D094).
+Candidate work that is **not** yet a Task. Rocket’s **single shared proposal domain** (D157, D161) — do not introduce a parallel CandidateTask store. Requires Owner approve/edit/dismiss/merge. Voice-originated work starts here (D038). Recipient work requests become Suggestions. One interpretation occurrence may produce **0..N** TaskSuggestions (D161). A6 approve creates an **unassigned Task** only (D080); Recipient handoff is A7 via `POST /api/v1/tasks/{taskId}/handoff` (D037, D090). Optional AI `proposedRecipientHint` may map to `proposedRecipientId` only via deterministic match to an active Recipient—never auto-assign (D094). The suggestion row is the mutable operational proposal head; append-only revisions preserve revision 0 as presented to the Owner (D155).
+
+### Interpretation occurrence
+
+Persisted grouping/provenance for one interpretation act (provisional implementation name may be InterpretationRun — not constitutional table naming). Not canonical Task truth. One occurrence may yield zero, one, or multiple TaskSuggestions. Multiple legitimate occurrences may reference the same source; there is no one-interpretation-forever-per-source invariant. Owner-initiated idempotency uses `(organizationId, idempotencyKey)` plus request fingerprint (D161). Zero proposals is truthful success for Owner-initiated interpretation.
 
 ### Task
 
@@ -170,7 +174,7 @@ Application-owned Gmail sync logic: account eligibility, locking, Gmail History 
 
 ### Application Suggestion Engine
 
-Application-owned A6 logic: claim-lease eligible CommunicationEvents, heuristic relevance filtering, LLM extraction via `packages/ai`, and persistence of at most one pending TaskSuggestion per event (D081, D085). Invoked by `POST /api/v1/internal/suggestions/process` from an External Scheduler (D084). Must not run inside Gmail History sync transactions (D075, D084).
+Application-owned A6 logic: claim-lease eligible CommunicationEvents, heuristic relevance filtering, and LLM extraction via `packages/ai` using the A6 `SuggestionExtractionResult` contract (D085, D161). Invoked by `POST /api/v1/internal/suggestions/process` from an External Scheduler (D084). CommunicationEvent claim/lease/process-state remains the automated-processing authority (D081 idempotency intent; cardinality superseded by D161). Must not run inside Gmail History sync transactions (D075, D084). Distinct from Owner/shared interpretation (`InterpretationResult`), which is not this engine’s contract.
 
 ### External Scheduler
 
@@ -264,7 +268,7 @@ It is **not** a business record, **not** audit history, and **not** an AI-learni
 
 A purposefully retained representation of a meaningful Owner decision and its outcome, answering **“what decision was made, what alternatives existed, and what happened afterward?”**
 
-Must never rewrite audit history, and must never be inferred from low-level click or usage tracking. **Passive behaviour, inactivity, and the absence of a correction are not approval and are not decisions** (D113). Human corrections outrank passive usage tracking. **Recording learning evidence is authorized now** and is dormant — it must not personalize, auto-assign, mutate prompts, train online, or otherwise become autonomous without later authorization (D155). Personalization remains deferred. No learning tables exist yet (D110).
+Must never rewrite audit history, and must never be inferred from low-level click or usage tracking. **Passive behaviour, inactivity, and the absence of a correction are not approval and are not decisions** (D113). Human corrections outrank passive usage tracking. **Keep must never be inferred from absence of TaskAssignment** (D155). **Recording learning evidence is authorized now** and is dormant — it must not personalize, auto-assign, mutate prompts, train online, or otherwise become autonomous without later authorization (D155). Personalization remains deferred. Manual raw capture input retained for review is not learning evidence (D162). No learning tables exist yet (D110).
 
 ### Recommendation
 
