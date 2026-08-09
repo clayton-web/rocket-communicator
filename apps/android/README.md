@@ -13,17 +13,19 @@ Organize, assign, and follow through on captured work (**D150**) without slowing
 - Recipient pick (+ thin create if empty), Gmail connection gating, D037 confirmation, idempotent retry store
 - Gmail send re-consent: open Owner web Task page in the browser, then manual Retry in-app (no auto-send)
 
-**Not included:** reminder configuration/delivery, notifications, push, reassignment, offline sync, local business DB, Stage 12 / A8.7d / A8.7e, A10+.
+**Not included:** reminder configuration/delivery, notifications, push, reassignment, offline sync, local business DB, A8 operational enablement, A10+.
 
-## A9.2 Task Capture
+## A9.2 Task Capture — interim under D154
 
-Create-only Owner capture (**D149**) in `capture/` + Compose UI:
+Create-only Owner capture (**D149**) in `capture/` + Compose UI is **interim infrastructure**, not permanent capture UX:
 
 - Shell **Capture** entry (one tap from the authenticated shell)
 - Single free-text field → **Save** → `POST /api/v1/tasks` via existing A9.1 networking
 - Success confirmation only after server `201`
 - IME speech-to-text into the field (standard keyboard mic — not A12 voice pipeline)
 - Draft preserved on connectivity / request failure; unauthorized returns to A9.0 sign-in
+
+**Reuse / evolve.** Inspect this networking and capture substrate before replacing it when implementing the authorized AI-first Owner UX (D154 / D157). Do not treat it as the permanent Rocket capture experience, and do not discard it casually. Shared business intelligence stays on the backend.
 
 ## A9.1 networking
 
@@ -47,9 +49,9 @@ Reusable authenticated Owner HTTP foundation in `network/` (**D148**):
 
 **[docs/A9_0_DEVICE_VERIFICATION.md](../../docs/A9_0_DEVICE_VERIFICATION.md)**
 
-## Owner Acceptance Week (after A9.3)
+## Owner Acceptance Week
 
-Formal product gate before P2.2: **[docs/OWNER_ACCEPTANCE_WEEK.md](../../docs/OWNER_ACCEPTANCE_WEEK.md)**
+Formal product gate (**D142**), **deferred** until Owner re-authorization (**D159**). Sequencing and exit criteria: [docs/MILESTONES.md](../../docs/MILESTONES.md) § Owner Acceptance Week. Not the next executable gate.
 
 ## Local configuration
 

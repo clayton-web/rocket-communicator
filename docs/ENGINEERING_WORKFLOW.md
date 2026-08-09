@@ -1,6 +1,6 @@
 # Engineering workflow
 
-How future development proceeds on this repository. Subordinate to [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md) and [AI_CONSTITUTION.md](AI_CONSTITUTION.md). Owner-experience Product Constitution: [P2_0_OWNER_EXPERIENCE_FOUNDATION.md](P2_0_OWNER_EXPERIENCE_FOUNDATION.md) (D137–D144). Milestone sequence: [MILESTONES.md](MILESTONES.md) — forward order after Gate 6 is P2.0 → A9 → Owner Acceptance Week → P2.2 → Stage 12 → A8.7d → A8.7e (D140). Planned first P2.2 slice (docs only, not authorized): [P2_2A_PEOPLE.md](P2_2A_PEOPLE.md) (**D151**). Review gate: [REVIEW_CHECKLIST.md](REVIEW_CHECKLIST.md).
+How future development proceeds on this repository. Subordinate to [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md) and [AI_CONSTITUTION.md](AI_CONSTITUTION.md). Milestone sequence: [MILESTONES.md](MILESTONES.md). Review gate: [REVIEW_CHECKLIST.md](REVIEW_CHECKLIST.md).
 
 ---
 
@@ -46,7 +46,7 @@ Next milestone
 5. **Documentation updated before completion** — milestone is incomplete until docs are verified.
 6. **Stop when scope is exceeded** — park discoveries in OPEN_QUESTIONS or a future milestone; do not absorb them quietly.
 7. **Feature filter (P2.0 / D139)** — prefer work that makes it easier for the Owner to capture, organize, assign, or follow through on real work during an ordinary day; otherwise it likely belongs later.
-8. **Do not resume paused A8 delivery enablement early** — Stage 12, A8.7d, and A8.7e remain unauthorized until their own gates after Owner Acceptance Week and P2.2 (D140, D142).
+8. **Do not resume paused A8 operational enablement early** — each enablement step remains unauthorized until its own gates after Owner Acceptance Week and P2.2 (D140, D142).
 
 ## Environment Guard
 
@@ -110,20 +110,19 @@ Most persistence tests run on **PGlite**, which is fast and needs nothing instal
 Suites that must contend therefore carry a `.pg.test.ts` suffix and **skip themselves** unless given a database URL, so `pnpm verify` stays Docker-free and deterministic. A skipped concurrency suite is not evidence; run it explicitly and report it separately from the PGlite results.
 
 ```bash
-pnpm db:docker:up                                     # PostgreSQL 16, loopback 5433
+pnpm db:docker:up                                     # PostgreSQL 17, loopback 5433
 AICAA_LOCAL_DATABASE_URL="postgresql://prisma:prisma@127.0.0.1:5433/prisma_test?schema=public" \
   pnpm db:migrate:local                               # apply migrations to the test database
 AICAA_PG_CONCURRENCY_URL="postgresql://prisma:prisma@127.0.0.1:5433/prisma_test?schema=public" \
   pnpm --filter @aicaa/web exec vitest run owner-reminder-concurrency
 ```
 
-**A race test is evidence of behaviour, not a regression guard.** A8.4a measured this rather than assuming it: the PostgreSQL suite written to defend the H-1 fix was re-run against the restored pre-fix code and passed 240 consecutive rounds. The race is real and the assertions are right, but the window is microseconds wide and the scheduler will not reliably put a test inside it. A suite that goes green on the broken code protects nothing, and its passing is the most misleading kind of evidence because it looks like proof. When a fix is **structural** — a decision moved inside a lock, an unsafe export removed, a forbidden import — write a source or architecture guard that fails deterministically on any machine with no database, and keep the race test for what it can actually show: that the fixed design holds up under contention. Adding rounds is not a substitute; 240 of them bought nothing here.
+**Engineering invariants (compress the incident narrative; keep the rule):**
 
-**Also measure test isolation before trusting a concurrency result.** A8.4a's global due-scan suites initially passed for the wrong reason and then failed for one: schedules left active by an earlier test were picked up by a later test's global scan. Any suite whose subject is a query with no tenant filter must actively quiesce shared state, and any seeded row should carry a per-run prefix so a crashed round cannot poison the next one.
-
-**A global quiesce is load-bearing, and it is also a trap for the invariant you run afterwards.** `reminder-worker-concurrency.pg.test.ts` retires **every** active schedule in the shared database between tests, not only its own organization's. The A8.4a remediation re-audit asked whether that could be narrowed and the answer is no: the reminder suites deliberately never delete their rows — fresh ids per run are safer than getting a cascade order right — so the database always holds another suite's armed schedules, and a suite asserting exact counters against a **global** scanner has to neutralize them. Scoping the write would leave those rows claimable and the counters would move for reasons the test never arranged; asserting relative deltas instead of exact totals is strictly less coverage. It is safe only because `vitest.config.ts` serializes the `.pg.test.ts` files whenever the concurrency URL is set. The consequence to remember: once that file has run, almost nothing in the database is `active`, so an **unscoped** "every active schedule is armed" sweep executed afterwards is close to vacuous and a deliberately poisoned row will look as though the processor healed it. It did not — the quiesce stopped it. Assert that invariant where it means something: organization-scoped, inside `a8-4a-occurrence-concurrency.pg.test.ts`, which never quiesces. An unscoped post-run sweep is a smoke check, not evidence.
-
-**Always route Prisma through the `:local` helpers for local work.** `packages/db/.env` holds a production URL, and bare `prisma migrate deploy` reads it — so the bare command targets production from a developer's machine with no prompt. `pnpm db:migrate:local` overrides `DATABASE_URL` explicitly and refuses any non-loopback host (`packages/db/scripts/assert-local-database-url.mjs`). This guards the _local_ helpers only; applying a migration to production remains a deliberate, unguarded operator action ([DEPLOYMENT.md](DEPLOYMENT.md)).
+- A **race test is evidence of behaviour, not a regression guard.** Timing-dependent suites can pass on broken code. When a fix is structural (decision moved inside a lock, unsafe export removed, forbidden import), add a deterministic source/architecture guard; keep the race test only to show the fixed design holds under contention.
+- Suites whose subject is a **global** query must actively quiesce shared state and use per-run id prefixes. A global quiesce that retires every active schedule makes a later unscoped "every active schedule is armed" assertion vacuous — assert organization-scoped invariants where the suite does not quiesce.
+- Serialize `.pg.test.ts` files when the concurrency URL is set (`vitest.config.ts`).
+- **Always route Prisma through the `:local` helpers for local work.** `packages/db/.env` can hold a production URL; bare `prisma migrate deploy` would target it. `pnpm db:migrate:local` overrides `DATABASE_URL` and refuses non-loopback hosts. Production migrate remains a deliberate operator action ([DEPLOYMENT.md](DEPLOYMENT.md)).
 
 ## Verification exit criterion
 
@@ -163,7 +162,7 @@ When product behaviour must change:
 
 1. Update [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md) / [AI_CONSTITUTION.md](AI_CONSTITUTION.md) if principles are affected.
 2. Update [DECISIONS.md](DECISIONS.md) (new or revised ID and status).
-3. Update [PRODUCT_SCOPE.md](PRODUCT_SCOPE.md), [WORKFLOWS.md](WORKFLOWS.md), [DATA_RETENTION.md](DATA_RETENTION.md), [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md), and/or [ARCHITECTURE.md](ARCHITECTURE.md) as applicable.
+3. Update [WORKFLOWS.md](WORKFLOWS.md), [DATA_RETENTION.md](DATA_RETENTION.md), [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md), [API_CONTRACT.md](API_CONTRACT.md), and/or [ARCHITECTURE.md](ARCHITECTURE.md) as applicable.
 4. Update [GLOSSARY.md](GLOSSARY.md) if terms change.
 5. Then implement.
 6. Re-run [REVIEW_CHECKLIST.md](REVIEW_CHECKLIST.md).
@@ -172,21 +171,22 @@ When product behaviour must change:
 
 ## Ownership
 
-| Concern                     | Primary document owner (logical)                                        |
-| --------------------------- | ----------------------------------------------------------------------- |
-| Mission and principles      | PROJECT_CONSTITUTION                                                    |
-| Architecture Principles     | PROJECT_CONSTITUTION (complete source); ARCHITECTURE (summary/examples) |
-| AI behaviour                | AI_CONSTITUTION                                                         |
-| What ships in v1            | PRODUCT_SCOPE                                                           |
-| How it is built             | ARCHITECTURE                                                            |
-| Step-by-step behaviour      | WORKFLOWS                                                               |
-| Deletion and Gmail boundary | DATA_RETENTION                                                          |
-| AuthZ and privacy           | SECURITY_AND_PRIVACY                                                    |
-| Binding choices             | DECISIONS                                                               |
-| Sequence of work            | MILESTONES                                                              |
-| Contributor process         | ENGINEERING_WORKFLOW (Environment Guard, Docker, verify, reports)       |
-| Unresolved                  | OPEN_QUESTIONS                                                          |
-| Terms                       | GLOSSARY                                                                |
+| Concern                     | Primary document owner (logical)                                                                                               |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Mission and principles      | PROJECT_CONSTITUTION                                                                                                           |
+| Architecture Principles     | PROJECT_CONSTITUTION (complete source); ARCHITECTURE (summary/examples)                                                        |
+| Ownership / reuse carriers  | ARCHITECTURE § [Ownership and reuse map](ARCHITECTURE.md#ownership-and-reuse-map) — inspect before creating a parallel carrier |
+| AI behaviour                | AI_CONSTITUTION                                                                                                                |
+| What ships in v1            | MILESTONES                                                                                                                     |
+| How it is built             | ARCHITECTURE (including the domain state model)                                                                                |
+| Step-by-step behaviour      | WORKFLOWS                                                                                                                      |
+| Deletion and Gmail boundary | DATA_RETENTION                                                                                                                 |
+| AuthZ and privacy           | SECURITY_AND_PRIVACY                                                                                                           |
+| Binding choices             | DECISIONS                                                                                                                      |
+| Sequence of work            | MILESTONES                                                                                                                     |
+| Contributor process         | ENGINEERING_WORKFLOW (Environment Guard, Docker, verify, reports)                                                              |
+| Unresolved                  | OPEN_QUESTIONS                                                                                                                 |
+| Terms                       | GLOSSARY                                                                                                                       |
 
 ## Definition of done (milestone)
 

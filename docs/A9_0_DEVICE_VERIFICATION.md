@@ -2,7 +2,7 @@
 
 **Purpose:** Operator procedure for production-quality evidence that A9.0 Android Owner authentication works on a real device (Galaxy S24+ target; `minSdk` 31).  
 **Authority:** D145–D147. Sideload only (D019). Online-first (D132).  
-**Out of scope:** Task UI (A9.1), capture, assignment, Stage 12 / A8.7d / A8.7e.
+**Out of scope:** Task UI (A9.1), capture, assignment, A8 operational enablement.
 
 Record evidence in a dated note or evidence appendix: build SHA, APK path, device model/API level, API base URL (host only — never paste anon keys or tokens), pass/fail per step, and screenshots where noted.
 

@@ -1,34 +1,49 @@
 # Project constitution
 
-**Highest-level governing document** for the AI Communication Action Assistant.
+**Highest-level governing document** for **Rocket Communicator** (D153).
 
 All other documentation, architecture, milestones, and implementation must conform to this constitution. If another document conflicts with this one, update the subordinate document—or intentionally amend this constitution first.
 
-Related: [AI_CONSTITUTION.md](AI_CONSTITUTION.md) · [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW.md) · [DOCUMENTATION_INDEX.md](DOCUMENTATION_INDEX.md) · Architecture Principles detail: [ARCHITECTURE.md](ARCHITECTURE.md)
+**Repository provenance (D120).** The repository, the `@aicaa/*` package namespace, the Android application id and `app_name`, the OpenAPI `info.title`, and existing web copy still carry the original working name. That is **provenance**, not product identity, and renaming those artifacts is separately authorized implementation work.
+
+Related: [AI_CONSTITUTION.md](AI_CONSTITUTION.md) · [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW.md) · Architecture Principles detail: [ARCHITECTURE.md](ARCHITECTURE.md)
 
 ---
 
 ## Product mission
 
-Rocket exists to become the Owner's **trusted external memory**, allowing them to **capture, organize, assign, and follow through** on real work from their **Android phone** with confidence throughout an ordinary day.
+Rocket exists to become the Owner's **trusted external memory**, allowing them to **capture, organize, assign, and follow through** on real work from their **phone** with confidence throughout an ordinary day.
 
 It **replaces the Owner's follow-through habit**. It does **not** replace Gmail, Messages, or the Phone app. It **remembers what must happen next**.
 
 In service of that mission, the product turns ongoing personal business communications into temporary, actionable work—so the Owner always knows what needs action, what matters, who owns it, when to follow up, whether it was done, how it was done, and whether completion created the next action.
 
-**Product Constitution (P2.0):** the full constitutional answer to “What kind of product are we building?” lives in [P2_0_OWNER_EXPERIENCE_FOUNDATION.md](P2_0_OWNER_EXPERIENCE_FOUNDATION.md) (**D137–D144**).
+## Current product identity (D153)
+
+**Rocket Communicator is a mobile-first trusted external memory and follow-through system.**
+
+| Layer                 | What it owns                                                                                                   |
+| --------------------- | -------------------------------------------------------------------------------------------------------------- |
+| **Native mobile**     | Owner attention, capture, review, notifications, and device integration                                        |
+| **Rocket backend**    | Canonical Task truth, shared intelligence, synchronization, Gmail, assignment, and follow-through              |
+| **AI interpretation** | Constrained structured interpretation                                                                          |
+| **Web**               | A synchronized, **optional** desktop/web companion                                                             |
+| **Android**           | The **first** native client                                                                                    |
+| **iPhone**            | A **planned subsequent** native client, using the same backend intelligence and the same canonical Task system |
+
+**Mobile is the primary product experience. Android is the first native client.**
 
 ## Product philosophy
 
-- The product is an **AI Communication Action Assistant** and the Owner's **trusted external memory**, not a conventional task manager, calendar manager, communication archive, inbox replacement, or CRM. Reminders are **one capability within that system**; the product is not redefined around reminders alone.
-- **Deadline and reminder are separate (D152):** a Task may have **zero or one deadline** and **zero or multiple Owner-controlled reminders**. A deadline answers when work needs to be done; a reminder answers when Rocket should bring the Task back to the Owner's attention. Owner-controlled Task reminders may exist **independently of deadlines**. **Current implementation:** the A8 Follow-up Engine remains due-date-driven Recipient follow-through (D102–D110 operative engine rules). **Approved product direction:** Owner-created Task reminders at Owner-selected dates/times are permitted; they are **not yet implemented** and require a separately authorized implementation slice. This does **not** authorize escalation ladders, Owner CC ladders, silent AI-controlled scheduling, or general calendar management as the product's purpose. **Historical note:** D102 previously prohibited "general-purpose personal reminders" under a narrow due-date exception; that restrictive ceiling is **permanently superseded by D152** — see [Amendment history](#amendment-history).
+- Rocket Communicator is the Owner's **trusted external memory** and follow-through system, not a conventional task manager, calendar manager, communication archive, inbox replacement, or CRM. Reminders are **one capability within that system**; the product is not redefined around reminders alone.
+- **Deadline and reminder are separate (D152):** a Task has **zero or one deadline** and **zero or multiple Owner-controlled reminders**. A deadline answers when work needs to be done; a reminder answers when Rocket should bring the Task back to the Owner's attention. **An Owner reminder may exist without a deadline.** **AI does not invent reminders and does not silently schedule them.** Escalation ladders, Owner CC ladders, and general calendar management as the product's purpose remain excluded. **Current implementation:** the A8 Follow-up Engine is due-date-driven Recipient follow-through (D102); Owner-controlled reminders are **not yet implemented** and require a separately authorized implementation slice (D110 sequencing).
 - **The product exists to ensure communications are followed through until conclusion.** Communication triage may describe one capability; it does not replace this philosophy.
 - **Humans own decisions**; AI proposes structured options. AI must not invent reminder times or silently schedule reminders (D152).
 - Communication content is **temporary**; workflow intelligence is **durable**.
 - Automation earns trust through an explicit ladder of approval—never through silent behaviour change.
-- **Android is the product (P2.0 / D139).** The Android app is the Owner’s primary instrument; web exists for administration, review, debugging, and fallback. The Recipient path stays deliberately thin (email + capability link + minimal web task view). **Historical clarification (D111):** until A9 delivers that instrument, the Owner web surface is the operational Owner instrument, and **P1** made it reliable — a shared application shell, truthful experience states, and operational observability. P1 did not displace the Android plan and added no product feature. **P2.0** restores Android-first Owner experience as the constitutional forward path without redesigning architecture.
+- **Mobile is the primary product experience; Android is the first native client (D153, extending D139).** The Owner's primary instrument is a native mobile client. Web is a synchronized, optional companion for administration, review, debugging, and fallback. The Recipient path stays deliberately thin (email + capability link + minimal web task view).
 - Time-driven **Recipient** follow-through is owned by the **Follow-up Engine**, driven by the Owner-selected Task due date as one mechanism (D102–D110); event-driven Owner alerts are owned by the **Event Notification Engine** (D099)—separate engines, not an escalation ladder. Owner-controlled Task reminders (D152) are an additional, separately authorized capability and are not the A8 Follow-up Engine.
-- **Feature filter (P2.0 / D139):** a future feature should make it easier for the Owner to capture, organize, assign, or follow through on real work during an ordinary day; if not, it likely belongs later.
+- **Feature filter (D139):** a future feature should make it easier for the Owner to capture, organize, assign, or follow through on real work during an ordinary day; if not, it likely belongs later.
 
 ## Long-term vision
 
@@ -46,7 +61,7 @@ Version one proves the approval-first loop for one authenticated Owner and deleg
 
 The product succeeds when:
 
-1. The Owner can confidently manage an ordinary working day using the **Android application** without depending on memory or external notes, while using the **web application** only for administration or fallback (**D144**; detail: [P2_0_OWNER_EXPERIENCE_FOUNDATION.md](P2_0_OWNER_EXPERIENCE_FOUNDATION.md)).
+1. The Owner can confidently manage an ordinary working day using the **native mobile application** (Android today) without depending on memory or external notes, while using the **web application** only for administration or fallback (**D144**, **D153**).
 2. The Owner trusts suggestions enough to review them quickly, not re-read every message.
 3. Recipient handoffs happen only with explicit Owner approval, with clear audit of who authorized what.
 4. Assigned work is followed through deterministically until conclusion, without follow-up spam or escalation ladders. Due-date-driven Recipient follow-up remains bounded and stops on completion or at an approved ceiling (D102, D106). Owner-controlled Task reminders are a separate, Owner-authorized attention mechanism (D152).
@@ -56,15 +71,14 @@ The product succeeds when:
 
 ## Non-goals
 
+Permanent product non-goals only. **Milestone scope is not a constitutional non-goal** (D158): statements whose meaning is merely "not in version one" — platform, channel, integration, and distribution sequencing — belong to [MILESTONES.md](MILESTONES.md), not here.
+
 - Permanent storage or search of full communication history
 - Replacing Phone, Google Messages, or Gmail as the user’s primary apps
 - Automatic client-facing replies
-- A full Recipient dashboard or CRM in version one
+- Becoming a CRM
 - Silent auto-creation of tasks or silent assignment emails
-- Google Play distribution in version one
-- Integration with Rocket PM in version one
-- Supporting WhatsApp, Facebook Messenger, or Signal in version one
-- Guaranteeing universal Android call/notification capture on every OEM
+- Guaranteeing universal device call/notification capture on every OEM
 
 ## Product principles
 
@@ -85,13 +99,42 @@ The product succeeds when:
 | **Low operational cost**                     | Prefer few vendors; avoid duplicate databases and premature platforms. See Architecture Principles (cost-aware; free tiers).                                                                                               |
 | **Keep architecture simple**                 | No microservices, queues, or sprawl without a documented need. See Architecture Principles (simplicity; modular infrastructure).                                                                                           |
 | **Documentation is the source of truth**     | Behaviour is defined in docs; code implements docs.                                                                                                                                                                        |
-| **Android is the product**                   | The Owner's primary instrument is Android. Web is administration, review, debugging, and fallback (P2.0 / D139).                                                                                                           |
-| **External memory, not inbox replacement**   | Rocket remembers what must happen next. It does not replace Gmail, Messages, or Phone (P2.0 / D138–D139).                                                                                                                  |
-| **Truth over automation**                    | Prefer truthful state over polished guesswork; never silently invent work or outcomes (P2.0 / D139; extends D112).                                                                                                         |
-| **Capture before complexity**                | Reliable capture of real work precedes elaborate organization and AI pipelines (P2.0 / D139).                                                                                                                              |
-| **One-handed first**                         | Ordinary-day Android use must be workable with one hand (P2.0 / D139).                                                                                                                                                     |
-| **Simple by default**                        | Default paths stay short; power features must not obstruct the ordinary day (P2.0 / D139).                                                                                                                                 |
-| **Every feature must justify its existence** | Earn a place only by aiding capture, organize, assign, or follow-through — or by safety, truthfulness, or administration (P2.0 / D139).                                                                                    |
+| **Mobile is the primary product experience** | The Owner's primary instrument is a native mobile client; Android is the first one and iPhone is planned next on the same backend. Web is a synchronized optional companion (D153, D139).                                  |
+| **AI proposes; the Owner decides**           | AI produces proposals. Only an Owner act creates canonical work. Manual capture is AI-first, and the first-pass interpretation is context-free (D154).                                                                     |
+| **One canonical domain**                     | One Task domain, one proposal path, one interpretation capability, shared by every client. Evolve existing infrastructure rather than duplicating it (D157).                                                               |
+| **External memory, not inbox replacement**   | Rocket remembers what must happen next. It does not replace Gmail, Messages, or Phone (D138–D139).                                                                                                                         |
+| **Truth over automation**                    | Prefer truthful state over polished guesswork; never silently invent work or outcomes (D139; extends D112).                                                                                                                |
+| **Capture before complexity**                | Reliable capture of real work precedes elaborate organization and AI pipelines (D139).                                                                                                                                     |
+| **One-handed first**                         | Ordinary-day mobile use must be workable with one hand (D139).                                                                                                                                                             |
+| **Simple by default**                        | Default paths stay short; power features must not obstruct the ordinary day (D139).                                                                                                                                        |
+| **Reduce decisions**                         | Rocket should reduce decisions, not create them. Where two designs solve the same problem, prefer the one that removes choices, screens, and controls while preserving truthful information (D151).                        |
+| **Every feature must justify its existence** | Earn a place only by aiding capture, organize, assign, or follow-through — or by safety, truthfulness, or administration (D139).                                                                                           |
+
+## Owner authority and AI-first capture (D154)
+
+**AI proposes. The Owner decides.**
+
+- **Manual typed or dictated capture is intended to be AI-first.** Owner natural-language input is interpreted before canonical work exists.
+- **One natural-language input may yield zero, one, or multiple independent proposed Tasks.** A single utterance is not assumed to be a single Task.
+- **The first-pass interpretation is context-free.** It must not inject prior Owner preferences, prior Owner edits, assignment history, or previously created Tasks.
+- **Only an Owner act creates a canonical Task.** The Owner reviews the proposals and decides **Keep for me** or **Assign**.
+- **Current implementation is interim.** The shipped direct Owner capture path was valid for its milestone and is **current implementation**, not permanent product architecture (D158: current implementation truth is not automatically product law).
+
+This section states product law and authorizes no implementation. AI behaviour detail: [AI_CONSTITUTION.md](AI_CONSTITUTION.md).
+
+## Learning: observation now, personalization later (D155)
+
+Rocket **records learning evidence now** — the initial AI proposal, the Owner's edits, the final approved version, whether the Task was kept or assigned, and the recipient when assigned. That evidence is **dormant**: it must not alter prompts, personalize the first-pass interpretation, auto-assign, silently modify behaviour, or feed online training. **Personalization is deferred** and requires its own approved decision. D113 holds unchanged: operational telemetry is not learning, passive behaviour is never approval, and behaviour must never silently change. Detail: [AI_CONSTITUTION.md](AI_CONSTITUTION.md).
+
+## One canonical domain (D157)
+
+- **One canonical Task domain.**
+- **One shared proposal/candidate path.**
+- **One shared interpretation capability.**
+- **Every native and web client uses the same backend Task and intelligence system.**
+- **Existing infrastructure is evolved rather than duplicated** unless an explicit approved architecture decision replaces it.
+
+Current implementation names are **not** product law. [ARCHITECTURE.md](ARCHITECTURE.md) identifies which existing modules carry these responsibilities today.
 
 ## Architecture Principles
 
@@ -117,19 +160,25 @@ If a change in behaviour is required, update the relevant governing and product 
 
 If implementation and documentation disagree, **implementation is wrong** until documentation is intentionally updated. Do not “fix” docs to match accidental code behaviour without an explicit product decision.
 
-## Authority order
+## Authority model (D158)
 
-When documents conflict, resolve in this order unless a newer **Approved** decision explicitly supersedes an older one:
+| Rank                | Document                                                                                                                                                                                                                                                                                | Role                                               |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| **1**               | [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md) (this file)                                                                                                                                                                                                                          | Current product law                                |
+| **2**               | [AI_CONSTITUTION.md](AI_CONSTITUTION.md)                                                                                                                                                                                                                                                | AI-specific law, subordinate to rank 1             |
+| **3**               | [DECISIONS.md](DECISIONS.md)                                                                                                                                                                                                                                                            | Current binding discrete decisions                 |
+| **4**               | Domain contracts: [ARCHITECTURE.md](ARCHITECTURE.md), [API_CONTRACT.md](API_CONTRACT.md) / OpenAPI, [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md), [WORKFLOWS.md](WORKFLOWS.md), [DATA_RETENTION.md](DATA_RETENTION.md)                                                            | Bind their own domain under ranks 1–3              |
+| **Below authority** | [MILESTONES.md](MILESTONES.md) / roadmap, [REVIEW_CHECKLIST.md](REVIEW_CHECKLIST.md), [DEPLOYMENT.md](DEPLOYMENT.md), [../README.md](../README.md), [GLOSSARY.md](GLOSSARY.md), [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md), [../BRAND.md](../BRAND.md), planning documents, package READMEs | Describe, sequence, or navigate; never product law |
 
-1. [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md) (this file)
-2. [AI_CONSTITUTION.md](AI_CONSTITUTION.md) for AI-specific behaviour
-3. [DECISIONS.md](DECISIONS.md) Approved entries
-4. [P2_0_OWNER_EXPERIENCE_FOUNDATION.md](P2_0_OWNER_EXPERIENCE_FOUNDATION.md) for Owner-experience Product Constitution (P2.0 / D137–D144) — subordinate where this file or AI law is more specific
-5. [PRODUCT_SCOPE.md](PRODUCT_SCOPE.md)
-6. [DATA_RETENTION.md](DATA_RETENTION.md) / [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md) for their domains
-7. [ARCHITECTURE.md](ARCHITECTURE.md) / [WORKFLOWS.md](WORKFLOWS.md)
-8. [MILESTONES.md](MILESTONES.md) (sequencing, not product law)
-9. [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md) (unresolved—must not be treated as decisions)
+The list is exhaustive: every active document sits at one of these ranks, and a document not named here is **below authority**.
+
+Rules:
+
+- A lower-rank document may **describe and enforce** higher-rank law. It may **not originate contradictory product law**.
+- **Milestone scope is not permanent product law** unless deliberately elevated into rank 1–3.
+- **Current implementation truth is not automatically permanent product law.**
+- **Historical material is never current law**, wherever it appears.
+- Where documents still conflict, the newer **Approved** decision controls.
 
 ## Amendment
 
@@ -137,19 +186,4 @@ Amend this constitution only deliberately: record the change in [DECISIONS.md](D
 
 ## Amendment history
 
-Amendments are recorded here so superseded governing wording remains inspectable. Do not delete rows.
-
-| Date       | Section            | Previous wording                                                                                                                                                                                                                     | Amended wording                                                                                                                                                                                                                                    | Authority | Reason                                                                                                                                                                                                                                                                                                                 |
-| ---------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-07-28 | Product philosophy | "not a conventional task manager, calendar manager, **due-date reminder application**, communication archive, or CRM" — read as prohibiting all due-date-driven follow-up                                                            | "not a conventional task manager, calendar manager, **general-purpose reminder application**, communication archive, or CRM" **plus** an explicit narrow due-date exception                                                                        | **D102**  | The revised A8 Follow-up Engine makes an explicitly Owner-selected Task due date the deterministic scheduling input for delegated-work follow-through. The blanket prohibition was narrowed rather than deleted; every non-delegated reminder use remains excluded                                                     |
-| 2026-07-28 | Success definition | "without follow-up spam or **due-date escalation ladders**"                                                                                                                                                                          | "without follow-up spam or **escalation ladders**" plus an explicit bounded-follow-up statement                                                                                                                                                    | **D102**  | Escalation ladders remain prohibited; the previous phrasing could be misread as prohibiting bounded due-date follow-up now authorized under D102 and ceilinged by D106                                                                                                                                                 |
-| 2026-07-28 | Engine ownership   | "Time-driven Recipient follow-through is owned by the **Follow-up Engine**; … **Event Notification Engine** (**D095**, D099)" — no stated scheduling driver                                                                          | Same engine separation, now stating the driver: "driven by the Owner-selected Task due date (**D102–D110**)"                                                                                                                                       | **D102**  | The Follow-up Engine's scheduling driver moved from the retired D095 handoff-interval model to the Owner-selected due date. Engine separation and the escalation-ladder prohibition are unchanged                                                                                                                      |
-| 2026-07-28 | Product principles | No principle addressed **measurement**. "Learn preferences, not conversations" governed learning **content** only, and nothing stated that health and performance measurement is a separate class that may not become learning input | Added **"Measurement is not learning."** Also extended **"Human owns decisions"** to state that passive behaviour, inactivity, and the absence of a correction are never approval                                                                  | **D113**  | Recovers a documentation pass that separates business records, audit history, operational telemetry, and structured learning signals. Before P1 introduces any telemetry, the constitution must forbid measurement silently becoming training data or product behaviour. No existing principle was removed or narrowed |
-| 2026-07-28 | Product philosophy | "The Android app is the Owner's primary instrument" — could be read as forbidding investment in the Owner **web** experience                                                                                                         | Same principle, **clarified**: Android remains the **intended** primary instrument delivered by **A9**; the web Owner surface is the currently-operational instrument that P1 makes reliable                                                       | **D111**  | Clarification only; the principle is unchanged and Android is not deprioritized. Recorded because P1 invests in the Owner web experience and the unclarified wording invited the wrong inference                                                                                                                       |
-| 2026-07-28 | Product principles | No principle addressed **interface truthfulness**. Truthful-outcome behaviour existed only as A7.8 implementation practice, unstated as governing law                                                                                | Added **"Interfaces state what is true."** No optimistic mutation success; an ambiguous outcome stays ambiguous                                                                                                                                    | **D112**  | P1 improves perceived responsiveness across every Owner surface. Elevating the existing A7.8 truthful-outcome practice to a principle prevents loading and skeleton work from drifting into optimistic success. Extends "Human owns decisions" rather than altering it                                                 |
-| 2026-08-05 | Product mission    | "Turn ongoing personal business communications into temporary, actionable work…" — described the communication-action loop without stating external-memory / Android ordinary-day framing                                            | Prefaced with **trusted external memory** mission; retained the communication-action loop as how that mission is served; linked [P2_0_OWNER_EXPERIENCE_FOUNDATION.md](P2_0_OWNER_EXPERIENCE_FOUNDATION.md)                                         | **D138**  | P2.0 Product Constitution answers “What kind of product are we building?” without discarding the prior mission wording                                                                                                                                                                                                 |
-| 2026-08-05 | Product philosophy | Android described as **intended** primary instrument delivered by A9; web as currently-operational instrument that P1 makes reliable                                                                                                 | Same history preserved; elevated to **Android is the product** — web is administration, review, debugging, and fallback; feature filter added                                                                                                      | **D139**  | Sequencing pivot to Owner Android experience; not an architecture redesign and not a rewrite of D111's historical clarification                                                                                                                                                                                        |
-| 2026-08-05 | Success definition | Six success bullets beginning with suggestion trust                                                                                                                                                                                  | Added ordinary-day Android confidence / web-as-fallback readiness (**D144**) as success item 1; renumbered prior bullets                                                                                                                           | **D144**  | Broader operational enablement is a product readiness statement; it does not by itself authorize Stage 12 or A8.7d/e                                                                                                                                                                                                   |
-| 2026-08-05 | Product principles | No table rows for Android-as-product, external memory, capture-first, one-handed, simple-by-default, or feature justification                                                                                                        | Added seven P2.0 constitutional principles as product-principle rows                                                                                                                                                                               | **D139**  | Makes the Product Constitution inspectable in the governing file while the full narrative lives in P2.0                                                                                                                                                                                                                |
-| 2026-08-05 | Authority order    | Eight-level order without a P2.0 Product Constitution entry                                                                                                                                                                          | Inserted P2.0 Owner Experience Foundation after Approved decisions; renumbered subordinates                                                                                                                                                        | **D137**  | P2.0 is product-constitutional for Owner experience and must not outrank this file or AI law                                                                                                                                                                                                                           |
-| 2026-08-07 | Product philosophy | "not a … **general-purpose reminder application**" plus **narrow due-date exception (D102)** prohibiting general-purpose personal reminders and limiting reminders to due-date-driven Recipient follow-through                       | Removed the "general-purpose reminder application" product-law bar; stated **deadline and reminder are separate (D152)** — Owner-controlled Task reminders permitted independently of deadlines; A8 due-date engine remains current implementation | **D152**  | Product direction: Rocket is trusted external memory and follow-through; Owner may decide when an existing Task returns to attention. D102's restrictive ceiling is permanently superseded; A8 behaviour is not redesigned or claimed implemented beyond its due-date engine                                           |
+Not kept here. Every amendment to this constitution is recorded as an **Approved** entry in [DECISIONS.md](DECISIONS.md), which is the durable record of what changed and why. Withdrawn wording is **removed** from the sections above rather than preserved beside an explanation of its supersession, so current law can be read without reconstructing a supersession chain.

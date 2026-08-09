@@ -1,14 +1,23 @@
 # AI constitution
 
-Governs **all** AI behaviour in the AI Communication Action Assistant: summarization, relevance filtering, recommendations, transcription structuring, completion structuring, and learning-rule proposals.
+Governs **all** AI behaviour in **Rocket Communicator**: interpretation of Owner input, summarization, relevance filtering, recommendations, transcription structuring, completion structuring, and learning-rule proposals.
 
-Subordinate to [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md). Complements [PRODUCT_SCOPE.md](PRODUCT_SCOPE.md), [ARCHITECTURE.md](ARCHITECTURE.md), and [WORKFLOWS.md](WORKFLOWS.md).
+**Rank 2 authority (D158):** subordinate to [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md), superior to domain contracts for AI behaviour. Complements [ARCHITECTURE.md](ARCHITECTURE.md) and [WORKFLOWS.md](WORKFLOWS.md).
 
 ---
 
 ## Purpose of AI in this product
 
 AI extracts **operational meaning** into strict structured, point-form outputs and **recommends** next steps. AI does not own business decisions. Deterministic application rules own the **Follow-up Engine**, **Event Notification Engine**, retention, and state transitions after human approval gates (D027, D102–D110).
+
+## Manual capture is AI-first (D154)
+
+**AI proposes. The Owner decides.** Owner typed or dictated input is intended to reach **interpretation before a canonical Task exists**.
+
+- **One natural-language input may produce zero, one, or multiple independent proposed Tasks.** AI must not force one utterance into exactly one Task, and must not merge unrelated intents to keep the count at one.
+- **The first-pass interpretation is context-free.** It must not inject prior Owner preferences, prior Owner edits, assignment history, or previously created Tasks. Interpretation quality comes from the input and the output contract, not from the Owner's history.
+- **Proposals are proposals.** The Owner reviews them and decides **Keep for me** or **Assign**; only that Owner act creates canonical work (D008, D038).
+- **Nothing here authorizes implementation**, and the shipped direct Owner capture path remains **current implementation** rather than the target architecture (D154).
 
 ## AI must NEVER
 
@@ -67,7 +76,21 @@ The four operational data classes are distinct and defined in [GLOSSARY.md](GLOS
 - **AI recommendations must remain distinguishable from human-approved decisions** and must never become authoritative business facts.
 - **Learning signals must never rewrite audit history.**
 
-No learning signals are captured today. Capture remains **A14**; P1 and A8 create no learning tables (D110, D113).
+### Observation now, personalization later (D155)
+
+**Observation and adaptation are separate.** Recording evidence is authorized; changing behaviour from it is not.
+
+**Rocket may record learning evidence now:** the initial AI proposal, the Owner's edits, the final approved version, whether the Task was kept or assigned, and the recipient when assigned.
+
+**Recorded evidence is dormant.** It must **not**:
+
+- alter prompts,
+- personalize the first-pass interpretation (which stays context-free — D154),
+- auto-assign,
+- silently modify any behaviour,
+- or train the model online.
+
+**Personalization is deferred** and requires its own approved product decision. Evidence recording is **no longer deferred to A14**; A14 remains the home of personalization and rule proposal, not of the evidence's existence. Minimization still applies — no raw message bodies ([DATA_RETENTION.md](DATA_RETENTION.md)).
 
 ## Learning ladder
 
@@ -89,7 +112,7 @@ Approved autonomous behaviour
 
 | Stage                             | Meaning                                                                  | Version-one expectation                                       |
 | --------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------- |
-| **Observe**                       | Record anonymized signals from corrections, dismissals, merges, outcomes | In scope (A14)                                                |
+| **Observe**                       | Record anonymized signals from corrections, dismissals, merges, outcomes | **Authorized now**, dormant (D155); personalization deferred  |
 | **Suggest**                       | Create task suggestions and structured drafts for human review           | In scope                                                      |
 | **Recommend**                     | Propose assignee, priority, a due date, or workflow rules                | In scope                                                      |
 | **Approval**                      | Human accepts, edits, or rejects before side effects                     | Required for all consequential actions                        |

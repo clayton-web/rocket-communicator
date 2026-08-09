@@ -33,19 +33,11 @@ JavaScript output would add tooling without adding capability. It therefore decl
 `build`, `lint`, or `test` script and does not need to be named in the root workspace
 scripts; its correctness is asserted from `apps/web`, which is its only consumer.
 
-## No-op extraction (P1.4)
-
-Every value was introduced equal to the literal it replaced at commit `34d048e7`, so P1.4
-changed no rendered pixel through tokenization. Radius is `0` and motion is `none`
-because the shipped interface is square and static — recording the current value is what
-makes a future change traceable. `apps/web/__tests__/p1-4-tokens.test.ts` pins each value
-and additionally proves that every `var(--aicaa-*)` referenced anywhere in `apps/web` CSS
-resolves to a token defined here, so a typo cannot silently drop a declaration.
-
 ## Cross-platform reality (D116)
 
-A9 can inherit **product and presentation rules**, **semantic token values**, and
-**contract enums**. It cannot inherit React components, TypeScript formatter
-implementations, or browser interaction code. Android parity is therefore achieved by
-re-implementing documented rules against these values. **No Kotlin or cross-platform
-token generation exists or is authorized during P1.**
+Native clients may inherit **product and presentation rules**, **semantic token values**,
+and **contract enums**. They cannot inherit React components, TypeScript formatter
+implementations, or browser interaction code. Android parity is achieved by
+re-implementing documented rules against these values. No Kotlin or cross-platform
+token generation is authorized by D116. `apps/web/__tests__/p1-4-tokens.test.ts` pins
+token values and proves every `var(--aicaa-*)` reference in `apps/web` CSS resolves.

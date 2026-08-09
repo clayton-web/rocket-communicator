@@ -1,7 +1,7 @@
 # Rocket Communicator — Brand Guide
 
 **Status:** Documentation guidance only.  
-**Authority:** Complements [docs/P2_0_OWNER_EXPERIENCE_FOUNDATION.md](docs/P2_0_OWNER_EXPERIENCE_FOUNDATION.md) (Product Constitution) and [docs/PRODUCT_SCOPE.md](docs/PRODUCT_SCOPE.md). Does **not** amend Decisions, OpenAPI, or milestones.  
+**Authority:** Below authority. Subordinate to [docs/PROJECT_CONSTITUTION.md](docs/PROJECT_CONSTITUTION.md). Describes current brand, voice, and application surfaces; does **not** define product architecture and does **not** amend Decisions, OpenAPI, or milestones.  
 **Source material:** Adapted from a sibling Rocket product brand note used as **reference only**. That source’s inspection workflows, tenant/report language, dark/red palette, and implementation prompts are **not** approved for this product.
 
 ---
@@ -12,15 +12,15 @@
 | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Guidance, not redesign authority        | This file describes identity, voice, and visual _policy_. It does **not** authorize restyling Android, web, tokens, or components.                                                                                                                                                                                                          |
 | Application changes need their own gate | UI, token, or copy changes require separate roadmap authorization (Decision and/or milestone slice).                                                                                                                                                                                                                                        |
-| Next formal product gate                | **Owner Acceptance Week** (D142), after physical-device verification of the A9 Android surface.                                                                                                                                                                                                                                             |
+| Owner Acceptance Week                   | **Deferred — must not be executed** (**D159**). D142 still defines the gate; sequencing and exit criteria: [docs/MILESTONES.md](docs/MILESTONES.md).                                                                                                                                                                                        |
 | After OAW                               | **P2.2 — Remove Friction** (D143). Nothing after OAW is authorized without a separate decision.                                                                                                                                                                                                                                             |
-| P2.2a — People (planning)               | Planned first slice inside P2.2 after OAW + Owner Go (**D151**). Canonical: [docs/P2_2A_PEOPLE.md](docs/P2_2A_PEOPLE.md). **Planning only — does not authorize implementation** and does not move the next execution gate past OAW.                                                                                                         |
+| P2.2a — People (planning)               | Planned first slice inside P2.2 (**D151** / MILESTONES). **Planning only — does not authorize implementation.**                                                                                                                                                                                                                             |
 | People filter (Task list)               | Approved future shape under P2.2a: keep recency (`updatedAt` DESC, `id` DESC); Android-first **People** filter **Everyone / Me / individual Recipients**; server-side so cursor pagination stays truthful; display names primary; Android local remember of last filter; no Task sorting, search, Recipient pages, or server prefs in P2.2. |
-| Naming                                  | Brand language in this guide uses **Rocket Communicator** / **Rocket**. The repository’s formal product-name Decision (**D120**) remains **Open**. Until D120 closes, do not rename contracts, package titles, or store listings from this file alone.                                                                                      |
+| Naming                                  | The product is **Rocket Communicator** / **Rocket** (**D153**; D120 closed). Shipped artifacts — package namespace, application id, OpenAPI `info.title`, web copy — still carry the original working name as **repository provenance**; renaming them is separately authorized implementation work and is not authorized by this file.     |
 
 Label certainty honestly:
 
-- **Approved** — established by shipped tokens, Decisions, or Product Constitution.
+- **Approved** — established by shipped tokens, Decisions, or [docs/PROJECT_CONSTITUTION.md](docs/PROJECT_CONSTITUTION.md).
 - **Provisional** — matches current UI practice but is not a locked brand system.
 - **Future exploration** — may be considered later; not approved.
 - **Requires product approval** — must not be treated as decided.
@@ -37,12 +37,12 @@ Rocket exists so the Owner can **capture, organize, assign, and follow through**
 
 ## Product positioning
 
-| Principle              | Statement                                                                                                                                                  |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Android is the product | The Owner’s primary instrument is the Android app.                                                                                                         |
-| Web role               | Administration, review, debugging, and fallback — not the intended day-to-day Owner surface.                                                               |
-| What Rocket does       | Remembers what must happen next.                                                                                                                           |
-| What Rocket is not     | Not a replacement for Gmail, Messages, or Phone. Not a conventional task manager, calendar manager, inbox replacement, or permanent communication archive. |
+| Principle          | Statement                                                                                                                                                                            |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Primary surface    | The Owner’s primary instrument is the native mobile client; Android is the one that ships today. Product architecture: [docs/PROJECT_CONSTITUTION.md](docs/PROJECT_CONSTITUTION.md). |
+| Web role           | Administration, review, debugging, and fallback — not the intended day-to-day Owner surface.                                                                                         |
+| What Rocket does   | Remembers what must happen next.                                                                                                                                                     |
+| What Rocket is not | Not a replacement for Gmail, Messages, or Phone. Not a conventional task manager, calendar manager, inbox replacement, or permanent communication archive.                           |
 
 Core feeling: **dependable instrument, not theatre.**  
 Avoid inspection-field or “mission control for property work” metaphors. This product is about ordinary follow-through, not site inspections or printable reports.
@@ -128,9 +128,9 @@ Avoid inspection-field or “mission control for property work” metaphors. Thi
 
 | Item                         | Status                    | Guidance                                                                                                                                                             |
 | ---------------------------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Full name (brand voice)      | Provisional pending D120  | **Rocket Communicator**                                                                                                                                              |
-| Short reference              | Provisional pending D120  | **Rocket** when the product is already clear in context                                                                                                              |
-| Formal repo / contract title | Approved current          | **AI Communication Action Assistant** until D120 closes                                                                                                              |
+| Full name (brand voice)      | Approved (D153)           | **Rocket Communicator**                                                                                                                                              |
+| Short reference              | Approved (D153)           | **Rocket** when the product is already clear in context                                                                                                              |
+| Formal repo / contract title | Current implementation    | **AI Communication Action Assistant** — provenance only, pending an authorized rename slice                                                                          |
 | Logo / wordmark / icon set   | Requires product approval | No approved Communicator logo pack is defined in-repo. Do not import inspection logos, report marks, tenant branding, or flame-clearspace rules from other products. |
 | Asset paths                  | Future exploration        | Any future assets would need an approved location and Decision; do not invent `/public/brand/…` as authorized.                                                       |
 
@@ -200,8 +200,9 @@ Guidance for tone and behavior. **Not** a component library and **not** a redesi
 
 ### Task capture
 
+- **Presentation target (D154):** AI-first interpretation → proposal review → Owner decision (**Keep for me** / **Assign**). Brand surfaces that story; they do not invent the workflow.
+- **Interim current UI (D154):** direct Save → `POST /api/v1/tasks` remains shipped on Android/web until the AI-first path is authorized. Do not brand the interim path as the permanent Rocket experience.
 - Fastest path from the shell to “what must happen next.”
-- One primary field; one clear Save.
 - Success only after server confirmation.
 - Unassigned create = Owner work. Do not force assign on capture.
 
@@ -211,7 +212,7 @@ Guidance for tone and behavior. **Not** a component library and **not** a redesi
 - Show status and ownership (Owner work vs assigned) in plain language.
 - Prefer Recipient **display name** as the primary human identifier; show email as secondary (e.g. name on the first line, email on the second).
 - Avoid inventing filters or sorts in the client that lie across paginated pages.
-- **People** filter (Everyone / Me / individual Recipients), when built under planned **P2.2a** after OAW, must be server-side and Android-first; changing the filter resets pagination ([P2_2A_PEOPLE.md](docs/P2_2A_PEOPLE.md), D151).
+- **People** filter (Everyone / Me / individual Recipients), when built under planned **P2.2a** after OAW, must be server-side and Android-first; changing the filter resets pagination (**D151**).
 
 ### Reduce decisions
 
@@ -256,12 +257,7 @@ Guidance for tone and behavior. **Not** a component library and **not** a redesi
 
 ## Roadmap reminder (brand work does not move gates)
 
-```text
-physical-device verification → Owner Acceptance Week → P2.2 Remove Friction
-                                                      └─ planned first slice: P2.2a People (docs only until authorized)
-```
-
-Stage 12 / further delivery enablement remain separately authorized and are outside this guide.
+Sequencing lives in [docs/MILESTONES.md](docs/MILESTONES.md), not here. Owner Acceptance Week is deferred (D159); A8 operational enablement remains separately authorized and is outside this guide.
 
 ---
 
@@ -270,6 +266,6 @@ Stage 12 / further delivery enablement remain separately authorized and are outs
 - An authorization to restyle the app to match another Rocket product.
 - A vehicle for tenant, personal, or organization-specific marketing copy.
 - An embedded implementation prompt that edits tokens or UI without a Decision.
-- A silent closure of **D120** (product name) or any other Open Decision.
+- A silent closure of any Open Decision, or a rename of shipped artifacts without its own authorized slice.
 
 When in doubt: keep the interface calm, truthful, and simple — and leave visual invention for an authorized slice.

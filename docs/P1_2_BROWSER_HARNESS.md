@@ -1,11 +1,11 @@
 # P1.2 — Browser Verification Harness
 
-Deterministic browser coverage for the **current** Owner and Recipient journeys, captured before
-any P1.3–P1.5 experience change (D119). This harness is verification infrastructure: it does not
-redesign the application, change business rules, or optimize the journeys it measures.
+Deterministic browser coverage for the **current** Owner and Recipient journeys (D119). This harness
+is verification infrastructure: it does not redesign the application, change business rules, or
+optimize the journeys it measures.
 
-Related: [MILESTONES](MILESTONES.md) · [P1_1_BASELINE](P1_1_BASELINE.md) ·
-[ARCHITECTURE](ARCHITECTURE.md) · [SECURITY_AND_PRIVACY](SECURITY_AND_PRIVACY.md)
+Related: [MILESTONES](MILESTONES.md) · [ARCHITECTURE](ARCHITECTURE.md) ·
+[SECURITY_AND_PRIVACY](SECURITY_AND_PRIVACY.md)
 
 ---
 
@@ -330,7 +330,7 @@ legitimately renders the layout again, so a navigation-level count could not iso
 request D119 budgets. It sets `trace`, `screenshot`, and `video` to `off` because it opens a
 capability link (§ artifact safety).
 
-No screenshot baselines were added. Evidence: [P1_4_EVIDENCE.md](P1_4_EVIDENCE.md).
+No screenshot baselines were added.
 
 Experience states distinguished by browser assertions: **unauthorized**, **not found**,
 **conflict (412)**, **precondition required (428)**, **ambiguous transport outcome**, and
@@ -373,8 +373,8 @@ Assertions distinguish the two classes explicitly:
   `"/c/[token]"` — never a raw Task id where a template is required, and never a raw capability path;
 - the log is truncated by global setup, so a match cannot come from a previous run.
 
-**Level and failure classification are separate axes, and the wording matters.** Per
-[P1_1_BASELINE](P1_1_BASELINE.md) §6, a domain 4xx thrown inside a route runner emits exactly one
+**Level and failure classification are separate axes, and the wording matters.** A domain 4xx
+thrown inside a route runner emits exactly one
 `operation_timing` at **`level: "error"`** with `outcome: "error"`, and **zero** `operational_failure`
 records. The error level describes the request outcome; the _absence_ of `operational_failure` is what
 marks it as an expected client outcome rather than something operationally broken. Saying "it is not an
@@ -407,8 +407,7 @@ Recorded truthfully rather than claimed as coverage.
    > `apps/web/e2e/specs/p1-5-handoff-confirmation-journey.spec.ts`, which drives the rendered
    > confirmation dialog and stubs only the outbound handoff mutation at the network boundary.
    > What remains uncovered at browser level is Gmail **delivery** itself — and the
-   > ambiguous-retry branch named above — not the Owner-facing confirmation
-   > ([P1_5_EVIDENCE.md](P1_5_EVIDENCE.md) §11).
+   > ambiguous-retry branch named above — not the Owner-facing confirmation.
 
 3. **The transient loading state has no browser-level evidence, for a structural reason rather
    than by omission.** P1.3 added route loading boundaries for `/tasks` and `/tasks/{taskId}`, but
@@ -426,138 +425,42 @@ Recorded truthfully rather than claimed as coverage.
    and that no loading file was added to `/c/{token}`. All existing browser journeys still pass
    with the boundaries in place, which is what confirms they do not disturb final state. A
    production-build harness run would make browser-level observation deterministic; that belongs
-   with P1.5 production validation.
+   with a production-build harness if browser-level observation is later required.
 
 4. **The empty Task-list state has no browser-level evidence, by design rather than by omission.**
    The Task list is scoped by `organizationId` only, and that value comes from the
    `OWNER_ORGANIZATION_ID` environment variable, so a single running server has exactly one
    organization. Both viewport projects share one server and one disposable database, so a browser
    test could only observe an empty list by depending on global database emptiness — which makes the
-   result depend on spec order, on project order, and on whether fixtures ran first. An earlier
-   version of this harness did exactly that, with a filename ordered to sort first and a runtime skip
-   when Tasks already existed; that is shared-state contamination masquerading as coverage, and it was
-   removed.
+   result depend on spec order, on project order, and on whether fixtures ran first. The empty state
+   is asserted where it is deterministic — `owner-tasks-pages.test.tsx` with `items: []`.
 
-   A dedicated empty organization would need a second application server (a second `next dev` cannot
-   share the same `.next` directory), which is disproportionate for one assertion. The empty state is
-   therefore asserted where it is genuinely deterministic — `owner-tasks-pages.test.tsx` renders the
-   page with `items: []` and asserts the `role="status"` "No Tasks yet." text, zero list items, and
-   the absence of the failure text. When P1.4/P1.5 introduce loading and error boundaries, a dedicated
-   empty-scope environment is the right way to add browser-level evidence.
-
-5. **No automated accessibility rule engine.** P1.2 verifies basic properties only; adding an axe
-   dependency was deliberately avoided as unauthorized scope. — **Delivered in P1.5:**
-   `@axe-core/playwright` was added as a test-only dev dependency and the D119 gate now runs 28
-   scans at 0 serious / 0 critical ([P1_5_EVIDENCE.md](P1_5_EVIDENCE.md) §3).
+5. **Accessibility rule engine.** `@axe-core/playwright` is a test-only dependency; the D119 gate
+   runs scans at 0 serious / 0 critical.
 6. **Evidence is local only, on macOS, and outside CI.** Nothing in this harness produces preview or
-   production evidence, and no CI job runs it. — **Production validation against the P1.1 baseline
-   was completed in P1.5** (D119), separately from this harness
-   ([P1_5_EVIDENCE.md](P1_5_EVIDENCE.md) §3).
-7. **Capability response `Cache-Control` cannot be proven in local development.** See findings below.
-   The invariant is proven where it is constructed, by `apps/web/__tests__/proxy.test.ts`.
+   production evidence, and no CI job runs it. Production validation was completed separately (D119).
+7. **Capability response `Cache-Control` cannot be proven in local development.** The invariant is
+   proven where it is constructed, by `apps/web/__tests__/proxy.test.ts`.
 
 ---
 
-## 10. Findings for later P1 slices
+## 10. Extending the harness
 
-Observed while capturing evidence. **Not fixed here** — P1.2 must not implement P1.3–P1.5 work.
+- Run `pnpm --filter @aicaa/web e2e` before and after experience changes.
+- Extend under `e2e/specs/`; reuse `support/fixtures.ts`, `support/owner-api.ts`, and
+  `support/capability-fixture.ts` — do not fork a second harness.
+- Specs touching `/c/{token}` must disable trace and screenshot capture and must never pass a raw
+  token to a matcher.
+- Never add a skip that depends on database contents.
+- Prefer roles, labels, and headings over `data-testid`.
+- Capability `Cache-Control` construction is proven by `apps/web/__tests__/proxy.test.ts`; local
+  `next dev` document responses may omit some directives — do not treat that as an application
+  defect.
+- Gmail **delivery** remains outside this harness by policy; handoff confirmation may be stubbed at
+  the network boundary.
 
-1. **Capability page `Cache-Control` cannot be verified from local development.** `proxy.ts` sets
-   `private, no-store, no-cache, must-revalidate` on `/c/*`, and that construction is already proven by
-   a unit test (`apps/web/__tests__/proxy.test.ts`). The **HTML document response** observed in the
-   browser against the dev server is `no-cache, must-revalidate` — `private` and `no-store` absent —
-   because the dev server normalises the document response. `Referrer-Policy: no-referrer` and
-   `X-Robots-Tag: noindex, nofollow, noarchive` survive intact and **are** asserted strictly in the
-   browser.
+## 11. Status
 
-   No application change was made: the invariant is not violated in the code, and local development
-   cannot establish production caching posture either way. The browser assertion is deliberately
-   recorded as **local-dev behaviour only** (`/no-store|no-cache/`), the structural proof stays in the
-   proxy unit test, and confirmation against a production build or preview is a **later gap**, not a
-   claim made here.
-
-2. **The raw capability token appears in the RSC flight payload — expected transport, not a policy
-   violation.** D114 prohibits capability tokens in **client telemetry, analytics, error reporting, and
-   logging**; it does not prohibit the page from receiving the secret it was addressed with. The token
-   is already in the address bar, and the Recipient panel needs it to call the capability API, so the
-   payload carries no secret the client does not already hold. It is _not_ normalised silently, though:
-   it is precisely why no trace, screenshot, or HTML snapshot of `/c/{token}` is retained, and why an
-   assertion must never compare against the token itself.
-
-   The broader question — whether a URL-borne secret should be exchanged for a short-lived presentation
-   token, given browser history, referrers, and screen sharing — is real but **out of scope here**;
-   referrer and indexing exposure are already mitigated by the headers above. It belongs to a future
-   decision, not to P1.2.
-
-3. **The framework's own request logger prints raw capability URLs.** The application's structured
-   diagnostics are clean (route templates only), but the dev-server request line contains the token.
-   The harness redacts its own capture; **platform request logs in production deserve the same
-   scrutiny**, since a hosting provider's access log would record `/c/{token}`.
-4. **The Owner UI exposes no non-Gmail mutation control.** Task detail offers only the handoff panel,
-   so notes and completion are reachable only via the API. The representative Owner mutation is
-   therefore driven through the authenticated HTTP surface and verified in the UI. Relevant to P1.4.
-5. **No loading state on any route.** Navigation shows the previous view until the server responds.
-   **Addressed in P1.3** for `/tasks` and `/tasks/{taskId}`; `/c/{token}` was **delivered in P1.5**
-   (commit `d0fea4a`).
-6. **No `data-testid` anywhere**, and none was added. Roles, labels, and headings were sufficient —
-   worth preserving in P1.5.
-7. **Duplicate Owner authentication per page request** remains observable in timing diagnostics
-   (`owner_authentication` on each Owner page load), consistent with the known P1.3 deduplication item.
-   **Addressed in P1.3:** the proxy now performs cookie maintenance only, leaving one server-verified
-   `getUser()` per Owner request ([P1_3_EVIDENCE.md](P1_3_EVIDENCE.md) §1).
-
----
-
-## 11. How P1.3–P1.5 should reuse this harness
-
-- **Run it before and after every change.** `pnpm --filter @aicaa/web e2e` is the regression net for
-  visual, shell, and boundary refactors.
-- **Extend, do not fork.** Add specs under `e2e/specs/`; reuse `support/fixtures.ts`,
-  `support/owner-api.ts`, and `support/capability-fixture.ts`.
-- **Keep the capability rules.** Any new spec touching `/c/{token}` must disable trace and screenshot
-  capture, and must never pass a raw token to a matcher. Structural tests enforce both and will fail if
-  a spec forgets.
-- **Never add a skip that depends on database contents.** A structural test rejects it. If a state can
-  only be observed by controlling global data, give it its own scope rather than a conditional skip.
-- **P1.4 (shell/navigation):** assert the current journeys still pass, then extend
-  `accessibility-basics.spec.ts` for landmarks and focus order.
-- **P1.5 (accessibility, boundaries, connectivity, production validation):** add loading-state and
-  error-boundary assertions once those states exist, and add an engine to the project list if
-  cross-browser coverage is authorized.
-
----
-
-## 12. Status
-
-P1.2 is **implemented, pending review**, and executable locally only.
-
-Counted truthfully rather than as a headline:
-
-| Measure                                         | Count                                                   |
-| ----------------------------------------------- | ------------------------------------------------------- |
-| Browser cases discovered                        | 58 (29 per viewport project)                            |
-| Browser cases executed                          | 50                                                      |
-| Intentional static project exclusions           | 8 (transport, correlation, and sweep contracts, mobile) |
-| Runtime skips depending on data                 | 0                                                       |
-| Structural unit assertions guarding the harness | 22                                                      |
-
-These are **not** 58 independent behavioural contracts: the 8 exclusions are the same server-side
-contracts already executed on desktop, deliberately not cloned across viewports.
-
-Counts include the one desktop-only case P1.3 added (`p1-3-transport-failure.spec.ts`); the
-original P1.2 figures were 56 / 49 / 7.
-
-Evidence is **local, macOS, Chromium-only, and outside CI**. No preview or production evidence is
-claimed, and WebKit is **unexecuted** rather than passing or failing.
-
-> **Status update (P1 closeout).** The two statements above about _this harness_ remain accurate.
-> The two P1-wide claims have since been overtaken: **D119 is now satisfied** and **P1 is
-> complete**. P1.5 added the automated accessibility gate and completed production validation
-> ([P1_5_EVIDENCE.md](P1_5_EVIDENCE.md)).
->
-> **Handoff-confirmation coverage was subsequently added**, in the D119 closure remediation, as
-> `apps/web/e2e/specs/p1-5-handoff-confirmation-journey.spec.ts`. An earlier revision of this
-> note said that coverage was still absent and simultaneously called D119 satisfied; that
-> contradiction is what the first closure audit caught, and it was resolved by adding the
-> coverage rather than by softening the claim ([P1_5_EVIDENCE.md](P1_5_EVIDENCE.md) §11). Gmail
-> **delivery** remains outside this harness by policy.
+P1.2 (and P1 overall) is **complete**. This harness remains **executable locally only**
+(macOS / Chromium; outside CI). WebKit is unexecuted. D119's accessibility and production-validation
+obligations were satisfied outside the historical P1.2-only counts.

@@ -1,6 +1,6 @@
 # Glossary
 
-Canonical definitions. Other documents use these meanings; they do not redefine them.
+Canonical vocabulary. Other documents use these meanings; they do not redefine them. Below authority: definitions describe the rules, they do not create them.
 
 ---
 
@@ -12,7 +12,7 @@ In version one: the **Owner** only. There is no second application login.
 
 ### Owner
 
-The single authenticated application user. Signs in with Google Workspace via Supabase Auth. Primary interface: Android. Approves suggestions, assignments/forwards, Task due dates that drive reminders (D102), and durable learning (D054). Receives **Event Notifications** (D099).
+The single authenticated application user. Signs in with Google Workspace via Supabase Auth. Mobile is the primary product experience; Android is the first native client (D153). Approves suggestions, assignments/forwards, Task due dates that drive reminders (D102), and durable learning (D054). Receives **Event Notifications** (D099).
 
 ### Recipient
 
@@ -60,7 +60,7 @@ Approved actionable work with status, summary, assignment attribute, optional **
 
 ### Assignment
 
-Persisted binding of a Task to a Recipient (and intended email), including allowed Recipient actions for that handoff. Assignment is an **attribute of the Task**, not a Task status ([STATE_MACHINE.md](STATE_MACHINE.md)). A Task may have historical assignment rows over time; at most one assignment is active. Delivery outcomes: `pending` / `sent` / `failed` (D092). Activate only after Gmail accepts send.
+Persisted binding of a Task to a Recipient (and intended email), including allowed Recipient actions for that handoff. Assignment is an **attribute of the Task**, not a Task status ([ARCHITECTURE.md](ARCHITECTURE.md) § Domain state model). A Task may have historical assignment rows over time; at most one assignment is active. Delivery outcomes: `pending` / `sent` / `failed` (D092). Activate only after Gmail accepts send.
 
 For Gmail-origin and non-Gmail handoffs, approval of assignment and outbound mail is one confirmation (D037). A6 does not create Assignments (D080). **Reminder Schedules** are Task-scoped and owned by A8 (D089, D104).
 
@@ -68,7 +68,7 @@ Assignment ≠ Capability: assignment records who should receive work and which 
 
 ### Active Assignment
 
-An Assignment that is the current binding for the Task (`cleared_at` unset / not returned) and has not been superseded by reassignment. See [STATE_MACHINE.md](STATE_MACHINE.md).
+An Assignment that is the current binding for the Task (`cleared_at` unset / not returned) and has not been superseded by reassignment. See [ARCHITECTURE.md](ARCHITECTURE.md) § Domain state model.
 
 ### Follow-up eligible Assignment
 
@@ -120,7 +120,7 @@ Optional Owner-selected **organization-local calendar date** on a Task. When pre
 
 ### Reminder Schedule
 
-The **Task-scoped** scheduling state derived from a Task's due date: at most one per Task, surviving reassignment, carrying the current **generation**, status, advance-occurrence disposition, next overdue occurrence, per-generation overdue delivered count, and `requiresOwnerAttention` (D104, D109). Supersedes the Assignment-scoped Follow-up Schedule (D096). **Maintained and processable, but never delivered:** the Owner reminder APIs create and change a schedule (A8.3b), the Task-lifecycle wiring suspends, resumes, and stops one as the Task moves (D107), A8.4a scans, claims, guards, and finalizes occurrences, and A8.4b.1 adds a real Gmail transport for **overdue** occurrences. Delivery is disabled by default and enabled nowhere — with the flag unset no transport is constructed at all — no cron job invokes anything, and no A8 migration is applied in Production. Nothing has been sent.
+The **Task-scoped** scheduling state derived from a Task's due date: at most one per Task, surviving reassignment, carrying the current **generation**, status, advance-occurrence disposition, next overdue occurrence, per-generation overdue delivered count, and `requiresOwnerAttention` (D104, D109). Supersedes the Assignment-scoped Follow-up Schedule (D096). **Maintained and processable, but never delivered:** Owner reminder APIs, lifecycle wiring, occurrence processing, and the overdue Gmail transport exist; A8 migrations are applied. Delivery and enablement remain controlled separately — with the flag unset no transport is constructed, no cron job invokes the worker, and nothing has been sent.
 
 ### Reminder occurrence
 
@@ -196,14 +196,6 @@ Replaceable integration layer for hosting, scheduling, storage, messaging, or cl
 
 Deterministic rules governing occurrence computation, the advance-reminder skip rule, daily overdue recurrence, the overdue ceiling, eligibility, suspension, and stopping (D102–D107). Owned by the application; never by the LLM. The A8.0 Phase 1 preset / Phase 2 interval policy is retired (D095 superseded in part).
 
-### Follow-up Schedule
-
-Superseded term. The operative concept is the Task-scoped **Reminder Schedule** (D104). Historical A8.0 usage meant Assignment-scoped state (D096).
-
-### Follow-up Attempt
-
-Superseded term. The operative concept is the **reminder delivery attempt** (D109). The durable privacy-safe history obligation from D100 carries over unchanged.
-
 ### Event Notification Engine
 
 Event-driven engine that notifies the **Owner** about meaningful domain events (D099). Separate from the Follow-up Engine. Push/FCM delivery remains deferred (D017); A9 concern for Android push. **Product law locked at A8.5.0 (D133–D136); A8.5a implements the intent store and one producer, A8.5b the delivery state machine and its worker, A8.5c the email renderer, destination resolution, real Gmail adapter, and self-ingestion marker, A8.5d the producers for all ten event types plus the durable capability-expiry observation, and A8.5e the two-phase worker that wires capability-expiry capture behind its own flag. Complete and wholly inert: both flags are unset everywhere, so the worker endpoint opens no database connection and constructs no transport, no cron job invokes it, and no Owner notification has been sent. A8.6 and A8.7 remain required.** Its scope is exactly ten canonical event types, its intent is written in the triggering mutation's own transaction rather than derived from the audit log, its destination is resolved at delivery time from the connected `CommunicationAccount`, its delivery policy is one-shot and deliberately declines D129 and D106, and both of its feature flags are unset everywhere. Authoritative rules: [WORKFLOWS.md](WORKFLOWS.md) §10b.
@@ -272,7 +264,7 @@ It is **not** a business record, **not** audit history, and **not** an AI-learni
 
 A purposefully retained representation of a meaningful Owner decision and its outcome, answering **“what decision was made, what alternatives existed, and what happened afterward?”**
 
-Must never rewrite audit history, and must never be inferred from low-level click or usage tracking. **Passive behaviour, inactivity, and the absence of a correction are not approval and are not decisions** (D113). Human corrections outrank passive usage tracking. Capture remains **A14**; P1 and A8 create no learning tables (D110, D113).
+Must never rewrite audit history, and must never be inferred from low-level click or usage tracking. **Passive behaviour, inactivity, and the absence of a correction are not approval and are not decisions** (D113). Human corrections outrank passive usage tracking. **Recording learning evidence is authorized now** and is dormant — it must not personalize, auto-assign, mutate prompts, train online, or otherwise become autonomous without later authorization (D155). Personalization remains deferred. No learning tables exist yet (D110).
 
 ### Recommendation
 
@@ -294,19 +286,15 @@ The requirement that the core Task lifecycle remains fully operational without A
 
 ## Owner web experience (P1)
 
-P1 terms. Scope and authority: D111–D126; slices and criteria: [MILESTONES.md](MILESTONES.md). **P1.1 observability, P1.2 browser harness, and P1.3 request/render reliability are implemented** (P1.2–P1.3 pending architectural review, local evidence only). **P1.4 shell and presentation are complete and production-validated.** Boundary completion, accessibility closure, connectivity feedback, and P1.1 baseline production validation remain **P1.5**.
+P1 is **complete** ([MILESTONES.md](MILESTONES.md)). Scope and authority: D111–D126. Terms below name shipped presentation concepts.
 
 ### Owner Application Shell
 
-The minimum persistent chrome for authenticated Owner routes: consistent navigation, Owner identity context, sign-out access, a `<main>` landmark, and mobile-first layout (D111). It is not a dashboard and adds no business behaviour.
-
-**Implemented in P1.4** as `apps/web/app/(owner)/layout.tsx`. `(owner)` is a Next.js **route group**, so it wraps `/tasks`, `/tasks/{taskId}`, and `/attention` without contributing a URL segment. `/`, `/login`, `/auth/**`, and `/c/{token}` are deliberately outside it. Navigation is exactly three destinations — Tasks, Attention, and sign-out — and the product name is a link rather than an `<h1>`, so each page keeps one page-owned heading. The shell performs no database query and shares the page's single verified identity operation ([P1_4_EVIDENCE.md](P1_4_EVIDENCE.md)).
+The minimum persistent chrome for authenticated Owner routes: consistent navigation, Owner identity context, sign-out access, a `<main>` landmark, and mobile-first layout (D111). It is not a dashboard and adds no business behaviour. Shipped as `apps/web/app/(owner)/layout.tsx` (Next.js route group wrapping `/tasks`, `/tasks/{taskId}`, `/attention`). `/`, `/login`, `/auth/**`, and `/c/{token}` stay outside it. Navigation: Tasks, Attention, sign-out.
 
 ### Owner Attention Surface
 
-The single **generic** Owner-level attention and operational-status destination in the shell, which future authorized features populate (D118). It exists so the future **D108** Owner schedule-status surface can be added without a second shell redesign. It is **not** reminder-specific, and while A8 is unimplemented it must not claim or imply that any automation, schedule, or notification capability exists (D089).
-
-**Implemented in P1.4** at **`/attention`** (D121) and currently, truthfully, **empty**: it reads nothing, holds no queue, shows no count, tracks no schedule, and says so explicitly.
+The Owner-level attention destination in the shell at **`/attention`** (D118, D121). Surfaces schedules needing Owner action and recent failed/suppressed Owner notifications when those records exist ([WORKFLOWS.md](WORKFLOWS.md) §16). With A8 delivery flags unset, both sections are typically empty — emptiness must not be misread as "the surface does not exist."
 
 ### Truthful experience state
 
@@ -314,19 +302,15 @@ One of the seven interface states P1 governs — loading, empty, retryable error
 
 ### Correlation reference
 
-The single identifier shared across the user-visible API error reference, structured server diagnostics, and the audit row where one exists (D115). Operatively this is the request-scoped **`requestId`** (UUID). `correlationId` remains a separate optional parent/trace field and is not collapsed into `requestId`. RSC `error.digest` is a Next.js framework digest and is not this reference. See [P1_1_BASELINE.md](P1_1_BASELINE.md).
+The single identifier shared across the user-visible API error reference, structured server diagnostics, and the audit row where one exists (D115). Operatively this is the request-scoped **`requestId`** (UUID). `correlationId` remains a separate optional parent/trace field and is not collapsed into `requestId`. RSC `error.digest` is a Next.js framework digest and is not this reference.
 
 ### Semantic token
 
-A named design value (colour, type scale, spacing, radius, motion) held in the tokens-only `packages/ui` layer (D116). Tokens are introduced as a **no-op refactor first** — identical values, references swapped — before any value changes. `packages/ui` is **not** a component library, and P1 generates **no** Kotlin tokens.
-
-**Implemented in P1.4** as a single `packages/ui/tokens.css` with **no build step and no `.ts`/`.tsx` file** (D124). Radius `0` and motion `none` are real recorded values describing the current square, static interface — not placeholders. Names are prefixed `--aicaa-*`; a mistyped custom property does not fail loudly, so a test asserts every reference resolves to a defined token.
+A named design value (colour, type scale, spacing, radius, motion) held in the tokens-only `packages/ui` layer (D116, D124). `packages/ui` is **not** a component library. Shipped as `packages/ui/tokens.css` (no build step).
 
 ### Organization-local display
 
-Rendering of dates and timestamps in the configured Owner organization timezone (`America/Vancouver`, D034), never silently using the browser, device, or machine-local timezone (D117). **Presentation only** — D103 remains the sole authority for reminder calendar arithmetic and the 09:00 organization-local occurrence rule.
-
-**Implemented in P1.4** as `OWNER_DISPLAY_TIME_ZONE` in `apps/web/lib/presentation/datetime.ts`, a documented constant rather than a schema field or environment variable (D122). Daylight saving is delegated to `Intl.DateTimeFormat`; every rendered date-**time** carries a zone indicator. **Closed in P1.5:** `/c/{token}` previously rendered Recipient-local timestamps via `toLocaleString()`; it now uses the same deterministic organization-timezone presentation ([P1_5_EVIDENCE.md](P1_5_EVIDENCE.md) §1).
+Rendering of dates and timestamps in the configured Owner organization timezone (`America/Vancouver`, D034), never silently using the browser, device, or machine-local timezone (D117). **Presentation only** — D103 remains the sole authority for reminder calendar arithmetic. Owner and Recipient surfaces use the same deterministic organization-timezone presentation (`OWNER_DISPLAY_TIME_ZONE`).
 
 ---
 
@@ -338,7 +322,7 @@ OpenAPI is the sole HTTP contract source of truth (D007). TypeScript/Kotlin are 
 
 ### State Machine
 
-Persisted statuses and transitions; derived display labels. See [STATE_MACHINE.md](STATE_MACHINE.md).
+Persisted statuses and transitions; derived display labels. See [ARCHITECTURE.md](ARCHITECTURE.md) § Domain state model.
 
 ### Audit Event
 
@@ -346,4 +330,4 @@ Append-only security/workflow record. For capability actions: truthful capabilit
 
 ### Version One / MVP
 
-Ship boundaries in [PRODUCT_SCOPE.md](PRODUCT_SCOPE.md).
+Ship boundaries in [MILESTONES.md](MILESTONES.md).

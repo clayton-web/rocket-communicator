@@ -1,25 +1,10 @@
 # Workflows
 
-End-to-end flows. Terms: [GLOSSARY.md](GLOSSARY.md). Transitions: [STATE_MACHINE.md](STATE_MACHINE.md). AuthZ: [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md). AI: [AI_CONSTITUTION.md](AI_CONSTITUTION.md). Binding A8 product law: **D102–D110 (A8.1)**, which supersede parts of the A8.0 lock (D095–D101). §10a is authoritative for reminder behaviour.
+End-to-end flows. Terms: [GLOSSARY.md](GLOSSARY.md). Transitions: [ARCHITECTURE.md](ARCHITECTURE.md) § Domain state model. AuthZ: [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md). AI: [AI_CONSTITUTION.md](AI_CONSTITUTION.md). Binding A8 product law: **D102–D110 (A8.1)**, which supersede parts of the A8.0 lock (D095–D101). §10a is authoritative for reminder behaviour.
 
-Owner approval is required to create Tasks, Assignments, forwards, and Next-action Suggestions that become Tasks. Recipient capability actions on an already assigned Task use POST after confirm ([STATE_MACHINE.md](STATE_MACHINE.md)).
+Owner approval is required to create Tasks, Assignments, forwards, and Next-action Suggestions that become Tasks. Recipient capability actions on an already assigned Task use POST after confirm ([ARCHITECTURE.md](ARCHITECTURE.md) § Domain state model).
 
-## Implemented through A7
-
-| Workflow                                                  | Section                                   | Status                                                     |
-| --------------------------------------------------------- | ----------------------------------------- | ---------------------------------------------------------- |
-| Recipient handoff (forward or assignment email)           | §2                                        | **Production-operational** (A7 closed)                     |
-| Owner typed task creation and lifecycle                   | (via Owner APIs; partial overlap with §7) | **Production-verified**                                    |
-| Recipient actions via Capability Link                     | §8                                        | **Production-verified**                                    |
-| Waiting (Owner; Recipient waiting)                        | §9                                        | **Production-verified** (Follow-up Engine side effects A8) |
-| Dismissal (Task)                                          | §13                                       | **Production-verified**                                    |
-| Recipient work request → pending Suggestion (persistence) | §8                                        | **Production-verified**                                    |
-| Gmail → Communication Event (no suggestions)              | §1 A5 portion                             | **Production-operational** (A5 closed)                     |
-| Suggestion generation + Owner suggestion HTTP             | §1 A6 / §7 / §12                          | **Production-operational** (A6 closed)                     |
-
-## Implemented and planned workflow map
-
-Workflow §1 (A5 events + A6 suggestions) and §7 / §12 (approve / merge) are **production-operational**. Workflow §2 (Recipient handoff) is **production-operational** as of A7 close: both delivery paths, Recipient capability completion, and Owner-visible notes are production-verified. Reassignment and explicit re-forward within §2 remain deferred ([MILESTONES.md](MILESTONES.md) A7 deferred backlog). §10 Follow-up Engine and Event Notification Engine are **A8** and **not operational**: the due-date-driven reminder model is documentation-locked in **A8.1 (D102–D110)**, its scheduling logic exists (**A8.2**), its persistence schema exists (**A8.3a**), the Owner can now configure a due date and schedule over HTTP (**A8.3b**), Task lifecycle transitions suspend, resume, and stop a schedule in the Task's own transaction, the occurrence-processing foundation exists and is approved (**A8.4a**), a real Gmail transport for **overdue** reminders exists (**A8.4b.1**, complete), and D129's repeated-ambiguity stop is enforced (**A8.4b.2**, awaiting architecture review) — but nothing **sends**: Production is at **`D3` / `F0`** after Gate 4 and Gate 5 — all nine A8 migrations applied and A8.4b–A8.6 code deployed — with every A8 flag absent, so no transport is constructed at all and no A8 cron job exists. **[Gate 6](DEPLOYMENT.md#gate-6--first-controlled-production-enablement-a87c-capture--f0--f1) (first capture enablement) was authorized and partially executed but is incomplete and never became live; Stage 12 / A8.7d / A8.7e remain unauthorized and unbegun.** Each remaining enablement slice awaits its own authorization. §14–§15 and Android capture remain later milestones. §16 Owner web experience states is **P1**, documentation-locked in **P1.0 (D111–D120)** and not implemented; it changes no workflow behaviour and governs presentation and observation only. Sections below retain target behaviour; milestone labels note when each ships.
+Milestone delivery status is owned by [MILESTONES.md](MILESTONES.md). Production flags and schedulers: [DEPLOYMENT.md § Current production state](DEPLOYMENT.md#current-production-state). Reminder and notification engines are **deployed inert** — migrations applied, every A8 flag absent, no send path operational — and each enablement step needs its own authorization.
 
 ---
 
@@ -30,6 +15,16 @@ Workflow §1 (A5 events + A6 suggestions) and §7 / §12 (approve / merge) are *
 3. **A6:** a separate External Scheduler job invokes `POST /api/v1/internal/suggestions/process` (D084). Deterministic heuristic relevance filter first, then LLM extraction via `packages/ai` for events that pass (D085). At most one pending `TaskSuggestion` per event (D081). AI failure creates no fallback suggestion. Retryable provider/schema failures use `failed_retryable` until the claim max-attempt ceiling; permanent only for stable event-specific conditions (for example policy refusal). Global AI misconfiguration must not permanently poison events. Android notify is **not** an A6 acceptance requirement (A9 / D017).
 
 No Task created; no email sent in this workflow.
+
+### 1a. Email interpretation — three categories that must not be blurred (D156)
+
+| Category                                  | Statement                                                                                                                                                                                                                                                                                                                                       |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Current implementation infrastructure** | Exactly what §1 above describes and what is **production-operational today**: scheduled Gmail polling into `CommunicationEvent`, then a separate scheduled Suggestion Engine pass that applies heuristic relevance and LLM extraction to eligible events (D077, D084, D085). This is truthful and is **not** retracted or restated as a target. |
+| **Current product commissioning target**  | A Gmail message reaches a Rocket **intake surface**; the **Owner sees** the message; the Owner **manually** selects **"Review with Rocket"**; AI interpretation runs **only then**. The Owner can **Exclude sender**, and an excluded sender must not be processed by Rocket AI in future. **No permanent inclusion list is required.**         |
+| **Future automatic mode**                 | Non-excluded incoming messages **may** be interpreted automatically. This requires its own approved decision before it becomes product behaviour.                                                                                                                                                                                               |
+
+**Rules for this document.** Do not describe the commissioning target as implemented, do not describe the current implementation as the target, and do not present the future automatic mode as either. An intake surface, an exclusion list, and Owner-initiated review are **not implemented and not authorized** by D156; the operative A6 behaviour remains §1.
 
 ## 2. Recipient handoff — Gmail-origin forward or assignment email (D037) _(A7 — production-operational)_
 
@@ -45,13 +40,19 @@ Applies to an **existing** Owner-owned Task (typically an **unassigned** Task fr
 
 Recipient email from Owner-managed Recipient records only (D087)—not hard-coded and not an env default. Proposed-Recipient hint resolution is **not** in the current handoff request schema and remains deferred.
 
-## 3. Google Messages → Task Suggestion _(planned — A10)_
+## 3. Google Messages → interpretation → proposals _(planned — A10; law: D160)_
 
-1. NotificationListener captures content (dedupe); respect exclusions.
-2. After Owner enables Messages as a source (D043): backend may analyze → `TaskSuggestion`.
-3. Optional SMS draft opened in Google Messages for Owner send (no direct SMS send).
+**Initial model is manual and Owner-initiated** (D160). Continuous automatic SMS monitoring, and automatic backend analysis of incoming Messages content, are **not** the initial model.
 
-Task creation still requires Owner approval.
+1. Owner enables Messages as a source on the device (D043 — enablement, source, and draft-only outbound facts remain operative).
+2. Owner selects or reviews a **recent SMS / conversation**.
+3. Owner chooses **"Review with Rocket"**.
+4. **Shared interpretation** runs only then (D157), producing **zero, one, or several** proposals.
+5. Owner decides; only then does a canonical Task or assignment exist.
+6. A **phone-number exclusion list** is required: an excluded number must never be interpreted by Rocket AI.
+7. Optional SMS draft may open in Google Messages for Owner send (no direct SMS send — D043).
+
+**Future automatic mode** (non-excluded conversations interpreted without a per-message Owner "Review with Rocket") requires its own approved decision — same shape as email (D156). This section does **not** authorize NotificationListener work, an intake surface, an exclusion store, routes, schema, or prompts.
 
 ## 4. Missed call → voice proposal _(planned — A11/A12)_
 
@@ -70,6 +71,8 @@ Record → transcribe → structure → `Task Suggestion` until workflow 7. Voic
 Owner approves (after edits if any) with `acknowledgement: suggestion_approved` → create **unassigned** `Task` (D080); apply excerpt retention per D082. Self/Owner work needs no Recipient and remains unassigned (D094). **Do not** create TaskAssignment, capability, assignment email, Gmail forward, or send any reminder in A6. If `recipientId` is present → HTTP 400 `RECIPIENT_HANDOFF_NOT_AVAILABLE`. Recipient handoff uses workflow 2 (`POST …/handoff`, A7 / D090). Optional `proposedRecipientHint` may map to `proposedRecipientId` only via deterministic match to an active Recipient—never auto-assign (D094). An optional due date on approve is an **explicit Owner selection** and, once A8 is implemented, becomes the authoritative reminder scheduling input (D102, §10a); an AI-proposed due date has no scheduling effect unless the Owner selects it (D027, D102).
 
 Typed Task create (`POST /api/v1/tasks`) creates an unassigned Task for Owner work. Create-with-`recipientId` is **deprecated** and is **rejected** (A7.6): any body owning a top-level `recipientId` (any value) returns `400 RECIPIENT_HANDOFF_NOT_AVAILABLE` before side effects, and `createOwnerTask` only ever creates an unassigned Task (D091)—handoff is the only production Recipient assignment path.
+
+**Direct typed/dictated create is current implementation, not the target (D154).** Manual capture is intended to be **AI-first**: Owner input → context-free interpretation → zero, one, or several proposed Tasks → Owner review → **Keep for me** or **Assign** → canonical Task. That path is **not implemented and not authorized here**, and when it is authorized it must evolve the existing proposal and interpretation path rather than fork it (D157). Until then, the direct create route above is the truthful current behaviour on both web and Android (A9.2 / D149).
 
 ## 8. Recipient actions via Capability Link _(implemented — A4 production-verified)_
 
@@ -93,7 +96,7 @@ Authoritative A8 product rules (D095–D101). Do not duplicate this specificatio
 
 **D129: three consecutive terminal ambiguous overdue outcomes in one generation stop the schedule** with reason `repeated_ambiguous_outcomes` and `requiresOwnerAttention`, derived from reminder history and never from a stored counter. There is no new suspended state — Waiting remains the only pause mechanism (D107) — and no automatic resume; only a material Owner due-date change opens a new generation, and because the derivation is generation-scoped that new generation begins with no ambiguity history of its own. **Enforced as of A8.4b.2**, at the point an occurrence's outcome is applied to its schedule. What is counted is the **final outcome of an occurrence**, not a provider attempt: an occurrence retried three times is one outcome. A confirmed send or a permanent failure **breaks** the run, retry-budget exhaustion included, because it is recorded as a permanent failure and counted as the one it was recorded as. A **skipped occurrence neither counts nor breaks** the run — no provider was contacted, so it is not evidence either way, and a schedule that skips a fortnight between two ambiguous mornings has still seen two consecutive ambiguous deliveries. An occurrence still being retried is invisible until it finishes. The third ambiguous occurrence remains recorded as ambiguous: D129 stops the schedule, it never rewrites what happened to a message. **Advance occurrences do not participate** (A8.4b.3): the run is scoped to overdue outcomes, and a generation holds exactly one advance occurrence, so it could never form a run of three.
 
-**D107's lifecycle rules are enforced.** A Task's status decides whether a due date may carry _active_ scheduling — a completed or dismissed Task refuses a reminder outright, and a Waiting Task's schedule is created directly in `suspended_waiting` with no claimable occurrence ([STATE_MACHINE.md](STATE_MACHINE.md) §Due date) — and, since the A8 lifecycle wiring, a status **transition** moves an existing schedule in the same transaction that commits the status: entering Waiting suspends, leaving Waiting resumes from the next occurrence strictly after the resume instant with no backlog and no new generation, and completion or dismissal stops with a truthful reason. A terminal or Waiting Task therefore cannot hold a claimable occurrence at any committed point, and the A8.4a processing service re-checks the same eligibility immediately before invoking its transport, because a claim proves exclusivity and not eligibility — the Owner may have completed the Task in between. Real delivery is no longer gated on an undecided question — D130 and D129 answered the capability-link envelope and the non-success limit — but it remains **switched off**: A8.4b.1 implements the overdue send, and nothing enables it anywhere.
+**D107's lifecycle rules are enforced.** A Task's status decides whether a due date may carry _active_ scheduling — a completed or dismissed Task refuses a reminder outright, and a Waiting Task's schedule is created directly in `suspended_waiting` with no claimable occurrence (see **Which Task statuses may carry scheduling** below) — and, since the A8 lifecycle wiring, a status **transition** moves an existing schedule in the same transaction that commits the status: entering Waiting suspends, leaving Waiting resumes from the next occurrence strictly after the resume instant with no backlog and no new generation, and completion or dismissal stops with a truthful reason. A terminal or Waiting Task therefore cannot hold a claimable occurrence at any committed point, and the A8.4a processing service re-checks the same eligibility immediately before invoking its transport, because a claim proves exclusivity and not eligibility — the Owner may have completed the Task in between. Real delivery is no longer gated on an undecided question — D130 and D129 answered the capability-link envelope and the non-success limit — but it remains **switched off**: A8.4b.1 implements the overdue send, and nothing enables it anywhere.
 
 **Purpose:** follow through on **delegated** communication work using the Owner-selected Task due date, so communications reach conclusion. This section is the **current A8 Follow-up Engine** specification (due-date-driven Recipient reminders). It is **one** reminder/follow-through mechanism. **Approved product direction (D152):** Owner-controlled Task reminders may additionally exist independently of deadlines; that capability is **not implemented** here and must not be inferred from this section. Escalation ladders and Owner CC ladders remain prohibited.
 
@@ -166,9 +169,42 @@ Authoritative A8 product rules (D095–D101). Do not duplicate this specificatio
 | Permanent delivery failure | **Suspends** further sends for that assignment; raises Owner attention (§10b)                   |
 | Overdue ceiling reached    | **Stops** Recipient reminders; `requiresOwnerAttention`; Owner notified; no automatic restart   |
 
-No separate pause, snooze, delay, or alternate-cadence control is introduced (D101, D107). `completed` and `dismissed` remain terminal; A8 introduces **no** reopening behaviour. Should a reopen path ever be added, it does **not** reactivate a terminally stopped schedule — an explicit Owner re-save is required (D109; decided in [STATE_MACHINE.md](STATE_MACHINE.md)), so a Task reopened long after its due date cannot immediately deliver a backlog for a date already past.
+No separate pause, snooze, delay, or alternate-cadence control is introduced (D101, D107). `completed` and `dismissed` remain terminal; A8 introduces **no** reopening behaviour. Should a reopen path ever be added, it does **not** reactivate a terminally stopped schedule — an explicit Owner re-save of the due date is required (D109), so a Task reopened long after its due date cannot immediately deliver a backlog for a date already past.
 
 Every one of these transitions is applied in the **same transaction** that commits the Task status, so no committed state pairs a terminal or Waiting Task with a claimable occurrence.
+
+#### Which Task statuses may carry scheduling (D107)
+
+Setting a due date and _scheduling reminders from it_ are separable, and the Task's status decides the second. The rule lives in `packages/domain/src/reminders/eligibility.ts` so the Owner API and the worker cannot disagree, and is exhaustive over `TaskStatus`.
+
+| Task status   | `PUT` (establish / change)                                  | Resulting schedule                     | `GET` | `DELETE` |
+| ------------- | ----------------------------------------------------------- | -------------------------------------- | ----- | -------- |
+| `open`        | Allowed                                                     | `active`, with a claimable occurrence  | Yes   | Yes      |
+| `in_progress` | Allowed                                                     | `active`, with a claimable occurrence  | Yes   | Yes      |
+| `waiting`     | Allowed                                                     | `suspended_waiting`, **no** occurrence | Yes   | Yes      |
+| `completed`   | Refused — `409 DOMAIN_CONFLICT`, nothing written or audited | Unchanged                              | Yes   | Yes      |
+| `dismissed`   | Refused — `409 DOMAIN_CONFLICT`, nothing written or audited | Unchanged                              | Yes   | Yes      |
+
+A **Waiting** Task accepts a due-date change because the Owner is planning, not activating: the schedule is created or regenerated directly in `suspended_waiting` with next-occurrence fields cleared, so nothing is claimable while the Task is paused and no backlog accrues. A **completed or dismissed** Task refuses establishment, material change, and reactivation alike. **`GET` and `DELETE` are allowed for every status** — reading is truthful history, and removal can only reduce reminder activity, so refusing it would strand an active schedule with no way to switch it off. A status the policy has no decision for fails **closed**.
+
+The gate is evaluated **twice**: against the status the request read, and again against the Task row **under the transaction's lock**. Only the second is authoritative, which is what keeps a dismissal from racing a reactivation into an active schedule.
+
+#### How a status transition moves an existing schedule
+
+Reminder state is **not** a route-level side effect. Every authoritative Task status transition — Owner and Recipient capability alike — reconciles the schedule inside the same persistence transaction, so there is no window in which a committed status disagrees with its schedule.
+
+| Transition                   | Effect on an `active` schedule                 | On a `suspended_waiting` schedule      | On a `stopped` schedule                  | With no schedule |
+| ---------------------------- | ---------------------------------------------- | -------------------------------------- | ---------------------------------------- | ---------------- |
+| Entering `waiting`           | → `suspended_waiting`, next occurrence cleared | Unchanged (idempotent)                 | Unchanged — never revived or re-labelled | Nothing          |
+| Leaving `waiting` (`resume`) | Unchanged (idempotent)                         | → `active`, next occurrence recomputed | Unchanged                                | Nothing          |
+| `completed`                  | → `stopped`, reason `task_completed`           | → `stopped`, reason `task_completed`   | Unchanged — original reason preserved    | Nothing          |
+| `dismissed`                  | → `stopped`, reason `task_dismissed`           | → `stopped`, reason `task_dismissed`   | Unchanged — original reason preserved    | Nothing          |
+
+**Suspension** clears the claimable next occurrence and preserves generation, advance disposition, and the delivered-overdue count. It never converts a `stopped` schedule into `suspended_waiting`: a schedule stopped because the due date was removed or the Task ended has ended, and re-labelling it as merely paused would make it eligible for a later resume.
+
+**Resume** applies only to a schedule suspended _because of_ Waiting. It preserves generation — a Waiting round trip is not a new Owner decision and does not reset the D106 ceiling — and computes the next occurrence **strictly after** the resume instant, so nothing is replayed. If the preserved delivered count has already reached the ceiling, resume records the schedule as requiring Owner attention rather than manufacturing a fresh occurrence. Any stale claim state is cleared so no worker lease survives the pause.
+
+**Terminal stops** clear all claimable next-occurrence fields, record a stop reason distinguishing completion from dismissal from due-date removal, preserve generation and every delivery attempt, and **do not delete the schedule row** — the history of what was sent must outlive the Task becoming terminal.
 
 #### Attribution, audience, and history (D107, D109)
 
@@ -185,13 +221,13 @@ The application owns the engine: it claims eligible schedules, **rechecks Task, 
 
 Scheduler and delivery code **may** merge behind a **disabled** production feature flag before the Event Notification Engine is finished. **Production reminder delivery must not be enabled until both the Event Notification Engine and the minimum Owner schedule-status UI are operational.** A Task-page status alone is not sufficient: the Owner must not have to inspect Tasks continually to discover that an automation stopped.
 
-#### Out of scope for the initial A8 slice (D110 sequencing; product-authorized by D152)
+#### What this engine is not
 
-Preset reminder choices; Owner-created additional reminders and their routes and UI; recurrence editor; reminder-time picker; arbitrary rules or cron expressions; general calendar manager; separate pause mechanism; Recipient reminder preferences; Android reminder UI; AI-controlled scheduling. **Owner-controlled Task reminders are product-authorized (D152)** — deadline and reminder are separate concepts — but remain **deferred to a separately authorized future implementation slice** and are **not** part of A8's first implementation and are **not** claimed by this section. Existing A8 `TaskReminderSchedule` was built for due-date-driven Recipient follow-through and still needs architecture/design work before multi-reminder support.
+This section specifies the A8 Follow-up Engine and nothing else. **Owner-controlled Task reminders are product-authorized (D152)** — deadline and reminder are separate concepts — but they are **not implemented**, are **not** claimed by this section, and require their own authorized slice: the existing `TaskReminderSchedule` was built for due-date-driven Recipient follow-through and needs architecture and design work before it could carry them. **AI-controlled scheduling is never authorized** (D027, D152).
 
 ### 10b. Event Notification Engine (event-driven)
 
-**Nothing in this section sends.** The taxonomy, destination, delivery policy, and gating below are ratified product law (D133–D136); the engine that implements them is built across A8.5a–A8.5e, and each slice states what is still absent in [MILESTONES.md](MILESTONES.md). **After A8.5e the engine is complete and wholly inert:** all ten producers, the delivery state machine, the real Gmail adapter, the self-ingestion marker, and the wired capability-expiry capture phase exist and are **deployed** (Gate 5); both flags are unset in every environment at **`F0`** — so the worker endpoint opens no database connection and constructs no transport, no cron job invokes it, and no Owner notification has been sent. The A8.5a migration is applied (Gate 4). [Gate 6](DEPLOYMENT.md#gate-6--first-controlled-production-enablement-a87c-capture--f0--f1) (first capture enablement) was authorized and partially executed but is incomplete and never became live; Stage 12 / A8.7d remain unauthorized and unbegun.
+**Nothing in this section sends.** The taxonomy, destination, delivery policy, and gating below are ratified product law (D133–D136); the engine that implements them is built across A8.5a–A8.5e, and each slice states what is still absent in [MILESTONES.md](MILESTONES.md). **After A8.5e the engine is complete and wholly inert:** all ten producers, the delivery state machine, the real Gmail adapter, the self-ingestion marker, and the wired capability-expiry capture phase exist and are **deployed**; both flags are unset in every environment — so the worker endpoint opens no database connection and constructs no transport, no cron job invokes it, and no Owner notification has been sent. The migration is applied. **No enablement has occurred, and each enablement stage awaits its own authorization** ([Current production state](DEPLOYMENT.md#current-production-state)).
 
 **Purpose:** notify the **Owner** about meaningful domain events (D099). Separate from the Follow-up Engine—do not mix via CC/escalation.
 
@@ -293,15 +329,17 @@ Owner dismisses suggestion or Task → terminal dismiss; excerpt purge deadline 
 
 Policy-driven: excerpt purge; completed content scrub; audio already deleted on success path; extract Owner learning before scrub (D054); **do not** delete Gmail mailbox forwards (D031). Details: [DATA_RETENTION.md](DATA_RETENTION.md). Tombstone duration: OPEN #12.
 
-## 15. Learning / rule proposal _(planned — A14)_
+## 15. Learning / rule proposal _(evidence recording authorized — D155; personalization and rule proposal planned — A14)_
 
 Record `LearningSignal`; optionally propose `WorkflowRule`. Apply only on Owner approval (D054). Recipients do not participate. No silent activation in v1. Owner due-date selections and edits—including a recommended due date compared with the Owner-selected due date, and the outcome that followed—are eligible **future** learning signals without storing raw message bodies (D100, D022, D109). A8 creates **no** learning tables and captures no passive usage.
 
-A **structured learning signal** is a purposefully retained Owner decision with the alternatives that existed and what followed (D113). It must never be inferred from operational telemetry, page views, clicks, dwell time, or inactivity, and the **absence of a correction is not approval**. Human corrections outrank passive usage tracking. Neither **P1** nor A8 captures learning signals or creates learning tables (D110, D113). Class definitions: [GLOSSARY.md](GLOSSARY.md); AI boundary: [AI_CONSTITUTION.md](AI_CONSTITUTION.md).
+A **structured learning signal** is a purposefully retained Owner decision with the alternatives that existed and what followed (D113). It must never be inferred from operational telemetry, page views, clicks, dwell time, or inactivity, and the **absence of a correction is not approval**. Human corrections outrank passive usage tracking. Class definitions: [GLOSSARY.md](GLOSSARY.md); AI boundary: [AI_CONSTITUTION.md](AI_CONSTITUTION.md).
 
-## 16. Owner web experience states _(P1; partially implemented — P1.5 remaining)_
+**Observation now, personalization later (D155).** Recording learning evidence is **authorized now** and is no longer deferred to A14: the initial AI proposal, the Owner's edits, the final approved version, whether the Task was kept or assigned, and the recipient when assigned. Recorded evidence is **dormant** — it must not alter prompts, personalize the first-pass interpretation, auto-assign, silently modify behaviour, or train the model online. **Personalization stays deferred** and needs its own approved decision. What A14 owns is personalization and rule proposal, not the existence of the evidence. **No learning tables exist yet:** neither P1 nor A8 created any (D110, D113), and D155 authorizes the recording rule, not a schema, route, or worker.
 
-P1 changes **no** workflow above: no new transition, permission, audit semantic, or business behaviour (D111). It governs how the workflows already implemented are **presented and observed**. P1.1–P1.3 are implemented (P1.2–P1.3 pending architectural review; local evidence only); **P1.4 is complete and production-validated**; comprehensive boundary and connectivity states remain P1.5. Scope and criteria: [MILESTONES.md](MILESTONES.md).
+## 16. Owner web experience states _(P1 — complete)_
+
+P1 changes **no** workflow above: no new transition, permission, audit semantic, or business behaviour (D111). It governs how the workflows already implemented are **presented and observed**. P1 is **complete** ([MILESTONES.md](MILESTONES.md)).
 
 Seven truthful states apply to every current Owner and Recipient surface (D112):
 
@@ -322,9 +360,9 @@ Seven truthful states apply to every current Owner and Recipient surface (D112):
 | **Ambiguous or transport retry**        | Nothing trustworthy — the result never arrived, or arrived unresolved | Retry the **same logical mutation** with the **same `Idempotency-Key`** and the **original `If-Match`**. The server classifies idempotency **before** re-checking preconditions, so a literal replay deliberately carries a now-stale `If-Match` and is replayed rather than rejected. **No "start over with a new key" after a durable attempt** (§2, A7.8) |
 | **Confirmed `412 PRECONDITION_FAILED`** | A definite server answer: the supplied version is stale               | **Refresh authoritative state and re-present it** before the Owner makes or confirms a new attempt. Never silently loop on a known-stale `If-Match`; never show a confirmed stale conflict as success or as merely transient. A fresh attempt is a **new Owner decision**, not a transport retry                                                             |
 
-The Owner shell provides one attention and operational-status destination (D118). P1.4 built it generic and truthfully empty, so the **D108** Owner schedule-status work could populate it without a second shell redesign.
+The Owner shell provides one attention destination (D118). Current contract:
 
-**A8.6a populated its first half.** `/attention` now lists Reminder Schedules flagged `requiresOwnerAttention` — the **cross-Task discovery** step of §10a, and the reason a Task page alone could not satisfy D108. A schedule stops for one of three reasons an Owner must act on:
+**`/attention` — schedules needing Owner action.** Lists Reminder Schedules with `requiresOwnerAttention` (cross-Task discovery for D108 / §10a). Stop reasons and Owner-facing meaning:
 
 | Stop reason                   | What the Owner is told                                                                                                |
 | ----------------------------- | --------------------------------------------------------------------------------------------------------------------- |
@@ -332,11 +370,9 @@ The Owner shell provides one attention and operational-status destination (D118)
 | `permanent_delivery_failure`  | Reminders stopped after a delivery failure; nothing further will be sent                                              |
 | `repeated_ambiguous_outcomes` | Reminders stopped because delivery **could not be confirmed**; the Recipient may or may not have received them (D129) |
 
-The third row is the one worth reading twice. Rocket does not know the reminder was missed — it knows it could not confirm otherwise — and the copy must not collapse that into "not delivered", which would send an Owner to re-send something that may already have arrived.
+Ambiguous stop copy must not collapse into "not delivered". The page is a **read** only; acting means opening the Task.
 
-The page is a **read**: one bounded, organization-scoped query per navigation, no endpoint, no mutation, and no control. It states its own limits — it covers reminder automation only, and it does not monitor, queue, alert, or refresh itself. Acting on what it surfaces means opening the Task.
-
-**A8.6b built the other half: the Task page the Attention item links to.** The reminder panel states the schedule's condition in the same words the list used, and offers the only three actions that are authorized — set a due date, change it, or remove it.
+**Task page — reminder panel.** Same wording as `/attention`. Authorized controls: set, change, or remove a due date only.
 
 | Reminder state      | What the Owner is told                                                                                                           | Controls                                         |
 | ------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
@@ -346,25 +382,10 @@ The page is a **read**: one bounded, organization-scoped query per navigation, n
 | `stopped`           | The specific reason, in the same words `/attention` used, plus what repair is available                                          | Set a new due date to start a new cycle          |
 | `not_scheduled`     | Handled safely; the current write path does not produce it                                                                       | As eligibility allows                            |
 
-There is **no resume control** for a Waiting Task: suspension follows Task state, and a separate control would imply reminders can be un-paused without the Task leaving Waiting. There is **no resend control** anywhere: D129 stopped the schedule deliberately, no resend policy is ratified, and the repair for a stopped schedule is a new due date — which the panel discloses will start a new cycle, reset the overdue count, and recalculate every date before the Owner submits (D104).
+No separate resume control while Waiting; no resend control. Repair for a stopped schedule is a new due date (new cycle, reset overdue count — D104). Saving a due date is configuration, not a claim that mail was sent.
 
-Changing a schedule is **not** sending anything, and the panel never conflates the two. A saved due date is a configuration fact; whether an email left the building is a separate one, and no wording in the panel claims the latter on the strength of the former.
+**Task page — failed/suppressed Owner notifications.** Recent intents that ended `suppressed`, `failed_permanent`, `ambiguous`, or `requires_owner_attention` — not an inbox (no resend, ack, dismiss, or mark-as-read; ≤50 items; leave after 30 days). Badges: **Not sent** vs **Delivery unknown** (must not be flattened). Reminder stops belong in the first section, not here; `reminder.no_active_assignment` appears only here.
 
-**A8.6c added a second section to the same page, answering a different question: what happened recently that Rocket could not tell you about?** A8.5 sends the Owner one email per notable event, so an email that never leaves means an event the Owner may never hear about. This section lists those, and only those — the recent notifications that ended `suppressed`, `failed_permanent`, `ambiguous`, or `requires_owner_attention`.
+D108's minimum Owner UI is the attention list plus the Task reminder panel. Nothing here changes §10a. With A8 flags unset and no cron jobs, both sections are empty in every current environment.
 
-| Badge            | Why it says so                                                                                                                                                         |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Not sent         | Rocket chose not to send (too old to be useful, or no connected mailbox), the attempt was refused permanently, or Rocket gave up after repeated failures — each stated |
-| Delivery unknown | Rocket could not confirm the email was sent; the Owner may have received it, or it may never have arrived                                                              |
-
-Two badges, not four, because two is how many outcomes the Owner can act on differently. "Not sent" is safe to act on; "Delivery unknown" means a duplicate may already be sitting in the Owner's inbox, and flattening the two would make one of those sentences untrue. Why a message was not sent is still shown beneath the badge, because "Rocket decided not to" and "the attempt was refused" are not the same problem and the first two are conditions the Owner can fix.
-
-Each item names the event, when it happened, who caused it — **you**, **the Recipient**, or **Rocket**, never a Recipient's name or address — and links to the Task when there is one to link to. An event whose subject has since been purged still appears, without a link, because a thing Rocket failed to tell the Owner must not also be a thing this page withholds.
-
-**It is not an inbox and offers nothing to do.** There is no resend, no acknowledgement, no dismissal, and no mark-as-read; an item leaves after **30 days** and by no other means, and the section shows at most **50**. Reminder stops appear in the first section and never here, because that section clears when the Owner repairs the schedule while a notification record never does — showing both would keep announcing a stop that was fixed weeks ago. `reminder.no_active_assignment` does appear here, being the one notification no other surface shows.
-
-**D108's minimum Owner UI is implemented across A8.6a and A8.6b, and is satisfied only once that work is architecture-approved.** A8.6c is **not** part of that gate.
-
-Nothing here changes §10a. No reminder and no Owner notification has been sent in any environment, `ENABLE_REMINDER_DELIVERY`, `ENABLE_OWNER_EVENT_CAPTURE`, and `ENABLE_OWNER_EVENT_DELIVERY` are unset, and no cron job exists — so in every current environment both sections of `/attention` are empty and every panel reports a schedule no worker has ever touched.
-
-Owner dates and timestamps render in the organization timezone (`America/Vancouver`, D034), never silently the browser's (D117). This is **presentation only**: §10a and **D103** remain the sole authority for reminder occurrence arithmetic.
+Owner dates and timestamps render in the organization timezone (`America/Vancouver`, D034), never silently the browser's (D117). Presentation only: §10a and **D103** remain the sole authority for reminder occurrence arithmetic.

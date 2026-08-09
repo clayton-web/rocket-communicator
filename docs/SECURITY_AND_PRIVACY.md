@@ -132,5 +132,5 @@ Also audit: suggestion decisions, assignment/forward/handoff approvals and deliv
 - Minimize prompt excerpts; no full attachment binaries to the model in v1.
 - Forwarding after D037 copies attachments into the Recipient mailbox outside application retention (D031). Disclose this boundary in the A7.8 confirmation UI (implemented).
 - A7 must not send knowingly incomplete Gmail-origin forwards (D088).
-- Capability link base URL for A7: `NEXT_PUBLIC_APP_URL` (D094); custom domain does not block A7 (OPEN #13 remains for A15).
+- Capability link base URL for A7: `NEXT_PUBLIC_APP_URL` (D094); custom domain does not block A7 (OPEN #3 remains for A15).
 - Private sideload only in v1 (D019)—no Play Store assumptions.
