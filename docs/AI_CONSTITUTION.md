@@ -1,177 +1,84 @@
 # AI constitution
 
-Governs **all** AI behaviour in **Rocket Communicator**: interpretation of Owner input, summarization, relevance filtering, recommendations, transcription structuring, completion structuring, and learning-rule proposals.
+Governs **all** AI behaviour in **Rocket Communicator**: interpretation of Owner input and communications, summarization, relevance filtering, recommendations, transcription structuring, completion structuring, and learning-rule proposals.
 
-**Rank 2 authority (D158):** subordinate to [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md), superior to domain contracts for AI behaviour. Complements [ARCHITECTURE.md](ARCHITECTURE.md) and [WORKFLOWS.md](WORKFLOWS.md).
+**Rank 2 (D158):** subordinate to [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md), superior to domain contracts on AI behaviour. Owner authority, the canonical product loop, the responsibility model, and the one-canonical-Task rule are **rank 1 law**; this document states what they require of AI rather than restating them. A feature that violates a rule here must not ship.
 
 ---
 
-## Purpose of AI in this product
+## What AI does here
 
-AI extracts **operational meaning** into strict structured, point-form outputs and **recommends** next steps. AI does not own business decisions. Deterministic application rules own the **Follow-up Engine**, **Event Notification Engine**, retention, and state transitions after human approval gates (D027, D102–D110).
+AI extracts **operational meaning** into strict, structured, point-form output and **recommends** next steps. AI never owns a business decision. Deterministic application rules own the **Follow-up Engine**, the **Event Notification Engine**, retention, and every state transition after a human approval gate (D027, D102–D110).
 
-## Manual capture is AI-first (D154, D161, D164)
+## Interpretation (D154, D161, D163)
 
-**AI proposes. The Owner decides.** Owner typed or dictated input is intended to reach **interpretation before a canonical Task exists**.
-
-- **One natural-language input may produce zero, one, or multiple independent proposed Tasks.** AI must not force one utterance into exactly one Task, and must not merge unrelated intents to keep the count at one.
-- **Zero proposals is successful Owner-initiated interpretation** when no actionable Task was found. Represent that outcome on the interpretation occurrence. Do not invent a fake proposal, rename the outcome `skipped_irrelevant`, or treat empty proposals as failure (D161).
+- **Never force the proposal count.** AI must not squeeze one utterance into exactly one Task, and must not merge unrelated intents to keep the count at one.
+- **A zero-proposal result must be reported truthfully.** Record it on the interpretation occurrence; do not invent a filler proposal, rename the outcome `skipped_irrelevant`, or treat empty proposals as failure (D161).
 - **The first-pass interpretation is context-free.** It must not inject prior Owner preferences, prior Owner edits, assignment history, previously created Tasks, or BC property-management/workspace context. Interpretation quality comes from the input and the output contract, not from the Owner's history.
-- **Proposals are proposals.** The Owner reviews them, and only that Owner act creates canonical work (D008, D038). Acceptance asks one question — **“Who is responsible for this Task?”** — answered by the **Owner (Me)** or a **Recipient**; there is no separate Owner-facing Keep action. The selection is affirmative and is never inferred from the presence or absence of an assignment (D155, D164).
-- **Responsibility is not a licence to behave differently.** An Owner-responsible Task and a Recipient-responsible Task are the same canonical Task, and AI must not treat either as outside Rocket's Task lifecycle and follow-through concepts (D164).
-- **Nothing here authorizes implementation**, and the shipped direct Owner capture path remains **current implementation** rather than the target architecture (D154). Representing `owner_review` as a trigger does not authorize Owner-review product surfaces (D161).
+- **Proposals stay proposals.** AI must never present a proposal as a decision, nor produce any effect that presumes the Owner will accept it (D008, D038).
+- **No voice interaction creates a Task directly (D038).** Voice always produces a proposed action requiring Owner approval; completing an **existing** Task may proceed on explicit Owner confirmation. Where one utterance implies several actions, AI produces a single structured proposal rather than several independent effects.
+- **A6 extraction and shared interpretation are distinct AI jobs.** Do not collapse A6 `SuggestionExtractionResult` semantics into `InterpretationResult`: A6's heuristic prefilter, extraction contract, and post-prefilter `AI_EMPTY_OUTPUT` semantics remain valid for that preserved legacy path only. New AI product capability must build on the shared interpretation job and must **not** depend on A6-specific processing semantics (D163). Sharing provider transport, error, retry, and JSON infrastructure is desirable engineering; this section alone does not authorize consolidating it.
+- **Nothing here authorizes implementation** (D154, D161).
 
-## Distinct AI jobs: A6 extraction vs Owner/shared interpretation (D161, D163)
-
-Do **not** collapse automated A6 `SuggestionExtractionResult` semantics into Owner/shared `InterpretationResult`.
-
-| Job                             | Contract posture                                                                                                                                                                                                                         |
-| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Automated A6 extraction**     | Preserved compatibility/legacy job (**D163**): existing heuristic prefilter; existing A6 extraction contract; existing `AI_EMPTY_OUTPUT` semantics after that prefilter remain valid. Not the dependency target for new product AI work. |
-| **Owner/shared interpretation** | Future product job: context-free `InterpretationInput`; `InterpretationResult`; `tasks: []` is successful; 0..N proposals                                                                                                                |
-
-They should share provider transport, error, retry, and JSON infrastructure where appropriate. Consolidating duplicated OpenAI-compatible transport is desirable engineering later and is **not** authorized or required by this constitution section alone. New AI product capabilities must build on the Owner/shared interpretation job and must **not** depend on A6-specific processing semantics (**D163**).
-
-## AI must NEVER
+## AI must never
 
 - Invent **facts** not supported by the provided source text or Owner utterance
-- Invent **deadlines**
-- Invent **contacts**
-- Invent **commitments** or promises
-- Invent **properties**, clients, files, or transactions
-- Invent **money** or financial amounts
-- Invent **follow-up dates** or **due dates** as facts when not supported by the source
+- Invent **deadlines**, **due dates**, or **follow-up dates** as facts
+- Invent **contacts**, **commitments** or promises, **properties**, clients, files, transactions, or **money** amounts
+- Let an **ambiguous communication silently become an Owner commitment** — ambiguity is surfaced, never resolved on the Owner's behalf
+- **Assign work**, answer the responsibility question, or create an Owner commitment autonomously (D164)
+- **Create, activate, alter, or suppress** a Reminder Schedule, invent a reminder time, or silently schedule a reminder (D102, D152)
+- **Personalize** interpretation, adapt the interface, or change behaviour without an approved decision
 
-If a value is not present or clearly implied with labeled inference, the AI must mark it **missing** or omit it—not guess.
+If a value is not present, or not clearly implied and labelled as inference, AI must mark it **missing** or omit it — never guess.
 
-## AI should
+## AI must show its work
 
-- **Separate facts from inference** — every summary point has a kind (e.g. fact, inference, missing, risk)
-- **Identify uncertainty** — call out low-confidence interpretation explicitly
-- **Explain recommendations** — assignee, priority, and a **proposed due date** when present include brief rationale grounded in extracted points
-- **Provide confidence** — structured confidence metadata on extractions and recommendations
-- **Ask for clarification when confidence is low** — prefer Owner confirmation or “missing information” over silent fill-in
+- **Separate facts from inference** — every summary point carries a kind (fact, inference, missing, risk)
+- **Identify uncertainty explicitly**, and prefer Owner confirmation or “missing information” over silent fill-in
+- **Explain recommendations** — an assignee, priority, or proposed due date carries brief rationale grounded in the extracted points, plus structured confidence metadata, never an opaque score alone
+- **Emit validated structured JSON** against the canonical schema, as point-form operational summaries rather than prose condensation, distinguishing confirmed fact, inference, missing information, and low-confidence interpretation
+- **Quarantine invalid model output** — never “repair” it by inventing fields
 
-## Output contract
+## Learning: observe now, personalize later (D155)
 
-- Prefer validated structured JSON (canonical schema) over prose paragraphs
-- Point-form operational summaries, not essay condensation
-- Distinguish: confirmed facts · inference · missing information · low-confidence interpretation
-- Quarantine invalid model output; do not “repair” by inventing fields
+Rocket records learning evidence now and defers personalization ([PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md) § Learning). **Observation and adaptation are separate:** recording evidence is authorized; changing behaviour from it is not.
 
-## AI learning rules
+**AI may learn durably, minimized:** summary preferences, workflow patterns, delegation patterns, due-date selection preferences and related Owner edits, and writing style for summaries and outcome structuring — as signals to **propose** a policy change, never to act on one.
 
-### The AI learns (durable, minimized)
+**AI must never permanently learn:** communication content (raw bodies, notification text, email threads), personal conversations as narrative history, or private message history. Learning records must not retain raw message bodies.
 
-- Summary preferences (what to emphasize, how to phrase points)
-- Workflow patterns (how work moves through states)
-- Delegation patterns (which Recipient receives which work)
-- Due-date selection preferences and related Owner edits (as signals to **propose** policy changes—not to send reminders or Event Notifications directly)
-- Writing style for summaries and outcome structuring
+**Recorded evidence is dormant.** It must not alter prompts, personalize the first-pass interpretation, auto-assign, silently modify any behaviour, or train the model online. **Personalization is deferred** and requires its own approved product decision; A14 remains the home of personalization and rule proposal, not of the evidence's existence. What may be recorded, and its retention and minimization: [DATA_RETENTION.md](DATA_RETENTION.md).
 
-### The AI does NOT permanently learn
-
-- Communication content (raw bodies, notification text, email threads)
-- Personal conversations as narrative history
-- Private message history
-- **Operational telemetry** — timing, error rates, request failures, retries, connectivity, and rendering errors are health measurement, not learning input (D113)
-- **Passive behaviour** — page views, clicks, dwell time, inactivity, and the **absence of a correction** are never approval and never a decision (D113)
-
-Learning records must not retain raw message bodies. See [DATA_RETENTION.md](DATA_RETENTION.md).
-
-### Measurement is not learning (D113)
-
-The four operational data classes are distinct and defined in [GLOSSARY.md](GLOSSARY.md): **business records**, **audit history**, **operational telemetry**, and **structured learning signals**.
-
-- **Operational telemetry must never silently become training data or a learning signal.** It must never drive product behaviour or alter business state.
-- **A structured learning signal must never be inferred from low-level click or usage tracking.** It records what decision the Owner made, what alternatives existed, and what happened afterward.
-- **Human corrections outrank passive usage tracking** as learning evidence.
-- **AI recommendations must remain distinguishable from human-approved decisions** and must never become authoritative business facts.
-- **Learning signals must never rewrite audit history.**
-
-### Observation now, personalization later (D155)
-
-**Observation and adaptation are separate.** Recording evidence is authorized; changing behaviour from it is not.
-
-**Rocket may record learning evidence now:**
-
-- revision 0 — the immutable AI-authored proposal **as presented to the Owner** (must include `summaryPoints`; include `proposedDueAt`, `proposedPriority`, and resolved `proposedRecipientId` only when they were part of that presented proposal);
-- later Owner edits as append-only revisions, with the finally accepted **content** revision identifiable;
-- the Owner's **affirmative responsibility selection** — the Owner or a Recipient — as a concern **independent** of the accepted content revision: _what_ the Owner accepted and _who_ the Owner made responsible are separate questions, and neither may be collapsed into a generic acceptance outcome (D164);
-- the selected Recipient when the Owner selects one, kept distinct from whether external delivery **successfully occurred** — a failed handoff must not erase or falsify the selection, and recording a selection must not imply successful delivery (D164).
-
-Do **not** require durable preservation of `peopleHints`, `proposedRecipientHint`, standalone `deadlineExpression`, provider raw JSON, prompts, diagnostic fingerprints, token metadata, retries, or other provider intermediates merely because a model produced them. Do **not** use AuditEvent as the revision/evidence store. The Owner's responsibility selection must never be inferred from the presence or absence of TaskAssignment or any other operational persistence artifact — **operational representation is not affirmative evidence** — and no `kept | assigned` enum, outcome table, custody model, or TaskAssignment replacement is required or authorized, because the persistence representation is deliberately unsettled (D164). This evidence records the **initial** selection made at acceptance; later reassignment, return to the Owner, and assignment clearing or revocation remain governed by existing Task/TaskAssignment infrastructure and are not this evidence's job. Manual raw capture input retained for review is not dormant learning evidence (D162).
-
-**Recorded evidence is dormant.** It must **not**:
-
-- alter prompts,
-- personalize the first-pass interpretation (which stays context-free — D154),
-- auto-assign,
-- silently modify any behaviour,
-- or train the model online.
-
-**Personalization is deferred** and requires its own approved product decision. Evidence recording is **no longer deferred to A14**; A14 remains the home of personalization and rule proposal, not of the evidence's existence. Minimization still applies — no raw message bodies ([DATA_RETENTION.md](DATA_RETENTION.md)).
+**Measurement is not learning (D113).** Operational telemetry is never a learning input. A structured learning signal must never be inferred from clicks, page views, dwell time, or inactivity; the **absence of a correction is never approval**. Human corrections outrank passive usage tracking, AI recommendations must remain distinguishable from human-approved decisions and must never become authoritative business facts, and learning signals must never rewrite audit history. Class definitions: [GLOSSARY.md](GLOSSARY.md).
 
 ## Learning ladder
 
-Every advance to a more autonomous stage requires **explicit Owner approval**. No stage is skipped silently.
+| Stage                             | Meaning                                                                  | Version one                                   |
+| --------------------------------- | ------------------------------------------------------------------------ | --------------------------------------------- |
+| **Observe**                       | Record anonymized signals from corrections, dismissals, merges, outcomes | Authorized now, dormant (D155)                |
+| **Suggest**                       | Create Task Suggestions and structured drafts for human review           | In scope                                      |
+| **Recommend**                     | Propose an assignee, priority, due date, or workflow rule                | In scope                                      |
+| **Approval**                      | Human accepts, edits, or rejects before any side effect                  | Required for all consequential actions        |
+| **Trusted automation**            | Owner-approved rules auto-apply within narrow bounds                     | Not enabled; architecture must allow it later |
+| **Approved autonomous behaviour** | Broader unattended action within documented policy                       | Future only; never default                    |
 
-```text
-Observe
-   ↓
-Suggest
-   ↓
-Recommend
-   ↓
-Approval
-   ↓
-Trusted automation
-   ↓
-Approved autonomous behaviour
-```
+Every advance to a more autonomous stage requires **explicit Owner approval**, and no stage is skipped silently. Version one stops at **Approval** for Task creation, assignment email or forward, due-date selection that drives reminders, rule activation, and consequential next-action assignment.
 
-| Stage                             | Meaning                                                                  | Version-one expectation                                       |
-| --------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------- |
-| **Observe**                       | Record anonymized signals from corrections, dismissals, merges, outcomes | **Authorized now**, dormant (D155); personalization deferred  |
-| **Suggest**                       | Create task suggestions and structured drafts for human review           | In scope                                                      |
-| **Recommend**                     | Propose assignee, priority, a due date, or workflow rules                | In scope                                                      |
-| **Approval**                      | Human accepts, edits, or rejects before side effects                     | Required for all consequential actions                        |
-| **Trusted automation**            | User-approved rules may auto-apply within narrow bounds                  | **Not enabled** in version one; architecture must allow later |
-| **Approved autonomous behaviour** | Broader unattended action within documented policy                       | Future only; never default                                    |
+## What AI may do, and what requires the Owner
 
-**State clearly:** Every stage requires explicit Owner approval before advancing. Version one stops at **Approval** for task creation, assignment email/forward, due-date selection that drives reminders, rule activation, and consequential next-action assignment.
+| AI may do this without Owner approval                             | This requires an explicit Owner act                                                   |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Skip obvious junk with a heuristic or cheap relevance filter      | Creating a canonical **Task** from a proposal, including from voice                   |
+| Produce a **Task Suggestion** or **Next-action Suggestion**       | Sending a Recipient assignment email, issuing a capability link, or Gmail-forwarding  |
+| Show a recommended assignee, priority, or due date with rationale | Setting a due date, creating or activating a Reminder Schedule, or sending a reminder |
+| Propose a workflow rule                                           | Activating a workflow rule                                                            |
+| Structure a voice draft, next-action suggestion, or outcome       | Answering “Who is responsible for this Task?” (D164)                                  |
 
-## Recommendations vs automation
-
-| Allowed without creating irreversible external effects    | Requires Owner approval                                                              |
-| --------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| Relevance skip of obvious junk (heuristic + cheap filter) | Creating an active **Task** from a suggestion                                        |
-| Creating a **Task Suggestion**                            | Sending Recipient assignment email and capability link                               |
-| Showing a recommended assignee, priority, or due date     | Gmail forward with attachments                                                       |
-| Proposing a workflow rule                                 | Activating a workflow rule                                                           |
-| Structuring a voice draft / Task Suggestion               | Creating a Task from voice without suggestion approval                               |
-| Structuring a voice next-action suggestion                | Sending assignment email implied by voice next action                                |
-| Recommending a due date                                   | Setting the due date, creating/activating a Reminder Schedule, or sending a reminder |
-
-Reminder sends, Event Notification Engine sends, and retention are **not** AI-controlled; they follow deterministic policies (D027, D102–D110). AI may only **recommend** a due date and related fields for explicit Owner selection, and may never create, activate, alter, or suppress a Reminder Schedule (D102). **D152** reinforces: AI must not invent reminder times or silently schedule Owner-controlled Task reminders; future AI reminder suggestions require a separately approved product decision.
-
-## Voice and multi-intent structuring
-
-**No voice interaction creates a Task directly (D038).** Voice always produces a proposed action (a Task Suggestion unless confirming an action on an existing Task) requiring Owner approval before a new Task exists.
-
-When speech implies multiple actions (complete, record amount, create next action, assign Recipient, propose a due date), the AI produces a **structured proposal**:
-
-- Completing the **current** Task may proceed on Owner confirmation.
-- Any new next action begins as a **Task Suggestion** / **Next-action Suggestion**, not a Task (OpenAPI wire name remains `FollowUpProposal` during A8—temporary contract naming debt).
-- Recipient assignment email, capability link issuance, and Gmail forwarding wait for the Owner’s **single** bundled confirmation when applicable (D037, D090). A due date takes effect only when the Owner explicitly selects it (D102). Follow-up Engine and Event Notification Engine **sends** remain A8 and unimplemented (D089). Handoff outbound text uses existing Task `summaryPoints`—no fresh LLM (D094).
+Reminder sends, Event Notification Engine sends, and retention are **not** AI-controlled; they follow deterministic policy (D027, D102–D110). AI may only **recommend** a due date, and only explicit Owner selection has scheduling effect (D102). Future AI reminder suggestions require a separately approved product decision (D152).
 
 ## Cost and safety controls
 
-- Heuristic prefilter before expensive models when possible
-- Minimize prompt content; exclude OTP and financial-alert patterns when detected
-- Tier models by job (cheap filter vs stronger extraction)
-- Version prompts; log model, prompt version, and confidence for audit and evaluation
-
-## Violations
-
-Any feature that invents operational fields, auto-creates tasks from voice, auto-sends assignment mail, auto-activates Reminder Schedules, auto-sends reminders or Event Notifications, stores raw conversations in durable learning, **treats operational telemetry as a learning signal**, **infers Owner approval from passive behaviour or inactivity**, or **lets AI adapt the interface without approval** (D113) **violates this constitution** and must not ship.
+- Prefer a heuristic prefilter before expensive models, and tier models by job — cheap filter versus stronger extraction
+- Minimize prompt content; exclusions are governed by [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md)
+- Version prompts, and log model, prompt version, and confidence for audit and evaluation
