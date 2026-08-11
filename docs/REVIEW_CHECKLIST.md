@@ -198,8 +198,8 @@ Procedures: [DEPLOYMENT.md](DEPLOYMENT.md).
 - [ ] Every link and heading anchor **this change touched or renamed** resolves; a renamed heading was followed to every document that links to it
 - [ ] No completed-slice narrative was added to an active document that will have to be deleted later
 - [ ] Implementation does not disagree with docs; if it did, docs were intentionally updated first
-- [ ] DECISIONS statuses still accurate (Approved / Deferred / Open)
-- [ ] Every decision cited by this change exists, carries its current status, and still supports the sentence citing it — a **Superseded in part** row was checked for whether the relied-on clause was withdrawn
+- [ ] DECISIONS statuses still accurate (Approved / Proposed / Deferred / Open / Superseded / Superseded in part)
+- [ ] Every decision cited by this change exists, carries its current status, and still supports the sentence citing it — a **Superseded in part** record was checked for whether the relied-on clause was withdrawn
 - [ ] OPEN_QUESTIONS not treated as resolved without recording answers
 - [ ] [MILESTONES.md](MILESTONES.md) still reflects reality after this work
 
