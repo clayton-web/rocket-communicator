@@ -23,6 +23,8 @@ import { wordsOnlyNormalize } from './normalize.mjs';
 const HEADING = /^(#{1,6})\s+(.*)$/;
 const RECORD_HEADING = /^(#{2,6})\s+(D\d{3})\b\s*(?:[\u2014\u2013:-]\s*)?(.*)$/;
 const LABELLED_BLOCK = /^\*\*\s*([^*]+?)\s*\*\*:?\s*([\s\S]*)$/;
+/** GFM thematic break. Not a heading-record terminator — only evidence of exterior document structure. */
+const THEMATIC_BREAK = /^(?:-{3,}|\*{3,}|_{3,})\s*$/;
 
 const FIELD_ALIASES = new Map([
   ['status', 'status'],
@@ -269,7 +271,25 @@ function parseHeadingBody(bodyLines, headingLevel) {
   return { fields, presentFields };
 }
 
-function parseHeadingRecord(lines, startIndex, section, sectionTitle, records) {
+/**
+ * Document-level structures that must never appear inside a heading-record body.
+ *
+ * A heading record runs until the next heading of the same or higher level (fewer `#`),
+ * or EOF. D165 does not authorize thematic breaks or tables as terminators — but if either
+ * appears before the next heading, the parser would otherwise absorb it into the last open
+ * field. That is structural corruption of the converted block's exterior boundary: the
+ * region must be closed by a section-level heading (or EOF) before non-record document
+ * structure resumes.
+ */
+function exteriorStructureAt(lines, index) {
+  if (THEMATIC_BREAK.test(lines[index].trim())) return 'thematic break';
+  if (isTableRow(lines[index]) && index + 1 < lines.length && isDelimiterRow(lines[index + 1])) {
+    return 'markdown table';
+  }
+  return null;
+}
+
+function parseHeadingRecord(lines, startIndex, section, sectionTitle, records, problems) {
   const match = RECORD_HEADING.exec(lines[startIndex]);
   const level = match[1].length;
   const id = match[2];
@@ -279,6 +299,18 @@ function parseHeadingRecord(lines, startIndex, section, sectionTitle, records) {
   while (end < lines.length) {
     const heading = HEADING.exec(lines[end]);
     if (heading !== null && heading[1].length <= level) break;
+
+    const exterior = exteriorStructureAt(lines, end);
+    if (exterior !== null) {
+      // Stop before the exterior structure so leftover legacy tables remain parseable, and
+      // surface the missing section-level closer as a hard failure rather than a review item.
+      problems.push({
+        line: end + 1,
+        message: `heading record ${id} would absorb a ${exterior}; close the converted heading-record region with a section-level heading (or end of file) before non-record content`,
+      });
+      break;
+    }
+
     end += 1;
   }
 
@@ -323,7 +355,7 @@ export function parseRegister(source) {
 
     if (RECORD_HEADING.test(line)) {
       representations.add('heading');
-      index = parseHeadingRecord(lines, index, section, sectionTitle, records);
+      index = parseHeadingRecord(lines, index, section, sectionTitle, records, problems);
       continue;
     }
 

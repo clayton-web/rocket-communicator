@@ -495,6 +495,47 @@ test('a half-converted register verifies with no hard failure', () => {
   assert.equal(result.ordering.state, 'mixed');
 });
 
+test('the live Batch 1 mixed register verifies with no hard failure', () => {
+  const result = runVerification({
+    registerPath: REGISTER_PATH,
+    baselinePath: BASELINE_PATH,
+    repoRoot: REPO_ROOT,
+    scanCitations: false,
+  });
+
+  assert.deepEqual(
+    result.findings.failures.map((item) => item.code),
+    [],
+  );
+  assert.deepEqual(result.representations, ['heading', 'table-row']);
+  assert.equal(result.records.length, 165);
+  assert.equal(result.ordering.state, 'mixed');
+});
+
+test('absorbing a thematic break into the final converted record is a hard failure', () => {
+  const closed = fixture('mixed-transition.md');
+  const malformed = closed.replace(
+    '## Active decisions not yet converted',
+    '---\n\n## Active decisions not yet converted',
+  );
+
+  const result = verify(malformed, fixture('current-table.md'));
+
+  assert.ok(result.failureCodes.includes('malformed-register'));
+  assert.match(result.messages, /D003 would absorb a thematic break/);
+  assert.equal(
+    result.records.find((record) => record.id === 'D003').decision.startsWith('the deterministic'),
+    true,
+  );
+});
+
+test('a converted block correctly closed by a section heading verifies with no parse failure', () => {
+  const result = verify(fixture('mixed-transition.md'), fixture('current-table.md'));
+
+  assert.ok(!result.failureCodes.includes('malformed-register'));
+  assert.deepEqual(result.failureCodes, []);
+});
+
 test('two converted records swapped during the transition fail', () => {
   const result = verify(swapHeadingRecords(fixture('mixed-transition.md'), 'D001', 'D002'));
 

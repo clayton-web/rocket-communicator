@@ -201,11 +201,93 @@ test('both representations can coexist in one file during the transition', () =>
   assert.equal(records.find((record) => record.id === 'D005').representation, 'table-row');
 });
 
-test('the real register parses as one wide-table representation with no problems', () => {
+test('the real register parses in its mid-transition representations with no problems', () => {
   const { records, problems, representations } = parseRegister(readFileSync(REGISTER_PATH, 'utf8'));
 
   assert.deepEqual(problems, []);
-  assert.deepEqual(representations, ['table-row']);
+  assert.deepEqual(representations, ['heading', 'table-row']);
   assert.equal(records.length, 165);
   assert.equal(new Set(records.map((record) => record.id)).size, 165);
+});
+
+/**
+ * Minimal converted block closed by a section-level heading before leftover legacy rows.
+ * Headings are the only terminator; the `##` closer is what keeps exterior structure out.
+ */
+const CORRECTLY_TERMINATED_BLOCK = `# Decision register
+
+## Decision records
+
+### D001 — One
+
+**Status:** Approved
+
+**Decision:** alpha
+
+**Notes:** note one
+
+### D002 — Two
+
+**Status:** Approved
+
+**Decision:** beta
+
+## Leftover legacy
+
+| ID | Decision | Status | Notes |
+| ---- | ---- | ---- | ---- |
+| D003 | gamma | Approved | note three |
+`;
+
+test('a converted block closed by a section-level heading parses cleanly', () => {
+  const { records, problems, representations } = parseRegister(CORRECTLY_TERMINATED_BLOCK);
+
+  assert.deepEqual(problems, []);
+  assert.deepEqual(representations, ['heading', 'table-row']);
+  assert.deepEqual(
+    records.map((record) => [record.id, record.representation]),
+    [
+      ['D001', 'heading'],
+      ['D002', 'heading'],
+      ['D003', 'table-row'],
+    ],
+  );
+  assert.equal(records.find((record) => record.id === 'D002').notes, '');
+  assert.equal(records.find((record) => record.id === 'D002').decision, 'beta');
+});
+
+test('a thematic break before the section closer is not absorbed into the final heading record', () => {
+  const malformed = CORRECTLY_TERMINATED_BLOCK.replace(
+    '## Leftover legacy',
+    '---\n\n## Leftover legacy',
+  );
+  const { records, problems } = parseRegister(malformed);
+  const lastHeading = records.find((record) => record.id === 'D002');
+
+  assert.equal(problems.length, 1);
+  assert.match(problems[0].message, /D002 would absorb a thematic break/);
+  assert.match(problems[0].message, /section-level heading/);
+  assert.equal(lastHeading.decision, 'beta');
+  assert.equal(lastHeading.notes, '');
+  assert.equal(records.find((record) => record.id === 'D003')?.representation, 'table-row');
+});
+
+test('a legacy table without a section closer is not absorbed into the final heading record', () => {
+  const malformed = CORRECTLY_TERMINATED_BLOCK.replace('\n## Leftover legacy\n\n', '\n');
+  const { records, problems } = parseRegister(malformed);
+  const lastHeading = records.find((record) => record.id === 'D002');
+
+  assert.equal(problems.length, 1);
+  assert.match(problems[0].message, /D002 would absorb a markdown table/);
+  assert.equal(lastHeading.decision, 'beta');
+  assert.equal(lastHeading.notes, '');
+  assert.equal(records.find((record) => record.id === 'D003')?.representation, 'table-row');
+});
+
+test('a fully converted heading register still parses with no problems', () => {
+  const { records, problems, representations } = parseRegister(fixture('future-headings.md'));
+
+  assert.deepEqual(problems, []);
+  assert.deepEqual(representations, ['heading']);
+  assert.equal(records.length, 6);
 });
