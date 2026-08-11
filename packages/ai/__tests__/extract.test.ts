@@ -143,6 +143,49 @@ describe('parseAndValidateExtractionOutput', () => {
     ).toThrow(expect.objectContaining({ code: 'AI_SCHEMA_INVALID' }));
   });
 
+  it('rejects more than MAX_SUMMARY_POINTS with summary_points_too_many fingerprint', () => {
+    const summaryPoints = Array.from({ length: 21 }, (_, i) => ({
+      ...validPoint,
+      id: `sp_${i}`,
+      order: i,
+      value: `Action ${i}`,
+    }));
+    try {
+      parseAndValidateExtractionOutput(
+        { summaryPoints },
+        { policyVersion: 'p', modelVersion: 'm' },
+      );
+      expect.unreachable();
+    } catch (error) {
+      expect(error).toBeInstanceOf(AiProviderError);
+      expect((error as AiProviderError).code).toBe('AI_SCHEMA_INVALID');
+      expect((error as AiProviderError).diagnosticFingerprint).toContain(
+        'issues=summary_points_too_many',
+      );
+    }
+  });
+
+  it('rejects domain-invalid points with domain_validate_failed fingerprint', () => {
+    try {
+      parseAndValidateExtractionOutput(
+        {
+          summaryPoints: [
+            { ...validPoint, id: 'sp_1', order: 0, value: 'First' },
+            { ...validPoint, id: 'sp_2', order: 0, value: 'Duplicate order' },
+          ],
+        },
+        { policyVersion: 'p', modelVersion: 'm' },
+      );
+      expect.unreachable();
+    } catch (error) {
+      expect(error).toBeInstanceOf(AiProviderError);
+      expect((error as AiProviderError).code).toBe('AI_SCHEMA_INVALID');
+      expect((error as AiProviderError).diagnosticFingerprint).toContain(
+        'issues=domain_validate_failed',
+      );
+    }
+  });
+
   it('rejects malformed JSON text as AI_MALFORMED_JSON', () => {
     expect(() => parseModelJsonText('{not-json')).toThrow(
       expect.objectContaining({ code: 'AI_MALFORMED_JSON' }),
