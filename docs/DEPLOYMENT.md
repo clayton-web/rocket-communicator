@@ -327,7 +327,7 @@ A **separate** scheduler job, independent of the Gmail poll:
 | Interval       | Every five minutes; **independent** job                     |
 | Authentication | `Authorization: Bearer <CRON_SECRET>`                       |
 
-Responses are aggregate counts only — never raw bodies (D084, D085). Overlapping invocations are safe (claim leases plus relational suggestion uniqueness, D081). Heuristic relevance runs before AI, and an AI failure does not create heuristic-only fallback suggestions (D085). Claim batches prefer fresh `unprocessed` events before reclaiming `failed_retryable`, so a retryable failure cohort cannot monopolize every invocation.
+Responses are aggregate counts only — never raw bodies (D084, D085). Overlapping invocations are safe (CommunicationEvent claim leases, D081; preserved A6 relational suggestion uniqueness per event, D163). Heuristic relevance runs before AI, and an AI failure does not create heuristic-only fallback suggestions (D085). Claim batches prefer fresh `unprocessed` events before reclaiming `failed_retryable`, so a retryable failure cohort cannot monopolize every invocation.
 
 **`AI_INVALID_OUTPUT` / `AI_EMPTY_OUTPUT` / `AI_SCHEMA_INVALID` runbook:** read `suggestion_last_error_code` plus the audit `note` fingerprint (`code|status=…|keys=…|issues=…`) — never re-enable content logging. Typical causes are a model emitting non-contract fields or empty `summaryPoints`. Distinguish `AI_INSUFFICIENT_QUOTA` (billing) from `AI_RATE_LIMIT` (throttle).
 

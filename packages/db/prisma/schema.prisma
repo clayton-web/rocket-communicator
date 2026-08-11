@@ -133,7 +133,9 @@ model TaskSuggestion {
   voiceOriginated            Boolean              @default(false) @map("voice_originated")
   /// Optional originating task for Recipient work requests (D061).
   originTaskId               String?              @map("origin_task_id") @db.VarChar(64)
-  /// Authoritative Gmail-origin link (D081). Null for work-request suggestions. Unique when set.
+  /// Authoritative Gmail-origin link (D081). Null for work-request suggestions.
+  /// Unique when set as preserved A6 0..1 compatibility/legacy behaviour (D163), not
+  /// current product cardinality (D161: one interpretation occurrence → 0..N).
   sourceCommunicationEventId String?              @unique @map("source_communication_event_id") @db.VarChar(64)
   /// Owning interpretation occurrence (D161). Deliberately NOT unique: one occurrence owns 0..N
   /// sibling proposals. Permanently nullable — A6 Gmail and Recipient work-request suggestions have

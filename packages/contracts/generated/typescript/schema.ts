@@ -301,7 +301,9 @@ export interface paths {
          * @description Runs the Application Suggestion Engine for a bounded batch of
          *     CommunicationEvents (D084, D085): claim-lease eligible events, heuristic
          *     relevance filter, then LLM extraction via packages/ai for events that pass.
-         *     Creates at most one pending TaskSuggestion per event (D081).
+         *     Creates at most one pending TaskSuggestion per event as preserved A6
+         *     compatibility/legacy behaviour (D163). Product proposal cardinality is
+         *     one interpretation occurrence → 0..N TaskSuggestions (D161).
          *     On AI disabled/failure, records failed_retryable or failed_permanent and
          *     creates no fallback suggestion (D085).
          *     Requires `InternalCronBearer` (`CRON_SECRET`). Not an Owner session.

@@ -140,7 +140,7 @@ Persisted states: `open` · `in_progress` · `waiting` · `completed` · `dismis
 
 ### Derived display labels (never persisted)
 
-`due_soon` and `overdue` are derived for display only, and are not computed while `waiting`, `completed`, or `dismissed`. They **must not** be a scheduling mechanism: reminder occurrences are computed from the due **date** by [WORKFLOWS.md](WORKFLOWS.md) §10a (D103), never from a label, and label-triggered sends remain prohibited (D099). Rendered through `apps/web/lib/presentation/task-status.ts` and formatted in the organization timezone by `apps/web/lib/presentation/datetime.ts` (D034, D117, D122) — never the browser, device, or machine-local timezone.
+`due_soon` and `overdue` are derived for display only, and are not computed while `waiting`, `completed`, or `dismissed`. They **must not** be a scheduling mechanism: reminder occurrences are computed from the due **date** by [WORKFLOWS.md](WORKFLOWS.md) §10a (D103), never from a label, and label-triggered sends remain prohibited (D102, D117). Rendered through `apps/web/lib/presentation/task-status.ts` and formatted in the organization timezone by `apps/web/lib/presentation/datetime.ts` (D034, D117, D122) — never the browser, device, or machine-local timezone.
 
 **Contract debt.** Both labels are still computed from the instant-typed `dueAt`, an artefact of the pre-A8.1 representation. When the derivation is restated in local-calendar terms (D109) that window goes; until then it is not reminder law.
 
