@@ -38,6 +38,9 @@
     "android:test": "cd apps/android && ./gradlew testDebugUnitTest",
     "android:assemble": "cd apps/android && ./gradlew assembleDebug",
     "android:api-contract": "cd apps/android && ./gradlew :api-contract:compileDebugKotlin",
+    "docs:decisions:verify": "node scripts/docs-governance/verify-decisions.mjs",
+    "docs:decisions:baseline": "node scripts/docs-governance/build-baseline.mjs",
+    "docs:decisions:test": "node --test \"scripts/docs-governance/__tests__/*.test.mjs\"",
     "verify": "pnpm format:check && pnpm lint && pnpm contracts:validate && pnpm contracts:generate && pnpm contracts:check-drift && pnpm test && pnpm build:web && pnpm build:domain && pnpm android:ktlint && pnpm android:test && pnpm android:api-contract && pnpm android:assemble"
   },
   "devDependencies": {
