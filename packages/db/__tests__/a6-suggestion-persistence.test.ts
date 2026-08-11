@@ -34,6 +34,8 @@ import {
   persistMergeTaskSuggestion,
   persistOwnerTaskMutation,
   persistSkippedIrrelevantOutcome,
+  listTaskSuggestionRevisions,
+  persistClaimResolvedForExistingSuggestion,
   persistSuggestionFromClaimedEvent,
   persistWorkRequest,
   purgeTemporaryCommunicationExcerpt,
@@ -339,7 +341,10 @@ describe('A6.1 suggestion persistence foundation (PGlite)', () => {
       organizationId: org,
       eventId: claimed.id,
       claimOwner: 'create_worker',
-      suggestion: pendingSuggestion('sug_create', claimed.id),
+      suggestion: pendingSuggestion('sug_create', claimed.id, {
+        proposedDueAt: '2026-07-20T15:00:00.000Z',
+        proposedPriority: 'high',
+      }),
       policyVersion,
       processedAt: now,
       excerptPurgeAt: ceiling,
@@ -354,6 +359,20 @@ describe('A6.1 suggestion persistence foundation (PGlite)', () => {
     const excerpt = await getTemporaryCommunicationExcerptByEventId(db.prisma, org, claimed.id);
     expect(excerpt?.purgeAt).toBe(ceiling);
 
+    const revisions = await listTaskSuggestionRevisions(db.prisma, org, 'sug_create');
+    expect(revisions).toHaveLength(1);
+    expect(revisions[0]).toMatchObject({
+      organizationId: org,
+      suggestionId: 'sug_create',
+      revisionNumber: 0,
+      authorKind: 'ai',
+      summaryPoints: result.suggestion.summaryPoints,
+      proposedDueAt: result.suggestion.proposedDueAt ?? null,
+      proposedPriority: result.suggestion.proposedPriority ?? null,
+      proposedRecipientId: result.suggestion.proposedRecipientId ?? null,
+    });
+    expect(result.suggestion.proposedRecipientId ?? null).toBeNull();
+
     await expect(
       persistSuggestionFromClaimedEvent({
         db: db.prisma,
@@ -367,6 +386,8 @@ describe('A6.1 suggestion persistence foundation (PGlite)', () => {
         audit: systemAudit('aud_create_race', 'suggestion.process.created'),
       }),
     ).rejects.toMatchObject({ code: 'OPTIMISTIC_CONCURRENCY' });
+    expect(await listTaskSuggestionRevisions(db.prisma, org, 'sug_create')).toHaveLength(1);
+    expect(await listTaskSuggestionRevisions(db.prisma, org, 'sug_create_race')).toHaveLength(0);
   });
 
   it('rolls back suggestion create when claim is stale', async () => {
@@ -701,6 +722,7 @@ describe('A6.1 suggestion persistence foundation (PGlite)', () => {
       },
     });
     expect(wr.suggestion.sourceCommunicationEventId).toBeNull();
+    expect(await listTaskSuggestionRevisions(db.prisma, org, 'sug_wr_persist')).toHaveLength(0);
   });
 
   it('applies task terminal excerpt retention and tolerates missing/purged excerpts', async () => {
@@ -1009,6 +1031,177 @@ describe('A6.1 suggestion persistence foundation (PGlite)', () => {
     });
     expect(skipped.audit.id).toBe('aud_required_skip');
     expect(skipped.audit.actorKind).toBe('system');
+  });
+
+  it('records independent revision 0 rows for two genuinely new A6 suggestions', async () => {
+    await seedEventWithExcerpt(db, 'evt_rev_a', 'msg_rev_a');
+    await seedEventWithExcerpt(db, 'evt_rev_b', 'msg_rev_b');
+    const claimed = await claimSuggestionProcessingBatch(db.prisma, {
+      claimOwner: 'rev_pair_worker',
+      claimUntil,
+      now,
+      limit: 5,
+      organizationId: org,
+    });
+    const a = claimed.find((e) => e.id === 'evt_rev_a');
+    const b = claimed.find((e) => e.id === 'evt_rev_b');
+    expect(a && b).toBeTruthy();
+
+    const createdA = await persistSuggestionFromClaimedEvent({
+      db: db.prisma,
+      organizationId: org,
+      eventId: a!.id,
+      claimOwner: 'rev_pair_worker',
+      suggestion: pendingSuggestion('sug_rev_a', a!.id, {
+        summaryPoints: [{ id: 'sp_a', kind: 'next_action', label: 'Act', order: 0, value: 'Do A' }],
+        proposedPriority: 'low',
+      }),
+      policyVersion,
+      processedAt: now,
+      excerptPurgeAt: computeWorkflowSafetyCeilingPurgeAt(now),
+      audit: systemAudit('aud_rev_a', 'suggestion.process.created'),
+    });
+    const createdB = await persistSuggestionFromClaimedEvent({
+      db: db.prisma,
+      organizationId: org,
+      eventId: b!.id,
+      claimOwner: 'rev_pair_worker',
+      suggestion: pendingSuggestion('sug_rev_b', b!.id, {
+        summaryPoints: [{ id: 'sp_b', kind: 'next_action', label: 'Act', order: 0, value: 'Do B' }],
+        proposedPriority: 'urgent',
+      }),
+      policyVersion,
+      processedAt: now,
+      excerptPurgeAt: computeWorkflowSafetyCeilingPurgeAt(now),
+      audit: systemAudit('aud_rev_b', 'suggestion.process.created'),
+    });
+
+    const revsA = await listTaskSuggestionRevisions(db.prisma, org, createdA.suggestion.id);
+    const revsB = await listTaskSuggestionRevisions(db.prisma, org, createdB.suggestion.id);
+    expect(revsA).toHaveLength(1);
+    expect(revsB).toHaveLength(1);
+    expect(revsA[0]?.revisionNumber).toBe(0);
+    expect(revsB[0]?.revisionNumber).toBe(0);
+    expect(revsA[0]?.authorKind).toBe('ai');
+    expect(revsB[0]?.authorKind).toBe('ai');
+    expect(revsA[0]?.id).not.toBe(revsB[0]?.id);
+    expect(revsA[0]?.summaryPoints).toEqual(createdA.suggestion.summaryPoints);
+    expect(revsB[0]?.summaryPoints).toEqual(createdB.suggestion.summaryPoints);
+    expect(revsA[0]?.proposedPriority).toBe('low');
+    expect(revsB[0]?.proposedPriority).toBe('urgent');
+  });
+
+  it('does not write or backfill revisions on duplicate/reclaim of a pre-existing suggestion', async () => {
+    await seedEventWithExcerpt(db, 'evt_rev_dup', 'msg_rev_dup');
+    await createTaskSuggestion(
+      db.prisma,
+      org,
+      pendingSuggestion('sug_rev_preexisting', 'evt_rev_dup'),
+    );
+    expect(await listTaskSuggestionRevisions(db.prisma, org, 'sug_rev_preexisting')).toHaveLength(
+      0,
+    );
+
+    const [claimed] = await claimSuggestionProcessingBatch(db.prisma, {
+      claimOwner: 'rev_dup_worker',
+      claimUntil,
+      now,
+      limit: 5,
+      organizationId: org,
+    });
+    expect(claimed.id).toBe('evt_rev_dup');
+
+    await expect(
+      persistSuggestionFromClaimedEvent({
+        db: db.prisma,
+        organizationId: org,
+        eventId: claimed.id,
+        claimOwner: 'rev_dup_worker',
+        suggestion: pendingSuggestion('sug_rev_dup_loser', claimed.id),
+        policyVersion,
+        processedAt: now,
+        excerptPurgeAt: computeWorkflowSafetyCeilingPurgeAt(now),
+        audit: systemAudit('aud_rev_dup_lose', 'suggestion.process.created'),
+      }),
+    ).rejects.toMatchObject({ code: 'UNIQUE_VIOLATION' });
+
+    expect(await listTaskSuggestionRevisions(db.prisma, org, 'sug_rev_preexisting')).toHaveLength(
+      0,
+    );
+    expect(await listTaskSuggestionRevisions(db.prisma, org, 'sug_rev_dup_loser')).toHaveLength(0);
+    await expect(getTaskSuggestionById(db.prisma, org, 'sug_rev_dup_loser')).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+    });
+
+    const resolved = await persistClaimResolvedForExistingSuggestion({
+      db: db.prisma,
+      organizationId: org,
+      eventId: claimed.id,
+      claimOwner: 'rev_dup_worker',
+      processedAt: now,
+      policyVersion,
+      audit: systemAudit('aud_rev_dup_existing', 'suggestion.process.existing'),
+    });
+    expect(resolved.suggestion.id).toBe('sug_rev_preexisting');
+    expect(await listTaskSuggestionRevisions(db.prisma, org, 'sug_rev_preexisting')).toHaveLength(
+      0,
+    );
+  });
+
+  it('rolls back the new TaskSuggestion when revision 0 insert fails in the same transaction', async () => {
+    await seedEventWithExcerpt(db, 'evt_rev_atomic', 'msg_rev_atomic');
+    const [claimed] = await claimSuggestionProcessingBatch(db.prisma, {
+      claimOwner: 'rev_atomic_worker',
+      claimUntil,
+      now,
+      limit: 5,
+      organizationId: org,
+    });
+
+    await db.pglite.exec(`
+      CREATE OR REPLACE FUNCTION test_fail_task_suggestion_revision_insert()
+      RETURNS trigger AS $$
+      BEGIN
+        RAISE EXCEPTION 'intentional revision insert failure';
+      END;
+      $$ LANGUAGE plpgsql;
+
+      DROP TRIGGER IF EXISTS test_fail_tsr_insert ON task_suggestion_revisions;
+      CREATE TRIGGER test_fail_tsr_insert
+        BEFORE INSERT ON task_suggestion_revisions
+        FOR EACH ROW
+        EXECUTE FUNCTION test_fail_task_suggestion_revision_insert();
+    `);
+
+    try {
+      await expect(
+        persistSuggestionFromClaimedEvent({
+          db: db.prisma,
+          organizationId: org,
+          eventId: claimed.id,
+          claimOwner: 'rev_atomic_worker',
+          suggestion: pendingSuggestion('sug_rev_atomic', claimed.id),
+          policyVersion,
+          processedAt: now,
+          excerptPurgeAt: computeWorkflowSafetyCeilingPurgeAt(now),
+          audit: systemAudit('aud_rev_atomic', 'suggestion.process.created'),
+        }),
+      ).rejects.toThrow(/intentional revision insert failure/);
+
+      await expect(getTaskSuggestionById(db.prisma, org, 'sug_rev_atomic')).rejects.toMatchObject({
+        code: 'NOT_FOUND',
+      });
+      expect(await listTaskSuggestionRevisions(db.prisma, org, 'sug_rev_atomic')).toHaveLength(0);
+
+      const event = await getCommunicationEventById(db.prisma, org, claimed.id);
+      expect(event.suggestionProcessingStatus).not.toBe('suggestion_created');
+      expect(event.suggestionClaimOwner).toBe('rev_atomic_worker');
+    } finally {
+      await db.pglite.exec(`
+        DROP TRIGGER IF EXISTS test_fail_tsr_insert ON task_suggestion_revisions;
+        DROP FUNCTION IF EXISTS test_fail_task_suggestion_revision_insert();
+      `);
+    }
   });
 });
 

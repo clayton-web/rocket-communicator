@@ -74,11 +74,12 @@ Invariants below are enforced by migration SQL or by a build-failing guard. Pris
 
 ### TaskSuggestion revision-evidence foundation
 
-- **`TaskSuggestionRevision` / `task_suggestion_revisions`** is the inert append-only carrier for D155 proposal-revision evidence. `TaskSuggestion` remains the mutable operational/current proposal head. Revision rows are dormant evidence only and must not personalize, mutate prompts, auto-assign, train online, or otherwise influence AI behaviour.
+- **`TaskSuggestionRevision` / `task_suggestion_revisions`** is the append-only carrier for D155 proposal-revision evidence. `TaskSuggestion` remains the mutable operational/current proposal head. Revision rows are dormant evidence only and must not personalize, mutate prompts, auto-assign, train online, or otherwise influence AI behaviour.
 - **Create/read only** in `@aicaa/db`: `createTaskSuggestionRevision`, `listTaskSuggestionRevisions`, `getLatestTaskSuggestionRevision`. No update/delete/upsert surface. A source guard forbids non-test Prisma rewrite/delete/upsert calls on `taskSuggestionRevision`. Unique `(suggestion_id, revision_number)` is numbering protection, **not** immutability protection.
 - **`authorKind`** is `ai | owner` only. No `authoredByOwnerId` in this foundation.
 - **Revision 0** means the first revision Rocket actually recorded for a suggestion — not inherently AI. Existing suggestions receive no fabricated history; absence of revisions means “no revision evidence has been recorded,” not absence of a proposal.
-- **Out of this foundation:** producer writes (A6 revision 0, Owner-edit capture), accepted-revision persistence / `acceptedRevisionId`, interpretation-run linkage, public OpenAPI/Android exposure, and any learning/personalization behaviour.
+- **Prospective A6 producer:** `persistSuggestionFromClaimedEvent` records revision 0 (`authorKind = ai`) atomically with each newly created Gmail-extraction TaskSuggestion, copying the persisted suggestion’s `summaryPoints` / `proposedDueAt` / `proposedPriority` / `proposedRecipientId`. Duplicate/reclaim resolution (`persistClaimResolvedForExistingSuggestion`) writes no revision and does not backfill historical suggestions. Work-request and other TaskSuggestion creators remain revision-free.
+- **Still out of scope:** Owner-edit revision capture, accepted-revision persistence / `acceptedRevisionId`, interpretation-produced revisions, public OpenAPI/Android exposure, and any learning/personalization behaviour.
 
 ### Assignment and handoff
 

@@ -11,6 +11,7 @@ import {
   getCommunicationEventById,
   getTaskSuggestionBySourceEventId,
   getTemporaryCommunicationExcerptByEventId,
+  listTaskSuggestionRevisions,
   persistConnectedCommunicationAccount,
   upsertCommunicationEvent,
   upsertTemporaryCommunicationExcerpt,
@@ -187,12 +188,31 @@ describe('A6.3 suggestion process service + route', () => {
       deps: { provider: mockExtraction(), skipConfigAssert: true },
     });
     expect(result.response.suggestionsCreated).toBeGreaterThanOrEqual(1);
+    expect(result.response).toMatchObject({
+      skippedIrrelevant: expect.any(Number),
+      failedRetryable: expect.any(Number),
+      failedPermanent: expect.any(Number),
+      requestId: 'req_ok',
+    });
     const event = await getCommunicationEventById(db.prisma, org, 'evt_ok');
     expect(event.suggestionProcessingStatus).toBe('suggestion_created');
     expect(event.suggestionProcessingAttempts).toBeGreaterThanOrEqual(1);
     const suggestion = await getTaskSuggestionBySourceEventId(db.prisma, org, 'evt_ok');
     expect(suggestion?.status).toBe('pending');
     expect(suggestion?.sourceCommunicationEventId).toBe('evt_ok');
+    const revisions = await listTaskSuggestionRevisions(db.prisma, org, suggestion!.id);
+    expect(revisions).toHaveLength(1);
+    expect(revisions[0]).toMatchObject({
+      organizationId: org,
+      suggestionId: suggestion!.id,
+      revisionNumber: 0,
+      authorKind: 'ai',
+      summaryPoints: suggestion!.summaryPoints,
+      proposedDueAt: suggestion!.proposedDueAt ?? null,
+      proposedPriority: suggestion!.proposedPriority ?? null,
+      proposedRecipientId: suggestion!.proposedRecipientId ?? null,
+    });
+    expect(JSON.stringify(result.response)).not.toMatch(/revision|authorKind|tsr_/i);
     const excerpt = await getTemporaryCommunicationExcerptByEventId(db.prisma, org, 'evt_ok');
     expect(excerpt?.purgeAt).toBe(computeWorkflowSafetyCeilingPurgeAt(now));
     const audits = await db.prisma.auditEvent.findMany({
@@ -305,6 +325,8 @@ describe('A6.3 suggestion process service + route', () => {
     expect(event.suggestionProcessingStatus).toBe('suggestion_created');
     const suggestion = await getTaskSuggestionBySourceEventId(db.prisma, org, 'evt_uniq');
     expect(suggestion?.id).toBe('sug_preexisting');
+    // Pre-existing historical suggestion stays revision-free; reclaim must not backfill.
+    expect(await listTaskSuggestionRevisions(db.prisma, org, 'sug_preexisting')).toHaveLength(0);
   });
 
   it('stops claiming when soft deadline is already past stop margin', async () => {

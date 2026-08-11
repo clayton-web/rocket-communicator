@@ -32,7 +32,12 @@ function asJson(value: unknown): Prisma.InputJsonValue {
  *
  * Create-only. Revisions are dormant append-only evidence; callers must not update, delete, or
  * upsert existing rows. Unique `(suggestionId, revisionNumber)` is numbering protection only —
- * not immutability protection. No application producer writes revisions yet.
+ * not immutability protection.
+ *
+ * **Current producer:** A6 `persistSuggestionFromClaimedEvent` writes revision 0 (`authorKind =
+ * ai`) atomically with a newly created Gmail-extraction TaskSuggestion. Duplicate/reclaim paths,
+ * work-request, Owner-edit, approve/dismiss/merge, and interpretation must not call this for
+ * backfill or additional producers until separately authorized.
  */
 export async function createTaskSuggestionRevision(
   db: Client,

@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import type { CommunicationEvent, TaskSuggestion } from '@aicaa/domain';
 import type { DbClient } from '../client/create-prisma-client.js';
 import { createAuditEvent, type CreateAuditEventInput } from '../repositories/audit-repository.js';
@@ -9,6 +10,7 @@ import {
   createTaskSuggestion,
   getTaskSuggestionBySourceEventId,
 } from '../repositories/suggestion-repository.js';
+import { createTaskSuggestionRevision } from '../repositories/task-suggestion-revision-repository.js';
 import {
   completeSuggestionProcessingOutcome,
   releaseSuggestionProcessingClaim,
@@ -20,10 +22,20 @@ import {
   persistenceValidation,
 } from '../errors/persistence-errors.js';
 
+/** Opaque TaskSuggestionRevision id (`tsr_` + random), matching A6 suggestion id conventions. */
+function newTaskSuggestionRevisionId(): string {
+  return `tsr_${randomBytes(12).toString('base64url')}`;
+}
+
 /**
  * Atomic AI extraction result persistence (D081, D082).
  * Requires system audit in the same transaction (D074 pattern).
  * A6.3 processing surface — exported from production runtime.ts for the process route.
+ *
+ * On genuine new-suggestion create, also records dormant D155 revision 0 (`authorKind = ai`) from
+ * the persisted TaskSuggestion values in the same transaction. Duplicate/reclaim paths must not
+ * call this create path for an existing suggestion — use
+ * {@link persistClaimResolvedForExistingSuggestion}, which writes no revision.
  */
 export async function persistSuggestionFromClaimedEvent(input: {
   db: DbClient;
@@ -81,6 +93,20 @@ export async function persistSuggestionFromClaimedEvent(input: {
     }
 
     const suggestion = await createTaskSuggestion(tx, input.organizationId, input.suggestion);
+
+    // D155 prospective evidence: revision 0 mirrors the persisted proposal head, not raw provider
+    // output. Commits/rolls back with the suggestion (and claim/excerpt/audit) in this transaction.
+    await createTaskSuggestionRevision(tx, {
+      id: newTaskSuggestionRevisionId(),
+      organizationId: suggestion.organizationId,
+      suggestionId: suggestion.id,
+      revisionNumber: 0,
+      authorKind: 'ai',
+      summaryPoints: suggestion.summaryPoints,
+      proposedDueAt: suggestion.proposedDueAt ?? null,
+      proposedPriority: suggestion.proposedPriority ?? null,
+      proposedRecipientId: suggestion.proposedRecipientId ?? null,
+    });
 
     const excerptUpdated = await updateExcerptPurgeAtIfPresent(
       tx,
@@ -190,6 +216,9 @@ export async function persistFailedPermanentOutcome(input: {
  * Success-equivalent resolution when a unique suggestion already exists for the event.
  * Verifies the suggestion row, then marks the claim `suggestion_created` and clears the lease.
  * Does not create a second suggestion or invent content.
+ *
+ * **No revision write.** Pre-existing / rediscovered suggestions keep whatever revision history
+ * they already have (often none). Do not backfill revision 0 here.
  */
 export async function persistClaimResolvedForExistingSuggestion(input: {
   db: DbClient;
