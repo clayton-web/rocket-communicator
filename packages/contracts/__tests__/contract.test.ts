@@ -38,6 +38,26 @@ describe('contracts package', () => {
     const validateSuggestion = ajv.getSchema('#/components/schemas/TaskSuggestion');
     expect(validateSuggestion?.(suggestion)).toBe(true);
 
+    // Revision-evidence and accepted-revision internals must not leak into the public
+    // TaskSuggestion contract (D155 inert foundation is persistence-only).
+    const suggestionProperties = Object.keys(
+      (schemas.TaskSuggestion as { properties?: Record<string, unknown> })?.properties ?? {},
+    );
+    for (const forbidden of [
+      'revisions',
+      'acceptedRevisionId',
+      'acceptedRevision',
+      'revisionNumber',
+      'authorKind',
+      'authoredByOwnerId',
+      'interpretationRunId',
+      'taskSuggestionRevisions',
+    ]) {
+      expect(suggestionProperties).not.toContain(forbidden);
+    }
+    expect(schemas.TaskSuggestionRevision).toBeUndefined();
+    expect(schemas.TaskSuggestionRevisionAuthorKind).toBeUndefined();
+
     const complete = JSON.parse(
       readFileSync(path.join(examplesDir, 'task-complete-one-tap.json'), 'utf8'),
     );

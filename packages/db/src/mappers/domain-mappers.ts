@@ -39,6 +39,7 @@ import type {
   GmailSyncRun as PrismaGmailSyncRun,
   HandoffAttempt as PrismaHandoffAttempt,
   InterpretationRun as PrismaInterpretationRun,
+  TaskSuggestionRevision as PrismaTaskSuggestionRevision,
   Recipient as PrismaRecipient,
   Task as PrismaTask,
   TaskAssignment as PrismaAssignment,
@@ -408,6 +409,37 @@ export function mapInterpretationRun(row: PrismaInterpretationRun): PersistedInt
     modelVersion: row.modelVersion,
     policyVersion: row.policyVersion,
     requestId: row.requestId,
+    createdAt: toIso(row.createdAt),
+  };
+}
+
+/** TaskSuggestion revision-evidence row mapped to ISO timestamps (D155 persistence foundation). */
+export type PersistedTaskSuggestionRevision = {
+  id: string;
+  organizationId: string;
+  suggestionId: string;
+  revisionNumber: number;
+  authorKind: 'ai' | 'owner';
+  summaryPoints: TaskSummaryPoint[];
+  proposedDueAt: string | null;
+  proposedPriority: 'low' | 'normal' | 'high' | 'urgent' | null;
+  proposedRecipientId: string | null;
+  createdAt: string;
+};
+
+export function mapTaskSuggestionRevision(
+  row: PrismaTaskSuggestionRevision,
+): PersistedTaskSuggestionRevision {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    suggestionId: row.suggestionId,
+    revisionNumber: row.revisionNumber,
+    authorKind: row.authorKind,
+    summaryPoints: row.summaryPoints as unknown as TaskSummaryPoint[],
+    proposedDueAt: row.proposedDueAt ? toIso(row.proposedDueAt) : null,
+    proposedPriority: row.proposedPriority ?? null,
+    proposedRecipientId: row.proposedRecipientId ?? null,
     createdAt: toIso(row.createdAt),
   };
 }

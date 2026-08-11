@@ -268,7 +268,7 @@ It is **not** a business record, **not** audit history, and **not** an AI-learni
 
 A purposefully retained representation of a meaningful Owner decision and its outcome, answering **“what decision was made, what alternatives existed, and what happened afterward?”**
 
-Must never rewrite audit history, and must never be inferred from low-level click or usage tracking. **Passive behaviour, inactivity, and the absence of a correction are not approval and are not decisions** (D113). Human corrections outrank passive usage tracking. **Keep must never be inferred from absence of TaskAssignment** (D155). **Recording learning evidence is authorized now** and is dormant — it must not personalize, auto-assign, mutate prompts, train online, or otherwise become autonomous without later authorization (D155). Personalization remains deferred. Manual raw capture input retained for review is not learning evidence (D162). No learning tables exist yet (D110).
+Must never rewrite audit history, and must never be inferred from low-level click or usage tracking. **Passive behaviour, inactivity, and the absence of a correction are not approval and are not decisions** (D113). Human corrections outrank passive usage tracking. **Keep must never be inferred from absence of TaskAssignment** (D155). **Recording learning evidence is authorized now** and is dormant — it must not personalize, auto-assign, mutate prompts, train online, or otherwise become autonomous without later authorization (D155). Personalization remains deferred. Manual raw capture input retained for review is not learning evidence (D162). An inert TaskSuggestion revision-evidence carrier exists; producers and accepted-revision persistence are not yet authorized (D110, D155).
 
 ### Recommendation
 

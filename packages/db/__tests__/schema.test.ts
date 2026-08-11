@@ -299,6 +299,47 @@ describe('InterpretationRun persistence schema contracts', () => {
   });
 });
 
+describe('TaskSuggestion revision persistence schema contracts', () => {
+  const revisionMigration = readFileSync(
+    path.join(
+      root,
+      'prisma/migrations/20260810220000_task_suggestion_revision_persistence/migration.sql',
+    ),
+    'utf8',
+  );
+
+  it('defines TaskSuggestionRevision with authorKind and revision numbering only', () => {
+    expect(schema).toContain('model TaskSuggestionRevision');
+    expect(schema).toContain('enum TaskSuggestionRevisionAuthorKind');
+    expect(schema).toContain('@@unique([suggestionId, revisionNumber])');
+    expect(revisionMigration).toContain('CREATE TABLE "task_suggestion_revisions"');
+    expect(revisionMigration).toContain(
+      'task_suggestion_revisions_suggestion_id_revision_number_key',
+    );
+    expect(revisionMigration).toContain('task_suggestion_revisions_org_suggestion_revision_idx');
+    expect(revisionMigration).toContain('revision_number_non_negative');
+  });
+
+  it('keeps TaskSuggestion free of acceptedRevisionId and does not alter existing tables', () => {
+    const suggestionBlock = schema.match(
+      /model TaskSuggestion \{[\s\S]*?@@map\("task_suggestions"\)/,
+    )?.[0];
+    expect(suggestionBlock).toBeDefined();
+    expect(suggestionBlock).not.toContain('acceptedRevisionId');
+    expect(revisionMigration).toContain(
+      'ALTER TABLE "task_suggestion_revisions" ENABLE ROW LEVEL SECURITY',
+    );
+    expect(revisionMigration).not.toMatch(/CREATE POLICY/i);
+    const altered = [...revisionMigration.matchAll(/ALTER TABLE "([a-z_]+)"/g)].map(
+      (match) => match[1],
+    );
+    expect(new Set(altered)).toEqual(new Set(['task_suggestion_revisions']));
+    expect(revisionMigration).not.toMatch(/\bUPDATE\b\s+"/i);
+    expect(revisionMigration).not.toMatch(/\bDELETE\b\s+FROM/i);
+    expect(revisionMigration).not.toMatch(/\bINSERT\b\s+INTO\s+"/i);
+  });
+});
+
 describe('A8.3a reminder persistence schema contracts', () => {
   const a8Migration = readFileSync(
     path.join(root, 'prisma/migrations/20260731040000_a8_reminder_persistence/migration.sql'),

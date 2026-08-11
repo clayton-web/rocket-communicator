@@ -72,6 +72,14 @@ Invariants below are enforced by migration SQL or by a build-failing guard. Pris
 - **Idempotency** matches HandoffAttempt: unique `(organization_id, idempotency_key)`; `idempotency_key`, `request_fingerprint`, and durable-traceability `request_id` are NOT NULL; same key + same fingerprint is replay; same key + different fingerprint is `IDEMPOTENCY_KEY_CONFLICT`.
 - **Out of this foundation:** trigger/source enums, raw-input retention, CommunicationEvent linkage, TaskSuggestion FKs, revisions, acceptance outcomes, claim/lease, and failure/pending states.
 
+### TaskSuggestion revision-evidence foundation
+
+- **`TaskSuggestionRevision` / `task_suggestion_revisions`** is the inert append-only carrier for D155 proposal-revision evidence. `TaskSuggestion` remains the mutable operational/current proposal head. Revision rows are dormant evidence only and must not personalize, mutate prompts, auto-assign, train online, or otherwise influence AI behaviour.
+- **Create/read only** in `@aicaa/db`: `createTaskSuggestionRevision`, `listTaskSuggestionRevisions`, `getLatestTaskSuggestionRevision`. No update/delete/upsert surface. A source guard forbids non-test Prisma rewrite/delete/upsert calls on `taskSuggestionRevision`. Unique `(suggestion_id, revision_number)` is numbering protection, **not** immutability protection.
+- **`authorKind`** is `ai | owner` only. No `authoredByOwnerId` in this foundation.
+- **Revision 0** means the first revision Rocket actually recorded for a suggestion — not inherently AI. Existing suggestions receive no fabricated history; absence of revisions means “no revision evidence has been recorded,” not absence of a proposal.
+- **Out of this foundation:** producer writes (A6 revision 0, Owner-edit capture), accepted-revision persistence / `acceptedRevisionId`, interpretation-run linkage, public OpenAPI/Android exposure, and any learning/personalization behaviour.
+
 ### Assignment and handoff
 
 - **At most one active assignment per task** (`cleared_at IS NULL`) — `task_assignments_one_active_per_task_idx`. Reassignment always inserts a new row via `createActiveAssignment`; cleared rows stay persisted and are never overwritten or reused. Capabilities remain FK-bound to the exact historical assignment under which they were issued.

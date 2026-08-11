@@ -38,10 +38,12 @@ export {
   mapGmailSyncRun,
   mapHandoffAttempt,
   mapInterpretationRun,
+  mapTaskSuggestionRevision,
   type AuditEventRecord,
   type GmailOAuthCredentialRecord,
   type PersistedHandoffAttempt,
   type PersistedInterpretationRun,
+  type PersistedTaskSuggestionRevision,
 } from './mappers/domain-mappers.js';
 
 export {
@@ -329,6 +331,13 @@ export {
   type InterpretationRunIdempotencyLookup,
   type InterpretationRunOutcomeValue,
 } from './repositories/interpretation-run-repository.js';
+export {
+  createTaskSuggestionRevision,
+  listTaskSuggestionRevisions,
+  getLatestTaskSuggestionRevision,
+  type CreateTaskSuggestionRevisionInput,
+  type TaskSuggestionRevisionAuthorKindValue,
+} from './repositories/task-suggestion-revision-repository.js';
 
 export {
   persistReturnToOwner,
