@@ -10,14 +10,15 @@ Governs **all** AI behaviour in **Rocket Communicator**: interpretation of Owner
 
 AI extracts **operational meaning** into strict structured, point-form outputs and **recommends** next steps. AI does not own business decisions. Deterministic application rules own the **Follow-up Engine**, **Event Notification Engine**, retention, and state transitions after human approval gates (D027, D102–D110).
 
-## Manual capture is AI-first (D154, D161)
+## Manual capture is AI-first (D154, D161, D164)
 
 **AI proposes. The Owner decides.** Owner typed or dictated input is intended to reach **interpretation before a canonical Task exists**.
 
 - **One natural-language input may produce zero, one, or multiple independent proposed Tasks.** AI must not force one utterance into exactly one Task, and must not merge unrelated intents to keep the count at one.
 - **Zero proposals is successful Owner-initiated interpretation** when no actionable Task was found. Represent that outcome on the interpretation occurrence. Do not invent a fake proposal, rename the outcome `skipped_irrelevant`, or treat empty proposals as failure (D161).
 - **The first-pass interpretation is context-free.** It must not inject prior Owner preferences, prior Owner edits, assignment history, previously created Tasks, or BC property-management/workspace context. Interpretation quality comes from the input and the output contract, not from the Owner's history.
-- **Proposals are proposals.** The Owner reviews them and decides **Keep for me** or **Assign**; only that Owner act creates canonical work (D008, D038). Keep is affirmative and is never inferred from missing assignment (D155).
+- **Proposals are proposals.** The Owner reviews them, and only that Owner act creates canonical work (D008, D038). Acceptance asks one question — **“Who is responsible for this Task?”** — answered by the **Owner (Me)** or a **Recipient**; there is no separate Owner-facing Keep action. The selection is affirmative and is never inferred from the presence or absence of an assignment (D155, D164).
+- **Responsibility is not a licence to behave differently.** An Owner-responsible Task and a Recipient-responsible Task are the same canonical Task, and AI must not treat either as outside Rocket's Task lifecycle and follow-through concepts (D164).
 - **Nothing here authorizes implementation**, and the shipped direct Owner capture path remains **current implementation** rather than the target architecture (D154). Representing `owner_review` as a trigger does not authorize Owner-review product surfaces (D161).
 
 ## Distinct AI jobs: A6 extraction vs Owner/shared interpretation (D161, D163)
@@ -95,11 +96,11 @@ The four operational data classes are distinct and defined in [GLOSSARY.md](GLOS
 **Rocket may record learning evidence now:**
 
 - revision 0 — the immutable AI-authored proposal **as presented to the Owner** (must include `summaryPoints`; include `proposedDueAt`, `proposedPriority`, and resolved `proposedRecipientId` only when they were part of that presented proposal);
-- later Owner edits as append-only revisions, with the finally accepted revision identifiable;
-- whether the Task was **explicitly** kept or assigned;
-- the recipient when assignment **successfully** occurs.
+- later Owner edits as append-only revisions, with the finally accepted **content** revision identifiable;
+- the Owner's **affirmative responsibility selection** — the Owner or a Recipient — as a concern **independent** of the accepted content revision: _what_ the Owner accepted and _who_ the Owner made responsible are separate questions, and neither may be collapsed into a generic acceptance outcome (D164);
+- the selected Recipient when the Owner selects one, kept distinct from whether external delivery **successfully occurred** — a failed handoff must not erase or falsify the selection, and recording a selection must not imply successful delivery (D164).
 
-Do **not** require durable preservation of `peopleHints`, `proposedRecipientHint`, standalone `deadlineExpression`, provider raw JSON, prompts, diagnostic fingerprints, token metadata, retries, or other provider intermediates merely because a model produced them. Do **not** use AuditEvent as the revision/evidence store. Keep must never be inferred from absence of TaskAssignment. Manual raw capture input retained for review is not dormant learning evidence (D162).
+Do **not** require durable preservation of `peopleHints`, `proposedRecipientHint`, standalone `deadlineExpression`, provider raw JSON, prompts, diagnostic fingerprints, token metadata, retries, or other provider intermediates merely because a model produced them. Do **not** use AuditEvent as the revision/evidence store. The Owner's responsibility selection must never be inferred from the presence or absence of TaskAssignment or any other operational persistence artifact — **operational representation is not affirmative evidence** — and no `kept | assigned` enum, outcome table, custody model, or TaskAssignment replacement is required or authorized, because the persistence representation is deliberately unsettled (D164). This evidence records the **initial** selection made at acceptance; later reassignment, return to the Owner, and assignment clearing or revocation remain governed by existing Task/TaskAssignment infrastructure and are not this evidence's job. Manual raw capture input retained for review is not dormant learning evidence (D162).
 
 **Recorded evidence is dormant.** It must **not**:
 

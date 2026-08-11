@@ -110,7 +110,7 @@ Permanent product non-goals only. **Milestone scope is not a constitutional non-
 | **Reduce decisions**                         | Rocket should reduce decisions, not create them. Where two designs solve the same problem, prefer the one that removes choices, screens, and controls while preserving truthful information (D151).                        |
 | **Every feature must justify its existence** | Earn a place only by aiding capture, organize, assign, or follow-through — or by safety, truthfulness, or administration (D139).                                                                                           |
 
-## Owner authority and AI-first capture (D154, D161)
+## Owner authority and AI-first capture (D154, D161, D164)
 
 **AI proposes. The Owner decides.**
 
@@ -118,15 +118,27 @@ Permanent product non-goals only. **Milestone scope is not a constitutional non-
 - **One natural-language input may yield zero, one, or multiple independent proposed Tasks.** A single utterance is not assumed to be a single Task. Zero proposals is truthful success for Owner-initiated interpretation (D161).
 - **Interpretation is an occurrence.** Rocket persists one interpretation-occurrence concept as grouping/provenance truth (not canonical Task truth). One occurrence may produce 0..N proposals. Multiple legitimate occurrences may reference the same source. There is no invariant of one interpretation forever per source (D161).
 - **The first-pass interpretation is context-free.** It must not inject prior Owner preferences, prior Owner edits, assignment history, or previously created Tasks. BC property-management/workspace context is a later assistance layer and is not authorized here.
-- **Only an Owner act creates a canonical Task.** The Owner reviews the proposals and decides **Keep for me** or **Assign**. Keep is affirmative and is never inferred from absence of assignment (D155).
+- **Only an Owner act creates a canonical Task, and acceptance asks one question.** The Owner reviews the proposals and, on acceptance, answers **“Who is responsible for this Task?”** — the **Owner (Me)** or a **Recipient**. There is no separate Owner-facing Keep action. That selection is **affirmative**: it is never inferred from the presence or absence of an assignment or any other operational persistence artifact (D155, D164).
 - **Current implementation is interim.** The shipped direct Owner capture path was valid for its milestone and is **current implementation**, not permanent product architecture (D158: current implementation truth is not automatically product law).
 - **Representation is not authorization.** Representing an Owner-review trigger in architecture or schema does not authorize Owner-review APIs, Review-with-Rocket UI, exclusions, automatic-processing changes, notifications, cron, or Production flags (D161).
 
 This section states product law and authorizes no implementation. AI behaviour detail: [AI_CONSTITUTION.md](AI_CONSTITUTION.md).
 
+## Responsibility and one follow-through model (D164)
+
+**Responsibility answers who is expected to do the work. It does not decide whether Rocket follows through.**
+
+- **One canonical Task and one follow-through model.** An Owner-responsible Task and a Recipient-responsible Task are the same canonical Task. Responsibility must not determine whether a Task can participate in Rocket's Task lifecycle, deadline, reminder, completion, and follow-through concepts.
+- **A unified question does not require unified persistence.** An Owner-responsible Task may remain the canonical Task with **no active external assignment**; a Recipient-responsible Task uses the existing Recipient, assignment, capability, and handoff machinery. Choosing **Me** does not require an assignment to the Owner, and the persistence representation is deliberately unsettled.
+- **Operational representation is not affirmative evidence.** The absence of an active assignment is never evidence that the Owner chose themselves (D155).
+- **Selection is not delivery.** The Owner's selection is true the moment the Owner makes it; whether Rocket delivered access to an external Recipient remains the existing assignment and handoff truth. A failed handoff does not falsify the selection, and recording a selection does not imply delivery.
+- **Attention may differ by audience.** One Task follow-through event may serve a Recipient work reminder and appropriate Owner oversight attention for different purposes, and an Owner-responsible Task may route attention to the Owner without Recipient email machinery. **Delegating a Task must never remove it from appropriate Owner oversight.**
+
+This section states product law and authorizes no implementation: no second reminder engine, no reminder routing or delivery mechanics, no change to A8 reminder processing, and no responsibility persistence.
+
 ## Learning: observation now, personalization later (D155)
 
-Rocket **records learning evidence now**: the AI proposal as presented to the Owner (revision 0), the Owner's later edits as append-only revisions, the finally accepted revision, whether the Task was **explicitly** kept or assigned, and the recipient when assignment successfully occurs. That evidence is **dormant**: it must not alter prompts, personalize the first-pass interpretation, auto-assign, silently modify behaviour, or feed online training. **Personalization is deferred** and requires its own approved decision. D113 holds unchanged: operational telemetry is not learning, passive behaviour is never approval, and behaviour must never silently change. Detail: [AI_CONSTITUTION.md](AI_CONSTITUTION.md); retention of manual raw input for review: **D162**.
+Rocket **records learning evidence now**: the AI proposal as presented to the Owner (revision 0), the Owner's later edits as append-only revisions, the finally accepted **content** revision, and — as an **independent** concern — the Owner's **affirmative responsibility selection** (Owner or Recipient), including the selected Recipient. Accepted content revision answers _what_ the Owner accepted; responsibility selection answers _who_ the Owner made responsible. A selection is never inferred from the presence or absence of an assignment, never implies successful external delivery, and is historical evidence of the **initial** choice rather than current assignment state (D164). That evidence is **dormant**: it must not alter prompts, personalize the first-pass interpretation, auto-assign, silently modify behaviour, or feed online training. **Personalization is deferred** and requires its own approved decision. D113 holds unchanged: operational telemetry is not learning, passive behaviour is never approval, and behaviour must never silently change. Detail: [AI_CONSTITUTION.md](AI_CONSTITUTION.md); retention of manual raw input for review: **D162**.
 
 ## One canonical domain (D157)
 
