@@ -56,7 +56,7 @@ Candidate work that is **not** yet a Task. Rocket’s **single shared proposal d
 
 ### Interpretation occurrence
 
-Persisted grouping/provenance for one interpretation act (provisional implementation name may be InterpretationRun — not constitutional table naming). Not canonical Task truth. One occurrence may yield zero, one, or multiple TaskSuggestions. Multiple legitimate occurrences may reference the same source; there is no one-interpretation-forever-per-source invariant. Owner-initiated idempotency uses `(organizationId, idempotencyKey)` plus request fingerprint (D161). Zero proposals is truthful success for Owner-initiated interpretation.
+Persisted grouping/provenance for one interpretation act. Current inert carrier: `InterpretationRun` / `interpretation_runs` in `@aicaa/db` (not constitutional table naming). Stores completed successful outcomes only (`proposals_created` / `no_proposals`); no application producer writes rows yet. Not canonical Task truth. One occurrence may yield zero, one, or multiple TaskSuggestions. Multiple legitimate occurrences may reference the same source; there is no one-interpretation-forever-per-source invariant. Owner-initiated idempotency uses `(organizationId, idempotencyKey)` plus request fingerprint (D161). Zero proposals is truthful success for Owner-initiated interpretation.
 
 ### Task
 

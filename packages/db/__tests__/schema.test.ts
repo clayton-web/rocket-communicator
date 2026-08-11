@@ -248,6 +248,57 @@ describe('A6 suggestion Prisma schema contracts', () => {
   });
 });
 
+describe('InterpretationRun persistence schema contracts', () => {
+  const interpretationMigration = readFileSync(
+    path.join(
+      root,
+      'prisma/migrations/20260810210000_interpretation_run_persistence/migration.sql',
+    ),
+    'utf8',
+  );
+
+  it('defines InterpretationRun with org-scoped idempotency and successful outcomes only', () => {
+    expect(schema).toContain('model InterpretationRun');
+    expect(schema).toContain('enum InterpretationRunOutcome');
+    expect(schema).toContain('proposals_created');
+    expect(schema).toContain('no_proposals');
+    expect(schema).toContain('@@unique([organizationId, idempotencyKey])');
+    expect(interpretationMigration).toContain('CREATE TABLE "interpretation_runs"');
+    expect(interpretationMigration).toContain(
+      'interpretation_runs_organization_id_idempotency_key_key',
+    );
+  });
+
+  it('keeps idempotencyKey, requestFingerprint, and requestId non-null', () => {
+    const block = schema.match(
+      /model InterpretationRun \{[\s\S]*?@@map\("interpretation_runs"\)/,
+    )?.[0];
+    expect(block).toBeDefined();
+    expect(block).toMatch(/idempotencyKey\s+String\s+/);
+    expect(block).toMatch(/requestFingerprint\s+String\s+/);
+    expect(block).toMatch(/requestId\s+String\s+/);
+    expect(block).not.toMatch(/idempotencyKey\s+String\?/);
+    expect(block).not.toMatch(/requestFingerprint\s+String\?/);
+    expect(block).not.toMatch(/requestId\s+String\?/);
+    expect(interpretationMigration).toMatch(/"idempotency_key"\s+VARCHAR\(128\)\s+NOT NULL/);
+    expect(interpretationMigration).toMatch(/"request_fingerprint"\s+VARCHAR\(128\)\s+NOT NULL/);
+    expect(interpretationMigration).toMatch(/"request_id"\s+VARCHAR\(64\)\s+NOT NULL/);
+  });
+
+  it('enables deny-by-default RLS and does not alter existing tables', () => {
+    expect(interpretationMigration).toContain(
+      'ALTER TABLE "interpretation_runs" ENABLE ROW LEVEL SECURITY',
+    );
+    expect(interpretationMigration).not.toMatch(/CREATE POLICY/i);
+    const altered = [...interpretationMigration.matchAll(/ALTER TABLE "([a-z_]+)"/g)].map(
+      (match) => match[1],
+    );
+    expect(new Set(altered)).toEqual(new Set(['interpretation_runs']));
+    expect(interpretationMigration).not.toMatch(/\bUPDATE\b\s+"/i);
+    expect(interpretationMigration).not.toMatch(/\bDELETE\b\s+FROM/i);
+  });
+});
+
 describe('A8.3a reminder persistence schema contracts', () => {
   const a8Migration = readFileSync(
     path.join(root, 'prisma/migrations/20260731040000_a8_reminder_persistence/migration.sql'),

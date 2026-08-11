@@ -66,6 +66,12 @@ That form is deliberately inconvenient: the target is written at the call site, 
 
 Invariants below are enforced by migration SQL or by a build-failing guard. Prisma schema metadata does not model partial indexes or CHECK constraints; **the migration is the source of truth**.
 
+### Interpretation occurrence foundation
+
+- **`InterpretationRun` / `interpretation_runs`** is the inert completed-occurrence store for D161 (grouping/provenance, not Task truth). Rows represent successful completed outcomes only: `proposals_created` or `no_proposals`. A failed provider call does not create a row. No producer writes from application code yet.
+- **Idempotency** matches HandoffAttempt: unique `(organization_id, idempotency_key)`; `idempotency_key`, `request_fingerprint`, and durable-traceability `request_id` are NOT NULL; same key + same fingerprint is replay; same key + different fingerprint is `IDEMPOTENCY_KEY_CONFLICT`.
+- **Out of this foundation:** trigger/source enums, raw-input retention, CommunicationEvent linkage, TaskSuggestion FKs, revisions, acceptance outcomes, claim/lease, and failure/pending states.
+
 ### Assignment and handoff
 
 - **At most one active assignment per task** (`cleared_at IS NULL`) — `task_assignments_one_active_per_task_idx`. Reassignment always inserts a new row via `createActiveAssignment`; cleared rows stay persisted and are never overwritten or reused. Capabilities remain FK-bound to the exact historical assignment under which they were issued.

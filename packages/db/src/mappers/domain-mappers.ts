@@ -38,6 +38,7 @@ import type {
   CommunicationEvent as PrismaCommunicationEvent,
   GmailSyncRun as PrismaGmailSyncRun,
   HandoffAttempt as PrismaHandoffAttempt,
+  InterpretationRun as PrismaInterpretationRun,
   Recipient as PrismaRecipient,
   Task as PrismaTask,
   TaskAssignment as PrismaAssignment,
@@ -381,5 +382,32 @@ export function mapHandoffAttempt(row: PrismaHandoffAttempt): PersistedHandoffAt
     rootAttemptId: row.rootAttemptId,
     createdAt: toIso(row.createdAt),
     updatedAt: toIso(row.updatedAt),
+  };
+}
+
+/** Completed InterpretationRun row mapped to ISO timestamps (D161 persistence foundation). */
+export type PersistedInterpretationRun = {
+  id: string;
+  organizationId: string;
+  idempotencyKey: string;
+  requestFingerprint: string;
+  outcome: 'proposals_created' | 'no_proposals';
+  modelVersion: string;
+  policyVersion: string;
+  requestId: string;
+  createdAt: string;
+};
+
+export function mapInterpretationRun(row: PrismaInterpretationRun): PersistedInterpretationRun {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    idempotencyKey: row.idempotencyKey,
+    requestFingerprint: row.requestFingerprint,
+    outcome: row.outcome,
+    modelVersion: row.modelVersion,
+    policyVersion: row.policyVersion,
+    requestId: row.requestId,
+    createdAt: toIso(row.createdAt),
   };
 }

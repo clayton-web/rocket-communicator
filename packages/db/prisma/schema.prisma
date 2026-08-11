@@ -792,6 +792,34 @@ model OwnerNotificationAttempt {
   @@map("owner_notification_attempts")
 }
 
+/// Completed interpretation occurrence (D161). Provisional carrier name for the one persisted
+/// interpretation-occurrence concept — grouping/provenance truth, not canonical Task truth.
+///
+/// **Completed successful outcomes only.** A failed provider call does not create a row. There is
+/// no pending/running/claim/lease lifecycle here. `no_proposals` is truthful success (zero
+/// TaskSuggestions), distinct from A6 `skipped_irrelevant` / `AI_EMPTY_OUTPUT`.
+///
+/// **Idempotency (HandoffAttempt pattern):** unique `(organizationId, idempotencyKey)`; same key +
+/// same fingerprint is replay; same key + different fingerprint is `IDEMPOTENCY_KEY_CONFLICT`.
+/// `idempotencyKey`, `requestFingerprint`, and durable-traceability `requestId` are required — not nullable.
+///
+/// **Inert foundation.** No application producer writes rows yet. No trigger enum, raw-input
+/// retention, CommunicationEvent linkage, or TaskSuggestion FK in this slice.
+model InterpretationRun {
+  id                 String                   @id @db.VarChar(64)
+  organizationId     String                   @map("organization_id") @db.VarChar(64)
+  idempotencyKey     String                   @map("idempotency_key") @db.VarChar(128)
+  requestFingerprint String                   @map("request_fingerprint") @db.VarChar(128)
+  outcome            InterpretationRunOutcome
+  modelVersion       String                   @map("model_version") @db.VarChar(64)
+  policyVersion      String                   @map("policy_version") @db.VarChar(64)
+  requestId          String                   @map("request_id") @db.VarChar(64)
+  createdAt          DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, idempotencyKey])
+  @@map("interpretation_runs")
+}
+
 enum TaskStatus {
   open
   in_progress
@@ -1084,4 +1112,11 @@ enum OwnerNotificationAttemptOutcome {
   failed_retryable
   failed_permanent
   ambiguous
+}
+
+/// Successful completed interpretation outcomes only (D161). `no_proposals` is truthful success —
+/// not failure, not A6 `skipped_irrelevant`, and not a reason to invent a fake TaskSuggestion.
+enum InterpretationRunOutcome {
+  proposals_created
+  no_proposals
 }

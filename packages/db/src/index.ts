@@ -37,9 +37,11 @@ export {
   mapTemporaryCommunicationExcerpt,
   mapGmailSyncRun,
   mapHandoffAttempt,
+  mapInterpretationRun,
   type AuditEventRecord,
   type GmailOAuthCredentialRecord,
   type PersistedHandoffAttempt,
+  type PersistedInterpretationRun,
 } from './mappers/domain-mappers.js';
 
 export {
@@ -318,6 +320,15 @@ export {
   type ListGmailSyncRunsQuery,
   type ListGmailSyncRunsResult,
 } from './repositories/gmail-sync-run-repository.js';
+export {
+  createInterpretationRun,
+  findInterpretationRunByIdempotencyKey,
+  lookupInterpretationRunIdempotency,
+  resolveInterpretationRunIdempotency,
+  type CreateInterpretationRunInput,
+  type InterpretationRunIdempotencyLookup,
+  type InterpretationRunOutcomeValue,
+} from './repositories/interpretation-run-repository.js';
 
 export {
   persistReturnToOwner,
