@@ -20,16 +20,16 @@ AI extracts **operational meaning** into strict structured, point-form outputs a
 - **Proposals are proposals.** The Owner reviews them and decides **Keep for me** or **Assign**; only that Owner act creates canonical work (D008, D038). Keep is affirmative and is never inferred from missing assignment (D155).
 - **Nothing here authorizes implementation**, and the shipped direct Owner capture path remains **current implementation** rather than the target architecture (D154). Representing `owner_review` as a trigger does not authorize Owner-review product surfaces (D161).
 
-## Distinct AI jobs: A6 extraction vs Owner/shared interpretation (D161)
+## Distinct AI jobs: A6 extraction vs Owner/shared interpretation (D161, D163)
 
 Do **not** collapse automated A6 `SuggestionExtractionResult` semantics into Owner/shared `InterpretationResult`.
 
-| Job                             | Contract posture                                                                                                                      |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| **Automated A6 extraction**     | Existing heuristic prefilter; existing A6 extraction contract; existing `AI_EMPTY_OUTPUT` semantics after that prefilter remain valid |
-| **Owner/shared interpretation** | Context-free `InterpretationInput`; `InterpretationResult`; `tasks: []` is successful; 0..N proposals                                 |
+| Job                             | Contract posture                                                                                                                                                                                                                         |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Automated A6 extraction**     | Preserved compatibility/legacy job (**D163**): existing heuristic prefilter; existing A6 extraction contract; existing `AI_EMPTY_OUTPUT` semantics after that prefilter remain valid. Not the dependency target for new product AI work. |
+| **Owner/shared interpretation** | Future product job: context-free `InterpretationInput`; `InterpretationResult`; `tasks: []` is successful; 0..N proposals                                                                                                                |
 
-They should share provider transport, error, retry, and JSON infrastructure where appropriate. Consolidating duplicated OpenAI-compatible transport is desirable engineering later and is **not** authorized or required by this constitution section alone.
+They should share provider transport, error, retry, and JSON infrastructure where appropriate. Consolidating duplicated OpenAI-compatible transport is desirable engineering later and is **not** authorized or required by this constitution section alone. New AI product capabilities must build on the Owner/shared interpretation job and must **not** depend on A6-specific processing semantics (**D163**).
 
 ## AI must NEVER
 

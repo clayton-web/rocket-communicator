@@ -174,7 +174,7 @@ Application-owned Gmail sync logic: account eligibility, locking, Gmail History 
 
 ### Application Suggestion Engine
 
-Application-owned A6 logic: claim-lease eligible CommunicationEvents, heuristic relevance filtering, and LLM extraction via `packages/ai` using the A6 `SuggestionExtractionResult` contract (D085, D161). Invoked by `POST /api/v1/internal/suggestions/process` from an External Scheduler (D084). CommunicationEvent claim/lease/process-state remains the automated-processing authority (D081 idempotency intent; cardinality superseded by D161). Must not run inside Gmail History sync transactions (D075, D084). Distinct from Owner/shared interpretation (`InterpretationResult`), which is not this engine’s contract.
+Preserved A6 compatibility/legacy automatic Gmail processing (**D163**): claim-lease eligible CommunicationEvents, heuristic relevance filtering, and LLM extraction via `packages/ai` using the A6 `SuggestionExtractionResult` contract (D085, D161). Invoked by `POST /api/v1/internal/suggestions/process` from an External Scheduler (D084). CommunicationEvent claim/lease/process-state remains the automated-processing authority for this path (D081 idempotency intent; cardinality superseded by D161). Must not run inside Gmail History sync transactions (D075, D084). Distinct from Owner/shared interpretation (`InterpretationResult`), which is the future product AI job. **Not** a dependency target for new Rocket capabilities; future automatic Gmail intelligence should preferentially use the shared interpretation/proposal architecture rather than extend this engine (**D163**).
 
 ### External Scheduler
 

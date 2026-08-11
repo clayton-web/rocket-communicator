@@ -132,7 +132,7 @@ Rocket **records learning evidence now**: the AI proposal as presented to the Ow
 
 - **One canonical Task domain.**
 - **One shared proposal path** (`TaskSuggestion` is the single shared proposal domain — no parallel CandidateTask store).
-- **One shared interpretation capability**, with distinct AI jobs for automated A6 extraction and Owner/shared interpretation where their contracts differ (D161).
+- **One shared interpretation capability**, with distinct AI jobs for preserved A6 extraction (compatibility/legacy) and Owner/shared interpretation where their contracts differ (D161, **D163**). A6 is not a dependency target for future product development.
 - **Every native and web client uses the same backend Task and intelligence system.**
 - **Existing infrastructure is evolved rather than duplicated** unless an explicit approved architecture decision replaces it.
 
