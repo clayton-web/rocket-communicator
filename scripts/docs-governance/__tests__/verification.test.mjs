@@ -495,7 +495,7 @@ test('a half-converted register verifies with no hard failure', () => {
   assert.equal(result.ordering.state, 'mixed');
 });
 
-test('the live Batch 1 mixed register verifies with no hard failure', () => {
+test('the live fully converted register verifies with no hard failure', () => {
   const result = runVerification({
     registerPath: REGISTER_PATH,
     baselinePath: BASELINE_PATH,
@@ -507,9 +507,9 @@ test('the live Batch 1 mixed register verifies with no hard failure', () => {
     result.findings.failures.map((item) => item.code),
     [],
   );
-  assert.deepEqual(result.representations, ['heading', 'table-row']);
+  assert.deepEqual(result.representations, ['heading']);
   assert.equal(result.records.length, 165);
-  assert.equal(result.ordering.state, 'mixed');
+  assert.equal(result.ordering.state, 'converted');
 });
 
 test('absorbing a thematic break into the final converted record is a hard failure', () => {

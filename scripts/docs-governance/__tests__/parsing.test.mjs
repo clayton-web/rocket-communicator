@@ -201,11 +201,11 @@ test('both representations can coexist in one file during the transition', () =>
   assert.equal(records.find((record) => record.id === 'D005').representation, 'table-row');
 });
 
-test('the real register parses in its mid-transition representations with no problems', () => {
+test('the real register parses in its fully converted representation with no problems', () => {
   const { records, problems, representations } = parseRegister(readFileSync(REGISTER_PATH, 'utf8'));
 
   assert.deepEqual(problems, []);
-  assert.deepEqual(representations, ['heading', 'table-row']);
+  assert.deepEqual(representations, ['heading']);
   assert.equal(records.length, 165);
   assert.equal(new Set(records.map((record) => record.id)).size, 165);
 });
