@@ -12,17 +12,16 @@ Use this checklist before completing any implementation milestone or merging beh
 
 - [ ] Change maps to exactly one authorized milestone in [MILESTONES.md](MILESTONES.md)
 - [ ] Acceptance criteria for that milestone are listed and met
-- [ ] Explicit out-of-scope items were not implemented
 - [ ] No unrelated refactoring or drive-by feature work
 - [ ] New discoveries parked in [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md) or a future milestone
-- [ ] Nothing outside the authorized scope was built, whether or not any document lists it as excluded — **an absent authorization is the gate, not an enumeration**
+- [ ] Nothing outside the authorized scope was built — whether or not any document lists it as excluded; **an absent authorization is the gate, not an enumeration**
 - [ ] Plan or prompt classified Docker as 🟢 not required, 🟡 recommended, or 🔴 required
 
 ## Environment and verification
 
 Governing process: [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW.md).
 
-- [ ] **Environment Guard** ran before application-code changes (Node, pnpm, `JAVA_HOME` → Java 17, Gradle on JDK 17, slice tools, green `pnpm verify` baseline unless waived)
+- [ ] **Environment Guard** ran before application-code changes (Node, pnpm, `JAVA_HOME` → Java 17, Gradle on JDK 17, green `pnpm verify` baseline)
 - [ ] Environment failures were classified as environment issues — application code was not modified to compensate
 - [ ] Healthy toolchains were not reinstalled or reconfigured
 - [ ] **`pnpm verify` is green** as the default exit criterion, or the authorization explicitly permitted a narrower scope
@@ -34,9 +33,10 @@ Governing process: [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW.md).
 ## Architecture
 
 - [ ] Matches [ARCHITECTURE.md](ARCHITECTURE.md) and Approved [DECISIONS.md](DECISIONS.md)
-- [ ] Honours the Architecture Principles (D079)
+- [ ] Honours [PROJECT_CONSTITUTION.md § Architecture Principles](PROJECT_CONSTITUTION.md#architecture-principles) (D079)
 - [ ] No new vendor or datastore without a decision entry; Neon still not introduced alongside Supabase
 - [ ] Native clients still do not write core business records directly to Supabase; Prisma is used only through authorized server APIs
+- [ ] New shared or product interpretation work **evolves A5 and the shared interpretation architecture and depends on no A6-specific semantics** — heuristic gating, A6 extraction-empty behaviour, claim/lease batch semantics, or a 0..1 proposal assumption — even where provider transport, retry, and JSON infrastructure are legitimately shared (D163, [WORKFLOWS.md](WORKFLOWS.md) §1a)
 
 ### Reuse before creation
 
@@ -51,7 +51,7 @@ Verified against [ARCHITECTURE.md § Ownership and reuse map](ARCHITECTURE.md#ow
 - [ ] Does this place **shared business intelligence inside a native client** because that client happened to need it first?
 - [ ] Before replacing existing Android capture or networking infrastructure, was that substrate **inspected** for whether it can support or evolve into the authorized Owner UX rather than being casually discarded?
 - [ ] Is `tasks: []` (zero proposals) handled as a **successful** interpretation outcome rather than an error or a fallback to direct creation?
-- [ ] Does this add a **second assignment or custody state machine** — a Task responsibility/assignee column, a custody enum, or an Owner `TaskAssignment` row — instead of leaving the representation unsettled (D164)?
+- [ ] Does this add a **second assignment or custody state machine** — a Task responsibility/assignee column or a custody enum — instead of leaving the representation unsettled (D164)?
 
 ### Responsibility and follow-through (D164, D155)
 
@@ -64,12 +64,11 @@ Apply to any acceptance, assignment, evidence, attention, or reminder work.
 
 ### Boundaries
 
-- [ ] **Ownership boundaries hold (D131):** the application stays the sole source of truth for Tasks, reminder state, policy, history, delivery outcomes, and Owner-attention state; an External Scheduler only **wakes** it and decides nothing; Gmail only **transports**; no third-party task engine is introduced or described as a planned dependency
-- [ ] **Online-first with graceful connectivity loss (D132):** no offline business-record store, service-worker cache of authenticated business data, mutation queue, background sync, or conflict-resolution layer; a write that did not reach the server is never presented as successful; retry runs through the existing idempotency and concurrency machinery; no copy claims the application works offline
+- [ ] **Ownership boundaries hold (D131):** the application stays the sole source of truth for Tasks, reminder state, policy, history, delivery outcomes, and Owner-attention state; an External Scheduler only **wakes** the app-owned engine and decides no business logic; Gmail only **transports**; no third-party task engine is introduced or described as a planned dependency
+- [ ] **Online-first with graceful connectivity loss (D132):** no offline business-record store, authenticated service-worker cache, mutation queue, background sync, or conflict-resolution layer; a write that did not reach the server is never presented as successful; retries use existing idempotency and concurrency machinery; no copy claims the application works offline
 - [ ] Canonical contract approach preserved: OpenAPI is the source of truth, TS and Kotlin clients are generated, JSON Schema is derived only
-- [ ] Scheduled work remains app-owned engines invoked by External Schedulers — never business logic inside the scheduler platform
 - [ ] Reminder, notification, and retention behaviour remains **deterministic**, never model-driven (D027, D102–D110)
-- [ ] **No runtime value is imported from a package listed in `serverExternalPackages`.** `import type` from `@aicaa/db` is safe; importing a constant, class, or function from it is not, because Next leaves the package a runtime external and the binding can be emitted as an undeclared free variable. Reach persistence through `loadDbRuntime()`, or own the value locally with a guard tying it to the persistence authority. **A green unit suite is not evidence** — Vitest resolves the workspace package directly, so the binding exists in every test and is missing only in the shipped artifact
+- [ ] **No runtime value is imported from a package listed in `serverExternalPackages`.** `import type` is safe; importing a constant, class, or function is not. Reach persistence through `loadDbRuntime()`, or own the value locally with a guard tying it to the persistence authority. **A green unit suite is not evidence** that shipped runtime packaging is safe ([ARCHITECTURE.md § The `serverExternalPackages` runtime-value import hazard](ARCHITECTURE.md#the-serverexternalpackages-runtime-value-import-hazard))
 - [ ] Waiting remains the **only** suspension mechanism; no separate pause control was added (D097, D101, D107)
 
 ## Reminder and notification work (apply when in scope)
@@ -82,10 +81,9 @@ Gates for D102–D110 and D128–D136. These record expected behaviour and requi
 - [ ] **09:00 organization-local preserved across daylight-saving transitions**, proven by test across a real DST boundary (23 or 25 hours on the transition day)
 - [ ] No dependence on browser, device, or machine-local timezone; the organization timezone is the only authority (D034, D103)
 - [ ] Deterministic IANA resolution with defined behaviour for DST **gap** and **ambiguity**, proven identically under Node, Vitest, and the deployed runtime
-- [ ] **No retroactive sends and no backlog:** a past due date, a resume from Waiting, and a reassignment each schedule only the next future occurrence; an elapsed advance occurrence is recorded as skipped with a truthful, distinguishable reason
+- [ ] **No retroactive sends and no backlog:** a past due date, a resume from Waiting, and a reassignment each schedule only the next future occurrence; an elapsed advance occurrence is recorded as skipped with a truthful, distinguishable reason; reassignment preserves the **Task-scoped** schedule (D104)
 - [ ] Overdue ceiling stops at **14 successful overdue deliveries per generation**; failures, skips, claims, and advance occurrences are excluded from the count (D106)
 - [ ] A material due-date change opens a new generation, preserves all prior history, resets only the per-generation count, and discloses the restart; a same-value save does neither (D104)
-- [ ] Reassignment preserves the **Task-scoped** schedule (D104)
 - [ ] Historical due-date data did **not** auto-activate reminders; Owner opt-in or re-save is required (D109)
 - [ ] **No production enablement** before both the Event Notification Engine and the minimum Owner schedule-status UI are operational (D108)
 
@@ -116,9 +114,9 @@ Gates for D102–D110 and D128–D136. These record expected behaviour and requi
 ### Content and destination
 
 - [ ] **No capability token or capability URL** in reminder metadata, audit, logs, or telemetry (D109)
-- [ ] A reminder carries **no link** and mints, rotates, or re-sends no capability; both MIME bodies are asserted link-free before emission, with database-sourced content redacted rather than trusted (D130)
+- [ ] A reminder carries **no link** and never mints, rotates, or re-sends a capability; both MIME bodies asserted link-free before emission; database-sourced content redacted, not trusted (D130)
 - [ ] A non-actionable capability produces a truthful **skip** with zero provider calls, recorded as `no_actionable_capability` and never collapsed into `no_active_assignment` — the two imply different Owner remedies
-- [ ] Forbidden email content is absent from text **and** HTML: capability URL, token, `/c/` path, communication excerpts, reminder counts, escalation or "final reminder" wording, internal identifiers, threading headers, CC, BCC
+- [ ] Forbidden email content is absent from text **and** HTML: capability URL/token/`/c/` path, communication excerpts, reminder counts, escalation or "final reminder" wording, internal identifiers, threading headers, CC, BCC
 - [ ] The Owner notification destination is resolved server-side from the connected account for the **intent's** organization; the transport exposes **no destination parameter** (D134)
 - [ ] Owner mail quotes **no Recipient-authored text** — note bodies, clarification text, and excerpts have no parameter to arrive through, and escaping does not satisfy the prohibition because it is semantic (D134)
 - [ ] Attribution is the **historical actor from the intent**, never reconstructed from current state, and terminal outcome audits are **`system`**-attributed
@@ -133,17 +131,15 @@ Gates for D102–D110 and D128–D136. These record expected behaviour and requi
 - [ ] Organization scoping is applied **in application code**, on both sides of any join — deny-by-default RLS with no policies is not tenant isolation for a Prisma read whose connection role owns the tables
 - [ ] Round-trip count is **constant in the number of rows**, measured at the driver, with no database call inside a loop
 - [ ] The **reminder ETag** is sent on every reminder mutation and the Task ETag is never substituted; a `412` is a resolution path that re-reads authoritative state and is **never silently retried**
-- [ ] An unknown transport outcome is reported as **unknown** and resolved by re-reading, never assumed in either direction
-- [ ] Confirmed success, validation failure, domain conflict, stale precondition, unknown outcome, and a failed re-read are **distinct messages**; none collapses into "failed"
+- [ ] Confirmed success, validation failure, domain conflict, stale precondition, unknown outcome, and a failed re-read are **distinct messages**; none collapses into "failed"; an unknown transport outcome is resolved by re-reading and never assumed in either direction
 - [ ] Editability is **derived from the domain rule**, not restated in the UI
 - [ ] **No resend control in any state** — no "send now", "retry", "restart", "force", or "reset". A gap is reported, not papered over with a button
 - [ ] A material due-date change discloses the **cycle restart and recalculation before submission** (D104), and stays silent on a first set and a same-date re-save
 - [ ] Owner-facing copy avoids implementation vocabulary: generation, occurrence kinds, raw stop-reason labels, claim, lease, fencing, retry counters, scheduler, and Prisma terms appear nowhere
 - [ ] A calendar date is carried as the exact `YYYY-MM-DD` string end to end, and no time picker exists
 - [ ] Updating a schedule is **never described as sending anything**
-- [ ] Empty, loading, and error states are distinguishable, and an error state **cannot be read as an all-clear**; a missing migration or database failure reaches the error boundary rather than degrading to empty
+- [ ] A missing migration or database failure reaches the error boundary rather than silently degrading into an empty state
 - [ ] Stop-reason copy is truthful and exhaustive over the contracted enum; repeated ambiguity says delivery **could not be confirmed**, never that the Recipient did not receive it (D129)
-- [ ] A **new index is measured, not assumed** — any claim that a query needs one, or does not, carries `EXPLAIN (ANALYZE, BUFFERS)` from real PostgreSQL at a realistic row count, including the empty case
 
 ## Production changes (apply to any slice that touches Production)
 
@@ -154,6 +150,7 @@ Procedures: [DEPLOYMENT.md](DEPLOYMENT.md).
 - [ ] A **preview-target deployment was not promoted** — the Preview environment lacks Production-only variables, so promoting one is an outage
 - [ ] `git push origin main` was not used as a deployment mechanism; a push builds and promotes automatically with no inspection step
 - [ ] The deployment is **production-target**, created so it can be inspected before the public domain moves to it, and the alias move is treated as an explicit step rather than assumed
+- [ ] **The alias assignment is what makes an enablement real** — a ready production-target deployment that holds a flag but not the public Production alias changed nothing and is not reported as live ([DEPLOYMENT.md § Enablement staging](DEPLOYMENT.md#enablement-staging))
 - [ ] Before promotion: commit SHA, target, build state, route set **by name**, environment-variable names, flag values, Node version, and build command were all recorded
 - [ ] **No migration ran during the build** — only `prisma generate` appears in the build log
 - [ ] A migration ran from a worktree containing **no `.env`**, with the URL supplied **process-scoped** to that one command, against an endpoint that can hold a session-scoped advisory lock
@@ -165,6 +162,7 @@ Procedures: [DEPLOYMENT.md](DEPLOYMENT.md).
 - [ ] The rollback target is identified **and its condition stated**, including whether it is defective or carries a stale environment binding; rollback does not unapply a migration, pause a scheduler, or unsend a message
 - [ ] Every deviation from the approved procedure is recorded honestly rather than omitted
 - [ ] A later gate was **not** begun inside this authorization
+- [ ] The two thresholds deliberately not crossed in one slice — the first enablement that can send mail on Rocket's own initiative, and the first that can send mail to somebody who is not the Owner — were **not** crossed together ([DEPLOYMENT.md § Enablement staging](DEPLOYMENT.md#enablement-staging))
 
 ## Owner experience (apply to any Owner-facing surface)
 
@@ -173,6 +171,7 @@ Procedures: [DEPLOYMENT.md](DEPLOYMENT.md).
 - [ ] An ambiguous or transport retry reuses the **same `Idempotency-Key`** and the **original `If-Match`**; no new-key "start over" after a durable attempt (D112)
 - [ ] A confirmed `412` refreshes authoritative state and re-presents it before a new attempt; no silent loop on a known-stale precondition
 - [ ] Loading affordances are used for **reads only**; empty states distinguish "none yet" from "none matched" from "failed to load"
+- [ ] Stale data is labelled with the time/as-of context necessary to make it truthful (D112)
 - [ ] **One correlation reference** joins the user-visible error reference, server diagnostics, and the audit row — proven by forcing a real failure and tracing a single value (D115)
 - [ ] **No capability token and no raw `/c/{token}` path** in any telemetry, log, metric, or error payload — proven by automated assertion, not review alone (D114)
 - [ ] Capability routes remain **excluded from client telemetry**; server diagnostics identify them by static template only (D114)
@@ -194,16 +193,25 @@ Procedures: [DEPLOYMENT.md](DEPLOYMENT.md).
 - [ ] [GLOSSARY.md](GLOSSARY.md) terms used consistently
 - [ ] [WORKFLOWS.md](WORKFLOWS.md) updated if a user-visible flow changed
 - [ ] No contradiction with [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md), and no lower-rank document was made to originate product law
-- [ ] [../README.md](../README.md) read order still accurate if documents were added or removed
+- [ ] Documentation additions or removals are reflected appropriately in [PROJECT_CONSTITUTION.md § Authority model](PROJECT_CONSTITUTION.md#authority-model-d158), which remains the authoritative exhaustive rank/ownership model
+- [ ] [../README.md § Documentation](../README.md#documentation) and [§ Repository layout](../README.md#repository-layout) still point at valid current files/paths after documentation changes
+- [ ] Every link and heading anchor **this change touched or renamed** resolves; a renamed heading was followed to every document that links to it
 - [ ] No completed-slice narrative was added to an active document that will have to be deleted later
+- [ ] Implementation does not disagree with docs; if it did, docs were intentionally updated first
+- [ ] DECISIONS statuses still accurate (Approved / Deferred / Open)
+- [ ] Every decision cited by this change exists, carries its current status, and still supports the sentence citing it — a **Superseded in part** row was checked for whether the relied-on clause was withdrawn
+- [ ] OPEN_QUESTIONS not treated as resolved without recording answers
+- [ ] [MILESTONES.md](MILESTONES.md) still reflects reality after this work
 
 ## AI behaviour
 
 - [ ] No invented facts, deadlines, contacts, commitments, properties, money, follow-up dates, or due dates as facts ([AI_CONSTITUTION.md](AI_CONSTITUTION.md))
 - [ ] Facts, inference, missing data, and low confidence are distinguished in outputs
 - [ ] Recommendations include rationale and confidence where applicable
+- [ ] The **first interpretation pass stayed context-free** — no prior Owner preferences, prior Owner edits, assignment history, previously created Tasks, or workspace-specific context entered it (D154, [AI_CONSTITUTION.md § Interpretation](AI_CONSTITUTION.md#interpretation-d154-d161-d163))
 - [ ] No silent advance of the learning ladder
-- [ ] Task creation, assignment email or forward, and any due date that drives reminders still require an explicit Owner act (D102)
+- [ ] **Recorded learning evidence stayed dormant** — no prompt, auto-assignment, ranking, or model training was derived from it, and no behaviour changed from it without an approved personalization decision (D155, [AI_CONSTITUTION.md § Learning: observe now, personalize later](AI_CONSTITUTION.md#learning-observe-now-personalize-later-d155))
+- [ ] Task creation, assignment email or forward, and any due date that drives reminders still require an explicit Owner act ([AI_CONSTITUTION.md § What AI may do, and what requires the Owner](AI_CONSTITUTION.md#what-ai-may-do-and-what-requires-the-owner); D102, D152)
 - [ ] AI never creates, activates, alters, or suppresses a Reminder Schedule (D027, D152)
 - [ ] Durable learning does not store raw message bodies
 - [ ] Invalid model output is quarantined rather than guessed
@@ -219,7 +227,7 @@ Procedures: [DEPLOYMENT.md](DEPLOYMENT.md).
 - [ ] Capability rotation and invalidation applied on reassignment or re-forward (D086)
 - [ ] Gmail tokens remain server-side and encrypted at rest
 - [ ] Secrets not committed; `.env` patterns respected
-- [ ] **No real credential is pasted into documentation.** Scan changed documents for a populated connection string (`postgresql://user:password@host`) and for a token-shaped `Bearer` payload — `Bearer` followed by eight or more `[A-Za-z0-9._-]` characters including at least one digit, `.`, or `_`. Angle-bracket placeholders and the loopback Docker credential are fine; `Bearer eyJhbGci…` and a real host with a real password are not
+- [ ] **No real credential is pasted into documentation.** Scan changed docs for a populated `postgresql://user:password@host` and for `Bearer` + ≥8 `[A-Za-z0-9._-]` chars including a digit, `.`, or `_`. Angle-bracket placeholders and the loopback Docker credential are fine; `Bearer eyJhbGci…` and a real host/password are not
 - [ ] Recipient identity not hard-coded in source; no env-default Recipient as a production model (D087)
 - [ ] Audit events recorded for approvals, handoffs, delivery attempts, reminder scheduling and attempts, Event Notifications, capability use, and authorization failures
 - [ ] Knowingly incomplete Gmail-origin forwards are not sent (D088)
@@ -235,10 +243,11 @@ Procedures: [DEPLOYMENT.md](DEPLOYMENT.md).
 ## Retention
 
 - [ ] The seven-day excerpt rule is not conflated with thirty-day completed visibility
+- [ ] Where one imported source produced **sibling proposals or Tasks**, each excerpt `purgeAt` is computed from the **maximum still-valid entitlement** across those siblings, so one sibling's transition never shortens another's (D082, D161, [DATA_RETENTION.md](DATA_RETENTION.md))
+- [ ] Manual Owner-authored capture raw input is **not** stored as a temporary communication excerpt or as learning evidence, and any raw input retained for Owner review carries a concrete purge path no later than **seven days from successful interpretation** (D162, [DATA_RETENTION.md § Manual Owner-authored capture raw input](DATA_RETENTION.md#manual-owner-authored-capture-raw-input-d162))
 - [ ] Raw audio deleted after successful transcription and validation
-- [ ] Failed-transcription policy not silently invented while still Open
+- [ ] Failed-transcription audio is retained encrypted for at most 48 hours then deleted; no indefinite retention is introduced (D041, [DATA_RETENTION.md](DATA_RETENTION.md))
 - [ ] The retention worker does not attempt to delete Gmail mailbox forwards
-- [ ] Learning extraction does not keep raw bodies
 - [ ] Failed-deletion retry and alert behaviour considered
 
 ## Cost
@@ -258,7 +267,7 @@ Procedures: [DEPLOYMENT.md](DEPLOYMENT.md).
 - [ ] Partial or incomplete forward paths never report full success (D088)
 - [ ] Native-client fixtures updated if parsers changed
 - [ ] Failure paths (reauth, missing body, provider down) considered
-- [ ] Default full-`pnpm verify` gate satisfied unless a narrower scope was explicitly authorized
+- [ ] A **new index is measured, not assumed** — any claim that a query needs one, or does not, carries `EXPLAIN (ANALYZE, BUFFERS)` from real PostgreSQL at a realistic row count, including the empty case
 
 ## UX
 
@@ -267,18 +276,9 @@ Procedures: [DEPLOYMENT.md](DEPLOYMENT.md).
 - [ ] Manual and voice fallbacks available when capture fails
 - [ ] Best-effort call and notification limitations not over-promised in copy
 - [ ] Cognitive load: point-form, clear next action, no dashboard creep
-- [ ] The interface states what is true: no optimistic success, ambiguous stays ambiguous, stale data labelled as of a stated time (D112)
 
 ## Technical debt
 
 - [ ] New debt listed explicitly (comment plus [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md) or a milestone note)
-- [ ] No "temporary" hardcoded Recipient emails or domains
 - [ ] No skipped authorization "to unblock a demo"
 - [ ] Generated clients not hand-edited without regenerating from the contract
-
-## Documentation drift
-
-- [ ] Implementation does not disagree with docs; if it did, docs were intentionally updated first
-- [ ] DECISIONS statuses still accurate (Approved / Deferred / Open)
-- [ ] OPEN_QUESTIONS not treated as resolved without recording answers
-- [ ] [MILESTONES.md](MILESTONES.md) still reflects reality after this work
