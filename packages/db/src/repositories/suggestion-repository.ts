@@ -1,7 +1,12 @@
 import type { TaskSuggestion } from '@aicaa/domain';
 import type { DbClient, DbTransaction } from '../client/create-prisma-client.js';
 import { Prisma } from '../generated/client/index.js';
-import { fromIso, mapSuggestion } from '../mappers/domain-mappers.js';
+import {
+  fromIso,
+  mapSuggestion,
+  mapSuggestionWithInterpretationRun,
+  type TaskSuggestionWithInterpretationRun,
+} from '../mappers/domain-mappers.js';
 import {
   notFound,
   optimisticConcurrency,
@@ -20,11 +25,16 @@ function isUniqueViolation(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
 }
 
+/**
+ * @param interpretationRunId Owning interpretation occurrence (D161), set at creation only. Null
+ *   for A6 Gmail and Recipient work-request suggestions, which have no occurrence.
+ */
 export async function createTaskSuggestion(
   db: Client,
   organizationId: string,
   suggestion: TaskSuggestion,
   originTaskId?: string,
+  interpretationRunId?: string | null,
 ): Promise<TaskSuggestion> {
   if (suggestion.organizationId !== organizationId) {
     throw organizationMismatch('Suggestion organizationId must match the persistence scope.');
@@ -45,6 +55,7 @@ export async function createTaskSuggestion(
         proposedPriority: suggestion.proposedPriority ?? null,
         voiceOriginated: suggestion.voiceOriginated,
         originTaskId: originTaskId ?? null,
+        interpretationRunId: interpretationRunId ?? null,
         sourceCommunicationEventId: suggestion.sourceCommunicationEventId ?? null,
         approvedTaskId: suggestion.approvedTaskId ?? null,
         mergedIntoTaskId: suggestion.mergedIntoTaskId ?? null,
@@ -89,6 +100,39 @@ export async function getTaskSuggestionBySourceEventId(
     where: { sourceCommunicationEventId, organizationId },
   });
   return row ? mapSuggestion(row) : null;
+}
+
+/** Read one suggestion together with the interpretation occurrence that owns it (D161). */
+export async function getTaskSuggestionWithInterpretationRunById(
+  db: Client,
+  organizationId: string,
+  suggestionId: string,
+): Promise<TaskSuggestionWithInterpretationRun> {
+  const row = await db.taskSuggestion.findFirst({
+    where: { id: suggestionId, organizationId },
+  });
+  if (!row) {
+    throw notFound(`Task suggestion ${suggestionId} not found for organization.`);
+  }
+  return mapSuggestionWithInterpretationRun(row);
+}
+
+/**
+ * Every proposal owned by one interpretation occurrence (D161).
+ *
+ * Returns 0..N rows: an occurrence with outcome `no_proposals` legitimately owns none, and sibling
+ * proposals from the same occurrence coexist.
+ */
+export async function listTaskSuggestionsByInterpretationRunId(
+  db: Client,
+  organizationId: string,
+  interpretationRunId: string,
+): Promise<TaskSuggestionWithInterpretationRun[]> {
+  const rows = await db.taskSuggestion.findMany({
+    where: { organizationId, interpretationRunId },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+  });
+  return rows.map(mapSuggestionWithInterpretationRun);
 }
 
 export interface ListTaskSuggestionsQuery {
@@ -179,6 +223,10 @@ function decodeSuggestionListCursor(raw: string | null | undefined): SuggestionL
 
 /**
  * Persist a full suggestion snapshot only when the expected version matches.
+ *
+ * `interpretationRunId` is deliberately absent from the written data: ownership by an
+ * interpretation occurrence (D161) is established at creation and is not re-stated by Owner edits,
+ * so a snapshot write cannot silently detach a proposal from its occurrence.
  */
 export async function updateTaskSuggestionWithExpectedVersion(
   db: Client,

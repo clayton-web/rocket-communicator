@@ -54,11 +54,14 @@ describe('InterpretationRun migration shape', () => {
     expect(block).not.toMatch(/idempotencyKey\s+String\?/);
     expect(block).not.toMatch(/requestFingerprint\s+String\?/);
     expect(block).not.toMatch(/requestId\s+String\?/);
+    // `sourceKind` was deferred by this foundation and is added by the later ownership-edge slice,
+    // so it is no longer forbidden on the model; the foundation migration SQL still must not
+    // mention it.
+    expect(sql).not.toContain('source_kind');
     for (const forbidden of [
       'rawInput',
       'raw_input',
       'trigger',
-      'sourceKind',
       'communicationEventId',
       'proposalCount',
       'startedAt',

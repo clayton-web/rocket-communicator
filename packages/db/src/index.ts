@@ -28,6 +28,7 @@ export {
   mapRecipient,
   mapTask,
   mapSuggestion,
+  mapSuggestionWithInterpretationRun,
   mapCapability,
   mapAuditEvent,
   mapNote,
@@ -44,6 +45,7 @@ export {
   type PersistedHandoffAttempt,
   type PersistedInterpretationRun,
   type PersistedTaskSuggestionRevision,
+  type TaskSuggestionWithInterpretationRun,
 } from './mappers/domain-mappers.js';
 
 export {
@@ -78,7 +80,9 @@ export {
   createTaskSuggestion,
   getTaskSuggestionById,
   getTaskSuggestionBySourceEventId,
+  getTaskSuggestionWithInterpretationRunById,
   listTaskSuggestions,
+  listTaskSuggestionsByInterpretationRunId,
   updateTaskSuggestionWithExpectedVersion,
   type ListTaskSuggestionsQuery,
   type ListTaskSuggestionsResult,
@@ -330,6 +334,7 @@ export {
   type CreateInterpretationRunInput,
   type InterpretationRunIdempotencyLookup,
   type InterpretationRunOutcomeValue,
+  type InterpretationSourceKindValue,
 } from './repositories/interpretation-run-repository.js';
 export {
   createTaskSuggestionRevision,

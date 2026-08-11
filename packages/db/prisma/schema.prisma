@@ -135,6 +135,10 @@ model TaskSuggestion {
   originTaskId               String?              @map("origin_task_id") @db.VarChar(64)
   /// Authoritative Gmail-origin link (D081). Null for work-request suggestions. Unique when set.
   sourceCommunicationEventId String?              @unique @map("source_communication_event_id") @db.VarChar(64)
+  /// Owning interpretation occurrence (D161). Deliberately NOT unique: one occurrence owns 0..N
+  /// sibling proposals. Permanently nullable — A6 Gmail and Recipient work-request suggestions have
+  /// no interpretation occurrence and stay valid without one.
+  interpretationRunId        String?              @map("interpretation_run_id") @db.VarChar(64)
   /// Task created by Owner approve of this suggestion (D080/D082). Unique when set.
   approvedTaskId             String?              @unique @map("approved_task_id") @db.VarChar(64)
   mergedIntoTaskId           String?              @map("merged_into_task_id") @db.VarChar(64)
@@ -146,11 +150,13 @@ model TaskSuggestion {
   mergedIntoTask           Task?               @relation("MergedIntoTask", fields: [mergedIntoTaskId], references: [id], onDelete: SetNull)
   approvedTask             Task?               @relation("ApprovedTask", fields: [approvedTaskId], references: [id], onDelete: Restrict)
   sourceCommunicationEvent CommunicationEvent? @relation(fields: [sourceCommunicationEventId], references: [id], onDelete: Restrict)
+  interpretationRun        InterpretationRun?  @relation(fields: [interpretationRunId], references: [id], onDelete: Restrict)
   /// Dormant append-only evidence only (D155). Absence of rows does not mean absence of a proposal.
   revisions                TaskSuggestionRevision[]
 
   @@index([organizationId, status])
   @@index([organizationId, originTaskId])
+  @@index([organizationId, interpretationRunId])
   @@map("task_suggestions")
 }
 
@@ -845,18 +851,29 @@ model OwnerNotificationAttempt {
 /// same fingerprint is replay; same key + different fingerprint is `IDEMPOTENCY_KEY_CONFLICT`.
 /// `idempotencyKey`, `requestFingerprint`, and durable-traceability `requestId` are required — not nullable.
 ///
-/// **Inert foundation.** No application producer writes rows yet. No trigger enum, raw-input
-/// retention, CommunicationEvent linkage, or TaskSuggestion FK in this slice.
+/// **Ownership (D161).** One occurrence owns 0..N TaskSuggestions through the child's nullable
+/// `interpretationRunId`. There is no unique constraint on that edge, and suggestions without an
+/// occurrence remain valid.
+///
+/// **Inert foundation.** No application producer writes rows yet. Declaring `sourceKind` is
+/// provenance representation and authorizes no producer, route, or Owner-review surface. No
+/// raw-input retention or CommunicationEvent linkage in this slice.
 model InterpretationRun {
   id                 String                   @id @db.VarChar(64)
   organizationId     String                   @map("organization_id") @db.VarChar(64)
   idempotencyKey     String                   @map("idempotency_key") @db.VarChar(128)
   requestFingerprint String                   @map("request_fingerprint") @db.VarChar(128)
+  /// Which kind of source this occurrence interpreted. Required: an occurrence with undeclared
+  /// provenance is not meaningful.
+  sourceKind         InterpretationSourceKind @map("source_kind")
   outcome            InterpretationRunOutcome
   modelVersion       String                   @map("model_version") @db.VarChar(64)
   policyVersion      String                   @map("policy_version") @db.VarChar(64)
   requestId          String                   @map("request_id") @db.VarChar(64)
   createdAt          DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  /// 0..N proposals produced by this occurrence. `no_proposals` occurrences legitimately have none.
+  taskSuggestions TaskSuggestion[]
 
   @@unique([organizationId, idempotencyKey])
   @@map("interpretation_runs")
@@ -1161,6 +1178,14 @@ enum OwnerNotificationAttemptOutcome {
 enum InterpretationRunOutcome {
   proposals_created
   no_proposals
+}
+
+/// Provenance discriminator for the source an interpretation occurrence interpreted (D161).
+/// Extend with `ALTER TYPE ... ADD VALUE` when a further source (SMS, post-call capture) gains an
+/// authorized interpretation path. Representation is not authorization.
+enum InterpretationSourceKind {
+  owner_manual_capture
+  gmail
 }
 
 /// Who authored a recorded TaskSuggestion revision-evidence row (D155).

@@ -10,11 +10,15 @@ type Client = DbClient | DbTransaction;
 
 export type InterpretationRunOutcomeValue = 'proposals_created' | 'no_proposals';
 
+/** Which kind of source an occurrence interpreted (D161 provenance, not authorization). */
+export type InterpretationSourceKindValue = 'owner_manual_capture' | 'gmail';
+
 export type CreateInterpretationRunInput = {
   id: string;
   organizationId: string;
   idempotencyKey: string;
   requestFingerprint: string;
+  sourceKind: InterpretationSourceKindValue;
   outcome: InterpretationRunOutcomeValue;
   modelVersion: string;
   policyVersion: string;
@@ -40,6 +44,7 @@ export async function createInterpretationRun(
         organizationId: input.organizationId,
         idempotencyKey: input.idempotencyKey,
         requestFingerprint: input.requestFingerprint,
+        sourceKind: input.sourceKind,
         outcome: input.outcome,
         modelVersion: input.modelVersion,
         policyVersion: input.policyVersion,

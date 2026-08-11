@@ -26,6 +26,7 @@ function runInput(
     organizationId: orgA,
     idempotencyKey: 'idem_interp_1',
     requestFingerprint: 'fp_interp_1',
+    sourceKind: 'owner_manual_capture',
     outcome: 'proposals_created',
     modelVersion: 'fixture-model',
     policyVersion: 'interpretation-policy-v1',
@@ -46,8 +47,10 @@ describe('InterpretationRun persistence foundation', () => {
   });
 
   beforeEach(async () => {
-    await db.prisma.interpretationRun.deleteMany();
+    // Suggestions first: the ownership FK is RESTRICT, so a run cannot be deleted while a proposal
+    // still references it.
     await db.prisma.taskSuggestion.deleteMany();
+    await db.prisma.interpretationRun.deleteMany();
   });
 
   it('persists a completed run with proposals_created', async () => {
@@ -58,6 +61,7 @@ describe('InterpretationRun persistence foundation', () => {
       organizationId: orgA,
       idempotencyKey: 'idem_interp_1',
       requestFingerprint: 'fp_interp_1',
+      sourceKind: 'owner_manual_capture',
       outcome: 'proposals_created',
       modelVersion: 'fixture-model',
       policyVersion: 'interpretation-policy-v1',
@@ -171,10 +175,10 @@ describe('InterpretationRun persistence foundation', () => {
     await expect(
       db.pglite.query(
         `INSERT INTO interpretation_runs (
-           id, organization_id, idempotency_key, request_fingerprint,
+           id, organization_id, idempotency_key, request_fingerprint, source_kind,
            outcome, model_version, policy_version, request_id
          ) VALUES (
-           'irun_null_key', $1, NULL, 'fp_x',
+           'irun_null_key', $1, NULL, 'fp_x', 'owner_manual_capture',
            'no_proposals', 'm', 'p', 'req_x'
          )`,
         [orgA],
@@ -186,10 +190,10 @@ describe('InterpretationRun persistence foundation', () => {
     await expect(
       db.pglite.query(
         `INSERT INTO interpretation_runs (
-           id, organization_id, idempotency_key, request_fingerprint,
+           id, organization_id, idempotency_key, request_fingerprint, source_kind,
            outcome, model_version, policy_version, request_id
          ) VALUES (
-           'irun_null_fp', $1, 'idem_null_fp', NULL,
+           'irun_null_fp', $1, 'idem_null_fp', NULL, 'owner_manual_capture',
            'no_proposals', 'm', 'p', 'req_x'
          )`,
         [orgA],
@@ -201,10 +205,10 @@ describe('InterpretationRun persistence foundation', () => {
     await expect(
       db.pglite.query(
         `INSERT INTO interpretation_runs (
-           id, organization_id, idempotency_key, request_fingerprint,
+           id, organization_id, idempotency_key, request_fingerprint, source_kind,
            outcome, model_version, policy_version, request_id
          ) VALUES (
-           'irun_null_req', $1, 'idem_null_req', 'fp_x',
+           'irun_null_req', $1, 'idem_null_req', 'fp_x', 'owner_manual_capture',
            'no_proposals', 'm', 'p', NULL
          )`,
         [orgA],

@@ -149,6 +149,26 @@ export function mapSuggestion(row: PrismaSuggestion): TaskSuggestion {
   };
 }
 
+/**
+ * A suggestion together with the interpretation occurrence that owns it (D161).
+ *
+ * `interpretationRunId` is persistence-only provenance. It stays off the `@aicaa/domain`
+ * `TaskSuggestion` entity (InterpretationRun has no domain entity) and out of the public
+ * TaskSuggestion contract.
+ */
+export type TaskSuggestionWithInterpretationRun = TaskSuggestion & {
+  interpretationRunId: string | null;
+};
+
+export function mapSuggestionWithInterpretationRun(
+  row: PrismaSuggestion,
+): TaskSuggestionWithInterpretationRun {
+  return {
+    ...mapSuggestion(row),
+    interpretationRunId: row.interpretationRunId ?? null,
+  };
+}
+
 export function mapCapability(row: PrismaCapability): TaskCapability & {
   tokenHash: string;
   organizationId: string;
@@ -392,6 +412,7 @@ export type PersistedInterpretationRun = {
   organizationId: string;
   idempotencyKey: string;
   requestFingerprint: string;
+  sourceKind: 'owner_manual_capture' | 'gmail';
   outcome: 'proposals_created' | 'no_proposals';
   modelVersion: string;
   policyVersion: string;
@@ -405,6 +426,7 @@ export function mapInterpretationRun(row: PrismaInterpretationRun): PersistedInt
     organizationId: row.organizationId,
     idempotencyKey: row.idempotencyKey,
     requestFingerprint: row.requestFingerprint,
+    sourceKind: row.sourceKind,
     outcome: row.outcome,
     modelVersion: row.modelVersion,
     policyVersion: row.policyVersion,
