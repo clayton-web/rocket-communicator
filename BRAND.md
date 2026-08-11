@@ -200,7 +200,7 @@ Guidance for tone and behavior. **Not** a component library and **not** a redesi
 
 ### Task capture
 
-- **Presentation target (D154):** AI-first interpretation → proposal review → Owner decision (**Keep for me** / **Assign**). Brand surfaces that story; they do not invent the workflow.
+- **Presentation target (D154, D164):** AI-first interpretation → proposal review → accept and answer **one** question, “Who is responsible for this Task?” — **Me** or a **Recipient**. Never offer a separate **Keep** action beside **Assign**. Brand surfaces that story; it does not invent the workflow.
 - **Interim current UI (D154):** direct Save → `POST /api/v1/tasks` remains shipped on Android/web until the AI-first path is authorized. Do not brand the interim path as the permanent Rocket experience.
 - Fastest path from the shell to “what must happen next.”
 - Success only after server confirmation.
@@ -230,6 +230,7 @@ Guidance for tone and behavior. **Not** a component library and **not** a redesi
 - Recipients come from Owner-managed records.
 - Selection is part of handoff confirmation, not silent auto-assign.
 - Confirm before send; disclose truthful delivery/follow-up limits.
+- Do not imply a Recipient has the work before the send is confirmed, or that a failed handoff undid the Owner's choice.
 
 ### Empty states
 

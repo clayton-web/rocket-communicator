@@ -60,11 +60,15 @@ Persisted grouping/provenance for one interpretation act. Current inert carrier:
 
 ### Task
 
-Approved actionable work with status, summary, assignment attribute, optional **due date** (an Owner-selected local calendar date that drives reminders when present — D102), and audit. Never created directly by voice (D038). A6 suggestion approval yields an unassigned Task (D080). Owner/self work remains unassigned (D094).
+Approved actionable work with status, summary, assignment attribute, optional **due date** (an Owner-selected local calendar date that drives reminders when present — D102), and audit. Never created directly by voice (D038). A6 suggestion approval yields an unassigned Task (D080). Owner/self work remains unassigned (D094) — an operational representation, never evidence that the Owner affirmatively chose to be responsible (see **Responsibility selection**).
+
+### Responsibility selection
+
+The single question Owner acceptance of a proposal asks — **“Who is responsible for this Task?”** — answered by the **Owner (Me)** or an external **Recipient** (D164). There is no separate Owner-facing Keep action. It is **affirmative**: it exists because the Owner made the choice, and is never inferred from the presence or absence of an Assignment (D155). Choosing **Me** requires no Assignment to the Owner. Not implemented, and no persistence representation is authorized.
 
 ### Assignment
 
-Persisted binding of a Task to a Recipient (and intended email), including allowed Recipient actions for that handoff. Assignment is an **attribute of the Task**, not a Task status ([ARCHITECTURE.md](ARCHITECTURE.md) § Domain state model). A Task may have historical assignment rows over time; at most one assignment is active. Delivery outcomes: `pending` / `sent` / `failed` (D092). Activate only after Gmail accepts send.
+Persisted binding of a Task to an external Recipient (and intended email), including allowed Recipient actions for that handoff. Assignment is an **attribute of the Task**, not a Task status ([ARCHITECTURE.md](ARCHITECTURE.md) § Domain state model). A Task may have historical assignment rows over time; at most one assignment is active. Delivery outcomes: `pending` / `sent` / `failed` (D092). Activate only after Gmail accepts send.
 
 For Gmail-origin and non-Gmail handoffs, approval of assignment and outbound mail is one confirmation (D037). A6 does not create Assignments (D080). **Reminder Schedules** are Task-scoped and owned by A8 (D089, D104).
 
@@ -158,7 +162,7 @@ The bound on daily overdue reminders: **14 successfully delivered overdue remind
 
 ### requiresOwnerAttention
 
-Reminder Schedule state meaning automated follow-through has stopped or been suspended and the Owner must act — for example the overdue ceiling was reached, delivery failed permanently, or there is no active assignment. It must be surfaced by an Owner notification, not only by a Task page (D106, D108).
+Reminder Schedule state meaning automated follow-through has stopped or been suspended and the Owner must act — for example the overdue ceiling was reached, delivery failed permanently, or there is no active external assignment. It must be surfaced by an Owner notification, not only by a Task page (D106, D108).
 
 ---
 
@@ -194,7 +198,7 @@ Replaceable integration layer for hosting, scheduling, storage, messaging, or cl
 
 ### Follow-up Engine
 
-**Due-date-driven, Task-scoped** engine that sends **Recipient** reminders derived from the Owner-selected Task due date (D102). This is the **current A8 implementation** of due-date-driven follow-through — one reminder/follow-through mechanism, not an escalation engine, and **not** a product-law bar on Owner-controlled Task reminders (D152). Authoritative engine rules: [WORKFLOWS.md](WORKFLOWS.md) §10a.
+**Due-date-driven, Task-scoped** engine that sends **Recipient** reminders derived from the Owner-selected Task due date (D102). This is the **current A8 implementation** of due-date-driven follow-through — one reminder/follow-through mechanism, not an escalation engine, and **not** a product-law bar on Owner-controlled Task reminders (D152). Its delivery paths are Recipient-oriented throughout, so an Owner-responsible Task receives nothing from it today — an open D164 seam. Authoritative engine rules and the seam: [WORKFLOWS.md](WORKFLOWS.md) §10a.
 
 ### Follow-up Policy
 
@@ -268,7 +272,7 @@ It is **not** a business record, **not** audit history, and **not** an AI-learni
 
 A purposefully retained representation of a meaningful Owner decision and its outcome, answering **“what decision was made, what alternatives existed, and what happened afterward?”**
 
-Must never rewrite audit history, and must never be inferred from low-level click or usage tracking. **Passive behaviour, inactivity, and the absence of a correction are not approval and are not decisions** (D113). Human corrections outrank passive usage tracking. **Keep must never be inferred from absence of TaskAssignment** (D155). **Recording learning evidence is authorized now** and is dormant — it must not personalize, auto-assign, mutate prompts, train online, or otherwise become autonomous without later authorization (D155). Personalization remains deferred. Manual raw capture input retained for review is not learning evidence (D162). TaskSuggestion revision-evidence storage exists; new A6 AI suggestions prospectively record revision 0 only — Owner-edit capture and accepted-revision persistence are not yet authorized (D110, D155).
+Must never rewrite audit history, and must never be inferred from low-level click or usage tracking. **Passive behaviour, inactivity, and the absence of a correction are not approval and are not decisions** (D113). Human corrections outrank passive usage tracking. **An Owner responsibility selection must never be inferred from the absence of a TaskAssignment** (D155, **D164**). **Recording learning evidence is authorized now** and is dormant — it must not personalize, auto-assign, mutate prompts, train online, or otherwise become autonomous without later authorization (D155). Personalization remains deferred. Manual raw capture input retained for review is not learning evidence (D162). TaskSuggestion revision-evidence storage exists; new A6 AI suggestions prospectively record revision 0 only — Owner-edit capture, accepted-content-revision persistence, and responsibility-selection persistence are not yet authorized (D110, D155, D164).
 
 ### Recommendation
 

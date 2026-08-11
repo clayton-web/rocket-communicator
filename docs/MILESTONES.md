@@ -12,7 +12,7 @@
 
 **Not built:** Messages capture, call prompts, the voice pipeline, retention workers, learning signals, and private-deployment hardening.
 
-**Next:** the AI-first capture and interpretation direction (D154, D156, D157) and Owner Acceptance Week (deferred under D159). See [Forward sequence](#forward-sequence).
+**Next:** the AI-first capture and interpretation direction (D154, D156, D157, D164) and Owner Acceptance Week (deferred under D159). See [Forward sequence](#forward-sequence).
 
 ## Completed
 
@@ -55,6 +55,8 @@ The engines exist and are deployed. What remains is **operational enablement**, 
 
 **The Owner must not create or modify a reminder in Production** until a later rollout is authorized. No technical obstacle prevents doing so by accident.
 
+**Not part of this enablement:** the D164 seam between Recipient-oriented reminder delivery and Owner-responsible follow-through ([WORKFLOWS.md](WORKFLOWS.md) §10a). Enabling the flags above ships the engine as built and closes nothing about it. No slice is planned or authorized, and whatever addresses it must evolve the existing reminder domain rather than add a second engine.
+
 Enablement procedures, flag semantics, and rollback are owned by [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## A7 deferred backlog (not a milestone)
@@ -88,7 +90,7 @@ Product law is [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md); this section 
 
 Sequencing only — no milestone is renumbered.
 
-1. **AI-first capture and interpretation** — the direction locked by D154, D156, and D157: source → shared interpretation → zero or more proposals → Owner review → canonical Task. Implementation work under `packages/ai` is **paused and unauthorized to resume**. When authorized it must evolve the one shared proposal path and the one shared interpretation capability ([ARCHITECTURE.md § Ownership and reuse map](ARCHITECTURE.md#ownership-and-reuse-map)), not create a second one.
+1. **AI-first capture and interpretation** — the direction locked by D154, D156, D157, and D164: source → shared interpretation → zero or more proposals → Owner review → accept and choose the responsible person (Owner or Recipient) → canonical Task → follow-through. Implementation work under `packages/ai` is **paused and unauthorized to resume**. When authorized it must evolve the one shared proposal path and the one shared interpretation capability ([ARCHITECTURE.md § Ownership and reuse map](ARCHITECTURE.md#ownership-and-reuse-map)), not create a second one.
 2. **Owner Acceptance Week** — formal product gate (D142), **deferred and must not be executed** (D159).
 3. **P2.2 — Remove Friction** — not started, not authorized.
 4. **A8 operational enablement** — capture observation, then notification delivery, then reminder delivery; each separately authorized.
@@ -100,7 +102,7 @@ Nothing later in this list is authorized by anything earlier in it.
 
 **Status:** formal product gate (D142). **Deferred — must not be executed until the Owner re-authorizes it** (D159). No separate OAW procedure document is active; surviving law is **D142**, **D159**, and this section.
 
-A future meaningful OAW must prove approximately: communication or capture → interpretation → Owner decision → Task → Keep or Assign → follow-through. Direct-create capture scenarios are **not** the target (D154). Redesigning the procedure is separate work and still requires explicit Owner re-authorization before any execution.
+A future meaningful OAW must prove approximately: communication or capture → interpretation → Owner review → accept and choose who is responsible, the Owner or a Recipient → canonical Task → follow-through (D154, **D164**). Direct-create capture scenarios are **not** the target (D154). Redesigning the procedure is separate work and still requires explicit Owner re-authorization before any execution.
 
 **Exit criteria (all required):**
 

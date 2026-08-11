@@ -51,6 +51,16 @@ Verified against [ARCHITECTURE.md § Ownership and reuse map](ARCHITECTURE.md#ow
 - [ ] Does this place **shared business intelligence inside a native client** because that client happened to need it first?
 - [ ] Before replacing existing Android capture or networking infrastructure, was that substrate **inspected** for whether it can support or evolve into the authorized Owner UX rather than being casually discarded?
 - [ ] Is `tasks: []` (zero proposals) handled as a **successful** interpretation outcome rather than an error or a fallback to direct creation?
+- [ ] Does this add a **second assignment or custody state machine** — a Task responsibility/assignee column, a custody enum, or an Owner `TaskAssignment` row — instead of leaving the representation unsettled (D164)?
+
+### Responsibility and follow-through (D164, D155)
+
+Apply to any acceptance, assignment, evidence, attention, or reminder work.
+
+- [ ] **No Owner selection is inferred from a missing `TaskAssignment`**, or from any other operational artifact. Evidence exists only where the Owner affirmatively chose; an unassigned Task remains operationally Owner work and proves nothing about the choice (D080, D094, D155)
+- [ ] Choosing **Me** creates **no** Owner `TaskAssignment`, and no responsibility persistence is invented while the representation stays deliberately unsettled
+- [ ] **Selection is not delivery:** a failed or pending handoff never falsifies or erases a selection, and a recorded selection is never rendered or stored as though external access were delivered (D092)
+- [ ] Responsibility never removes a Task from the shared follow-through domain: an Owner-responsible Task is the same canonical Task, and delegating a Task does not remove it from appropriate Owner oversight
 
 ### Boundaries
 
@@ -107,7 +117,7 @@ Gates for D102–D110 and D128–D136. These record expected behaviour and requi
 
 - [ ] **No capability token or capability URL** in reminder metadata, audit, logs, or telemetry (D109)
 - [ ] A reminder carries **no link** and mints, rotates, or re-sends no capability; both MIME bodies are asserted link-free before emission, with database-sourced content redacted rather than trusted (D130)
-- [ ] A non-actionable capability produces a truthful **skip** with zero provider calls, distinguishable from "nobody is assigned"
+- [ ] A non-actionable capability produces a truthful **skip** with zero provider calls, recorded as `no_actionable_capability` and never collapsed into `no_active_assignment` — the two imply different Owner remedies
 - [ ] Forbidden email content is absent from text **and** HTML: capability URL, token, `/c/` path, communication excerpts, reminder counts, escalation or "final reminder" wording, internal identifiers, threading headers, CC, BCC
 - [ ] The Owner notification destination is resolved server-side from the connected account for the **intent's** organization; the transport exposes **no destination parameter** (D134)
 - [ ] Owner mail quotes **no Recipient-authored text** — note bodies, clarification text, and excerpts have no parameter to arrive through, and escaping does not satisfy the prohibition because it is semantic (D134)

@@ -112,7 +112,7 @@ Full rules: [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md).
 | POST   | `/api/v1/tasks/{taskId}/capabilities`           | Administrative capability issue (raw once); **not** D037 handoff (D086)                                              |
 | POST   | `/api/v1/tasks/{taskId}/handoff`                | D037 Recipient handoff (implemented A7.7)                                                                            |
 
-**`POST /api/v1/tasks` is current wire behaviour, not permanent capture UX (D154).** The shipped direct-create path (web and Android A9.2) remains the truthful interim implementation. The product target is AI-first interpretation → proposal review → Owner decision → canonical Task; that path is not contracted here and is not authorized by this table.
+**`POST /api/v1/tasks` is current wire behaviour, not permanent capture UX (D154).** The shipped direct-create path (web and Android A9.2) remains the truthful interim implementation. The product target is AI-first interpretation → proposal review → Owner decision → canonical Task; that path is not contracted here and is not authorized by this table. Creating an unassigned Task through this endpoint records no responsibility selection and is not evidence of one (**D164**, D155).
 
 Reminder schedule management lives on a sub-resource of the same Task and is documented separately below: `GET`/`PUT`/`DELETE /api/v1/tasks/{taskId}/reminder` (A8.3b). It uses its own `task-reminder` ETag rather than the Task's, because reminder writes do not bump `Task.version`.
 
