@@ -55,6 +55,8 @@ fun AuthenticatedOwnerFlow(
 
     LaunchedEffect(destination, activeTaskId) {
         when (destination) {
+            // Surfaces an unresolved capture after process death; never resends it.
+            AuthenticatedDestination.Capture -> captureViewModel.restorePending()
             AuthenticatedDestination.TaskList -> taskListViewModel.load()
             AuthenticatedDestination.TaskDetail ->
                 activeTaskId?.let { taskDetailViewModel.load(it) }
@@ -74,27 +76,20 @@ fun AuthenticatedOwnerFlow(
                 onSignOut = onSignOut,
                 modifier = modifier
             )
+        // Manual capture proposes; it creates no Task, so it opens no Task destination.
         AuthenticatedDestination.Capture ->
             TaskCaptureScreen(
                 state = captureState,
                 onDraftChanged = captureViewModel::onDraftChanged,
                 onSave = captureViewModel::save,
+                onRetry = captureViewModel::retry,
+                onDiscard = captureViewModel::discard,
+                onRephrase = captureViewModel::rephrase,
                 onCaptureAnother = captureViewModel::captureAnother,
-                onOpenTask = { task ->
-                    activeTaskId = task.id
-                    detailReturn = AuthenticatedDestination.Shell.name
-                    destination = AuthenticatedDestination.TaskDetail
-                },
-                onAssign = { task ->
-                    activeTaskId = task.id
-                    assignReturn = AuthenticatedDestination.Capture.name
-                    destination = AuthenticatedDestination.Assign
-                },
                 onDone = {
-                    captureViewModel.captureAnother()
+                    captureViewModel.onLeaveCapture()
                     destination = AuthenticatedDestination.Shell
                 },
-                onRetry = captureViewModel::save,
                 modifier = modifier
             )
         AuthenticatedDestination.TaskList ->
@@ -138,18 +133,9 @@ fun AuthenticatedOwnerFlow(
             AssignScreen(
                 state = handoffState,
                 onBack = {
-                    val target =
+                    destination =
                         runCatching { AuthenticatedDestination.valueOf(assignReturn) }
                             .getOrDefault(AuthenticatedDestination.TaskDetail)
-                    if (target == AuthenticatedDestination.TaskDetail) {
-                        detailReturn =
-                            if (detailReturn == AuthenticatedDestination.Capture.name) {
-                                AuthenticatedDestination.Shell.name
-                            } else {
-                                detailReturn
-                            }
-                    }
-                    destination = target
                 },
                 onRetryLoad = { activeTaskId?.let(taskHandoffViewModel::load) },
                 onSelectRecipient = taskHandoffViewModel::selectRecipient,

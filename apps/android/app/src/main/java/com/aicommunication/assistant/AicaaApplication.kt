@@ -6,6 +6,9 @@ import com.aicommunication.assistant.auth.OwnerAuthRepository
 import com.aicommunication.assistant.auth.OwnerSessionClient
 import com.aicommunication.assistant.auth.SupabaseFactory
 import com.aicommunication.assistant.capture.CaptureTaskUseCase
+import com.aicommunication.assistant.capture.ManualCaptureRepository
+import com.aicommunication.assistant.capture.ManualCaptureUseCase
+import com.aicommunication.assistant.capture.PendingCaptureStore
 import com.aicommunication.assistant.capture.TaskOwnerRepository
 import com.aicommunication.assistant.network.AndroidConnectivityMonitor
 import com.aicommunication.assistant.network.ApiConfig
@@ -49,7 +52,17 @@ class AicaaApplication : Application() {
     lateinit var pendingHandoffStore: PendingHandoffStore
         private set
 
+    /**
+     * Legacy direct-create capture (A9.2). Kept constructed but unreachable from the Capture UI
+     * since S3.3b so the switch onto shared interpretation can be rolled back.
+     */
     lateinit var captureTaskUseCase: CaptureTaskUseCase
+        private set
+
+    lateinit var pendingCaptureStore: PendingCaptureStore
+        private set
+
+    lateinit var manualCaptureUseCase: ManualCaptureUseCase
         private set
 
     override fun onCreate() {
@@ -74,6 +87,12 @@ class AicaaApplication : Application() {
         gmailOwnerRepository = GmailOwnerRepository(ownerApiExecutor)
         pendingHandoffStore = PendingHandoffStore(this)
         captureTaskUseCase = CaptureTaskUseCase(taskOwnerRepository)
+        pendingCaptureStore = PendingCaptureStore(this)
+        manualCaptureUseCase =
+            ManualCaptureUseCase(
+                repository = ManualCaptureRepository(ownerApiExecutor),
+                pendingStore = pendingCaptureStore
+            )
 
         val sessionClient =
             if (authConfig.isConfigured) {

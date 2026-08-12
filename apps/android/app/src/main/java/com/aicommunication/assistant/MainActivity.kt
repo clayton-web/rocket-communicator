@@ -27,7 +27,7 @@ class MainActivity : ComponentActivity() {
         val app = application as AicaaApplication
         TaskCaptureViewModel.Factory(
             application = app,
-            captureTask = app.captureTaskUseCase,
+            manualCapture = app.manualCaptureUseCase,
             onSessionInvalidated = authViewModel::notifySessionInvalidated
         )
     }

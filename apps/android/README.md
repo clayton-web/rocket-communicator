@@ -1,4 +1,4 @@
-# Android Owner app (A9.0 + A9.1 + A9.2 + A9.3)
+# Android Owner app (A9.0 + A9.1 + A9.2 + A9.3 + S3.3)
 
 Private sideload Owner application (`com.aicommunication.assistant`, `minSdk` 31).
 
@@ -8,24 +8,34 @@ Organize, assign, and follow through on captured work (**D150**) without slowing
 
 - Shell **Tasks** entry → Task list (organizational workspace)
 - Task detail → lifecycle (Start / Waiting / Resume / Complete / Dismiss / Note) with Task `If-Match`
-- Capture success keeps **Capture another** primary; progressive **Open Task** and optional **Assign**
+- Assignment is reached from Task detail. Capture no longer opens or assigns a Task, because it creates none (S3.3)
 - Assignment only via `POST /api/v1/tasks/{taskId}/handoff` (D037 / D090); unassigned = Owner work (D094)
 - Recipient pick (+ thin create if empty), Gmail connection gating, D037 confirmation, idempotent retry store
 - Gmail send re-consent: open Owner web Task page in the browser, then manual Retry in-app (no auto-send)
 
 **Not included:** reminder configuration/delivery, notifications, push, reassignment, offline sync, local business DB, A8 operational enablement, A10+.
 
-## A9.2 Task Capture — interim under D154
+## S3.3 Owner manual capture — shared interpretation (D171)
 
-Create-only Owner capture (**D149**) in `capture/` + Compose UI is **interim infrastructure**, not permanent capture UX:
+Capture asks Rocket to interpret; it creates no Task. AI proposes, the Owner decides later.
 
 - Shell **Capture** entry (one tap from the authenticated shell)
-- Single free-text field → **Save** → `POST /api/v1/tasks` via existing A9.1 networking
-- Success confirmation only after server `201`
+- Single free-text field → **Save** → `POST /api/v1/manual-captures` via existing A9.1 networking
 - IME speech-to-text into the field (standard keyboard mic — not A12 voice pipeline)
-- Draft preserved on connectivity / request failure; unauthorized returns to A9.0 sign-in
+- `ManualCaptureUseCase` freezes and persists the retry tuple (Idempotency-Key, `rawInput`, `capturedAt`, `timezone`) **before** the request; the UI mints none of those fields
+- Result state renders **0..N read-only proposal cards** from canonical `summaryPoints`. Zero proposals is truthful success, not an error, and the original capture text stays available to rephrase
+- Recovery state after ambiguous failure or process death shows the stored capture with explicit **Retry** (exact same tuple) and **Discard**. Nothing is ever resent automatically
+- Editing a draft that has a pending tuple discards that tuple: the changed text is a new capture with a new identity (**D171**)
+- Pending capture text is stored in encrypted preferences, fails closed when encryption cannot initialize, and expires after 24 hours. Proposal results live only in memory
+- `400` / `409` clear the unusable tuple and return the Owner to editing; connectivity, `503`, unauthorized, and unmodelled responses preserve it for Retry
 
-**Reuse / evolve.** Inspect this networking and capture substrate before replacing it when implementing the authorized AI-first Owner UX (D154 / D157). Do not treat it as the permanent Rocket capture experience, and do not discard it casually. Shared business intelligence stays on the backend.
+**Not included:** approve, dismiss, edit, merge, responsibility selection, Recipient picker, proposal inbox, and Task creation from a proposal. Those remain separately unauthorized.
+
+## A9.2 Task Capture — legacy direct-create, unused
+
+Create-only Owner capture (**D149**) in `capture/` — `CaptureTaskUseCase` and `TaskOwnerRepository.createCapturedTask` over `POST /api/v1/tasks` — is **no longer reachable from the Capture UI** since S3.3. It stays compiled and tested for rollback and later cleanup. The backend endpoint is unchanged and still serves the web surface.
+
+**Reuse / evolve.** Inspect this networking and capture substrate before replacing it. Do not discard it casually. Shared business intelligence stays on the backend.
 
 ## A9.1 networking
 
