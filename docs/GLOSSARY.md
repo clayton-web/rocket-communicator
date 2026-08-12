@@ -56,7 +56,7 @@ Candidate work that is **not** yet a Task. Rocket’s **single shared proposal d
 
 ### Interpretation occurrence
 
-Persisted grouping/provenance for one interpretation act. Current inert carrier: `InterpretationRun` / `interpretation_runs` in `@aicaa/db` (not constitutional table naming). Stores completed successful outcomes only (`proposals_created` / `no_proposals`); no application producer writes rows yet. Not canonical Task truth. One occurrence may yield zero, one, or multiple TaskSuggestions. Multiple legitimate occurrences may reference the same source; there is no one-interpretation-forever-per-source invariant. Owner-initiated idempotency uses `(organizationId, idempotencyKey)` plus request fingerprint (D161). Zero proposals is truthful success for Owner-initiated interpretation.
+Persisted grouping/provenance for one interpretation act. Current carrier: `InterpretationRun` / `interpretation_runs` in `@aicaa/db` (not constitutional table naming). Stores completed successful outcomes only (`proposals_created` / `no_proposals`). The persistence foundation was established inert under D161; **D169** authorizes the shared application producer wiring (S3.1 first, backend-only) and it is **not yet implemented**. Not canonical Task truth. One occurrence may yield zero, one, or multiple TaskSuggestions. Multiple legitimate occurrences may reference the same source; there is no one-interpretation-forever-per-source invariant. Owner-initiated idempotency uses `(organizationId, idempotencyKey)` plus request fingerprint (D161). Zero proposals is truthful success for Owner-initiated interpretation. `interpretationRunId` is internal provenance and is not part of the public TaskSuggestion contract (D169).
 
 ### Task
 
