@@ -8,9 +8,7 @@ import type {
 export interface MockInterpretationProviderOptions {
   result?: InterpretationResult;
   error?: AiProviderError;
-  handler?: (
-    input: InterpretationInput,
-  ) => Promise<InterpretationResult> | InterpretationResult;
+  handler?: (input: InterpretationInput) => Promise<InterpretationResult> | InterpretationResult;
 }
 
 /** Deterministic test seam for interpretation — no network. */

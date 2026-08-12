@@ -135,9 +135,9 @@ describe('parseAndValidateInterpretationOutput', () => {
   });
 
   it('rejects missing tasks array', () => {
-    expect(() =>
-      parseAndValidateInterpretationOutput({}, defaults),
-    ).toThrow(expect.objectContaining({ code: 'AI_SCHEMA_INVALID' }));
+    expect(() => parseAndValidateInterpretationOutput({}, defaults)).toThrow(
+      expect.objectContaining({ code: 'AI_SCHEMA_INVALID' }),
+    );
   });
 
   it('rejects more than MAX_PROPOSED_TASKS', () => {
@@ -154,9 +154,9 @@ describe('parseAndValidateInterpretationOutput', () => {
       peopleHints: [],
       deadlineExpression: null,
     }));
-    expect(() =>
-      parseAndValidateInterpretationOutput({ tasks }, defaults),
-    ).toThrow(expect.objectContaining({ code: 'AI_SCHEMA_INVALID' }));
+    expect(() => parseAndValidateInterpretationOutput({ tasks }, defaults)).toThrow(
+      expect.objectContaining({ code: 'AI_SCHEMA_INVALID' }),
+    );
   });
 
   it('rejects task with too many summary points (shared parser)', () => {
@@ -416,11 +416,7 @@ describe('OpenAiCompatibleInterpretationProvider', () => {
           messages: Array<{ role: string; content: string }>;
         };
         const userPayload = JSON.parse(body.messages[1]!.content) as Record<string, unknown>;
-        expect(Object.keys(userPayload).sort()).toEqual([
-          'capturedAt',
-          'rawInput',
-          'timezone',
-        ]);
+        expect(Object.keys(userPayload).sort()).toEqual(['capturedAt', 'rawInput', 'timezone']);
         expect(userPayload).not.toHaveProperty('previousTasks');
         expect(userPayload).not.toHaveProperty('recipients');
         return new Response(

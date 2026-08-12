@@ -77,11 +77,7 @@ function parseProposedTask(
   extras: { topLevelKeys?: string[]; model?: string; policyVersion?: string },
 ): ProposedTask {
   if (!isRecord(entry)) {
-    throw schemaError(
-      'task_not_object',
-      `tasks[${taskIndex}] must be an object.`,
-      extras,
-    );
+    throw schemaError('task_not_object', `tasks[${taskIndex}] must be an object.`, extras);
   }
 
   if (!Array.isArray(entry.summaryPoints)) {
@@ -105,11 +101,7 @@ function parseProposedTask(
   assertHasActionableContent(summaryPoints, taskIndex, extras);
 
   const peopleHints = parsePeopleHints(entry.peopleHints, taskIndex, extras);
-  const deadlineExpression = parseDeadlineExpression(
-    entry.deadlineExpression,
-    taskIndex,
-    extras,
-  );
+  const deadlineExpression = parseDeadlineExpression(entry.deadlineExpression, taskIndex, extras);
 
   return {
     summaryPoints,
@@ -192,10 +184,7 @@ function parseDeadlineExpression(
   taskIndex: number,
   extras: { topLevelKeys?: string[]; model?: string; policyVersion?: string },
 ): string | null {
-  const value = optionalNullableString(
-    raw,
-    `tasks[${taskIndex}].deadlineExpression`,
-  );
+  const value = optionalNullableString(raw, `tasks[${taskIndex}].deadlineExpression`);
   if (value === undefined || value === null) {
     return null;
   }

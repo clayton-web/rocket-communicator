@@ -137,8 +137,7 @@ export const interpretationFixtures = {
 
   /** G. MULTI-POINT SINGLE TASK */
   G_multiPointSingleTask: {
-    input:
-      'Call Sharon tomorrow about the price and ask whether she reviewed the agreement.',
+    input: 'Call Sharon tomorrow about the price and ask whether she reviewed the agreement.',
     modelOutput: {
       tasks: [
         {
