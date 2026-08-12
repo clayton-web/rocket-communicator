@@ -51,14 +51,14 @@ Verified against [ARCHITECTURE.md § Ownership and reuse map](ARCHITECTURE.md#ow
 - [ ] Does this place **shared business intelligence inside a native client** because that client happened to need it first?
 - [ ] Before replacing existing Android capture or networking infrastructure, was that substrate **inspected** for whether it can support or evolve into the authorized Owner UX rather than being casually discarded?
 - [ ] Is `tasks: []` (zero proposals) handled as a **successful** interpretation outcome rather than an error or a fallback to direct creation?
-- [ ] Does this add a **second assignment or custody state machine** — a Task responsibility/assignee column or a custody enum — instead of leaving the representation unsettled (D164)?
+- [ ] Does this add a **second assignment or custody state machine** — a Task responsibility/assignee column or a custody enum — instead of the dedicated append-only responsibility-selection evidence record (D164, D168)?
 
 ### Responsibility and follow-through (D164, D155)
 
 Apply to any acceptance, assignment, evidence, attention, or reminder work.
 
 - [ ] **No Owner selection is inferred from a missing `TaskAssignment`**, or from any other operational artifact. Evidence exists only where the Owner affirmatively chose; an unassigned Task remains operationally Owner work and proves nothing about the choice (D080, D094, D155)
-- [ ] Choosing **Me** creates **no** Owner `TaskAssignment`, and no responsibility persistence is invented while the representation stays deliberately unsettled
+- [ ] Choosing **Me** creates **no** Owner `TaskAssignment` and **no** Task responsibility, assignee, or custody column. Responsibility persistence is the dedicated append-only responsibility-selection evidence record of **D168** — in the D155 evidence family, written atomically as part of proposal acceptance rather than as a later best-effort write, never stored in `AuditEvent`, and never a current-responsibility projection or responsibility-history state machine. Owner selection is affirmative: nothing infers **Me** from an absent record, assignment, Recipient, or handoff. Selecting a Recipient creates no `TaskAssignment`, `TaskCapability`, `HandoffAttempt`, email, or Recipient access
 - [ ] **Selection is not delivery:** a failed or pending handoff never falsifies or erases a selection, and a recorded selection is never rendered or stored as though external access were delivered (D092)
 - [ ] Responsibility never removes a Task from the shared follow-through domain: an Owner-responsible Task is the same canonical Task, and delegating a Task does not remove it from appropriate Owner oversight
 

@@ -87,7 +87,7 @@ For each value, state whether it reflects a **healthy environment** or an **envi
 
 ## Decision-register verification (D165)
 
-**D165** authorizes repository-local tooling that must prove green **before batch one** of the later [DECISIONS.md](DECISIONS.md) representation change. It runs through its **own command** and is deliberately **not** part of `pnpm verify`, CI, pre-commit hooks, or any deployment gate — D165 reserves those integrations for separate review.
+**D165** authorizes repository-local tooling that had to prove green **before batch one** of the [DECISIONS.md](DECISIONS.md) representation change. **That conversion is complete:** every live record is a heading record, no legacy decision-table row remains, and the harness's standing job is now to hold the converted register — and every later decision added to it — against the frozen baseline. It runs through its **own command** and is deliberately **not** part of `pnpm verify`, CI, pre-commit hooks, or any deployment gate — D165 reserves those integrations for separate review.
 
 ```bash
 pnpm docs:decisions:verify              # whole-register verification
@@ -115,13 +115,13 @@ Three tiers, applied identically to the baseline and the live register:
 
 Changing any rule requires bumping `NORMALIZER_VERSION`, which forces a reviewed refreeze instead of a silent reinterpretation.
 
-### Ordering, and how the transition accommodation ends
+### Ordering, and the expired transition accommodation
 
-D165's final representation is **one globally ascending `Dxxx` sequence regardless of status**. The register is not in that shape yet, so ordering is verified against the state the file is actually in, and the accommodation narrows by itself as the rewrite proceeds.
+D165's final representation is **one globally ascending `Dxxx` sequence regardless of status**. **The register is now in that shape**, so **strict global ascending order applies end to end** and is what the harness enforces today. Ordering is always verified against the state the file is actually in; the legacy and mixed-transition rules below are retained because they explain the frozen baseline and because they remain the harness's contract, but both have already expired by their own terms.
 
-**Current legacy state.** Every record is still a wide-table row, split into an Active table and a Superseded table. That split is **grandfathered as representation evidence only** — it is the shape the baseline happens to have been frozen from, not a rule the register is entitled to keep. Global ascending order is arithmetically impossible in it, because the Superseded table sits at the end of the document while holding identifiers lower than the ones above it. While more than one of those legacy table sections still has rows, their **document-level relative order** must stay the wide-table representation order (Active table before Superseded table). That is a representation-layout invariant from the parser contract, not a status rule; moving the whole Superseded table above the remaining Active table is a hard failure. When conversion empties a legacy section, that section drops out of the constraint — an empty legacy heading is never required merely to keep the order — and when no legacy table row remains the layout contract is void.
+**Legacy table layout — historical; no legacy row remains.** Before the conversion every record was a wide-table row, split into an Active table and a Superseded table. That split was **grandfathered as representation evidence only** — it is the shape the baseline happens to have been frozen from, not a rule the register was entitled to keep. Global ascending order was arithmetically impossible in it, because the Superseded table sat at the end of the document while holding identifiers lower than the ones above it. While more than one of those legacy table sections still had rows, their **document-level relative order** had to stay the wide-table representation order (Active table before Superseded table). That was a representation-layout invariant from the parser contract, not a status rule; moving the whole Superseded table above the remaining Active table was a hard failure. When conversion emptied a legacy section, that section dropped out of the constraint — an empty legacy heading was never required merely to keep the order — and because **no legacy table row remains, that layout contract is void**.
 
-**Mixed transition.** Between batches, heading records and leftover legacy tables legitimately coexist. This is a **controlled migration accommodation, not the final rule**, so it carries its own baseline-relative protections rather than a blanket exemption:
+**Mixed transition — expired.** While the conversion was underway, heading records and leftover legacy tables legitimately coexisted. That was a **controlled migration accommodation, never the final rule**, so it carried its own baseline-relative protections rather than a blanket exemption:
 
 - every identifier still exists exactly once;
 - remaining legacy table sections keep that document-level representation order while more than one still has rows;
@@ -132,7 +132,7 @@ D165's final representation is **one globally ascending `Dxxx` sequence regardle
 
 Placement is judged against the frozen baseline and the legacy representation layout, never against what Active or Superseded is taken to mean as status; the harness invents no status semantics. Identifiers assigned after the checkpoint have no frozen placement to compare against, so they are held to the ascending rules only.
 
-**Final representation.** The moment **no legacy table row remains**, the accommodation is void automatically — there is no flag day and no switch to flip — and strict end-to-end ascending order across the whole document becomes mandatory.
+**Final representation — in force.** The moment **no legacy table row remains**, the accommodation is void automatically — there is no flag day and no switch to flip — and strict end-to-end ascending order across the whole document becomes mandatory. **That moment has passed:** the register is fully converted, and the harness reports strict global ascending order enforced end to end.
 
 ### Hard failures
 
@@ -147,7 +147,7 @@ A hard failure is a mechanical, deterministic violation. It is never advisory, n
 
 ### Human-review items
 
-A review item is **work assigned to the reviewer of the batch in progress**, not a soft failure. It never changes the exit code. Items are reported here only when the underlying question is genuinely semantic — nothing is downgraded because it was awkward to implement:
+A review item is **work assigned to the reviewer of the register change in hand**, not a soft failure. It never changes the exit code. Items are reported here only when the underlying question is genuinely semantic — nothing is downgraded because it was awkward to implement:
 
 - **operative-relocated** / **operative-decoration-changed** — every word and clause intact, only the field, clause order, or decoration changed. This is the relocation D165 authorizes; confirm the destination field is right.
 - **supporting-text-changed** — Notes and other history changed. D165 authorizes classified reference-shift removals here, so every removal is surfaced for the per-removal destination and no-loss proof rather than blocked.
@@ -155,13 +155,17 @@ A review item is **work assigned to the reviewer of the batch in progress**, not
 - **superseded-without-successor** — a Superseded record that names no newer governing decision. Reciprocity that history did not assert is never fabricated; where repository history proves a pointer was asserted and later lost in reformatting, restoring it is lineage repair rather than invention — the restored D048–D054 pointers in D030 and D032 are that case.
 - **supersession-one-sided** — X says it was superseded by Y while Y does not mention X. Normal in this register: D155 withdraws D113 clauses by describing the effect rather than claiming supersession.
 
-### Using it during each rewrite batch
+### Using it on a register change
 
-1. Run `pnpm docs:decisions:verify` **before** the batch and confirm it is green.
-2. Convert about **20 IDs** — fewer for the dense ranges D095–D110 and D128–D136.
-3. Run it again. **Zero hard failures is the gate.** Every review item is read, and every reference-shift removal is reported with its authoritative destination and a no-loss proof.
-4. Semantic ambiguity, or any proposed rewording of operative law, **stops the batch** and returns to Owner review rather than being normalized away.
-5. One reviewed commit per batch, with the whole-register result green after each.
+This is the current procedure for every change to the register, including each newly assigned decision after D168:
+
+1. Run `pnpm docs:decisions:verify` **before** the change and confirm it is green.
+2. Make the change. A new decision is added as a **heading record** carrying the next unused identifier, placed so the whole file stays in one ascending sequence; there is no legacy table row to add and no mixed-representation allowance left to rely on.
+3. Run it again. **Zero hard failures is the gate.** Every review item is read, and any reference-shift removal is reported with its authoritative destination and a no-loss proof.
+4. Semantic ambiguity, or any proposed rewording of operative law, **stops the change** and returns to Owner review rather than being normalized away.
+5. One reviewed commit, with the whole-register result green.
+
+**How the conversion itself ran (historical).** The D165 rewrite proceeded in batches of about **20 IDs** — fewer for the dense ranges D095–D110 and D128–D136 — running the harness before and after each batch, one reviewed commit per batch, whole-register green after each, and every reference-shift removal reported with its destination and a no-loss proof. That work is finished and is recorded here only because the frozen baseline and the review categories above are read against it.
 
 The citation scan reads every **tracked** file — Markdown, TypeScript, Kotlin, YAML/OpenAPI, Prisma, SQL migrations, tests, and generated output — via `git ls-files`, which excludes `node_modules` and build output automatically. Known deliberate exclusions: the baseline artifact (it quotes the register verbatim, so its identifiers **are** the register, not citations), the harness's own tests and fixtures (synthetic register data carrying identifiers that intentionally do not resolve), lockfiles, and binary files.
 

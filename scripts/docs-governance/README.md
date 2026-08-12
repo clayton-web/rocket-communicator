@@ -1,8 +1,10 @@
 # Decision-register verification harness
 
-Repository-local documentation-governance tooling authorized by **D165** as a verification
-precondition for the later `docs/DECISIONS.md` representation change. Operating procedure and the
-hard-failure/review contract live in
+Repository-local documentation-governance tooling authorized by **D165**. The
+`docs/DECISIONS.md` representation conversion is complete: the live register uses
+heading records, no legacy decision-table rows remain, and the harness now protects
+the converted register against the frozen D001–D165 baseline and current structural
+rules. Operating procedure and the hard-failure/review contract live in
 [docs/ENGINEERING_WORKFLOW.md § Decision-register verification](../../docs/ENGINEERING_WORKFLOW.md#decision-register-verification-d165).
 This file documents the layout only.
 
