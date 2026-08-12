@@ -29,9 +29,12 @@ class PendingCaptureStoreTest {
 
     @Before
     fun setUp() {
-        store = PendingCaptureStore(RuntimeEnvironment.getApplication())
+        store = PendingCaptureStore.forTests(testPrefs())
         store.clear()
     }
+
+    private fun testPrefs() = RuntimeEnvironment.getApplication()
+        .getSharedPreferences(PendingCaptureStore.FILE_NAME, Context.MODE_PRIVATE)
 
     private fun operation(
         key: String = "capture-11111111-1111-1111-1111-111111111111",
@@ -136,6 +139,71 @@ class PendingCaptureStoreTest {
         assertTrue(rendered.contains(pending.capturedAt))
     }
 
-    private fun rawPrefs() = RuntimeEnvironment.getApplication()
-        .getSharedPreferences(PendingCaptureStore.FILE_NAME, Context.MODE_PRIVATE)
+    @Test
+    fun encryptedInitializationRoundTripsThroughTheSecureStoreNotOrdinaryPreferences() {
+        val context = RuntimeEnvironment.getApplication()
+        val secureStandIn =
+            context.getSharedPreferences(
+                "aicaa_capture_pending_secure_standin",
+                Context.MODE_PRIVATE
+            )
+        val ordinary = testPrefs()
+        secureStandIn.edit().clear().apply()
+        ordinary.edit().clear().apply()
+
+        val secret = "Sensitive capture text about the Hartley invoice"
+        val encryptedStore =
+            PendingCaptureStore.forTests(
+                PendingCaptureStore.openEncryptedPreferences(context) { secureStandIn }
+            )
+        encryptedStore.write(operation(rawInput = secret))
+
+        val restored = requireNotNull(encryptedStore.read(createdAtMs))
+        assertEquals(secret, restored.rawInput)
+        assertTrue(secureStandIn.contains(PendingCaptureStore.KEY))
+        assertFalse(ordinary.contains(PendingCaptureStore.KEY))
+        assertFalse(ordinary.all.toString().contains(secret))
+        assertFalse(ordinary.all.toString().contains("Hartley"))
+    }
+
+    @Test
+    fun encryptedInitializationFailureDoesNotWriteRawInputToOrdinaryPreferences() {
+        val context = RuntimeEnvironment.getApplication()
+        val ordinary = testPrefs()
+        ordinary.edit().clear().apply()
+
+        val secret = "Sensitive capture text about the Hartley invoice"
+        val failClosed =
+            PendingCaptureStore.forTests(
+                PendingCaptureStore.openEncryptedPreferences(context) {
+                    error("AndroidKeyStore unavailable")
+                }
+            )
+        failClosed.write(operation(rawInput = secret))
+
+        assertNull(failClosed.read(createdAtMs))
+        assertFalse(ordinary.contains(PendingCaptureStore.KEY))
+        assertFalse(ordinary.all.toString().contains(secret))
+        assertFalse(ordinary.all.toString().contains("Hartley"))
+    }
+
+    @Test
+    fun productionConstructorNeverPersistsRawInputInOrdinaryPreferences() {
+        val context = RuntimeEnvironment.getApplication()
+        val ordinary = testPrefs()
+        ordinary.edit().clear().apply()
+
+        val secret = "Sensitive capture text about the Hartley invoice"
+        val productionStore = PendingCaptureStore(context)
+        productionStore.write(operation(rawInput = secret))
+
+        assertFalse(ordinary.all.toString().contains(secret))
+        assertFalse(ordinary.all.toString().contains("Hartley"))
+        val restored = productionStore.read(createdAtMs)
+        if (restored != null) {
+            assertEquals(secret, restored.rawInput)
+        }
+    }
+
+    private fun rawPrefs() = testPrefs()
 }

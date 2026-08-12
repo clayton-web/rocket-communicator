@@ -1,6 +1,7 @@
 package com.aicommunication.assistant.capture
 
 import android.app.Application
+import android.content.Context
 import com.aicommunication.assistant.network.AccessTokenProvider
 import com.aicommunication.assistant.network.ApiConfig
 import com.aicommunication.assistant.network.ConnectivityMonitor
@@ -48,7 +49,11 @@ class ManualCaptureUseCaseTest {
     fun setUp() {
         server = MockWebServer()
         server.start()
-        pendingStore = PendingCaptureStore(RuntimeEnvironment.getApplication())
+        pendingStore =
+            PendingCaptureStore.forTests(
+                RuntimeEnvironment.getApplication()
+                    .getSharedPreferences(PendingCaptureStore.FILE_NAME, Context.MODE_PRIVATE)
+            )
         pendingStore.clear()
         useCase = useCase(FixedConnectivityMonitor(validated = true))
     }

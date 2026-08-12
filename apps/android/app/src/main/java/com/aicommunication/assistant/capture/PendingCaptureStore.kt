@@ -1,6 +1,7 @@
 package com.aicommunication.assistant.capture
 
 import android.content.Context
+import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.aicommunication.assistant.network.ownerApiMoshi
@@ -16,11 +17,17 @@ import java.time.Instant
  * process death can be retried with the identity S3.1/S3.2 idempotency requires. Device-local
  * only: one slot, 24-hour ceiling, no capture history, no offline queue, no background sending,
  * and no backend sync.
+ *
+ * Production persists only through EncryptedSharedPreferences. If AndroidKeyStore-backed storage
+ * cannot be established, the store fails closed: no pending capture is kept, and raw capture text
+ * is never written to ordinary SharedPreferences. Tests inject a preference implementation via
+ * [forTests]; that seam is not a runtime plaintext fallback.
  */
-class PendingCaptureStore(
-    context: Context
+class PendingCaptureStore private constructor(
+    private val prefs: SharedPreferences
 ) {
-    private val prefs = createPreferences(context.applicationContext)
+    constructor(context: Context) : this(openEncryptedPreferences(context.applicationContext))
+
     private val adapter = ownerApiMoshi().adapter(PendingCaptureOperation::class.java)
 
     /** Current pending capture, or null when absent, unreadable, or past its 24-hour ceiling. */
@@ -75,7 +82,25 @@ class PendingCaptureStore(
         const val VERSION = 1
         const val TTL_MS = 24L * 60L * 60L * 1000L
 
-        private fun createPreferences(context: Context) = try {
+        /** Test-only seam: never used by the production Context constructor. */
+        internal fun forTests(prefs: SharedPreferences) = PendingCaptureStore(prefs)
+
+        /**
+         * Production encrypted-preferences path. [createEncrypted] exists so tests can exercise
+         * success and initialization-failure without a runtime plaintext fallback.
+         */
+        internal fun openEncryptedPreferences(
+            context: Context,
+            createEncrypted: (Context) -> SharedPreferences = { createEncryptedPreferences(it) }
+        ): SharedPreferences {
+            return try {
+                createEncrypted(context)
+            } catch (_: Exception) {
+                FailClosedSharedPreferences
+            }
+        }
+
+        private fun createEncryptedPreferences(context: Context): SharedPreferences =
             EncryptedSharedPreferences.create(
                 context,
                 FILE_NAME,
@@ -85,10 +110,6 @@ class PendingCaptureStore(
                 EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
                 EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
             )
-        } catch (_: Exception) {
-            // Robolectric / environments without AndroidKeyStore.
-            context.getSharedPreferences(FILE_NAME, Context.MODE_PRIVATE)
-        }
     }
 }
 
@@ -111,4 +132,60 @@ data class PendingCaptureOperation(
         "PendingCaptureOperation(version=$version, idempotencyKey=$idempotencyKey, " +
             "capturedAt=$capturedAt, timezone=$timezone, createdAt=$createdAt, " +
             "rawInput=<redacted>)"
+}
+
+/**
+ * In-memory no-op preferences used when encrypted storage cannot be created. Writes are discarded
+ * and reads miss, so raw capture text never reaches a backing file.
+ */
+private object FailClosedSharedPreferences : SharedPreferences {
+    override fun getAll(): MutableMap<String, *> = mutableMapOf<String, Any>()
+
+    override fun getString(key: String?, defValue: String?): String? = defValue
+
+    override fun getStringSet(key: String?, defValues: MutableSet<String>?): MutableSet<String>? =
+        defValues
+
+    override fun getInt(key: String?, defValue: Int): Int = defValue
+
+    override fun getLong(key: String?, defValue: Long): Long = defValue
+
+    override fun getFloat(key: String?, defValue: Float): Float = defValue
+
+    override fun getBoolean(key: String?, defValue: Boolean): Boolean = defValue
+
+    override fun contains(key: String?): Boolean = false
+
+    override fun edit(): SharedPreferences.Editor = FailClosedEditor
+
+    override fun registerOnSharedPreferenceChangeListener(
+        listener: SharedPreferences.OnSharedPreferenceChangeListener?
+    ) = Unit
+
+    override fun unregisterOnSharedPreferenceChangeListener(
+        listener: SharedPreferences.OnSharedPreferenceChangeListener?
+    ) = Unit
+}
+
+private object FailClosedEditor : SharedPreferences.Editor {
+    override fun putString(key: String?, value: String?): SharedPreferences.Editor = this
+
+    override fun putStringSet(key: String?, values: MutableSet<String>?): SharedPreferences.Editor =
+        this
+
+    override fun putInt(key: String?, value: Int): SharedPreferences.Editor = this
+
+    override fun putLong(key: String?, value: Long): SharedPreferences.Editor = this
+
+    override fun putFloat(key: String?, value: Float): SharedPreferences.Editor = this
+
+    override fun putBoolean(key: String?, value: Boolean): SharedPreferences.Editor = this
+
+    override fun remove(key: String?): SharedPreferences.Editor = this
+
+    override fun clear(): SharedPreferences.Editor = this
+
+    override fun commit(): Boolean = false
+
+    override fun apply() = Unit
 }
