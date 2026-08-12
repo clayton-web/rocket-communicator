@@ -187,6 +187,10 @@ components:
       $ref: './components/schemas/task-suggestion.yaml#/components/schemas/TaskSuggestion'
     TaskSuggestionStatus:
       $ref: './components/schemas/task-suggestion.yaml#/components/schemas/TaskSuggestionStatus'
+    ResponsiblePartyKind:
+      $ref: './components/schemas/task-suggestion.yaml#/components/schemas/ResponsiblePartyKind'
+    ResponsibilitySelection:
+      $ref: './components/schemas/task-suggestion.yaml#/components/schemas/ResponsibilitySelection'
     ApproveTaskSuggestionRequest:
       $ref: './components/schemas/task-suggestion.yaml#/components/schemas/ApproveTaskSuggestionRequest'
     EditTaskSuggestionRequest:

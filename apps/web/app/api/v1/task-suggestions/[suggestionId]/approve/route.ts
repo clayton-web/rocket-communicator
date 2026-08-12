@@ -39,6 +39,7 @@ export async function POST(
       requestId: ctx.requestId,
       summaryPoints: parsed.value.summaryPoints as never,
       recipientId: parsed.value.recipientId,
+      responsibility: parsed.value.responsibility,
       dueAt: parsed.value.dueAt,
       priority: parsed.value.priority,
     });

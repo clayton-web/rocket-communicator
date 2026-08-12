@@ -339,6 +339,19 @@ Public Gmail DTOs never include refresh/access tokens, ciphertext, encryption ke
 
 `assignment_approved` is **removed** from the contract (never relied upon by shipped handlers).
 
+### Responsibility selection on approve (D168)
+
+**Required** `responsibility` carries the Owner's affirmative acceptance-time responsibility choice as a **distinct concept**; the legacy top-level `recipientId` is never repurposed for it and keeps its `RECIPIENT_HANDOFF_NOT_AVAILABLE` rejection above.
+
+`ResponsibilitySelection` requires `responsibleParty`, either `owner` or `recipient`, so an Owner selection is always affirmatively stated rather than inferred from a missing Recipient. `recipientId` is required when `responsibleParty` is `recipient` and must be **omitted** when it is `owner`; either violation is HTTP **400** `VALIDATION_ERROR`. A Recipient outside the Owner's organization is HTTP **404** `NOT_FOUND`.
+
+**Server behaviour:**
+
+- The selection is persisted as dedicated append-only evidence **atomically** with the canonical Task, the suggestion approval, and the `approvedTaskId` linkage. Existing If-Match/version semantics are unchanged, and there is no approve idempotency.
+- Selecting a Recipient records the selection **only**: still no TaskAssignment, no Capability, no HandoffAttempt, no email, and no Recipient access. Handoff remains the separate A7 mutation, and a later failed or absent handoff never falsifies the selection.
+- Omitting `responsibility` is HTTP **400** `VALIDATION_ERROR` and approves **nothing**: no Task is created and the proposal stays pending. It is never defaulted or inferred to `owner`, because an omitted field is not evidence that the Owner selected Me (D155, D164). Every successful acceptance therefore carries its selection evidence.
+- The evidence is persistence-only: it is not exposed on the `TaskSuggestion` or `Task` read contracts, and there is no public read endpoint for it.
+
 ### Assignment delivery status (D092)
 
 `AssignmentDeliveryStatus` (`pending` | `sent` | `failed`) is the contracted delivery outcome model for A7 handoff. It is **not** a permanent OpenAPI placeholder.
@@ -394,14 +407,16 @@ Field retained with OpenAPI `deprecated: true` for A4 compatibility. Server reje
 
 Mutable Task / TaskSuggestion: integer `version` and strong `etag`. Mutations require `If-Match` on the primary resource.
 
-| Condition                                     | HTTP | Code                              |
-| --------------------------------------------- | ---- | --------------------------------- |
-| Missing suggestion `If-Match`                 | 428  | `PRECONDITION_REQUIRED`           |
-| Stale suggestion `If-Match`                   | 412  | `PRECONDITION_FAILED`             |
-| Merge missing `targetTaskIfMatch`             | 428  | `PRECONDITION_REQUIRED`           |
-| Merge stale `targetTaskIfMatch` (target Task) | 412  | `PRECONDITION_FAILED`             |
-| Domain conflict                               | 409  | `DOMAIN_CONFLICT`                 |
-| Approve with `recipientId` (A6)               | 400  | `RECIPIENT_HANDOFF_NOT_AVAILABLE` |
+| Condition                                          | HTTP | Code                              |
+| -------------------------------------------------- | ---- | --------------------------------- |
+| Missing suggestion `If-Match`                      | 428  | `PRECONDITION_REQUIRED`           |
+| Stale suggestion `If-Match`                        | 412  | `PRECONDITION_FAILED`             |
+| Merge missing `targetTaskIfMatch`                  | 428  | `PRECONDITION_REQUIRED`           |
+| Merge stale `targetTaskIfMatch` (target Task)      | 412  | `PRECONDITION_FAILED`             |
+| Domain conflict                                    | 409  | `DOMAIN_CONFLICT`                 |
+| Approve with `recipientId` (A6)                    | 400  | `RECIPIENT_HANDOFF_NOT_AVAILABLE` |
+| Approve with missing/inconsistent `responsibility` | 400  | `VALIDATION_ERROR`                |
+| Approve with foreign/unknown selected Recipient    | 404  | `NOT_FOUND`                       |
 
 Merge must not append to a stale Task (D083).
 

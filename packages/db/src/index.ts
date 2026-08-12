@@ -40,10 +40,12 @@ export {
   mapHandoffAttempt,
   mapInterpretationRun,
   mapTaskSuggestionRevision,
+  mapResponsibilitySelection,
   type AuditEventRecord,
   type GmailOAuthCredentialRecord,
   type PersistedHandoffAttempt,
   type PersistedInterpretationRun,
+  type PersistedResponsibilitySelection,
   type PersistedTaskSuggestionRevision,
   type TaskSuggestionWithInterpretationRun,
 } from './mappers/domain-mappers.js';
@@ -343,6 +345,13 @@ export {
   type CreateTaskSuggestionRevisionInput,
   type TaskSuggestionRevisionAuthorKindValue,
 } from './repositories/task-suggestion-revision-repository.js';
+export {
+  createResponsibilitySelection,
+  getResponsibilitySelectionBySuggestionId,
+  getResponsibilitySelectionByTaskId,
+  type CreateResponsibilitySelectionInput,
+  type ResponsibilitySelectionPartyKindValue,
+} from './repositories/responsibility-selection-repository.js';
 
 export {
   persistReturnToOwner,

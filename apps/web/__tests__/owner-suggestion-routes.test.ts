@@ -406,6 +406,9 @@ describe('A6.2 Owner task-suggestion routes', () => {
         {
           acknowledgement: 'suggestion_approved',
           recipientId: 'rcp_blocked',
+          // Valid selection supplied, so this isolates the legacy D080 rejection rather than
+          // tripping the D168 required-field check.
+          responsibility: { responsibleParty: 'owner' },
         },
         { 'if-match': formatETag('task-suggestion', 'sug_approve', 1) },
       ),
@@ -441,7 +444,10 @@ describe('A6.2 Owner task-suggestion routes', () => {
       jsonRequest(
         'POST',
         'http://localhost/api/v1/task-suggestions/sug_approve/approve',
-        { acknowledgement: 'suggestion_approved' },
+        {
+          acknowledgement: 'suggestion_approved',
+          responsibility: { responsibleParty: 'owner' },
+        },
         { 'if-match': formatETag('task-suggestion', 'sug_approve', 1) },
       ),
       params('sug_approve'),
@@ -473,7 +479,10 @@ describe('A6.2 Owner task-suggestion routes', () => {
       jsonRequest(
         'POST',
         'http://localhost/api/v1/task-suggestions/sug_approve/approve',
-        { acknowledgement: 'suggestion_approved' },
+        {
+          acknowledgement: 'suggestion_approved',
+          responsibility: { responsibleParty: 'owner' },
+        },
         { 'if-match': formatETag('task-suggestion', 'sug_approve', 1) },
       ),
       params('sug_approve'),
@@ -482,6 +491,254 @@ describe('A6.2 Owner task-suggestion routes', () => {
     expect(await db.prisma.task.count({ where: { organizationId: org } })).toBe(
       countsBefore.tasks + 1,
     );
+  });
+
+  async function seedRecipient(recipientId: string, organizationId = org) {
+    await db.prisma.recipient.create({
+      data: {
+        id: recipientId,
+        organizationId,
+        displayName: 'Selected Person',
+        email: `${recipientId}@example.com`,
+        emailNormalized: `${recipientId}@example.com`,
+        active: true,
+      },
+    });
+  }
+
+  function approveRequest(suggestionId: string, body: Record<string, unknown>, version = 1) {
+    return jsonRequest(
+      'POST',
+      `http://localhost/api/v1/task-suggestions/${suggestionId}/approve`,
+      { acknowledgement: 'suggestion_approved', ...body },
+      { 'if-match': formatETag('task-suggestion', suggestionId, version) },
+    );
+  }
+
+  async function selectionsFor(suggestionId: string) {
+    return db.prisma.taskSuggestionResponsibilitySelection.findMany({ where: { suggestionId } });
+  }
+
+  it('approve with Owner responsibility records affirmative Owner-selection evidence (D168)', async () => {
+    await createTaskSuggestion(db.prisma, org, pendingSuggestion('sug_resp_owner', null));
+
+    const response = await approveSuggestion(
+      approveRequest('sug_resp_owner', { responsibility: { responsibleParty: 'owner' } }),
+      params('sug_resp_owner'),
+    );
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.suggestion.status).toBe('approved');
+
+    const [selection] = await selectionsFor('sug_resp_owner');
+    expect(selection).toMatchObject({
+      organizationId: org,
+      suggestionId: 'sug_resp_owner',
+      taskId: body.task.id,
+      partyKind: 'owner',
+      recipientId: null,
+      selectedByOwnerId: owner.ownerId,
+    });
+    expect(selection?.selectedAt.toISOString()).toBe(now);
+
+    // Choosing Me creates no Owner TaskAssignment and no Owner Recipient record (D164, D168).
+    expect(await db.prisma.taskAssignment.count({ where: { taskId: body.task.id } })).toBe(0);
+    expect(await db.prisma.recipient.count({ where: { organizationId: org } })).toBe(0);
+    // Evidence is not exposed on the read contract in this slice.
+    expect(body.suggestion).not.toHaveProperty('responsibility');
+    expect(body.task).not.toHaveProperty('responsibility');
+  });
+
+  it('approve with Recipient responsibility records the selection without any delivery (D168)', async () => {
+    await seedRecipient('rcp_resp_ok');
+    await createTaskSuggestion(db.prisma, org, pendingSuggestion('sug_resp_rcp', null));
+
+    const response = await approveSuggestion(
+      approveRequest('sug_resp_rcp', {
+        responsibility: { responsibleParty: 'recipient', recipientId: 'rcp_resp_ok' },
+      }),
+      params('sug_resp_rcp'),
+    );
+    expect(response.status).toBe(200);
+    const body = await response.json();
+
+    const [selection] = await selectionsFor('sug_resp_rcp');
+    expect(selection).toMatchObject({
+      partyKind: 'recipient',
+      recipientId: 'rcp_resp_ok',
+      selectedByOwnerId: owner.ownerId,
+      taskId: body.task.id,
+    });
+
+    // Selection is not delivery: no assignment, capability, or handoff attempt follows (D168).
+    expect(body.task.assignment).toBeUndefined();
+    expect(await db.prisma.taskAssignment.count({ where: { taskId: body.task.id } })).toBe(0);
+    expect(await db.prisma.taskCapability.count({ where: { taskId: body.task.id } })).toBe(0);
+    expect(await db.prisma.handoffAttempt.count({ where: { taskId: body.task.id } })).toBe(0);
+  });
+
+  it('approve rejects a cross-organization Recipient selection and persists nothing', async () => {
+    await seedRecipient('rcp_resp_foreign', otherOrg);
+    await createTaskSuggestion(db.prisma, org, pendingSuggestion('sug_resp_foreign', null));
+    const tasksBefore = await db.prisma.task.count({ where: { organizationId: org } });
+
+    const response = await approveSuggestion(
+      approveRequest('sug_resp_foreign', {
+        responsibility: { responsibleParty: 'recipient', recipientId: 'rcp_resp_foreign' },
+      }),
+      params('sug_resp_foreign'),
+    );
+    expect(response.status).toBe(404);
+    expect((await response.json()).error.code).toBe('NOT_FOUND');
+
+    expect(await selectionsFor('sug_resp_foreign')).toHaveLength(0);
+    expect(await db.prisma.task.count({ where: { organizationId: org } })).toBe(tasksBefore);
+    const untouched = await db.prisma.taskSuggestion.findUniqueOrThrow({
+      where: { id: 'sug_resp_foreign' },
+    });
+    expect(untouched.status).toBe('pending');
+    expect(untouched.version).toBe(1);
+    expect(untouched.approvedTaskId).toBeNull();
+  });
+
+  it('approve rejects malformed Owner-versus-Recipient selections and persists nothing', async () => {
+    await seedRecipient('rcp_resp_malformed');
+    await createTaskSuggestion(db.prisma, org, pendingSuggestion('sug_resp_bad', null));
+    const tasksBefore = await db.prisma.task.count({ where: { organizationId: org } });
+
+    const ownerWithRecipient = await approveSuggestion(
+      approveRequest('sug_resp_bad', {
+        responsibility: { responsibleParty: 'owner', recipientId: 'rcp_resp_malformed' },
+      }),
+      params('sug_resp_bad'),
+    );
+    expect(ownerWithRecipient.status).toBe(400);
+    expect((await ownerWithRecipient.json()).error.code).toBe('VALIDATION_ERROR');
+
+    const recipientWithoutId = await approveSuggestion(
+      approveRequest('sug_resp_bad', { responsibility: { responsibleParty: 'recipient' } }),
+      params('sug_resp_bad'),
+    );
+    expect(recipientWithoutId.status).toBe(400);
+    expect((await recipientWithoutId.json()).error.code).toBe('VALIDATION_ERROR');
+
+    const unknownParty = await approveSuggestion(
+      approveRequest('sug_resp_bad', { responsibility: { responsibleParty: 'assistant' } }),
+      params('sug_resp_bad'),
+    );
+    expect(unknownParty.status).toBe(400);
+    expect((await unknownParty.json()).error.code).toBe('VALIDATION_ERROR');
+
+    // An empty selection object is not an Owner selection: the party must be stated (D155).
+    const missingParty = await approveSuggestion(
+      approveRequest('sug_resp_bad', { responsibility: {} }),
+      params('sug_resp_bad'),
+    );
+    expect(missingParty.status).toBe(400);
+    expect((await missingParty.json()).error.code).toBe('VALIDATION_ERROR');
+
+    expect(await selectionsFor('sug_resp_bad')).toHaveLength(0);
+    expect(await db.prisma.task.count({ where: { organizationId: org } })).toBe(tasksBefore);
+    expect(
+      (await db.prisma.taskSuggestion.findUniqueOrThrow({ where: { id: 'sug_resp_bad' } })).status,
+    ).toBe('pending');
+  });
+
+  it('approve still rejects the legacy recipientId even alongside a responsibility selection', async () => {
+    await seedRecipient('rcp_resp_legacy');
+    await createTaskSuggestion(db.prisma, org, pendingSuggestion('sug_resp_legacy', null));
+
+    const response = await approveSuggestion(
+      approveRequest('sug_resp_legacy', {
+        recipientId: 'rcp_resp_legacy',
+        responsibility: { responsibleParty: 'recipient', recipientId: 'rcp_resp_legacy' },
+      }),
+      params('sug_resp_legacy'),
+    );
+    expect(response.status).toBe(400);
+    expect((await response.json()).error.code).toBe('RECIPIENT_HANDOFF_NOT_AVAILABLE');
+    expect(await selectionsFor('sug_resp_legacy')).toHaveLength(0);
+  });
+
+  it('approve concurrency is unchanged and leaves exactly one selection evidence row', async () => {
+    await createTaskSuggestion(db.prisma, org, pendingSuggestion('sug_resp_conc', null));
+
+    const stale = await approveSuggestion(
+      approveRequest('sug_resp_conc', { responsibility: { responsibleParty: 'owner' } }, 99),
+      params('sug_resp_conc'),
+    );
+    expect(stale.status).toBe(412);
+    expect(await selectionsFor('sug_resp_conc')).toHaveLength(0);
+
+    const ok = await approveSuggestion(
+      approveRequest('sug_resp_conc', { responsibility: { responsibleParty: 'owner' } }),
+      params('sug_resp_conc'),
+    );
+    expect(ok.status).toBe(200);
+
+    // No approve idempotency in this slice: the stale replay conflicts and writes no second row.
+    const replay = await approveSuggestion(
+      approveRequest('sug_resp_conc', { responsibility: { responsibleParty: 'owner' } }),
+      params('sug_resp_conc'),
+    );
+    expect(replay.status).toBe(409);
+    expect(await selectionsFor('sug_resp_conc')).toHaveLength(1);
+  });
+
+  it('approve without a responsibility selection is rejected and approves nothing (D168)', async () => {
+    await createTaskSuggestion(db.prisma, org, pendingSuggestion('sug_resp_absent', null));
+    const tasksBefore = await db.prisma.task.count({ where: { organizationId: org } });
+
+    const response = await approveSuggestion(
+      approveRequest('sug_resp_absent', {}),
+      params('sug_resp_absent'),
+    );
+    expect(response.status).toBe(400);
+    expect((await response.json()).error.code).toBe('VALIDATION_ERROR');
+
+    // No approval result: the proposal stays pending, unversioned, and unlinked to any Task.
+    const untouched = await db.prisma.taskSuggestion.findUniqueOrThrow({
+      where: { id: 'sug_resp_absent' },
+    });
+    expect(untouched.status).toBe('pending');
+    expect(untouched.version).toBe(1);
+    expect(untouched.approvedTaskId).toBeNull();
+    expect(await db.prisma.task.count({ where: { organizationId: org } })).toBe(tasksBefore);
+
+    // And critically, no evidence was invented on the Owner's behalf.
+    expect(await selectionsFor('sug_resp_absent')).toHaveLength(0);
+  });
+
+  it('approve never defaults or infers an Owner selection from an absent field (D168)', async () => {
+    await createTaskSuggestion(db.prisma, org, pendingSuggestion('sug_resp_nodefault', null));
+
+    // Every way of "not choosing" must fail rather than resolve to Owner.
+    for (const body of [
+      {},
+      { responsibility: null },
+      { responsibility: {} },
+      { responsibility: { responsibleParty: null } },
+      { responsibility: { recipientId: 'rcp_resp_nodefault' } },
+    ]) {
+      const response = await approveSuggestion(
+        approveRequest('sug_resp_nodefault', body),
+        params('sug_resp_nodefault'),
+      );
+      expect(response.status).toBe(400);
+      expect((await response.json()).error.code).toBe('VALIDATION_ERROR');
+    }
+
+    // No owner-kind row was fabricated by any of them.
+    expect(
+      await db.prisma.taskSuggestionResponsibilitySelection.count({
+        where: { organizationId: org, suggestionId: 'sug_resp_nodefault', partyKind: 'owner' },
+      }),
+    ).toBe(0);
+    const untouched = await db.prisma.taskSuggestion.findUniqueOrThrow({
+      where: { id: 'sug_resp_nodefault' },
+    });
+    expect(untouched.status).toBe('pending');
+    expect(untouched.approvedTaskId).toBeNull();
   });
 
   it('merge requires dual preconditions and bumps both versions', async () => {
@@ -586,7 +843,7 @@ describe('A6.2 Owner task-suggestion routes', () => {
       jsonRequest(
         'POST',
         'http://localhost/api/v1/task-suggestions/sug_wr/approve',
-        { acknowledgement: 'suggestion_approved' },
+        { acknowledgement: 'suggestion_approved', responsibility: { responsibleParty: 'owner' } },
         { 'if-match': formatETag('task-suggestion', 'sug_wr', 2) },
       ),
       params('sug_wr'),
@@ -605,7 +862,7 @@ describe('A6.2 Owner task-suggestion routes', () => {
       jsonRequest(
         'POST',
         'http://localhost/api/v1/task-suggestions/sug_term_complete/approve',
-        { acknowledgement: 'suggestion_approved' },
+        { acknowledgement: 'suggestion_approved', responsibility: { responsibleParty: 'owner' } },
         { 'if-match': formatETag('task-suggestion', 'sug_term_complete', 1) },
       ),
       params('sug_term_complete'),
@@ -643,7 +900,7 @@ describe('A6.2 Owner task-suggestion routes', () => {
       jsonRequest(
         'POST',
         'http://localhost/api/v1/task-suggestions/sug_term_dismiss/approve',
-        { acknowledgement: 'suggestion_approved' },
+        { acknowledgement: 'suggestion_approved', responsibility: { responsibleParty: 'owner' } },
         { 'if-match': formatETag('task-suggestion', 'sug_term_dismiss', 1) },
       ),
       params('sug_term_dismiss'),
@@ -700,7 +957,7 @@ describe('A6.2 Owner task-suggestion routes', () => {
       jsonRequest(
         'POST',
         'http://localhost/api/v1/task-suggestions/sug_no_excerpt/approve',
-        { acknowledgement: 'suggestion_approved' },
+        { acknowledgement: 'suggestion_approved', responsibility: { responsibleParty: 'owner' } },
         { 'if-match': formatETag('task-suggestion', 'sug_no_excerpt', 1) },
       ),
       params('sug_no_excerpt'),

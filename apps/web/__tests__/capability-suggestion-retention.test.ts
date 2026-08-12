@@ -213,7 +213,8 @@ describe('A6.2 capability HTTP D082 terminal retention', () => {
       jsonRequest(
         'POST',
         `http://localhost/api/v1/task-suggestions/${suggestionId}/approve`,
-        { acknowledgement: 'suggestion_approved' },
+        // Owner keeps the task here; delegation happens later via the handoff mutation (D168).
+        { acknowledgement: 'suggestion_approved', responsibility: { responsibleParty: 'owner' } },
         { 'if-match': formatETag('task-suggestion', suggestionId, 1) },
       ),
       suggestionParams(suggestionId),

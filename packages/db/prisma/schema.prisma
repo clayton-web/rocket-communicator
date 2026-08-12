@@ -30,6 +30,9 @@ model Recipient {
   assignments     TaskAssignment[]
   capabilities    TaskCapability[]
   handoffAttempts HandoffAttempt[]
+  /// Acceptance-time responsibility-selection evidence naming this Recipient (D168). Evidence of
+  /// Owner selection only — never assignment, capability, handoff, or delivery.
+  responsibilitySelections TaskSuggestionResponsibilitySelection[]
 
   @@index([organizationId])
   @@index([organizationId, emailNormalized])
@@ -67,6 +70,10 @@ model Task {
   suggestionsMerged      TaskSuggestion[]          @relation("MergedIntoTask")
   /// Suggestion that created this Task via Owner approve (D080/D082). At most one.
   approvedFromSuggestion TaskSuggestion?           @relation("ApprovedTask")
+  /// Acceptance-time responsibility-selection evidence (D168). Historical evidence of the Owner's
+  /// initial choice — NOT this Task's current responsibility, assignee, or custody, which D164 and
+  /// D168 forbid representing on Task at all. Read current external assignment from TaskAssignment.
+  acceptanceResponsibilitySelection TaskSuggestionResponsibilitySelection?
 
   @@index([organizationId, status])
   @@index([organizationId, updatedAt])
@@ -155,6 +162,9 @@ model TaskSuggestion {
   interpretationRun        InterpretationRun?  @relation(fields: [interpretationRunId], references: [id], onDelete: Restrict)
   /// Dormant append-only evidence only (D155). Absence of rows does not mean absence of a proposal.
   revisions                TaskSuggestionRevision[]
+  /// Acceptance-time Owner responsibility-selection evidence (D168). Absence is not evidence that
+  /// the Owner selected Me, and presence is not delivery.
+  responsibilitySelection  TaskSuggestionResponsibilitySelection?
 
   @@index([organizationId, status])
   @@index([organizationId, originTaskId])
@@ -200,6 +210,59 @@ model TaskSuggestionRevision {
   @@unique([suggestionId, revisionNumber])
   @@index([organizationId, suggestionId, revisionNumber], map: "task_suggestion_revisions_org_suggestion_revision_idx")
   @@map("task_suggestion_revisions")
+}
+
+/// Append-only Owner responsibility-selection evidence recorded at proposal acceptance (D168).
+///
+/// Stands beside TaskSuggestionRevision as an independent D155 evidence axis: responsibility
+/// selection and accepted content revision are unrelated. Written atomically inside the existing
+/// approve transaction, never as a later best-effort write.
+///
+/// **It answers exactly one question:** who did the Owner affirmatively choose as the initially
+/// responsible party when accepting this proposal? It is **not** canonical Task state, current
+/// custody, current responsibility, delivery/handoff state, a TaskAssignment replacement, a
+/// current-responsibility projection, or a responsibility-history state machine. Later
+/// reassignment, clearing, and return-to-Owner remain TaskAssignment/handoff/audit concerns.
+///
+/// **Affirmative only.** `partyKind` is NOT NULL and explicit. Absence of a row, absence of
+/// `recipientId`, absence of TaskAssignment, and absence or failure of handoff must never be read
+/// as evidence that the Owner selected Me (D155, D164).
+///
+/// **Recipient selection is not delivery.** A `recipient` row records the Owner's affirmative
+/// selection only. It creates no TaskAssignment, TaskCapability, or HandoffAttempt, sends no mail,
+/// and activates no Recipient access; a later failed, pending, cancelled, cleared, or absent
+/// handoff never erases or falsifies it.
+///
+/// **Initial decision, not a stream.** Unique `suggestionId` and unique `taskId` hold this to at
+/// most one initial acceptance record, which is what stops it accumulating into responsibility
+/// history. Rewrite/delete prevention is by create/read-only repository surface + source guard.
+///
+/// **Out of this carrier:** `updatedAt`, status/lifecycle columns, superseding/current flags,
+/// delivery or handoff state, capability linkage, `auditEventId`, accepted-revision linkage,
+/// reassignment/return-to-Owner rows, and any learning/personalization metadata.
+model TaskSuggestionResponsibilitySelection {
+  id                String                           @id @db.VarChar(64)
+  organizationId    String                           @map("organization_id") @db.VarChar(64)
+  /// Accepted proposal this selection was made on. Unique: one initial selection per acceptance.
+  suggestionId      String                           @unique @map("suggestion_id") @db.VarChar(64)
+  /// Canonical Task the acceptance created. Unique for the same reason as `suggestionId`.
+  taskId            String                           @unique @map("task_id") @db.VarChar(64)
+  partyKind         ResponsibilitySelectionPartyKind @map("party_kind")
+  /// Set when and only when `partyKind = recipient`; enforced by a migration CHECK constraint.
+  recipientId       String?                          @map("recipient_id") @db.VarChar(64)
+  /// Authenticated Owner whose approval action made the selection (`audit_events.owner_id` /
+  /// `task_assignments.assigned_by_owner_id` convention). AuditEvent is not this evidence store.
+  selectedByOwnerId String                           @map("selected_by_owner_id") @db.VarChar(64)
+  /// Selection instant as of the Owner approval action, distinct from the row insert stamp.
+  selectedAt        DateTime                         @map("selected_at") @db.Timestamptz(3)
+  createdAt         DateTime                         @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  suggestion TaskSuggestion @relation(fields: [suggestionId], references: [id], onDelete: Restrict)
+  task       Task           @relation(fields: [taskId], references: [id], onDelete: Restrict)
+  recipient  Recipient?     @relation(fields: [recipientId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, suggestionId], map: "task_suggestion_responsibility_selections_org_suggestion_idx")
+  @@map("task_suggestion_responsibility_selections")
 }
 
 /// Capability authorization record. Stores token HASH only — never raw secrets (D063).
@@ -1196,4 +1259,13 @@ enum InterpretationSourceKind {
 enum TaskSuggestionRevisionAuthorKind {
   ai
   owner
+}
+
+/// Which party the Owner affirmatively selected as initially responsible at acceptance (D168).
+/// `owner` means the Owner chose Me and requires no TaskAssignment and no Recipient (D164);
+/// `recipient` names an external Recipient and still requires the existing assignment/capability/
+/// handoff machinery for any delivery. Neither value may be inferred from operational absence.
+enum ResponsibilitySelectionPartyKind {
+  owner
+  recipient
 }

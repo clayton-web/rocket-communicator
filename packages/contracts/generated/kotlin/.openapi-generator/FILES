@@ -64,6 +64,8 @@ docs/ReminderProcessResponse.md
 docs/RequestCapabilityClarificationRequest.md
 docs/RequestClarificationRequest.md
 docs/RequestSummaryPoint.md
+docs/ResponsibilitySelection.md
+docs/ResponsiblePartyKind.md
 docs/RetentionMetadata.md
 docs/ReturnCapabilityTaskToOwnerRequest.md
 docs/ReturnTaskToOwnerRequest.md
@@ -167,6 +169,8 @@ src/main/kotlin/com/aicommunication/assistant/contracts/models/ReminderProcessRe
 src/main/kotlin/com/aicommunication/assistant/contracts/models/RequestCapabilityClarificationRequest.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/RequestClarificationRequest.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/RequestSummaryPoint.kt
+src/main/kotlin/com/aicommunication/assistant/contracts/models/ResponsibilitySelection.kt
+src/main/kotlin/com/aicommunication/assistant/contracts/models/ResponsiblePartyKind.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/RetentionMetadata.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/ReturnCapabilityTaskToOwnerRequest.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/ReturnTaskToOwnerRequest.kt

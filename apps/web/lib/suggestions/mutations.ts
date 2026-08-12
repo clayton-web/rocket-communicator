@@ -167,10 +167,61 @@ export type ApproveSuggestionResult = {
   audit: AuditEventRecord;
 };
 
+/**
+ * The Owner's affirmative acceptance-time responsibility selection (D168).
+ *
+ * A distinct approve concept from the legacy `recipientId`, which keeps its D080 rejection.
+ */
+export type ResponsibilitySelectionCommand = {
+  responsibleParty: 'owner' | 'recipient';
+  recipientId?: string | null;
+};
+
+/**
+ * Reject a missing selection, or one whose party and Recipient disagree, before approval is
+ * attempted.
+ *
+ * A missing selection is rejected rather than defaulted to Owner: approve may not succeed without
+ * affirmative D168 evidence, and absence is never evidence that the Owner selected Me (D155, D164).
+ *
+ * `responsibleParty` is the only affirmative signal, so an Owner selection carrying a Recipient and
+ * a Recipient selection without one are both malformed rather than something to interpret.
+ */
+function validateResponsibilitySelection(
+  selection: ResponsibilitySelectionCommand | undefined,
+): string | null {
+  if (!selection) {
+    throw taskServiceError(
+      'VALIDATION_ERROR',
+      'responsibility is required when approving a suggestion (D168).',
+      [{ field: 'responsibility', message: 'Select owner or recipient. Omission is not Owner.' }],
+    );
+  }
+  const recipientId =
+    selection.recipientId != null && selection.recipientId !== '' ? selection.recipientId : null;
+  if (selection.responsibleParty === 'owner' && recipientId !== null) {
+    throw taskServiceError(
+      'VALIDATION_ERROR',
+      'responsibility.recipientId must be omitted when responsibleParty is owner.',
+      [{ field: 'responsibility.recipientId', message: 'Not allowed for Owner responsibility.' }],
+    );
+  }
+  if (selection.responsibleParty === 'recipient' && recipientId === null) {
+    throw taskServiceError(
+      'VALIDATION_ERROR',
+      'responsibility.recipientId is required when responsibleParty is recipient.',
+      [{ field: 'responsibility.recipientId', message: 'Required for Recipient responsibility.' }],
+    );
+  }
+  return recipientId;
+}
+
 export async function approveOwnerSuggestion(
   command: SuggestionMutationBase & {
     summaryPoints?: TaskSummaryPoint[];
     recipientId?: string | null;
+    /** Required (D168). Approval fails rather than defaulting when this is absent. */
+    responsibility: ResponsibilitySelectionCommand;
     priority?: TaskSuggestion['proposedPriority'];
     dueAt?: UtcInstant | null;
   },
@@ -182,6 +233,7 @@ export async function approveOwnerSuggestion(
       'Recipient handoff is not available when approving a suggestion.',
     );
   }
+  const selectedRecipientId = validateResponsibilitySelection(command.responsibility);
   try {
     const dbRuntime = await loadDbRuntime();
     const current = await loadSuggestion(command.db, owner, command.suggestionId);
@@ -210,6 +262,17 @@ export async function approveOwnerSuggestion(
       suggestion: approvedSuggestion,
       task,
       recipientId: command.recipientId,
+      // D168 evidence travels into the same approve transaction as the canonical Task, so there is
+      // no successful approval missing its required selection evidence and no evidence left behind
+      // by a rolled-back approval. Recording a Recipient selection is not delivery: no
+      // TaskAssignment, capability, handoff, or mail follows from it in this slice.
+      responsibilitySelection: {
+        id: newEntityId('tsrs'),
+        partyKind: command.responsibility.responsibleParty,
+        recipientId: selectedRecipientId,
+        selectedByOwnerId: owner.ownerId,
+        selectedAt: command.now,
+      },
       excerptPurgeAt: computeWorkflowSafetyCeilingPurgeAt(command.now),
       audit: buildOwnerAudit({
         id: command.auditId ?? newEntityId('audit'),

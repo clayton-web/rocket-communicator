@@ -73,6 +73,75 @@ describe('contracts package', () => {
     expect(examples.length).toBeGreaterThanOrEqual(4);
   });
 
+  it('contracts responsibility selection as a distinct approve concept (D168)', () => {
+    execSync('pnpm bundle', { cwd: root, stdio: 'pipe' });
+    const bundled = parseYaml(readFileSync(path.join(root, 'dist/openapi.bundled.yaml'), 'utf8'));
+    const schemas = bundled.components?.schemas ?? {};
+
+    const approve = schemas.ApproveTaskSuggestionRequest as {
+      required?: string[];
+      properties?: Record<
+        string,
+        { $ref?: string; allOf?: { $ref?: string }[]; description?: string }
+      >;
+    };
+    // The selection is its own concept, never a reinterpretation of the legacy recipientId, which
+    // keeps its D080 RECIPIENT_HANDOFF_NOT_AVAILABLE meaning.
+    expect(approve.properties?.responsibility?.allOf?.[0]?.$ref).toBe(
+      '#/components/schemas/ResponsibilitySelection',
+    );
+    // Required, so no successful acceptance can lack affirmative D168 evidence and no omitted
+    // field can be read as an Owner selection (D155, D164).
+    expect([...(approve.required ?? [])].sort()).toEqual(['acknowledgement', 'responsibility']);
+    expect(approve.properties?.responsibility?.description).toMatch(
+      /never defaulted or\s+inferred/i,
+    );
+    expect(approve.properties?.recipientId?.description).toContain(
+      'RECIPIENT_HANDOFF_NOT_AVAILABLE',
+    );
+
+    const selection = schemas.ResponsibilitySelection as {
+      required?: string[];
+      properties?: Record<string, unknown>;
+    };
+    // responsibleParty is required, so an Owner selection is always affirmatively stated rather
+    // than inferred from a missing Recipient (D155).
+    expect(selection.required).toEqual(['responsibleParty']);
+    expect(Object.keys(selection.properties ?? {}).sort()).toEqual([
+      'recipientId',
+      'responsibleParty',
+    ]);
+    expect((schemas.ResponsiblePartyKind as { enum?: string[] }).enum).toEqual([
+      'owner',
+      'recipient',
+    ]);
+
+    // The evidence carrier itself stays persistence-only: no public read schema, and no
+    // responsibility/custody/assignee field on the Task or TaskSuggestion read contracts.
+    for (const forbidden of [
+      'ResponsibilitySelectionEvidence',
+      'TaskResponsibility',
+      'ResponsibilityHistory',
+      'CurrentResponsibility',
+    ]) {
+      expect(schemas[forbidden]).toBeUndefined();
+    }
+    for (const readSchema of ['Task', 'TaskSuggestion'] as const) {
+      const properties = Object.keys(
+        (schemas[readSchema] as { properties?: Record<string, unknown> })?.properties ?? {},
+      );
+      for (const forbidden of [
+        'responsibility',
+        'responsibleParty',
+        'custody',
+        'assigneeId',
+        'approvedTaskId',
+      ]) {
+        expect(properties, `${readSchema} must not expose ${forbidden}`).not.toContain(forbidden);
+      }
+    }
+  });
+
   // Full generate includes OpenAPI bundle, TypeScript, and Kotlin (Java) codegen.
   // CI annotations showed Vitest's default 5s timeout failing this step.
   it('generates TypeScript output', () => {

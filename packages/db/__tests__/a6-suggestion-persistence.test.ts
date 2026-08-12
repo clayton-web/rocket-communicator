@@ -459,6 +459,14 @@ describe('A6.1 suggestion persistence foundation (PGlite)', () => {
           summaryPoints: suggestion.summaryPoints,
         }),
         recipientId: 'rcp_should_fail',
+        // Explicit Owner selection isolates the D080 rejection: the legacy recipientId is still
+        // refused even when the D168 selection is present and valid.
+        responsibilitySelection: {
+          id: 'tsrs_approve_reject',
+          partyKind: 'owner',
+          selectedByOwnerId: 'owner_a6',
+          selectedAt: now,
+        },
         excerptPurgeAt: computeWorkflowSafetyCeilingPurgeAt(now),
         audit: {
           id: 'aud_approve_reject',
@@ -485,6 +493,13 @@ describe('A6.1 suggestion persistence foundation (PGlite)', () => {
         summaryPoints: suggestion.summaryPoints,
         sourceReference: suggestion.sourceReference,
       }),
+      // Owner keeps this one: an affirmative Owner selection, never an omitted field (D168).
+      responsibilitySelection: {
+        id: 'tsrs_approve_ok',
+        partyKind: 'owner',
+        selectedByOwnerId: 'owner_a6',
+        selectedAt: now,
+      },
       excerptPurgeAt: computeWorkflowSafetyCeilingPurgeAt(now),
       audit: {
         id: 'aud_approve_ok',
@@ -745,6 +760,12 @@ describe('A6.1 suggestion persistence foundation (PGlite)', () => {
         summaryPoints: suggestion.summaryPoints,
         sourceReference: suggestion.sourceReference,
       }),
+      responsibilitySelection: {
+        id: 'tsrs_term_approve',
+        partyKind: 'owner',
+        selectedByOwnerId: 'owner_a6',
+        selectedAt: now,
+      },
       excerptPurgeAt: computeWorkflowSafetyCeilingPurgeAt(now),
       audit: {
         id: 'aud_term_approve',
@@ -812,6 +833,12 @@ describe('A6.1 suggestion persistence foundation (PGlite)', () => {
         organizationId: asOrganizationId(org),
         summaryPoints: suggestionPurged.summaryPoints,
       }),
+      responsibilitySelection: {
+        id: 'tsrs_term_approve_purged',
+        partyKind: 'owner',
+        selectedByOwnerId: 'owner_a6',
+        selectedAt: now,
+      },
       excerptPurgeAt: computeWorkflowSafetyCeilingPurgeAt(now),
       audit: {
         id: 'aud_term_approve_purged',

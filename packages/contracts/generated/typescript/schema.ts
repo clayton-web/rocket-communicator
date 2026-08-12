@@ -81,6 +81,14 @@ export interface paths {
          *     Gmail-forward, or schedule reminders. Recipient handoff is A7 (D037).
          *     If the body includes `recipientId`, respond 400 with
          *     `RECIPIENT_HANDOFF_NOT_AVAILABLE`.
+         *
+         *     Required `responsibility` records the Owner's affirmative acceptance-time
+         *     responsibility selection as dedicated append-only evidence, written atomically
+         *     with the canonical Task (D168). Omitting it responds 400 `VALIDATION_ERROR` and
+         *     approves nothing: no Task is created and no suggestion is approved. It is never
+         *     defaulted or inferred to `owner`, because absence is not evidence (D155, D164).
+         *     Supplying it — including `responsibleParty: recipient` — still creates no
+         *     TaskAssignment, no Capability, and no HandoffAttempt, and sends nothing.
          *     **Status: Contracted for A6.**
          *
          */
@@ -1347,13 +1355,47 @@ export interface components {
         };
         /** @enum {string} */
         TaskSuggestionStatus: "pending" | "approved" | "dismissed" | "merged";
+        /**
+         * @description Which party the Owner affirmatively selected as initially responsible when accepting a
+         *     proposal (D164, D168). `owner` means the Owner chose Me; `recipient` names an external
+         *     Recipient. Neither answer may be inferred from operational absence: no TaskAssignment,
+         *     no Recipient, and no handoff are never evidence that the Owner selected Me (D155).
+         *
+         * @enum {string}
+         */
+        ResponsiblePartyKind: "owner" | "recipient";
+        /** @description The Owner's affirmative acceptance-time responsibility selection (D168). Recorded as
+         *     dedicated append-only evidence atomically with the canonical Task, so an approval never
+         *     commits without its selection evidence and evidence never survives a rolled-back approval.
+         *     Selecting a Recipient records the selection **only**: it creates no TaskAssignment, issues
+         *     no capability, creates no HandoffAttempt, sends no Gmail or email, and activates no
+         *     Recipient access. Those remain the existing later handoff mutation's concerns, and a later
+         *     failed, pending, cancelled, cleared, or absent handoff never falsifies this selection.
+         *      */
+        ResponsibilitySelection: {
+            responsibleParty: components["schemas"]["ResponsiblePartyKind"];
+            /** @description Required when `responsibleParty` is `recipient`, and must be omitted when it is
+             *     `owner`; a violation is HTTP 400 VALIDATION_ERROR. The Recipient must belong to the
+             *     Owner's organization. This is a distinct concept from the rejected legacy top-level
+             *     `recipientId` on approve (D080) and never substitutes for it.
+             *      */
+            recipientId?: string;
+        };
         ApproveTaskSuggestionRequest: {
             summaryPoints?: components["schemas"]["TaskSummaryPoint"][];
             /** @description Must not be sent in A6. If present, the server returns HTTP 400 with
              *     error code RECIPIENT_HANDOFF_NOT_AVAILABLE (D080). Recipient assignment,
              *     capability issuance, assignment email, and Gmail forward remain A7 (D037).
+             *     This field is not the responsibility-selection channel — use `responsibility`.
              *      */
             recipientId?: string;
+            /** @description Required (D168). Every successful acceptance must carry affirmative evidence of the
+             *     Owner's initial responsibility choice, so omitting this returns HTTP 400
+             *     VALIDATION_ERROR and approves nothing. An omitted selection is never defaulted or
+             *     inferred to `owner`: absence of a selection, of a Recipient, or of a TaskAssignment is
+             *     never evidence that the Owner selected Me (D155, D164).
+             *      */
+            responsibility: components["schemas"]["ResponsibilitySelection"];
             priority?: components["schemas"]["TaskPriority"];
             /** Format: date-time */
             dueAt?: string;

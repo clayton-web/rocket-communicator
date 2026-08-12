@@ -340,6 +340,63 @@ describe('TaskSuggestion revision persistence schema contracts', () => {
   });
 });
 
+describe('D168 responsibility-selection evidence schema contracts', () => {
+  const selectionMigration = readFileSync(
+    path.join(
+      root,
+      'prisma/migrations/20260811190000_responsibility_selection_evidence/migration.sql',
+    ),
+    'utf8',
+  );
+
+  it('defines the evidence carrier beside TaskSuggestionRevision as its own axis', () => {
+    expect(schema).toContain('model TaskSuggestionResponsibilitySelection');
+    expect(schema).toContain('enum ResponsibilitySelectionPartyKind');
+    expect(selectionMigration).toContain(
+      'CREATE TABLE "task_suggestion_responsibility_selections"',
+    );
+    expect(selectionMigration).toContain(
+      'task_suggestion_responsibility_selections_suggestion_id_key',
+    );
+    expect(selectionMigration).toContain('task_suggestion_responsibility_selections_task_id_key');
+    expect(selectionMigration).toContain(
+      'task_suggestion_responsibility_selections_party_kind_recipient',
+    );
+
+    // Responsibility selection and accepted content revision stay independent: neither carrier
+    // references the other.
+    const selectionBlock = schema.match(
+      /model TaskSuggestionResponsibilitySelection \{[\s\S]*?@@map\("task_suggestion_responsibility_selections"\)/,
+    )?.[0];
+    expect(selectionBlock).toBeDefined();
+    expect(selectionBlock).not.toContain('revision');
+  });
+
+  it('keeps responsibility, assignee, and custody off Task and adds no Owner assignment', () => {
+    const taskBlock = schema.match(/model Task \{[\s\S]*?@@map\("tasks"\)/)?.[0];
+    expect(taskBlock).toBeDefined();
+    expect(taskBlock).not.toMatch(/^\s*assigneeId/m);
+    expect(taskBlock).not.toMatch(/^\s*custody/m);
+    expect(taskBlock).not.toMatch(/^\s*responsibleParty/m);
+    expect(selectionMigration).not.toMatch(/ALTER TABLE "tasks"/);
+    expect(selectionMigration).not.toMatch(/ALTER TABLE "task_assignments"/);
+    expect(selectionMigration).not.toMatch(/\bINSERT\b\s+INTO\s+"/i);
+  });
+
+  it('enables deny-by-default RLS and alters only its own table', () => {
+    expect(selectionMigration).toContain(
+      'ALTER TABLE "task_suggestion_responsibility_selections" ENABLE ROW LEVEL SECURITY',
+    );
+    expect(selectionMigration).not.toMatch(/CREATE POLICY/i);
+    const altered = [...selectionMigration.matchAll(/ALTER TABLE "([a-z_]+)"/g)].map(
+      (match) => match[1],
+    );
+    expect(new Set(altered)).toEqual(new Set(['task_suggestion_responsibility_selections']));
+    expect(selectionMigration).not.toMatch(/\bUPDATE\b\s+"/i);
+    expect(selectionMigration).not.toMatch(/\bDELETE\b\s+FROM/i);
+  });
+});
+
 describe('A8.3a reminder persistence schema contracts', () => {
   const a8Migration = readFileSync(
     path.join(root, 'prisma/migrations/20260731040000_a8_reminder_persistence/migration.sql'),

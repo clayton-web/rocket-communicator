@@ -15,6 +15,7 @@
 
 package com.aicommunication.assistant.contracts.models
 
+import com.aicommunication.assistant.contracts.models.ResponsibilitySelection
 import com.aicommunication.assistant.contracts.models.TaskPriority
 import com.aicommunication.assistant.contracts.models.TaskSummaryPoint
 
@@ -25,15 +26,20 @@ import java.io.Serializable
 /**
  * 
  *
+ * @param responsibility Required (D168). Every successful acceptance must carry affirmative evidence of the Owner's initial responsibility choice, so omitting this returns HTTP 400 VALIDATION_ERROR and approves nothing. An omitted selection is never defaulted or inferred to `owner`: absence of a selection, of a Recipient, or of a TaskAssignment is never evidence that the Owner selected Me (D155, D164). 
  * @param acknowledgement Owner confirms creating an unassigned Task from this suggestion (D080). Does not approve Recipient assignment, capability issuance, assignment email, Gmail forward, or reminder scheduling. 
  * @param summaryPoints 
- * @param recipientId Must not be sent in A6. If present, the server returns HTTP 400 with error code RECIPIENT_HANDOFF_NOT_AVAILABLE (D080). Recipient assignment, capability issuance, assignment email, and Gmail forward remain A7 (D037). 
+ * @param recipientId Must not be sent in A6. If present, the server returns HTTP 400 with error code RECIPIENT_HANDOFF_NOT_AVAILABLE (D080). Recipient assignment, capability issuance, assignment email, and Gmail forward remain A7 (D037). This field is not the responsibility-selection channel — use `responsibility`. 
  * @param priority 
  * @param dueAt 
  */
 
 
 data class ApproveTaskSuggestionRequest (
+
+    /* Required (D168). Every successful acceptance must carry affirmative evidence of the Owner's initial responsibility choice, so omitting this returns HTTP 400 VALIDATION_ERROR and approves nothing. An omitted selection is never defaulted or inferred to `owner`: absence of a selection, of a Recipient, or of a TaskAssignment is never evidence that the Owner selected Me (D155, D164).  */
+    @Json(name = "responsibility")
+    val responsibility: ResponsibilitySelection,
 
     /* Owner confirms creating an unassigned Task from this suggestion (D080). Does not approve Recipient assignment, capability issuance, assignment email, Gmail forward, or reminder scheduling.  */
     @Json(name = "acknowledgement")
@@ -42,7 +48,7 @@ data class ApproveTaskSuggestionRequest (
     @Json(name = "summaryPoints")
     val summaryPoints: kotlin.collections.List<TaskSummaryPoint>? = null,
 
-    /* Must not be sent in A6. If present, the server returns HTTP 400 with error code RECIPIENT_HANDOFF_NOT_AVAILABLE (D080). Recipient assignment, capability issuance, assignment email, and Gmail forward remain A7 (D037).  */
+    /* Must not be sent in A6. If present, the server returns HTTP 400 with error code RECIPIENT_HANDOFF_NOT_AVAILABLE (D080). Recipient assignment, capability issuance, assignment email, and Gmail forward remain A7 (D037). This field is not the responsibility-selection channel — use `responsibility`.  */
     @Json(name = "recipientId")
     val recipientId: kotlin.String? = null,
 

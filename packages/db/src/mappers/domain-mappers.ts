@@ -40,6 +40,7 @@ import type {
   HandoffAttempt as PrismaHandoffAttempt,
   InterpretationRun as PrismaInterpretationRun,
   TaskSuggestionRevision as PrismaTaskSuggestionRevision,
+  TaskSuggestionResponsibilitySelection as PrismaTaskSuggestionResponsibilitySelection,
   Recipient as PrismaRecipient,
   Task as PrismaTask,
   TaskAssignment as PrismaAssignment,
@@ -462,6 +463,41 @@ export function mapTaskSuggestionRevision(
     proposedDueAt: row.proposedDueAt ? toIso(row.proposedDueAt) : null,
     proposedPriority: row.proposedPriority ?? null,
     proposedRecipientId: row.proposedRecipientId ?? null,
+    createdAt: toIso(row.createdAt),
+  };
+}
+
+/**
+ * Acceptance-time Owner responsibility-selection evidence row with ISO timestamps (D168).
+ *
+ * Evidence of the Owner's initial choice at acceptance. Not current responsibility, not custody,
+ * not assignment, not delivery. `partyKind` is the only affirmative signal: a null `recipientId`
+ * never means the Owner selected Me.
+ */
+export type PersistedResponsibilitySelection = {
+  id: string;
+  organizationId: string;
+  suggestionId: string;
+  taskId: string;
+  partyKind: 'owner' | 'recipient';
+  recipientId: string | null;
+  selectedByOwnerId: string;
+  selectedAt: string;
+  createdAt: string;
+};
+
+export function mapResponsibilitySelection(
+  row: PrismaTaskSuggestionResponsibilitySelection,
+): PersistedResponsibilitySelection {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    suggestionId: row.suggestionId,
+    taskId: row.taskId,
+    partyKind: row.partyKind,
+    recipientId: row.recipientId ?? null,
+    selectedByOwnerId: row.selectedByOwnerId,
+    selectedAt: toIso(row.selectedAt),
     createdAt: toIso(row.createdAt),
   };
 }

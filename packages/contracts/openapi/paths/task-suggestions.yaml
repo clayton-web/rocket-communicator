@@ -62,6 +62,14 @@ paths:
         Gmail-forward, or schedule reminders. Recipient handoff is A7 (D037).
         If the body includes `recipientId`, respond 400 with
         `RECIPIENT_HANDOFF_NOT_AVAILABLE`.
+
+        Required `responsibility` records the Owner's affirmative acceptance-time
+        responsibility selection as dedicated append-only evidence, written atomically
+        with the canonical Task (D168). Omitting it responds 400 `VALIDATION_ERROR` and
+        approves nothing: no Task is created and no suggestion is approved. It is never
+        defaulted or inferred to `owner`, because absence is not evidence (D155, D164).
+        Supplying it — including `responsibleParty: recipient` — still creates no
+        TaskAssignment, no Capability, and no HandoffAttempt, and sends nothing.
         **Status: Contracted for A6.**
       parameters:
         - $ref: '../components/parameters.yaml#/components/parameters/SuggestionId'
