@@ -118,8 +118,8 @@ Full rules: [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md).
 
 **Status: implemented in `apps/web`; not activated in Production.** Handlers exist and are contract-tested, but interpretation stays default closed: without `INTERPRETATION_AI_ENABLED` the route answers `503 DEPENDENCY_UNAVAILABLE`, and enabling that flag is a separate authorization. `operationId`: `createManualCapture`. **D171** authorizes the Android Owner client to call this route for S3.3 capture-to-proposal (**authorized, not yet implemented**); full proposal-lifecycle UI remains unauthorized.
 
-| Method | Path                      | Purpose                                                                    |
-| ------ | ------------------------- | -------------------------------------------------------------------------- |
+| Method | Path                      | Purpose                                                                   |
+| ------ | ------------------------- | ------------------------------------------------------------------------- |
 | POST   | `/api/v1/manual-captures` | Interpret Owner capture text into 0..N proposals (S3.2; D169, D170, D171) |
 
 This is the sole Owner-initiated interpretation HTTP surface. It is **not** a generic `/interpretations` endpoint: the server fixes provenance to `owner_manual_capture`; clients do not choose Gmail/SMS source, and no such field is accepted. Organization scope comes from trusted Owner authentication — never from the body. Capability/Recipient auth is invalid for this route. Required `Idempotency-Key` reuses the existing parameter contract.
