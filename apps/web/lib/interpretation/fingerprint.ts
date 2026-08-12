@@ -42,3 +42,29 @@ export function computeInterpretationRequestFingerprint(
     .update(canonicalizeInterpretationRequest(inputs), 'utf8')
     .digest('hex');
 }
+
+/**
+ * Deterministic, bounded dedupe digest for a manual-capture source reference (D169).
+ *
+ * `SourceReference.dedupeKey` is a published contract field — `maxLength: 128`, documented as an
+ * opaque hashed key — so the caller's transport idempotency key cannot be written into it verbatim:
+ * a 128-character key plus any kind prefix overflows the contract, and durable canonical state would
+ * be republishing a value the caller chose for retry transport. Hashing keeps the field opaque and
+ * fixed-width regardless of the key's length.
+ *
+ * Organization and source kind are part of the digest because an idempotency key only means
+ * anything inside them: two organizations that happen to choose the same key describe two different
+ * captures and must not deduplicate onto one source.
+ */
+export function computeManualCaptureSourceDedupeDigest(inputs: {
+  organizationId: string;
+  sourceKind: string;
+  idempotencyKey: string;
+}): string {
+  const canonical = [
+    `idempotencyKey=${JSON.stringify(inputs.idempotencyKey)}`,
+    `organizationId=${JSON.stringify(inputs.organizationId)}`,
+    `sourceKind=${JSON.stringify(inputs.sourceKind)}`,
+  ].join('\n');
+  return createHash('sha256').update(canonical, 'utf8').digest('hex');
+}

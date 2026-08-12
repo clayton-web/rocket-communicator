@@ -43,10 +43,12 @@ function proposal(id: string, overrides: Partial<TaskSuggestion> = {}): TaskSugg
     summaryPoints: [
       { id: 'sp1', kind: 'request', label: 'Request', order: 0, value: 'Send the quote' },
     ],
+    // Source identity is the application service's decision (occurrence-derived id, digested
+    // dedupe key); persistence only stores what it is given.
     sourceReference: {
-      id: 'src_idem_s3_1',
+      id: 'src_s3fixtureoccurrence',
       sourceType: 'manual',
-      dedupeKey: 'owner_manual_capture:idem_s3_1',
+      dedupeKey: `owner_manual_capture:${'0'.repeat(64)}`,
       capturedAt: now,
     },
     voiceOriginated: false,

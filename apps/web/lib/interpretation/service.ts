@@ -11,64 +11,100 @@ import {
   type SourceReference,
   type TaskSuggestion,
 } from '@aicaa/domain';
-import type { DbClient, InterpretationOccurrence } from '@aicaa/db';
-import { loadDbRuntime } from '@/lib/db/runtime-db';
-import { computeInterpretationRequestFingerprint } from './fingerprint';
+import type {
+  DbClient,
+  InterpretationOccurrence,
+  InterpretationOccurrenceResolution,
+  TaskSuggestionWithInterpretationRun,
+} from '@aicaa/db';
+import { loadDbRuntime, type DbRuntimeModule } from '@/lib/db/runtime-db';
+import {
+  computeInterpretationRequestFingerprint,
+  computeManualCaptureSourceDedupeDigest,
+} from './fingerprint';
+import { interpretationServiceError } from './errors';
+import {
+  validateInterpretationRequest,
+  type AuthorizedInterpretationSourceKind,
+  type InterpretationRequest,
+  type ValidatedInterpretationRequest,
+} from './validate';
 
-/**
- * The only interpretation source kind authorized to produce occurrences today (D169). The service
- * itself is source-neutral: a later authorized Gmail or SMS adapter supplies its own kind and
- * captured-at and reuses everything below rather than growing a second interpretation system.
- */
-export type AuthorizedInterpretationSourceKind = 'owner_manual_capture';
-
-export interface InterpretationRequest {
-  organizationId: string;
-  sourceKind: AuthorizedInterpretationSourceKind;
-  /** Owner capture text. Interpreted transiently and never persisted (D169). */
-  rawInput: string;
-  /** Organization-scoped idempotency key supplied by the caller. */
-  idempotencyKey: string;
-  /** Durable traceability id recorded on the occurrence. */
-  requestId: string;
-  /** When the source was captured. Defaults to the service clock. */
-  capturedAt?: string | null;
-  /** Owner/org IANA timezone when known. Mechanical context only. */
-  timezone?: string | null;
-}
+export type { AuthorizedInterpretationSourceKind, InterpretationRequest };
 
 export interface InterpretationServiceDeps {
   /** Injected provider for tests. Production composition is default closed (D169). */
   provider?: InterpretationProvider;
 }
 
-export type InterpretationServiceResult = InterpretationOccurrence & {
+/**
+ * What the committed occurrence itself says, for a caller that needs more than the proposals.
+ *
+ * This is deliberately not the persisted run. `id`, `idempotencyKey`, and `requestFingerprint` are
+ * persistence identity and idempotency bookkeeping: a later adapter answers with proposals, and
+ * nothing above this seam has a use for the occurrence's row identity that would justify handing it
+ * out. `outcome` is included because it is the occurrence's own recorded truth rather than a
+ * recount of the array, and `interpretedAt` because a replay is answered from an occurrence that
+ * committed at some earlier time than the request being served.
+ */
+export interface InterpretationOccurrenceSummary {
+  sourceKind: 'owner_manual_capture' | 'gmail';
+  outcome: 'proposals_created' | 'no_proposals';
+  interpretedAt: string;
+}
+
+export interface InterpretationServiceResult {
   /** `replayed` means the occurrence already existed for this key and fingerprint. */
   outcome: 'created' | 'replayed';
+  /** Canonical domain proposals. Persistence-only provenance does not travel with them. */
+  suggestions: TaskSuggestion[];
+  occurrence: InterpretationOccurrenceSummary;
+}
+
+type OccurrenceIdempotency = {
+  organizationId: string;
+  idempotencyKey: string;
+  requestFingerprint: string;
 };
 
-function newId(prefix: string): string {
-  return `${prefix}_${randomBytes(12).toString('base64url')}`;
+function randomToken(): string {
+  return randomBytes(12).toString('base64url');
 }
 
 /**
  * Deterministic source reference for a manual capture (D169).
  *
- * The occurrence's organization-scoped idempotency key is the only stable identity a manual capture
- * has, so both the reference id and the dedupe key derive from it: sibling proposals from one
- * capture truthfully share one source. Gmail identity semantics are deliberately absent — no
- * `externalIds`, no provider message id, no contact hint. There is no `excerptRef` because no raw
- * input is stored, and the interpretation run id is not embedded because it is internal provenance
- * that must stay off the public TaskSuggestion contract.
+ * The two identities are different questions and are built from different things.
+ *
+ * `id` answers *which capture produced this proposal*. It is derived from the occurrence's own
+ * generated token, so every sibling proposal of one capture truthfully shares one source and no two
+ * captures ever share one. It is short and bounded, which matters because `SourceReference.id` is a
+ * published `maxLength: 64` contract field.
+ *
+ * `dedupeKey` answers *which captures are the same capture*. That is the caller's idempotency
+ * assertion, so it is derived from the request identity — but as a one-way digest, never as the
+ * caller's transport key copied into durable state.
+ *
+ * Gmail identity semantics are deliberately absent: no `externalIds`, no provider message id, no
+ * contact hint. There is no `excerptRef` because no raw input is stored, and the interpretation run
+ * id is not embedded because it is internal persistence provenance.
  */
 function buildManualCaptureSourceReference(input: {
+  occurrenceToken: string;
+  organizationId: string;
+  sourceKind: AuthorizedInterpretationSourceKind;
   idempotencyKey: string;
   capturedAt: string;
 }): SourceReference {
+  const dedupeDigest = computeManualCaptureSourceDedupeDigest({
+    organizationId: input.organizationId,
+    sourceKind: input.sourceKind,
+    idempotencyKey: input.idempotencyKey,
+  });
   return {
-    id: `src_${input.idempotencyKey}`,
+    id: `src_${input.occurrenceToken}`,
     sourceType: 'manual',
-    dedupeKey: `owner_manual_capture:${input.idempotencyKey}`,
+    dedupeKey: `${input.sourceKind}:${dedupeDigest}`,
     capturedAt: input.capturedAt,
   };
 }
@@ -89,7 +125,7 @@ function buildProposedSuggestion(input: {
   now: string;
 }): TaskSuggestion {
   return {
-    id: asTaskSuggestionId(newId('sug')),
+    id: asTaskSuggestionId(`sug_${randomToken()}`),
     organizationId: asOrganizationId(input.organizationId),
     status: 'pending',
     summaryPoints: input.proposal.summaryPoints,
@@ -104,17 +140,79 @@ function buildProposedSuggestion(input: {
 }
 
 /**
+ * Narrow a persisted proposal back to the canonical domain entity.
+ *
+ * Persistence returns `TaskSuggestion & { interpretationRunId }` because the persistence layer may
+ * read its own provenance. Above this seam the occurrence link is not part of a proposal: it is not
+ * on the domain entity and not on the public TaskSuggestion contract, and an adapter that never
+ * receives it cannot spread it into a response. The occurrence is reported once, separately.
+ */
+function toDomainSuggestion(persisted: TaskSuggestionWithInterpretationRun): TaskSuggestion {
+  const { interpretationRunId: _omit, ...suggestion } = persisted;
+  void _omit;
+  return suggestion;
+}
+
+function toServiceResult(
+  outcome: 'created' | 'replayed',
+  occurrence: InterpretationOccurrence,
+): InterpretationServiceResult {
+  return {
+    outcome,
+    suggestions: occurrence.suggestions.map(toDomainSuggestion),
+    occurrence: {
+      sourceKind: occurrence.run.sourceKind,
+      outcome: occurrence.run.outcome,
+      interpretedAt: occurrence.run.createdAt,
+    },
+  };
+}
+
+function isUniqueViolation(runtime: DbRuntimeModule, error: unknown): boolean {
+  return runtime.isPersistenceError(error) && error.code === 'UNIQUE_VIOLATION';
+}
+
+/**
+ * Read committed state for this organization and key, reporting a reused key through the service's
+ * own error type rather than passing a `packages/db` error out of the seam.
+ */
+async function resolveCommittedOccurrence(
+  runtime: DbRuntimeModule,
+  db: DbClient,
+  idempotency: OccurrenceIdempotency,
+): Promise<InterpretationOccurrenceResolution> {
+  try {
+    return await runtime.resolveInterpretationOccurrence(db, idempotency);
+  } catch (error) {
+    if (runtime.isPersistenceError(error) && error.code === 'IDEMPOTENCY_KEY_CONFLICT') {
+      throw interpretationServiceError(
+        'IDEMPOTENCY_KEY_CONFLICT',
+        'Idempotency key was already used for a different interpretation request.',
+      );
+    }
+    throw error;
+  }
+}
+
+/**
  * Shared backend interpretation: source-neutral request in, canonical proposals persisted (D169).
  *
  * Sequence, and the reason for it:
  *
- * 1. Resolve organization-scoped idempotency **before** interpreting. An exact replay is answered
+ * 1. Validate the caller's fields. An unusable organization, key, request id, or capture time costs
+ *    no interpretation and never reaches Prisma as a raw string-length or parse failure.
+ * 2. Resolve organization-scoped idempotency **before** interpreting. An exact replay is answered
  *    from committed canonical state, so the provider is not called a second time, and a reused key
- *    with a different fingerprint raises the existing `IDEMPOTENCY_KEY_CONFLICT` before any work.
- * 2. Call the provider with no database transaction open. A failed call leaves nothing behind:
+ *    with a different fingerprint conflicts before any work.
+ * 3. Call the provider with no database transaction open. A failed call leaves nothing behind:
  *    there is no InterpretationRun, no TaskSuggestion, and no attempt row to record it.
- * 3. Persist the occurrence and its 0..N proposals in one transaction. `tasks: []` is truthful
+ * 4. Persist the occurrence and its 0..N proposals in one transaction. `tasks: []` is truthful
  *    success recorded as `no_proposals`, not a failure and not a manufactured placeholder.
+ *
+ * Everything the fingerprint covers is supplied by the caller, including `capturedAt`. The service
+ * clock never enters request semantics, because a value invented per attempt cannot be recovered on
+ * the retry of an attempt that never committed — it would make an exact retry look like a different
+ * request and fail as a conflict.
  *
  * Nothing here creates a canonical Task, approves a proposal, chooses responsibility, or writes an
  * assignment; acceptance remains the Owner's, through the existing review path. The service has no
@@ -126,42 +224,47 @@ export async function interpretCapture(input: {
   now?: string;
   deps?: InterpretationServiceDeps;
 }): Promise<InterpretationServiceResult> {
+  const request: ValidatedInterpretationRequest = validateInterpretationRequest(input.request);
   const runtime = await loadDbRuntime();
   const now = input.now ?? new Date().toISOString();
-  const capturedAt = input.request.capturedAt ?? now;
-  const timezone = input.request.timezone ?? null;
 
-  const idempotency = {
-    organizationId: input.request.organizationId,
-    idempotencyKey: input.request.idempotencyKey,
+  const idempotency: OccurrenceIdempotency = {
+    organizationId: request.organizationId,
+    idempotencyKey: request.idempotencyKey,
     requestFingerprint: computeInterpretationRequestFingerprint({
-      organizationId: input.request.organizationId,
-      sourceKind: input.request.sourceKind,
-      rawInput: input.request.rawInput,
-      capturedAt,
-      timezone,
+      organizationId: request.organizationId,
+      sourceKind: request.sourceKind,
+      rawInput: request.rawInput,
+      capturedAt: request.capturedAt,
+      timezone: request.timezone,
     }),
   };
 
-  const resolved = await runtime.resolveInterpretationOccurrence(input.db, idempotency);
+  const resolved = await resolveCommittedOccurrence(runtime, input.db, idempotency);
   if (resolved.kind === 'replay') {
-    return { outcome: 'replayed', ...resolved.occurrence };
+    return toServiceResult('replayed', resolved.occurrence);
   }
 
   const provider = input.deps?.provider ?? createInterpretationProvider();
   const interpretation = await provider.interpret({
-    rawInput: input.request.rawInput,
-    capturedAt,
-    timezone,
+    rawInput: request.rawInput,
+    capturedAt: request.capturedAt,
+    timezone: request.timezone,
   });
 
+  // One generated token, two namespaced identities: the occurrence row and the source reference its
+  // sibling proposals share.
+  const occurrenceToken = randomToken();
   const sourceReference = buildManualCaptureSourceReference({
-    idempotencyKey: input.request.idempotencyKey,
-    capturedAt,
+    occurrenceToken,
+    organizationId: request.organizationId,
+    sourceKind: request.sourceKind,
+    idempotencyKey: request.idempotencyKey,
+    capturedAt: request.capturedAt,
   });
   const suggestions = interpretation.tasks.map((proposal) =>
     buildProposedSuggestion({
-      organizationId: input.request.organizationId,
+      organizationId: request.organizationId,
       proposal,
       sourceReference,
       now,
@@ -172,25 +275,35 @@ export async function interpretCapture(input: {
     const occurrence = await runtime.persistInterpretationOccurrence({
       db: input.db,
       run: {
-        id: newId('irun'),
+        id: `irun_${occurrenceToken}`,
         ...idempotency,
-        sourceKind: input.request.sourceKind,
+        sourceKind: request.sourceKind,
         modelVersion: interpretation.modelVersion,
         policyVersion: interpretation.policyVersion,
-        requestId: input.request.requestId,
+        requestId: request.requestId,
       },
       suggestions,
     });
-    return { outcome: 'created', ...occurrence };
+    return toServiceResult('created', occurrence);
   } catch (error) {
-    // A concurrent request with the same key committed first. Our transaction rolled back whole, so
-    // nothing of this attempt persisted; the committed occurrence is the answer.
-    if (runtime.isPersistenceError(error) && error.code === 'UNIQUE_VIOLATION') {
-      const replay = await runtime.resolveInterpretationOccurrence(input.db, idempotency);
-      if (replay.kind === 'replay') {
-        return { outcome: 'replayed', ...replay.occurrence };
-      }
+    if (!isUniqueViolation(runtime, error)) {
+      throw error;
     }
-    throw error;
+    // Our transaction rolled back whole, so nothing of this attempt persisted. Re-reading committed
+    // state also classifies which constraint actually refused the write: a concurrent writer that
+    // won this key is now visible as a replay, or as a conflict if it used the key for a different
+    // request.
+    const raced = await resolveCommittedOccurrence(runtime, input.db, idempotency);
+    if (raced.kind === 'replay') {
+      return toServiceResult('replayed', raced.occurrence);
+    }
+    // No occurrence exists for this organization and key, so the constraint that failed was not the
+    // occurrence idempotency index — an unrelated uniqueness failure, such as a proposal id
+    // collision. Calling it replay or conflict would misreport canonical state, and re-throwing the
+    // persistence error would leak the database seam.
+    throw interpretationServiceError(
+      'PERSISTENCE_CONFLICT',
+      'Interpretation persistence failed on an unrelated uniqueness constraint.',
+    );
   }
 }
