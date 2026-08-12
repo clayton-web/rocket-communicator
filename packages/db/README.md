@@ -59,7 +59,8 @@ That form is deliberately inconvenient: the target is written at the call site, 
 
 - Raw capability secrets are **never** stored (`token_hash` only — D063).
 - Token generation, hashing, and validation live in **`apps/web/lib/capability`** (server-only). This package stores `token_hash` and provides lookup by hash.
-- RLS is enabled without policies (deny-by-default for PostgREST roles). Authorization remains application-level Owner session + capability checks.
+- RLS is enabled without policies (deny-by-default for PostgREST roles — D166). Authorization remains application-level Owner session + capability checks.
+- **Historical migration citations.** Some applied migrations attribute deny-by-default RLS to D006 or to the Superseded D032. Those files are checksummed applied history and are never edited in place, so read those comments as provenance: D166 is the current Approved authority for the RLS defence-in-depth principle, and D006 remains the authority for reaching Prisma only through authorized server APIs.
 - Physical task DELETE is not offered; use `dismissed` status (D064).
 
 ## Structural invariants

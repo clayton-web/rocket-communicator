@@ -15,8 +15,9 @@
  *   · a supersession counterpart that the frozen baseline recorded must not vanish.
  *
  * Human review — genuinely semantic, so reported rather than asserted:
- *   · a Superseded record that never named a successor (D030 and D032 never did; inventing
- *     one would be fabrication);
+ *   · a Superseded record that names no newer governing decision. Inventing a successor would be
+ *     fabrication; a pointer that repository history proves was asserted and later lost in
+ *     reformatting is restored by a reviewer, never by the harness;
  *   · a one-sided assertion, where X says it was superseded by Y but Y never says so. This is
  *     normal in this register — D155 withdraws D113 clauses while describing the effect
  *     instead of claiming supersession — so it is a reviewer's judgement, not a defect.

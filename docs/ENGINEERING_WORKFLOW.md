@@ -152,7 +152,7 @@ A review item is **work assigned to the reviewer of the batch in progress**, not
 - **operative-relocated** / **operative-decoration-changed** — every word and clause intact, only the field, clause order, or decoration changed. This is the relocation D165 authorizes; confirm the destination field is right.
 - **supporting-text-changed** — Notes and other history changed. D165 authorizes classified reference-shift removals here, so every removal is surfaced for the per-removal destination and no-loss proof rather than blocked.
 - **named-clause-citation** — citations such as `D081 idempotency intent`, `D099 ENE separation`, `D106 ceiling`, `D129 stop`. The identifier is proved to resolve; whether the _named clause_ still says what the citing document assumes cannot be decided mechanically and is not pretended otherwise.
-- **superseded-without-successor** — a Superseded record that never named a successor (D030 and D032 never did). Reciprocity that history did not assert is never fabricated.
+- **superseded-without-successor** — a Superseded record that names no newer governing decision. Reciprocity that history did not assert is never fabricated; where repository history proves a pointer was asserted and later lost in reformatting, restoring it is lineage repair rather than invention — the restored D048–D054 pointers in D030 and D032 are that case.
 - **supersession-one-sided** — X says it was superseded by Y while Y does not mention X. Normal in this register: D155 withdraws D113 clauses by describing the effect rather than claiming supersession.
 
 ### Using it during each rewrite batch

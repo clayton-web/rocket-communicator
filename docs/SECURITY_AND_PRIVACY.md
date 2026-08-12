@@ -59,7 +59,7 @@ Governed by [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md). Definitions: [GL
 - Every mutating Owner request: authenticated Owner Session.
 - Every mutating Recipient request: valid Capability (scope, expiry, status, task/assignment binding).
 - Clients are not trusted to self-assert authorization.
-- Prisma does **not** inherit end-user Supabase RLS; application checks are required (D006). RLS is defence in depth for designed direct-client/Realtime paths.
+- Prisma does **not** inherit end-user Supabase RLS; application checks are required (D006). Domain tables carry deny-by-default RLS as defence in depth against non-bypass/direct-client database access (D166); it never replaces these application checks and is not the tenant-isolation mechanism for trusted server-side Prisma access.
 
 ## Secrets and credentials
 
