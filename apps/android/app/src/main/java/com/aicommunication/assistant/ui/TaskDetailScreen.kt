@@ -28,6 +28,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aicommunication.assistant.R
 import com.aicommunication.assistant.tasks.TaskDetailUiState
+import com.aicommunication.assistant.ui.theme.AicaaColors
+import com.aicommunication.assistant.ui.theme.AicaaTextStyles
 
 @Composable
 fun TaskDetailScreen(
@@ -48,7 +50,7 @@ fun TaskDetailScreen(
         modifier =
         modifier
             .fillMaxSize()
-            .background(Color(0xFFF5F5F4))
+            .background(AicaaColors.paper)
             .padding(horizontal = 24.dp, vertical = 48.dp)
             .testTag("task_detail_screen"),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -62,7 +64,7 @@ fun TaskDetailScreen(
             is TaskDetailUiState.Error -> {
                 Text(
                     text = state.message,
-                    color = Color(0xFFB91C1C),
+                    color = AicaaColors.critical,
                     modifier = Modifier.testTag("task_detail_error")
                 )
                 Button(onClick = onRetry, modifier = Modifier.fillMaxWidth()) {
@@ -81,9 +83,8 @@ fun TaskDetailScreen(
                 ) {
                     Text(
                         text = state.task.displayTitle,
-                        fontSize = 28.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFF1C1917),
+                        style = AicaaTextStyles.pageHeading,
+                        color = AicaaColors.ink,
                         modifier =
                         Modifier
                             .semantics { heading() }
@@ -91,23 +92,23 @@ fun TaskDetailScreen(
                     )
                     Text(
                         text = state.task.statusLabel,
-                        fontSize = 16.sp,
-                        color = Color(0xFF0F766E),
+                        style = AicaaTextStyles.body,
+                        color = AicaaColors.accent,
                         modifier = Modifier.testTag("task_detail_status")
                     )
                     Text(
                         text = state.task.ownershipLabel,
                         fontSize = 15.sp,
-                        color = Color(0xFF57534E),
+                        color = AicaaColors.muted,
                         modifier = Modifier.testTag("task_detail_ownership")
                     )
                     if (state.banner != null) {
-                        Text(text = state.banner, color = Color(0xFF0F766E))
+                        Text(text = state.banner, color = AicaaColors.accent)
                     }
                     if (state.errorMessage != null) {
                         Text(
                             text = state.errorMessage,
-                            color = Color(0xFFB91C1C),
+                            color = AicaaColors.critical,
                             modifier = Modifier.testTag("task_detail_mutation_error")
                         )
                     }

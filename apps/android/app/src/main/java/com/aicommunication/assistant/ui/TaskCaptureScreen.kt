@@ -23,7 +23,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
@@ -38,12 +37,8 @@ import com.aicommunication.assistant.capture.TaskSuggestionWire
 import com.aicommunication.assistant.capture.deriveProposalTitle
 import com.aicommunication.assistant.capture.orderedSummaryPoints
 import com.aicommunication.assistant.capture.summaryPointDetail
-
-private val SCREEN_BACKGROUND = Color(0xFFF5F5F4)
-private val TEXT_PRIMARY = Color(0xFF1C1917)
-private val TEXT_SECONDARY = Color(0xFF57534E)
-private val TEXT_ACCENT = Color(0xFF0F766E)
-private val TEXT_ERROR = Color(0xFFB91C1C)
+import com.aicommunication.assistant.ui.theme.AicaaColors
+import com.aicommunication.assistant.ui.theme.AicaaTextStyles
 
 /**
  * Owner manual capture (S3.3b, D171). Results are read-only: this screen offers no approve,
@@ -228,15 +223,15 @@ private fun CaptureProposalsPane(
             } else {
                 stringResource(R.string.capture_result_body)
             },
-            fontSize = 16.sp,
-            color = TEXT_SECONDARY,
+            style = AicaaTextStyles.body,
+            color = AicaaColors.muted,
             modifier =
             Modifier.testTag(if (empty) "capture_result_empty" else "capture_result_summary")
         )
         Text(
             text = stringResource(R.string.capture_result_source, state.capturedText),
             fontSize = 15.sp,
-            color = TEXT_SECONDARY,
+            color = AicaaColors.muted,
             modifier = Modifier.testTag("capture_result_source")
         )
         if (empty) {
@@ -295,14 +290,14 @@ private fun ProposalCard(proposal: TaskSuggestionWire) {
                 text = deriveProposalTitle(proposal),
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Medium,
-                color = TEXT_ACCENT,
+                color = AicaaColors.accent,
                 modifier = Modifier.testTag("capture_proposal_title")
             )
             orderedSummaryPoints(proposal).forEach { point ->
                 Text(
                     text = "${point.label}: ${summaryPointDetail(point)}",
                     fontSize = 15.sp,
-                    color = TEXT_PRIMARY
+                    color = AicaaColors.ink
                 )
             }
         }
@@ -319,7 +314,7 @@ private fun CapturePane(
         modifier =
         modifier
             .fillMaxSize()
-            .background(SCREEN_BACKGROUND)
+            .background(AicaaColors.paper)
             .padding(horizontal = 24.dp, vertical = 48.dp)
             .testTag(testTag),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -331,9 +326,8 @@ private fun CapturePane(
 private fun PaneHeading(text: String) {
     Text(
         text = text,
-        fontSize = 28.sp,
-        fontWeight = FontWeight.SemiBold,
-        color = TEXT_PRIMARY,
+        style = AicaaTextStyles.pageHeading,
+        color = AicaaColors.ink,
         modifier = Modifier.semantics { heading() }
     )
 }
@@ -342,8 +336,8 @@ private fun PaneHeading(text: String) {
 private fun PaneBody(text: String) {
     Text(
         text = text,
-        fontSize = 16.sp,
-        color = TEXT_SECONDARY
+        style = AicaaTextStyles.body,
+        color = AicaaColors.muted
     )
 }
 
@@ -353,7 +347,7 @@ private fun PaneError(message: String?) {
     Text(
         text = message,
         fontSize = 15.sp,
-        color = TEXT_ERROR,
+        color = AicaaColors.critical,
         modifier = Modifier.testTag("capture_error")
     )
 }

@@ -10,16 +10,16 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aicommunication.assistant.R
 import com.aicommunication.assistant.contracts.models.Session
+import com.aicommunication.assistant.ui.theme.AicaaColors
+import com.aicommunication.assistant.ui.theme.AicaaTextStyles
 
 @Composable
 fun AuthenticatedShellScreen(
@@ -38,33 +38,31 @@ fun AuthenticatedShellScreen(
         modifier =
         modifier
             .fillMaxSize()
-            .background(Color(0xFFF5F5F4))
+            .background(AicaaColors.paper)
             .padding(horizontal = 24.dp, vertical = 48.dp)
             .testTag("authenticated_shell"),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text(
             text = stringResource(R.string.app_name),
-            fontSize = 28.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = Color(0xFF1C1917),
+            style = AicaaTextStyles.pageHeading,
+            color = AicaaColors.ink,
             modifier = Modifier.semantics { heading() }
         )
         Text(
             text = stringResource(R.string.authenticated_shell_title),
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Medium,
-            color = Color(0xFF1C1917)
+            style = AicaaTextStyles.sectionTitle,
+            color = AicaaColors.ink
         )
         Text(
             text = stringResource(R.string.authenticated_shell_subtitle),
-            fontSize = 16.sp,
-            color = Color(0xFF57534E)
+            style = AicaaTextStyles.body,
+            color = AicaaColors.muted
         )
         Text(
             text = "Signed in as $display",
             fontSize = 15.sp,
-            color = Color(0xFF0F766E),
+            color = AicaaColors.accent,
             modifier = Modifier.testTag("authenticated_identity")
         )
         Button(

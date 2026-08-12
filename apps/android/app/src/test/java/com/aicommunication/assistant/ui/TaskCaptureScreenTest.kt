@@ -11,10 +11,10 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTextReplacement
-import com.aicommunication.assistant.AicaaFoundationTheme
 import com.aicommunication.assistant.capture.CaptureSummaryPointWire
 import com.aicommunication.assistant.capture.CaptureUiState
 import com.aicommunication.assistant.capture.TaskSuggestionWire
+import com.aicommunication.assistant.ui.theme.AicaaFoundationTheme
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test

@@ -6,16 +6,13 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.lightColorScheme
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.graphics.Color
 import com.aicommunication.assistant.auth.OwnerAuthViewModel
 import com.aicommunication.assistant.capture.TaskCaptureViewModel
 import com.aicommunication.assistant.tasks.TaskDetailViewModel
 import com.aicommunication.assistant.tasks.TaskHandoffViewModel
 import com.aicommunication.assistant.tasks.TaskListViewModel
 import com.aicommunication.assistant.ui.OwnerAppRoot
+import com.aicommunication.assistant.ui.theme.AicaaFoundationTheme
 
 class MainActivity : ComponentActivity() {
     private val authViewModel: OwnerAuthViewModel by viewModels {
@@ -86,19 +83,4 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         authViewModel.onOAuthIntent(intent)
     }
-}
-
-@Composable
-fun AicaaFoundationTheme(content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme =
-        lightColorScheme(
-            primary = Color(0xFF0F766E),
-            background = Color(0xFFF5F5F4),
-            surface = Color(0xFFF5F5F4),
-            onBackground = Color(0xFF1C1917),
-            onSurface = Color(0xFF1C1917)
-        ),
-        content = content
-    )
 }

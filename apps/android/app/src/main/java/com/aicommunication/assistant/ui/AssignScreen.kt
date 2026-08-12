@@ -32,6 +32,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aicommunication.assistant.R
 import com.aicommunication.assistant.tasks.HandoffUiState
+import com.aicommunication.assistant.ui.theme.AicaaColors
+import com.aicommunication.assistant.ui.theme.AicaaTextStyles
 
 @Composable
 fun AssignScreen(
@@ -53,22 +55,21 @@ fun AssignScreen(
         modifier =
         modifier
             .fillMaxSize()
-            .background(Color(0xFFF5F5F4))
+            .background(AicaaColors.paper)
             .padding(horizontal = 24.dp, vertical = 48.dp)
             .testTag("assign_screen"),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text(
             text = stringResource(R.string.handoff_title),
-            fontSize = 28.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = Color(0xFF1C1917),
+            style = AicaaTextStyles.pageHeading,
+            color = AicaaColors.ink,
             modifier = Modifier.semantics { heading() }
         )
         Text(
             text = stringResource(R.string.handoff_subtitle),
-            fontSize = 16.sp,
-            color = Color(0xFF57534E)
+            style = AicaaTextStyles.body,
+            color = AicaaColors.muted
         )
 
         when (state) {
@@ -78,7 +79,7 @@ fun AssignScreen(
                 Spacer(modifier = Modifier.weight(1f))
             }
             is HandoffUiState.Error -> {
-                Text(text = state.message, color = Color(0xFFB91C1C))
+                Text(text = state.message, color = AicaaColors.critical)
                 Button(onClick = onRetryLoad, modifier = Modifier.fillMaxWidth()) {
                     Text(text = stringResource(R.string.retry))
                 }
@@ -96,14 +97,14 @@ fun AssignScreen(
                         fontWeight = FontWeight.Medium,
                         modifier = Modifier.testTag("assign_task_title")
                     )
-                    Text(text = state.task.ownershipLabel, color = Color(0xFF57534E))
+                    Text(text = state.task.ownershipLabel, color = AicaaColors.muted)
 
                     if (state.banner != null) {
                         val color =
                             when (state.bannerTone) {
-                                HandoffUiState.BannerTone.Success -> Color(0xFF0F766E)
-                                HandoffUiState.BannerTone.Warning -> Color(0xFFB45309)
-                                HandoffUiState.BannerTone.Error -> Color(0xFFB91C1C)
+                                HandoffUiState.BannerTone.Success -> AicaaColors.accent
+                                HandoffUiState.BannerTone.Warning -> AicaaColors.caution
+                                HandoffUiState.BannerTone.Error -> AicaaColors.critical
                                 HandoffUiState.BannerTone.Info -> Color(0xFF44403C)
                             }
                         Text(
@@ -113,7 +114,7 @@ fun AssignScreen(
                         )
                     }
                     if (state.errorMessage != null) {
-                        Text(text = state.errorMessage, color = Color(0xFFB91C1C))
+                        Text(text = state.errorMessage, color = AicaaColors.critical)
                     }
 
                     if (state.notConnected || state.needsReconsent) {
@@ -124,7 +125,7 @@ fun AssignScreen(
                             } else {
                                 stringResource(R.string.handoff_reconsent_instructions)
                             },
-                            color = Color(0xFFB45309)
+                            color = AicaaColors.caution
                         )
                         Button(
                             onClick = onOpenGmailSetup,
@@ -144,7 +145,7 @@ fun AssignScreen(
                     if (state.recipients.isEmpty()) {
                         Text(
                             text = stringResource(R.string.handoff_no_recipients),
-                            color = Color(0xFF57534E),
+                            color = AicaaColors.muted,
                             modifier = Modifier.testTag("assign_no_recipients")
                         )
                     } else {
@@ -173,7 +174,7 @@ fun AssignScreen(
                                     )
                                     Text(
                                         text = recipient.email,
-                                        color = Color(0xFF57534E),
+                                        color = AicaaColors.muted,
                                         fontSize = 14.sp
                                     )
                                 }

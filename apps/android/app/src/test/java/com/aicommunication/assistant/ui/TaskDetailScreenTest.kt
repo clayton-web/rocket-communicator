@@ -6,9 +6,9 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performScrollTo
-import com.aicommunication.assistant.AicaaFoundationTheme
 import com.aicommunication.assistant.tasks.OwnerTask
 import com.aicommunication.assistant.tasks.TaskDetailUiState
+import com.aicommunication.assistant.ui.theme.AicaaFoundationTheme
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith

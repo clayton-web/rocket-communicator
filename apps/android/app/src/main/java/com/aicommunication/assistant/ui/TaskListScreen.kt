@@ -29,6 +29,8 @@ import androidx.compose.ui.unit.sp
 import com.aicommunication.assistant.R
 import com.aicommunication.assistant.tasks.OwnerTask
 import com.aicommunication.assistant.tasks.TaskListUiState
+import com.aicommunication.assistant.ui.theme.AicaaColors
+import com.aicommunication.assistant.ui.theme.AicaaTextStyles
 
 @Composable
 fun TaskListScreen(
@@ -45,22 +47,21 @@ fun TaskListScreen(
         modifier =
         modifier
             .fillMaxSize()
-            .background(Color(0xFFF5F5F4))
+            .background(AicaaColors.paper)
             .padding(horizontal = 24.dp, vertical = 48.dp)
             .testTag("task_list_screen"),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text(
             text = stringResource(R.string.tasks_title),
-            fontSize = 28.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = Color(0xFF1C1917),
+            style = AicaaTextStyles.pageHeading,
+            color = AicaaColors.ink,
             modifier = Modifier.semantics { heading() }
         )
         Text(
             text = stringResource(R.string.tasks_subtitle),
-            fontSize = 16.sp,
-            color = Color(0xFF57534E)
+            style = AicaaTextStyles.body,
+            color = AicaaColors.muted
         )
 
         when (state) {
@@ -76,7 +77,7 @@ fun TaskListScreen(
             is TaskListUiState.Error -> {
                 Text(
                     text = state.message,
-                    color = Color(0xFFB91C1C),
+                    color = AicaaColors.critical,
                     modifier = Modifier.testTag("task_list_error")
                 )
                 Button(
@@ -91,12 +92,12 @@ fun TaskListScreen(
             }
             is TaskListUiState.Ready -> {
                 if (state.errorMessage != null) {
-                    Text(text = state.errorMessage, color = Color(0xFFB91C1C))
+                    Text(text = state.errorMessage, color = AicaaColors.critical)
                 }
                 if (state.tasks.isEmpty()) {
                     Text(
                         text = stringResource(R.string.tasks_empty),
-                        color = Color(0xFF57534E),
+                        color = AicaaColors.muted,
                         modifier = Modifier.testTag("task_list_empty")
                     )
                     Button(
@@ -160,12 +161,12 @@ private fun TaskListRow(task: OwnerTask, onClick: () -> Unit) {
             text = task.displayTitle,
             fontSize = 17.sp,
             fontWeight = FontWeight.Medium,
-            color = Color(0xFF1C1917)
+            color = AicaaColors.ink
         )
         Text(
             text = "${task.statusLabel} · ${task.ownershipLabel}",
             fontSize = 14.sp,
-            color = Color(0xFF57534E)
+            color = AicaaColors.muted
         )
     }
 }
