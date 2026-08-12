@@ -157,7 +157,7 @@ A review item is **work assigned to the reviewer of the register change in hand*
 
 ### Using it on a register change
 
-This is the current procedure for every change to the register, including each newly assigned decision after D170:
+This is the current procedure for every change to the register, including each newly assigned decision after D171:
 
 1. Run `pnpm docs:decisions:verify` **before** the change and confirm it is green.
 2. Make the change. A new decision is added as a **heading record** carrying the next unused identifier, placed so the whole file stays in one ascending sequence; there is no legacy table row to add and no mixed-representation allowance left to rely on.
