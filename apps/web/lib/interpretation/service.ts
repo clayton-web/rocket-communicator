@@ -24,6 +24,7 @@ import {
 } from './fingerprint';
 import { interpretationServiceError } from './errors';
 import {
+  assertInterpretationResultFitsPersistence,
   validateInterpretationRequest,
   type AuthorizedInterpretationSourceKind,
   type InterpretationRequest,
@@ -206,7 +207,10 @@ async function resolveCommittedOccurrence(
  *    with a different fingerprint conflicts before any work.
  * 3. Call the provider with no database transaction open. A failed call leaves nothing behind:
  *    there is no InterpretationRun, no TaskSuggestion, and no attempt row to record it.
- * 4. Persist the occurrence and its 0..N proposals in one transaction. `tasks: []` is truthful
+ * 4. Refuse provider-returned `policyVersion` / `modelVersion` that cannot fit the occurrence
+ *    columns. Oversized provenance is invalid interpreted output, not a raw database length error,
+ *    and it is never truncated.
+ * 5. Persist the occurrence and its 0..N proposals in one transaction. `tasks: []` is truthful
  *    success recorded as `no_proposals`, not a failure and not a manufactured placeholder.
  *
  * Everything the fingerprint covers is supplied by the caller, including `capturedAt`. The service
@@ -251,6 +255,7 @@ export async function interpretCapture(input: {
     capturedAt: request.capturedAt,
     timezone: request.timezone,
   });
+  assertInterpretationResultFitsPersistence(interpretation);
 
   // One generated token, two namespaced identities: the occurrence row and the source reference its
   // sibling proposals share.

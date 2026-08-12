@@ -33,6 +33,7 @@ import {
   computeInterpretationRequestFingerprint,
   computeManualCaptureSourceDedupeDigest,
 } from '@/lib/interpretation/fingerprint';
+import { MAX_INTERPRETATION_VERSION_LENGTH } from '@/lib/interpretation/validate';
 
 const org = 'org_s3_service';
 const otherOrg = 'org_s3_service_other';
@@ -818,6 +819,107 @@ describe('S3.1 shared interpretation service', () => {
       // The whole occurrence rolled back: no run, no partial proposal set.
       expect(await db.prisma.interpretationRun.count()).toBe(0);
       expect(await db.prisma.taskSuggestion.count()).toBe(0);
+    });
+  });
+
+  describe('S3.1a provider metadata persistence boundary', () => {
+    const maxLegalVersion = 'v'.repeat(MAX_INTERPRETATION_VERSION_LENGTH);
+    const oversizedVersion = 'v'.repeat(MAX_INTERPRETATION_VERSION_LENGTH + 1);
+
+    it('persists a maximum-length policyVersion', async () => {
+      const provider = new MockInterpretationProvider({
+        result: {
+          ...interpretationResult([proposedTask()]),
+          policyVersion: maxLegalVersion,
+        },
+      });
+
+      const result = await interpretCapture({
+        db: db.prisma,
+        request: request({ idempotencyKey: 'idem_policy_max' }),
+        now,
+        deps: { provider },
+      });
+
+      expect(result.outcome).toBe('created');
+      const run = await db.prisma.interpretationRun.findFirstOrThrow();
+      expect(run.policyVersion).toBe(maxLegalVersion);
+      expect(run.policyVersion).toHaveLength(MAX_INTERPRETATION_VERSION_LENGTH);
+      expect(await db.prisma.taskSuggestion.count()).toBe(1);
+      expect(await db.prisma.task.count()).toBe(0);
+    });
+
+    it('rejects an oversized policyVersion before persistence', async () => {
+      const provider = new MockInterpretationProvider({
+        result: {
+          ...interpretationResult([proposedTask()]),
+          policyVersion: oversizedVersion,
+        },
+      });
+
+      await expect(
+        interpretCapture({
+          db: db.prisma,
+          request: request({ idempotencyKey: 'idem_policy_oversize' }),
+          now,
+          deps: { provider },
+        }),
+      ).rejects.toMatchObject({
+        name: 'AiProviderError',
+        code: 'AI_SCHEMA_INVALID',
+      });
+
+      expect(await db.prisma.interpretationRun.count()).toBe(0);
+      expect(await db.prisma.taskSuggestion.count()).toBe(0);
+      expect(await db.prisma.task.count()).toBe(0);
+    });
+
+    it('persists a maximum-length modelVersion', async () => {
+      const provider = new MockInterpretationProvider({
+        result: {
+          ...interpretationResult([proposedTask()]),
+          modelVersion: maxLegalVersion,
+        },
+      });
+
+      const result = await interpretCapture({
+        db: db.prisma,
+        request: request({ idempotencyKey: 'idem_model_max' }),
+        now,
+        deps: { provider },
+      });
+
+      expect(result.outcome).toBe('created');
+      const run = await db.prisma.interpretationRun.findFirstOrThrow();
+      expect(run.modelVersion).toBe(maxLegalVersion);
+      expect(run.modelVersion).toHaveLength(MAX_INTERPRETATION_VERSION_LENGTH);
+      expect(await db.prisma.taskSuggestion.count()).toBe(1);
+      expect(await db.prisma.task.count()).toBe(0);
+    });
+
+    it('rejects an oversized modelVersion before persistence', async () => {
+      const provider = new MockInterpretationProvider({
+        result: {
+          ...interpretationResult([proposedTask()]),
+          modelVersion: oversizedVersion,
+        },
+      });
+
+      await expect(
+        interpretCapture({
+          db: db.prisma,
+          request: request({ idempotencyKey: 'idem_model_oversize' }),
+          now,
+          deps: { provider },
+        }),
+      ).rejects.toMatchObject({
+        name: 'AiProviderError',
+        code: 'AI_SCHEMA_INVALID',
+      });
+
+      expect(await db.prisma.interpretationRun.count()).toBe(0);
+      expect(await db.prisma.taskSuggestion.count()).toBe(0);
+      expect(await db.prisma.task.count()).toBe(0);
     });
   });
 });

@@ -1,4 +1,5 @@
 import 'server-only';
+import { AiProviderError } from '@aicaa/ai';
 import { interpretationServiceError } from './errors';
 
 /**
@@ -40,14 +41,17 @@ export interface ValidatedInterpretationRequest extends InterpretationRequest {
 }
 
 /**
- * Storage ceilings taken from the `InterpretationRun` columns: `organization_id` and `request_id`
- * are `VarChar(64)`, `idempotency_key` is `VarChar(128)`. Checking them here means an oversized
- * caller value fails as a classified service error before the transaction opens, instead of as a
- * raw Prisma string-length error thrown from inside it.
+ * Storage ceilings taken from the `InterpretationRun` columns: `organization_id`, `request_id`,
+ * `model_version`, and `policy_version` are `VarChar(64)`; `idempotency_key` is `VarChar(128)`.
+ * Checking them here means an oversized caller or provider value fails as a classified error
+ * before the transaction opens, instead of as a raw Prisma string-length error thrown from inside
+ * it. Values are never truncated — silent truncation would falsify identity or provider provenance.
  */
 const MAX_ORGANIZATION_ID = 64;
 const MAX_REQUEST_ID = 64;
 const IDEMPOTENCY_KEY_MAX = 128;
+/** `InterpretationRun.model_version` / `policy_version` persistence ceiling. */
+export const MAX_INTERPRETATION_VERSION_LENGTH = 64;
 
 /**
  * Same key shape the contracted `Idempotency-Key` header is parsed against (A7.7 / D094): 8–128
@@ -153,4 +157,33 @@ export function validateInterpretationRequest(
     capturedAt: requireCapturedAt(request.capturedAt),
     timezone: request.timezone ?? null,
   };
+}
+
+/**
+ * Reject provider-returned version metadata that cannot fit `InterpretationRun` persistence (S3.1a).
+ *
+ * Lives at the shared interpretation application seam — after any provider returns accepted
+ * `InterpretationResult` metadata and before the occurrence transaction — so every caller of
+ * `interpretCapture` benefits without repeating the check in source adapters. This is a persistence
+ * contract guard, not a redesign of interpretation output: oversized strings are refused as invalid
+ * provider output (`AiProviderError`), never truncated and never left for Prisma/Postgres to reject.
+ */
+export function assertInterpretationResultFitsPersistence(result: {
+  policyVersion: string;
+  modelVersion: string;
+}): void {
+  if (result.policyVersion.length > MAX_INTERPRETATION_VERSION_LENGTH) {
+    throw new AiProviderError(
+      'AI_SCHEMA_INVALID',
+      'retryable',
+      `policyVersion exceeds the ${MAX_INTERPRETATION_VERSION_LENGTH}-character persistence limit.`,
+    );
+  }
+  if (result.modelVersion.length > MAX_INTERPRETATION_VERSION_LENGTH) {
+    throw new AiProviderError(
+      'AI_SCHEMA_INVALID',
+      'retryable',
+      `modelVersion exceeds the ${MAX_INTERPRETATION_VERSION_LENGTH}-character persistence limit.`,
+    );
+  }
 }
