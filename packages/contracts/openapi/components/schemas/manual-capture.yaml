@@ -1,0 +1,79 @@
+components:
+  schemas:
+    CreateManualCaptureRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - rawInput
+        - capturedAt
+      properties:
+        rawInput:
+          type: string
+          minLength: 1
+          maxLength: 4000
+          description: |
+            Owner capture text to interpret. Transient interpretation input only (D169): it is not
+            persisted, not echoed in any response, not stored as a CommunicationEvent or excerpt,
+            and never logged. Oversize input is rejected at the HTTP boundary rather than truncated.
+        capturedAt:
+          type: string
+          format: date-time
+          description: |
+            When the Owner captured the input, in the caller's own words about the capture — not when
+            the server processed it. An explicit UTC designator or numeric offset is required: a
+            zone-less timestamp resolves against the host clock, so one retry could canonicalize to
+            two instants and a legitimate replay would fail as a conflict. Fingerprinted request
+            semantics, never defaulted from the server clock, and not subject to a recency window.
+        timezone:
+          type:
+            - string
+            - 'null'
+          maxLength: 64
+          description: |
+            Owner/organization IANA timezone when known. Mechanical interpretation context only —
+            it does not select an organization, a Recipient, or a responsibility.
+      description: |
+        Owner manual capture submitted for interpretation (D170). The source kind is fixed
+        server-side as `owner_manual_capture`; clients neither send nor choose provenance. The
+        organization comes from the authenticated Owner session and is never accepted from the
+        request.
+    ManualCaptureResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - idempotentReplay
+        - interpretedAt
+        - taskSuggestions
+      properties:
+        idempotentReplay:
+          type: boolean
+          description: |
+            `true` when this response replays a prior committed interpretation for the same
+            organization, Idempotency-Key, and request payload. A replay is answered from canonical
+            state and does not call the interpretation provider again.
+        interpretedAt:
+          type: string
+          format: date-time
+          description: |
+            When the interpretation that produced these proposals committed. On a replay this is the
+            original occurrence's time, not the time of the replayed request.
+        taskSuggestions:
+          type: array
+          maxItems: 10
+          items:
+            $ref: './task-suggestion.yaml#/components/schemas/TaskSuggestion'
+          description: |
+            The 0..N canonical pending proposals this capture produced, using the same
+            `TaskSuggestion` schema the Owner proposal reads return — there is no second proposal
+            shape. The bound restates the ceiling interpretation output validation already enforces
+            on one call. An empty array is truthful success, not a failure: no placeholder proposal
+            is manufactured.
+      description: |
+        Result of an Owner manual capture interpretation (D170).
+
+        Deliberately thin. Interpretation provenance is persistence-only and is not published here:
+        no `interpretationRunId`, no InterpretationRun row id, no request fingerprint, no persisted
+        idempotency key, no `modelVersion` or `policyVersion`, and no echo of `rawInput`.
+
+        Creates no canonical Task, no approval, no responsibility selection, and no TaskAssignment.
+        Acceptance remains the Owner's through the existing proposal review path.

@@ -24,8 +24,13 @@ export function classifyOperationalFailure(error: unknown): OperationalFailureCa
     if (name === 'TaskServiceError' || name === 'RecipientManagementError') {
       return classifyServiceCode(code);
     }
-    if (name === 'RecipientCapabilityServiceError') {
+    if (name === 'RecipientCapabilityServiceError' || name === 'InterpretationServiceError') {
       return classifyServiceCode(code);
+    }
+    // Interpretation provider failures are an upstream dependency, whatever the disposition:
+    // the classification records that the dependency failed, never the provider's own message.
+    if (name === 'AiProviderError') {
+      return 'EXTERNAL_PROVIDER_FAILURE';
     }
     if (name === 'CapabilityTokenError') {
       return 'AUTHZ_FAILURE';
@@ -77,6 +82,9 @@ function classifyServiceCode(code: string | undefined): OperationalFailureCatego
     case 'ASSIGNMENT_PRECONDITION':
     case 'ISSUANCE_CONFLICT':
     case 'ISSUANCE_PRECONDITION':
+    // A reused idempotency key is the caller's own retry colliding with its committed request,
+    // which is an expected client outcome rather than an infrastructure fault to page on.
+    case 'IDEMPOTENCY_KEY_CONFLICT':
       return 'CONCURRENCY_CONFLICT';
     case 'NOT_FOUND':
       return 'VALIDATION_FAILURE';

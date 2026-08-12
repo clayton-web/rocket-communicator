@@ -1,17 +1,12 @@
 import { HANDOFF_ACKNOWLEDGEMENT_V1 } from '@aicaa/domain';
-import { jsonErrorResponse } from '@/lib/auth/http';
 import { jsonErrorResponseWithDetails } from '@/lib/http/errors';
+import { parseIdempotencyKey } from '@/lib/http/request';
 import type { NextResponse } from 'next/server';
 import type { components } from '@aicaa/contracts/schema';
 
 type ErrorResponse = components['schemas']['ErrorResponse'];
 
 const MAX_RECIPIENT_ID = 64;
-
-// Contracted Idempotency-Key shape: 8–128 chars from the safe URL-token alphabet.
-const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._~-]+$/;
-const IDEMPOTENCY_KEY_MIN = 8;
-const IDEMPOTENCY_KEY_MAX = 128;
 
 export interface ParsedHandoffBody {
   recipientId: string;
@@ -23,41 +18,11 @@ function has(body: Record<string, unknown>, key: string): boolean {
 }
 
 /**
- * Parse the mandatory Idempotency-Key header (A7.7 / D094).
- * Absent → 428 PRECONDITION_REQUIRED. Malformed (length/charset) → 400 VALIDATION_ERROR.
- * The full key value is never logged by callers.
+ * The contracted Idempotency-Key parser now lives in the shared HTTP layer, because S3.2 gave it a
+ * second Owner route (D170) and one header contract should have one parser. Re-exported here so the
+ * handoff slice keeps its existing public surface.
  */
-export function parseIdempotencyKey(
-  request: Request,
-): { ok: true; value: string } | { ok: false; response: NextResponse<ErrorResponse> } {
-  const raw = request.headers.get('idempotency-key');
-  if (raw === null || raw.trim() === '') {
-    return {
-      ok: false,
-      response: jsonErrorResponse(
-        'PRECONDITION_REQUIRED',
-        'Idempotency-Key header is required for this mutation.',
-        428,
-      ),
-    };
-  }
-  const value = raw.trim();
-  if (
-    value.length < IDEMPOTENCY_KEY_MIN ||
-    value.length > IDEMPOTENCY_KEY_MAX ||
-    !IDEMPOTENCY_KEY_PATTERN.test(value)
-  ) {
-    return {
-      ok: false,
-      response: jsonErrorResponse(
-        'VALIDATION_ERROR',
-        'Idempotency-Key must be 8–128 characters using A–Z, a–z, 0–9, and . _ ~ -',
-        400,
-      ),
-    };
-  }
-  return { ok: true, value };
-}
+export { parseIdempotencyKey };
 
 /**
  * Strictly parse the contracted HandoffTaskRequest body (A7.7).

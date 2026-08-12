@@ -397,6 +397,157 @@ describe('contracts package', () => {
     );
   });
 
+  it('contracts the S3.2 manual-capture route without interpretation provenance (D170)', () => {
+    execSync('pnpm bundle', { cwd: root, stdio: 'pipe' });
+    const bundled = parseYaml(readFileSync(path.join(root, 'dist/openapi.bundled.yaml'), 'utf8'));
+    const schemas = (bundled.components?.schemas ?? {}) as Record<string, unknown>;
+    const capturePath = bundled.paths?.['/api/v1/manual-captures'] as
+      Record<string, unknown> | undefined;
+
+    expect(capturePath).toBeDefined();
+    // POST only. A readable capture collection would be a raw-input surface by another name.
+    expect(Object.keys(capturePath!).sort()).toEqual(['post']);
+
+    const post = capturePath!.post as {
+      operationId?: string;
+      parameters?: { $ref?: string }[];
+      responses?: Record<string, unknown>;
+    };
+    expect(post.operationId).toBe('createManualCapture');
+    // The existing reusable header contract, not a second idempotency parameter.
+    expect((post.parameters ?? []).map((parameter) => parameter.$ref ?? '').join()).toMatch(
+      /IdempotencyKey/,
+    );
+    expect(bundled.components?.parameters?.IdempotencyKey).toBeDefined();
+
+    // 200 covers first success, replay, and zero proposals alike; 201/204 would each claim
+    // something untrue about a replay or an empty result.
+    expect(Object.keys(post.responses ?? {}).sort()).toEqual([
+      '200',
+      '400',
+      '401',
+      '409',
+      '415',
+      '428',
+      '500',
+      '503',
+    ]);
+
+    const request = schemas.CreateManualCaptureRequest as {
+      additionalProperties?: boolean;
+      required?: string[];
+      properties?: Record<string, { maxLength?: number; minLength?: number }>;
+    };
+    expect(request.additionalProperties).toBe(false);
+    // Exactly three inputs. `sourceKind` and `organizationId` are absent because the server decides
+    // both; a client that could state them could spoof provenance or reach another organization.
+    expect(Object.keys(request.properties ?? {}).sort()).toEqual([
+      'capturedAt',
+      'rawInput',
+      'timezone',
+    ]);
+    expect([...(request.required ?? [])].sort()).toEqual(['capturedAt', 'rawInput']);
+    expect(request.properties?.rawInput?.minLength).toBe(1);
+    expect(request.properties?.rawInput?.maxLength).toBe(4000);
+
+    const response = schemas.ManualCaptureResponse as {
+      additionalProperties?: boolean;
+      required?: string[];
+      properties?: Record<string, { items?: { $ref?: string } }>;
+    };
+    expect(response.additionalProperties).toBe(false);
+    expect(Object.keys(response.properties ?? {}).sort()).toEqual([
+      'idempotentReplay',
+      'interpretedAt',
+      'taskSuggestions',
+    ]);
+    // Every field required, so a caller is never handed a partial result.
+    expect([...(response.required ?? [])].sort()).toEqual(
+      Object.keys(response.properties ?? {}).sort(),
+    );
+    // The canonical proposal schema is reused rather than copied into a second proposal DTO.
+    expect(response.properties?.taskSuggestions?.items?.$ref).toBe(
+      '#/components/schemas/TaskSuggestion',
+    );
+
+    // Interpretation provenance is persistence-only (D169). None of it may appear on the request,
+    // the response, or the proposal schema the response returns — and no `rawInput` echo either.
+    const forbiddenProvenance = [
+      'interpretationRunId',
+      'interpretationRun',
+      'runId',
+      'requestFingerprint',
+      'fingerprint',
+      'idempotencyKey',
+      'modelVersion',
+      'policyVersion',
+      'sourceKind',
+      'organizationId',
+    ];
+    for (const forbidden of forbiddenProvenance) {
+      expect(
+        Object.keys(response.properties ?? {}),
+        `ManualCaptureResponse must not expose ${forbidden}`,
+      ).not.toContain(forbidden);
+      expect(
+        Object.keys(request.properties ?? {}),
+        `CreateManualCaptureRequest must not accept ${forbidden}`,
+      ).not.toContain(forbidden);
+    }
+    expect(Object.keys(response.properties ?? {})).not.toContain('rawInput');
+
+    const suggestionProperties = Object.keys(
+      (schemas.TaskSuggestion as { properties?: Record<string, unknown> })?.properties ?? {},
+    );
+    for (const forbidden of [
+      'interpretationRunId',
+      'requestFingerprint',
+      'idempotencyKey',
+      'modelVersion',
+      'policyVersion',
+      'rawInput',
+    ]) {
+      expect(suggestionProperties, `TaskSuggestion must not expose ${forbidden}`).not.toContain(
+        forbidden,
+      );
+    }
+
+    // No InterpretationRun resource, and no second proposal DTO, entered the public contract.
+    for (const forbidden of [
+      'InterpretationRun',
+      'InterpretationOccurrence',
+      'ManualCaptureTaskSuggestion',
+      'ProposedTask',
+    ]) {
+      expect(schemas[forbidden]).toBeUndefined();
+    }
+
+    // The route is manual capture only. A generic arbitrary-source interpretation endpoint would
+    // let a client claim any provenance it liked, which is exactly what fixing it server-side
+    // prevents. Gmail and SMS capture remain unimplemented.
+    const routes = Object.keys(bundled.paths ?? {});
+    expect(routes).not.toContain('/api/v1/interpretations');
+    expect(routes.filter((route) => route.includes('interpretation'))).toEqual([]);
+    expect(routes.filter((route) => route.includes('capture'))).toEqual([
+      '/api/v1/manual-captures',
+    ]);
+
+    // Existing provenance vocabulary is reused unchanged.
+    expect((schemas.SourceType as { enum?: string[] }).enum).toContain('manual');
+    const errorEnum = (schemas.ErrorCode as { enum?: string[] }).enum ?? [];
+    for (const code of [
+      'VALIDATION_ERROR',
+      'UNAUTHORIZED',
+      'IDEMPOTENCY_KEY_CONFLICT',
+      'DOMAIN_CONFLICT',
+      'PRECONDITION_REQUIRED',
+      'DEPENDENCY_UNAVAILABLE',
+      'INTERNAL_ERROR',
+    ]) {
+      expect(errorEnum).toContain(code);
+    }
+  });
+
   it('has no stale generated Kotlin artifacts outside the generator manifest', () => {
     execSync('node scripts/cleanup-kotlin-orphans.mjs --check', { cwd: root, stdio: 'pipe' });
     const kotlinDocs = path.join(root, 'generated/kotlin/docs');

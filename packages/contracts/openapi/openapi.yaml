@@ -33,6 +33,12 @@ tags:
     description: |
       Minimal Owner-managed Recipient contacts (D087). List active, create, update, deactivate.
       Not a CRM. Email addresses come from Owner-managed records only.
+  - name: ManualCaptures
+    description: |
+      Owner manual capture interpretation (S3.2; D169–D170). Submits transient capture text to the
+      shared interpretation service and returns the canonical TaskSuggestions it proposed. Source
+      kind is fixed server-side; raw input is never persisted, echoed, or logged. Creates no Task,
+      approval, responsibility, or assignment. Gmail and SMS capture are not implemented.
   - name: Capabilities
     description: |
       Recipient capability-token routes (separate from Owner session APIs).
@@ -75,6 +81,8 @@ paths:
     $ref: './paths/owner-notifications.yaml#/paths/~1api~1v1~1internal~1notifications~1process'
   /api/v1/internal/suggestions/process:
     $ref: './paths/task-suggestions.yaml#/paths/~1api~1v1~1internal~1suggestions~1process'
+  /api/v1/manual-captures:
+    $ref: './paths/manual-captures.yaml#/paths/~1api~1v1~1manual-captures'
   /api/v1/recipients:
     $ref: './paths/recipients.yaml#/paths/~1api~1v1~1recipients'
   /api/v1/recipients/{recipientId}:
@@ -201,6 +209,10 @@ components:
       $ref: './components/schemas/task-suggestion.yaml#/components/schemas/MergeTaskSuggestionRequest'
     SuggestionProcessResponse:
       $ref: './components/schemas/task-suggestion.yaml#/components/schemas/SuggestionProcessResponse'
+    CreateManualCaptureRequest:
+      $ref: './components/schemas/manual-capture.yaml#/components/schemas/CreateManualCaptureRequest'
+    ManualCaptureResponse:
+      $ref: './components/schemas/manual-capture.yaml#/components/schemas/ManualCaptureResponse'
     Task:
       $ref: './components/schemas/task.yaml#/components/schemas/Task'
     TaskStatus:

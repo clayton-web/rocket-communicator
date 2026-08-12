@@ -1,12 +1,15 @@
+import type { AiProviderErrorKind } from '@aicaa/ai';
 import type { PersistenceErrorCode } from '@aicaa/db';
 import type { DomainErrorCode } from '@aicaa/domain';
 import type { CapabilityTokenErrorCode } from '@/lib/capability/errors';
 import type { RecipientCapabilityServiceErrorCode } from '@/lib/capability/recipient-errors';
+import type { InterpretationServiceErrorCode } from '@/lib/interpretation/errors';
 import type { RecipientManagementErrorCode } from '@/lib/recipients/errors';
 import type { TaskServiceErrorCode } from '@/lib/tasks/errors';
 import { AuthConfigError } from '@/lib/auth/errors';
 import { CapabilityTokenError } from '@/lib/capability/errors';
 import { RecipientCapabilityServiceError } from '@/lib/capability/recipient-errors';
+import { InterpretationServiceError } from '@/lib/interpretation/errors';
 import { RecipientManagementError } from '@/lib/recipients/errors';
 import { TaskServiceError } from '@/lib/tasks/errors';
 import { DomainError } from '@aicaa/domain';
@@ -32,7 +35,21 @@ const TASK_SERVICE_ERROR_NAME = 'TaskServiceError';
 const CAPABILITY_TOKEN_ERROR_NAME = 'CapabilityTokenError';
 const RECIPIENT_CAPABILITY_SERVICE_ERROR_NAME = 'RecipientCapabilityServiceError';
 const RECIPIENT_MANAGEMENT_ERROR_NAME = 'RecipientManagementError';
+const INTERPRETATION_SERVICE_ERROR_NAME = 'InterpretationServiceError';
+const AI_PROVIDER_ERROR_NAME = 'AiProviderError';
 const AUTH_CONFIG_ERROR_NAME = 'AuthConfigError';
+
+const INTERPRETATION_SERVICE_ERROR_CODES = new Set<InterpretationServiceErrorCode>([
+  'VALIDATION_ERROR',
+  'IDEMPOTENCY_KEY_CONFLICT',
+  'PERSISTENCE_CONFLICT',
+]);
+
+const AI_PROVIDER_ERROR_KINDS = new Set<AiProviderErrorKind>([
+  'configuration',
+  'retryable',
+  'permanent',
+]);
 
 const RECIPIENT_MANAGEMENT_ERROR_CODES = new Set<RecipientManagementErrorCode>([
   'NOT_FOUND',
@@ -217,6 +234,54 @@ export function readRecipientManagementErrorDetails(
     return undefined;
   }
   return details as ReadonlyArray<{ field: string; message: string }>;
+}
+
+export function isInterpretationServiceError(error: unknown): boolean {
+  return (
+    safeInstanceof(error, InterpretationServiceError) ||
+    (hasErrorName(error, INTERPRETATION_SERVICE_ERROR_NAME) &&
+      hasKnownCode(error, INTERPRETATION_SERVICE_ERROR_CODES))
+  );
+}
+
+export function readInterpretationServiceErrorCode(
+  error: unknown,
+): InterpretationServiceErrorCode | undefined {
+  if (!isInterpretationServiceError(error)) {
+    return undefined;
+  }
+  return safeReadString(error, 'code') as InterpretationServiceErrorCode | undefined;
+}
+
+export function readInterpretationServiceErrorDetails(
+  error: unknown,
+): ReadonlyArray<{ field: string; message: string }> | undefined {
+  const details = safeReadProperty(error, 'details');
+  if (!Array.isArray(details)) {
+    return undefined;
+  }
+  return details as ReadonlyArray<{ field: string; message: string }>;
+}
+
+/**
+ * Recognize an interpretation provider failure by shape rather than by importing the class.
+ *
+ * `AiProviderError` crosses a package boundary the same way `PersistenceError` does, and only its
+ * `kind` is ever read: the provider's own `message`, `code`, and `diagnosticFingerprint` are
+ * operational detail that must not reach a public response.
+ */
+export function isAiProviderErrorShape(error: unknown): boolean {
+  return (
+    hasErrorName(error, AI_PROVIDER_ERROR_NAME) && readAiProviderErrorKind(error) !== undefined
+  );
+}
+
+export function readAiProviderErrorKind(error: unknown): AiProviderErrorKind | undefined {
+  const kind = safeReadString(error, 'kind');
+  if (kind === undefined || !AI_PROVIDER_ERROR_KINDS.has(kind as AiProviderErrorKind)) {
+    return undefined;
+  }
+  return kind as AiProviderErrorKind;
 }
 
 export function isDomainError(error: unknown): boolean {

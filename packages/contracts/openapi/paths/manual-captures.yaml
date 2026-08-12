@@ -1,0 +1,81 @@
+paths:
+  /api/v1/manual-captures:
+    post:
+      operationId: createManualCapture
+      tags: [ManualCaptures]
+      summary: Interpret an Owner manual capture into task proposals (D170)
+      description: |
+        Owner-authenticated manual capture. Submits transient capture text to the shared
+        interpretation service (D169) and answers with the 0..N canonical pending TaskSuggestions it
+        produced.
+
+        Provenance is fixed server-side (`owner_manual_capture`); the request carries no source or
+        organization field, and the organization comes only from the authenticated Owner session
+        (D059). Requires `Idempotency-Key` (D094): an exact retry replays the original proposal set
+        from committed state with `idempotentReplay: true` and does not call the provider again,
+        while the same key reused for a different capture responds 409 IDEMPOTENCY_KEY_CONFLICT.
+
+        `rawInput` is interpretation input only. It is not persisted, not echoed, not logged, and
+        creates no CommunicationEvent or excerpt, so there is no retention state to manage.
+
+        HTTP **200** covers first success, exact replay, and valid zero-proposal success alike —
+        no proposals is truthful interpretation output, not a failure. This endpoint creates no
+        canonical Task, approves nothing, selects no responsibility, and writes no TaskAssignment.
+      parameters:
+        - $ref: '../components/parameters.yaml#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/CreateManualCaptureRequest'
+      responses:
+        '200':
+          description: |
+            Interpretation completed, or an idempotent replay of a prior completed interpretation
+            for the same Idempotency-Key and matching payload. `taskSuggestions` may be empty.
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/ManualCaptureResponse'
+        '400':
+          description: |
+            Validation failure (`VALIDATION_ERROR`): malformed JSON, unsupported body fields, a
+            missing/empty/oversized `rawInput`, a missing or zone-less `capturedAt`, or a malformed
+            or oversized `Idempotency-Key`.
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '../components/responses.yaml#/components/responses/Unauthorized'
+        '409':
+          description: |
+            Conflict — the Idempotency-Key was reused for a different capture
+            (`IDEMPOTENCY_KEY_CONFLICT`), or persistence refused the write for a reason unrelated to
+            this occurrence's idempotency (`DOMAIN_CONFLICT`). Neither replaces committed state.
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        '415':
+          description: |
+            Unsupported media type (`VALIDATION_ERROR`); `Content-Type: application/json` is required.
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        '428':
+          $ref: '../components/responses.yaml#/components/responses/PreconditionRequired'
+        '503':
+          description: |
+            Retryable interpretation dependency failure (`DEPENDENCY_UNAVAILABLE`), including
+            disabled or missing provider configuration, network/timeout/provider 5xx, quota or rate
+            limiting, and retryable invalid provider output. Nothing was persisted, so the same
+            Idempotency-Key may be retried with the identical payload.
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '../components/responses.yaml#/components/responses/InternalError'

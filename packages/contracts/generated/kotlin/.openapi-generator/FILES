@@ -15,6 +15,7 @@ docs/CommunicationProvider.md
 docs/CompleteCapabilityTaskRequest.md
 docs/CompleteTaskRequest.md
 docs/ConfirmedFactSummaryPoint.md
+docs/CreateManualCaptureRequest.md
 docs/CreateRecipientRequest.md
 docs/CreateTaskRequest.md
 docs/CursorPage.md
@@ -50,6 +51,7 @@ docs/ListGmailSyncRuns200Response.md
 docs/ListRecipientsResponse.md
 docs/ListTaskSuggestions200Response.md
 docs/ListTasks200Response.md
+docs/ManualCaptureResponse.md
 docs/MarkCapabilityTaskWaitingRequest.md
 docs/MarkTaskWaitingRequest.md
 docs/MergeTaskSuggestionRequest.md
@@ -120,6 +122,7 @@ src/main/kotlin/com/aicommunication/assistant/contracts/models/CommunicationProv
 src/main/kotlin/com/aicommunication/assistant/contracts/models/CompleteCapabilityTaskRequest.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/CompleteTaskRequest.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/ConfirmedFactSummaryPoint.kt
+src/main/kotlin/com/aicommunication/assistant/contracts/models/CreateManualCaptureRequest.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/CreateRecipientRequest.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/CreateTaskRequest.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/CursorPage.kt
@@ -155,6 +158,7 @@ src/main/kotlin/com/aicommunication/assistant/contracts/models/ListGmailSyncRuns
 src/main/kotlin/com/aicommunication/assistant/contracts/models/ListRecipientsResponse.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/ListTaskSuggestions200Response.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/ListTasks200Response.kt
+src/main/kotlin/com/aicommunication/assistant/contracts/models/ManualCaptureResponse.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/MarkCapabilityTaskWaitingRequest.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/MarkTaskWaitingRequest.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/MergeTaskSuggestionRequest.kt

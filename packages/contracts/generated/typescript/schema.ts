@@ -328,6 +328,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/manual-captures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Interpret an Owner manual capture into task proposals (D170)
+         * @description Owner-authenticated manual capture. Submits transient capture text to the shared
+         *     interpretation service (D169) and answers with the 0..N canonical pending TaskSuggestions it
+         *     produced.
+         *
+         *     Provenance is fixed server-side (`owner_manual_capture`); the request carries no source or
+         *     organization field, and the organization comes only from the authenticated Owner session
+         *     (D059). Requires `Idempotency-Key` (D094): an exact retry replays the original proposal set
+         *     from committed state with `idempotentReplay: true` and does not call the provider again,
+         *     while the same key reused for a different capture responds 409 IDEMPOTENCY_KEY_CONFLICT.
+         *
+         *     `rawInput` is interpretation input only. It is not persisted, not echoed, not logged, and
+         *     creates no CommunicationEvent or excerpt, so there is no retention state to manage.
+         *
+         *     HTTP **200** covers first success, exact replay, and valid zero-proposal success alike —
+         *     no proposals is truthful interpretation output, not a failure. This endpoint creates no
+         *     canonical Task, approves nothing, selects no responsibility, and writes no TaskAssignment.
+         *
+         */
+        post: operations["createManualCapture"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/recipients": {
         parameters: {
             query?: never;
@@ -1449,6 +1485,62 @@ export interface components {
             /** @description Events set to failed_permanent (no suggestion created). */
             failedPermanent: number;
             requestId: string;
+        };
+        /** @description Owner manual capture submitted for interpretation (D170). The source kind is fixed
+         *     server-side as `owner_manual_capture`; clients neither send nor choose provenance. The
+         *     organization comes from the authenticated Owner session and is never accepted from the
+         *     request.
+         *      */
+        CreateManualCaptureRequest: {
+            /** @description Owner capture text to interpret. Transient interpretation input only (D169): it is not
+             *     persisted, not echoed in any response, not stored as a CommunicationEvent or excerpt,
+             *     and never logged. Oversize input is rejected at the HTTP boundary rather than truncated.
+             *      */
+            rawInput: string;
+            /**
+             * Format: date-time
+             * @description When the Owner captured the input, in the caller's own words about the capture — not when
+             *     the server processed it. An explicit UTC designator or numeric offset is required: a
+             *     zone-less timestamp resolves against the host clock, so one retry could canonicalize to
+             *     two instants and a legitimate replay would fail as a conflict. Fingerprinted request
+             *     semantics, never defaulted from the server clock, and not subject to a recency window.
+             *
+             */
+            capturedAt: string;
+            /** @description Owner/organization IANA timezone when known. Mechanical interpretation context only —
+             *     it does not select an organization, a Recipient, or a responsibility.
+             *      */
+            timezone?: string | null;
+        };
+        /** @description Result of an Owner manual capture interpretation (D170).
+         *
+         *     Deliberately thin. Interpretation provenance is persistence-only and is not published here:
+         *     no `interpretationRunId`, no InterpretationRun row id, no request fingerprint, no persisted
+         *     idempotency key, no `modelVersion` or `policyVersion`, and no echo of `rawInput`.
+         *
+         *     Creates no canonical Task, no approval, no responsibility selection, and no TaskAssignment.
+         *     Acceptance remains the Owner's through the existing proposal review path.
+         *      */
+        ManualCaptureResponse: {
+            /** @description `true` when this response replays a prior committed interpretation for the same
+             *     organization, Idempotency-Key, and request payload. A replay is answered from canonical
+             *     state and does not call the interpretation provider again.
+             *      */
+            idempotentReplay: boolean;
+            /**
+             * Format: date-time
+             * @description When the interpretation that produced these proposals committed. On a replay this is the
+             *     original occurrence's time, not the time of the replayed request.
+             *
+             */
+            interpretedAt: string;
+            /** @description The 0..N canonical pending proposals this capture produced, using the same
+             *     `TaskSuggestion` schema the Owner proposal reads return — there is no second proposal
+             *     shape. The bound restates the ceiling interpretation output validation already enforces
+             *     on one call. An empty array is truthful success, not a failure: no placeholder proposal
+             *     is manufactured.
+             *      */
+            taskSuggestions: components["schemas"]["TaskSuggestion"][];
         };
         Task: {
             id: string;
@@ -2766,6 +2858,93 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             500: components["responses"]["InternalError"];
+        };
+    };
+    createManualCapture: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Client-generated idempotency key for safe retries of side-effecting Owner mutations (D094).
+                 *     Introduced for A7 handoff; reuse the same key only with an identical request payload for the
+                 *     same operation and resource. Replay of a completed success returns the original success body
+                 *     with `idempotentReplay: true`. Reuse with a conflicting payload returns 409 IDEMPOTENCY_KEY_CONFLICT.
+                 *     Missing header → 428 PRECONDITION_REQUIRED.
+                 *
+                 * @example handoff-01JXYZ-attempt-1
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateManualCaptureRequest"];
+            };
+        };
+        responses: {
+            /** @description Interpretation completed, or an idempotent replay of a prior completed interpretation
+             *     for the same Idempotency-Key and matching payload. `taskSuggestions` may be empty.
+             *      */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManualCaptureResponse"];
+                };
+            };
+            /** @description Validation failure (`VALIDATION_ERROR`): malformed JSON, unsupported body fields, a
+             *     missing/empty/oversized `rawInput`, a missing or zone-less `capturedAt`, or a malformed
+             *     or oversized `Idempotency-Key`.
+             *      */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Conflict — the Idempotency-Key was reused for a different capture
+             *     (`IDEMPOTENCY_KEY_CONFLICT`), or persistence refused the write for a reason unrelated to
+             *     this occurrence's idempotency (`DOMAIN_CONFLICT`). Neither replaces committed state.
+             *      */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported media type (`VALIDATION_ERROR`); `Content-Type: application/json` is required.
+             *      */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            428: components["responses"]["PreconditionRequired"];
+            500: components["responses"]["InternalError"];
+            /** @description Retryable interpretation dependency failure (`DEPENDENCY_UNAVAILABLE`), including
+             *     disabled or missing provider configuration, network/timeout/provider 5xx, quota or rate
+             *     limiting, and retryable invalid provider output. Nothing was persisted, so the same
+             *     Idempotency-Key may be retried with the identical payload.
+             *      */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     listRecipients: {

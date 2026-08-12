@@ -70,7 +70,7 @@ data class Recipient (
     @Json(name = "updatedAt")
     val updatedAt: kotlin.String? = null
 
-) : Serializable {
+) : kotlin.collections.HashMap<String, kotlin.Any>(), Serializable {
     companion object {
         private const val serialVersionUID: Long = 123
     }

@@ -5,13 +5,18 @@ import { jsonErrorResponse, unauthorizedResponse, type ErrorEnvelopeIds } from '
 import type { CapabilityTokenErrorCode } from '@/lib/capability/errors';
 import type { RecipientCapabilityServiceErrorCode } from '@/lib/capability/recipient-errors';
 import {
+  isAiProviderErrorShape,
   isAuthConfigError,
   isCapabilityTokenError,
+  isInterpretationServiceError,
   isPersistenceErrorShape,
   isRecipientCapabilityServiceError,
   isRecipientManagementError,
   isTaskServiceError,
+  readAiProviderErrorKind,
   readCapabilityTokenErrorCode,
+  readInterpretationServiceErrorCode,
+  readInterpretationServiceErrorDetails,
   readPersistenceErrorCode,
   readRecipientCapabilityServiceErrorCode,
   readRecipientCapabilityServiceErrorDetails,
@@ -25,6 +30,7 @@ import {
   safeReadString,
 } from '@/lib/errors/safe-error-shapes';
 import { getCorrelationId, getRequestId } from '@/lib/observability/request-context';
+import type { InterpretationServiceErrorCode } from '@/lib/interpretation/errors';
 import type { RecipientManagementErrorCode } from '@/lib/recipients/errors';
 import type { TaskServiceErrorCode } from '@/lib/tasks/errors';
 
@@ -358,6 +364,109 @@ export function mapOwnerRecipientRouteError(error: unknown): NextResponse<ErrorR
           409,
         );
       }
+      return genericInternalErrorResponse();
+    }
+    if (isAuthConfigError(error)) {
+      return jsonErrorResponse('INTERNAL_ERROR', 'Authentication is not configured.', 500);
+    }
+    return genericInternalErrorResponse();
+  } catch {
+    return genericInternalErrorResponse();
+  }
+}
+
+function httpStatusForInterpretationCode(code: InterpretationServiceErrorCode): number {
+  switch (code) {
+    case 'VALIDATION_ERROR':
+      return 400;
+    case 'IDEMPOTENCY_KEY_CONFLICT':
+    case 'PERSISTENCE_CONFLICT':
+      return 409;
+    default:
+      return 500;
+  }
+}
+
+/**
+ * Public ErrorCodes for interpretation failures (S3.2 / D170).
+ *
+ * `PERSISTENCE_CONFLICT` collapses to DOMAIN_CONFLICT the same way the Owner task and Recipient
+ * capability mappers already collapse it: which constraint the database refused on is internal, and
+ * the caller's usable truth is only that the write conflicted and replaced nothing.
+ */
+function contractCodeForInterpretationCode(code: InterpretationServiceErrorCode): ErrorCode {
+  switch (code) {
+    case 'VALIDATION_ERROR':
+      return 'VALIDATION_ERROR';
+    case 'IDEMPOTENCY_KEY_CONFLICT':
+      return 'IDEMPOTENCY_KEY_CONFLICT';
+    case 'PERSISTENCE_CONFLICT':
+      return 'DOMAIN_CONFLICT';
+    default:
+      return 'INTERNAL_ERROR';
+  }
+}
+
+/**
+ * Fixed public messages for interpretation failures.
+ *
+ * Service validation messages are value-free templates naming a field and its rule, so they are
+ * returned as-is for the same reason Recipient management messages are. Everything else answers
+ * with a constant: a conflict must not describe the committed request it collided with.
+ */
+function sanitizeInterpretationMessage(
+  code: InterpretationServiceErrorCode,
+  message: string,
+): string {
+  switch (code) {
+    case 'VALIDATION_ERROR':
+      return message;
+    case 'IDEMPOTENCY_KEY_CONFLICT':
+      return 'Idempotency-Key was already used for a different request.';
+    case 'PERSISTENCE_CONFLICT':
+      return 'The request conflicts with already-recorded state.';
+    default:
+      return 'An unexpected error occurred.';
+  }
+}
+
+/**
+ * Map Owner manual-capture interpretation failures to the contracted HTTP error envelope (D170).
+ *
+ * Provider failures are classified by `AiProviderError.kind` alone. `configuration` and `retryable`
+ * are both answered 503 DEPENDENCY_UNAVAILABLE because they are the same fact to a caller: nothing
+ * was interpreted, nothing persisted, and the identical request may be retried under the same
+ * Idempotency-Key. Distinguishing a disabled provider from an upstream timeout would tell an
+ * unauthenticated-adjacent client about our deployment configuration and buy it nothing.
+ *
+ * No provider message, error code, diagnostic fingerprint, environment variable name, request
+ * fingerprint, idempotency key, or raw input crosses this boundary — only the classified kind does.
+ */
+export function mapOwnerInterpretationRouteError(error: unknown): NextResponse<ErrorResponse> {
+  try {
+    if (isInterpretationServiceError(error)) {
+      const code = readInterpretationServiceErrorCode(error);
+      if (!code) {
+        return genericInternalErrorResponse();
+      }
+      return jsonErrorResponseWithDetails(
+        contractCodeForInterpretationCode(code),
+        sanitizeInterpretationMessage(code, safeReadString(error, 'message') ?? ''),
+        httpStatusForInterpretationCode(code),
+        code === 'VALIDATION_ERROR' ? readInterpretationServiceErrorDetails(error) : undefined,
+      );
+    }
+    if (isAiProviderErrorShape(error)) {
+      if (readAiProviderErrorKind(error) === 'permanent') {
+        return genericInternalErrorResponse();
+      }
+      return jsonErrorResponse(
+        'DEPENDENCY_UNAVAILABLE',
+        'Interpretation is temporarily unavailable. Retry with the same Idempotency-Key.',
+        503,
+      );
+    }
+    if (isPersistenceErrorShape(error)) {
       return genericInternalErrorResponse();
     }
     if (isAuthConfigError(error)) {
