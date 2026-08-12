@@ -41,6 +41,7 @@ export function mapSuggestionToDto(suggestion: TaskSuggestion): TaskSuggestionDt
     proposedPriority: suggestion.proposedPriority,
     voiceOriginated: suggestion.voiceOriginated,
     mergedIntoTaskId: suggestion.mergedIntoTaskId ?? null,
+    approvedTaskId: suggestion.approvedTaskId ?? null,
     retention: suggestion.retention as TaskSuggestionDto['retention'],
     version: suggestion.version,
     etag: formatETag('task-suggestion', suggestion.id, suggestion.version),

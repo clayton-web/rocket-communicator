@@ -42,6 +42,7 @@
   "proposedPriority": "normal",
   "voiceOriginated": false,
   "mergedIntoTaskId": null,
+  "approvedTaskId": null,
   "retention": {
     "excerptPurgeAt": null,
     "visibleUntil": null,

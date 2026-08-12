@@ -351,6 +351,7 @@ Public Gmail DTOs never include refresh/access tokens, ciphertext, encryption ke
 - Selecting a Recipient records the selection **only**: still no TaskAssignment, no Capability, no HandoffAttempt, no email, and no Recipient access. Handoff remains the separate A7 mutation, and a later failed or absent handoff never falsifies the selection.
 - Omitting `responsibility` is HTTP **400** `VALIDATION_ERROR` and approves **nothing**: no Task is created and the proposal stays pending. It is never defaulted or inferred to `owner`, because an omitted field is not evidence that the Owner selected Me (D155, D164). Every successful acceptance therefore carries its selection evidence.
 - The evidence is persistence-only: it is not exposed on the `TaskSuggestion` or `Task` read contracts, and there is no public read endpoint for it.
+- `TaskSuggestion.approvedTaskId` is the existing approval linkage (not responsibility state). Pending suggestions return `null`; after successful approval, Owner list and detail reads return the canonical Task ID created by that approval so a client that lost the approve success response can recover via read-after-write. The value is never synthesized from assignment, handoff, or responsibility-selection evidence.
 
 ### Assignment delivery status (D092)
 

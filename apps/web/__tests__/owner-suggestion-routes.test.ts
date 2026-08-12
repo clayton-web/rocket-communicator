@@ -287,6 +287,7 @@ describe('A6.2 Owner task-suggestion routes', () => {
     expect(ok.headers.get('etag')).toBe(formatETag('task-suggestion', 'sug_get', 1));
     const body = await ok.json();
     expect(body.etag).toBe(formatETag('task-suggestion', 'sug_get', 1));
+    expect(body.approvedTaskId).toBeNull();
     expect(JSON.stringify(body)).not.toContain('RAW_EXCERPT');
 
     authOwner(otherOwner);
@@ -295,6 +296,108 @@ describe('A6.2 Owner task-suggestion routes', () => {
       params('sug_get'),
     );
     expect(foreign.status).toBe(404);
+  });
+
+  it('exposes persisted approvedTaskId on Owner list and detail after approval (S2 recovery)', async () => {
+    await createTaskSuggestion(db.prisma, org, pendingSuggestion('sug_s2_recover', null));
+    const tasksBefore = await db.prisma.task.count({ where: { organizationId: org } });
+
+    const pendingDetail = await getSuggestion(
+      jsonRequest('GET', 'http://localhost/api/v1/task-suggestions/sug_s2_recover'),
+      params('sug_s2_recover'),
+    );
+    expect(pendingDetail.status).toBe(200);
+    const pendingBody = await pendingDetail.json();
+    expect(pendingBody.status).toBe('pending');
+    expect(pendingBody.approvedTaskId).toBeNull();
+    expect(pendingBody.version).toBe(1);
+    expect(pendingBody.etag).toBe(formatETag('task-suggestion', 'sug_s2_recover', 1));
+    expect(pendingDetail.headers.get('etag')).toBe(
+      formatETag('task-suggestion', 'sug_s2_recover', 1),
+    );
+
+    const pendingList = await listSuggestions(
+      jsonRequest('GET', 'http://localhost/api/v1/task-suggestions'),
+    );
+    expect(pendingList.status).toBe(200);
+    const pendingListItem = (await pendingList.json()).items.find(
+      (item: { id: string }) => item.id === 'sug_s2_recover',
+    );
+    expect(pendingListItem?.approvedTaskId).toBeNull();
+
+    const approved = await approveSuggestion(
+      jsonRequest(
+        'POST',
+        'http://localhost/api/v1/task-suggestions/sug_s2_recover/approve',
+        {
+          acknowledgement: 'suggestion_approved',
+          responsibility: { responsibleParty: 'owner' },
+        },
+        { 'if-match': formatETag('task-suggestion', 'sug_s2_recover', 1) },
+      ),
+      params('sug_s2_recover'),
+    );
+    expect(approved.status).toBe(200);
+    const approvedBody = await approved.json();
+    const canonicalTaskId = approvedBody.task.id as string;
+    expect(approvedBody.suggestion.approvedTaskId).toBe(canonicalTaskId);
+    expect(await db.prisma.task.count({ where: { organizationId: org } })).toBe(tasksBefore + 1);
+    expect(await db.prisma.taskAssignment.count({ where: { taskId: canonicalTaskId } })).toBe(0);
+
+    const suggestionRow = await db.prisma.taskSuggestion.findUniqueOrThrow({
+      where: { id: 'sug_s2_recover' },
+    });
+    expect(suggestionRow.approvedTaskId).toBe(canonicalTaskId);
+
+    const recoveredDetail = await getSuggestion(
+      jsonRequest('GET', 'http://localhost/api/v1/task-suggestions/sug_s2_recover'),
+      params('sug_s2_recover'),
+    );
+    expect(recoveredDetail.status).toBe(200);
+    expect(recoveredDetail.headers.get('etag')).toBe(
+      formatETag('task-suggestion', 'sug_s2_recover', suggestionRow.version),
+    );
+    const recoveredBody = await recoveredDetail.json();
+    expect(recoveredBody.status).toBe('approved');
+    expect(recoveredBody.approvedTaskId).toBe(canonicalTaskId);
+    expect(recoveredBody.approvedTaskId).toBe(suggestionRow.approvedTaskId);
+    expect(recoveredBody.version).toBe(suggestionRow.version);
+    expect(recoveredBody.etag).toBe(
+      formatETag('task-suggestion', 'sug_s2_recover', suggestionRow.version),
+    );
+
+    const recoveredList = await listSuggestions(
+      jsonRequest('GET', 'http://localhost/api/v1/task-suggestions'),
+    );
+    expect(recoveredList.status).toBe(200);
+    const recoveredListItem = (await recoveredList.json()).items.find(
+      (item: { id: string }) => item.id === 'sug_s2_recover',
+    );
+    expect(recoveredListItem?.approvedTaskId).toBe(canonicalTaskId);
+
+    authOwner(otherOwner);
+    const foreign = await getSuggestion(
+      jsonRequest('GET', 'http://localhost/api/v1/task-suggestions/sug_s2_recover'),
+      params('sug_s2_recover'),
+    );
+    expect(foreign.status).toBe(404);
+
+    // No approve idempotency: stale If-Match still conflicts and creates no second Task.
+    authOwner();
+    const staleRetry = await approveSuggestion(
+      jsonRequest(
+        'POST',
+        'http://localhost/api/v1/task-suggestions/sug_s2_recover/approve',
+        {
+          acknowledgement: 'suggestion_approved',
+          responsibility: { responsibleParty: 'owner' },
+        },
+        { 'if-match': formatETag('task-suggestion', 'sug_s2_recover', 1) },
+      ),
+      params('sug_s2_recover'),
+    );
+    expect(staleRetry.status).toBe(409);
+    expect(await db.prisma.task.count({ where: { organizationId: org } })).toBe(tasksBefore + 1);
   });
 
   it('edit succeeds with If-Match and rejects missing/stale/weak ETags', async () => {
@@ -455,6 +558,7 @@ describe('A6.2 Owner task-suggestion routes', () => {
     expect(ok.status).toBe(200);
     const body = await ok.json();
     expect(body.suggestion.status).toBe('approved');
+    expect(body.suggestion.approvedTaskId).toBe(body.task.id);
     expect(body.suggestion).not.toHaveProperty('sourceCommunicationEventId');
     expect(body.task.assignment).toBeUndefined();
     expect(body.task.status).toBe('open');

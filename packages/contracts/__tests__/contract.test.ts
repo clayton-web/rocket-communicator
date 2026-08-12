@@ -118,6 +118,8 @@ describe('contracts package', () => {
 
     // The evidence carrier itself stays persistence-only: no public read schema, and no
     // responsibility/custody/assignee field on the Task or TaskSuggestion read contracts.
+    // TaskSuggestion.approvedTaskId is the existing approval linkage for lost-response
+    // recovery (S2) — not responsibility state — and is intentionally exposed on reads.
     for (const forbidden of [
       'ResponsibilitySelectionEvidence',
       'TaskResponsibility',
@@ -126,19 +128,26 @@ describe('contracts package', () => {
     ]) {
       expect(schemas[forbidden]).toBeUndefined();
     }
-    for (const readSchema of ['Task', 'TaskSuggestion'] as const) {
-      const properties = Object.keys(
-        (schemas[readSchema] as { properties?: Record<string, unknown> })?.properties ?? {},
+    const suggestionProperties = Object.keys(
+      (schemas.TaskSuggestion as { properties?: Record<string, unknown> })?.properties ?? {},
+    );
+    expect(suggestionProperties).toContain('approvedTaskId');
+    for (const forbidden of ['responsibility', 'responsibleParty', 'custody', 'assigneeId']) {
+      expect(suggestionProperties, `TaskSuggestion must not expose ${forbidden}`).not.toContain(
+        forbidden,
       );
-      for (const forbidden of [
-        'responsibility',
-        'responsibleParty',
-        'custody',
-        'assigneeId',
-        'approvedTaskId',
-      ]) {
-        expect(properties, `${readSchema} must not expose ${forbidden}`).not.toContain(forbidden);
-      }
+    }
+    const taskProperties = Object.keys(
+      (schemas.Task as { properties?: Record<string, unknown> })?.properties ?? {},
+    );
+    for (const forbidden of [
+      'responsibility',
+      'responsibleParty',
+      'custody',
+      'assigneeId',
+      'approvedTaskId',
+    ]) {
+      expect(taskProperties, `Task must not expose ${forbidden}`).not.toContain(forbidden);
     }
   });
 

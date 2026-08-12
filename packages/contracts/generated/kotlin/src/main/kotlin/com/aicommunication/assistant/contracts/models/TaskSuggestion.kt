@@ -42,6 +42,7 @@ import java.io.Serializable
  * @param proposedPriority 
  * @param voiceOriginated 
  * @param mergedIntoTaskId 
+ * @param approvedTaskId Canonical Task ID created when this suggestion was approved. Null while pending / unapproved. Exposed on Owner TaskSuggestion list and detail reads so a client that lost the approve success response can recover via read-after-write against the existing persistence linkage. Not responsibility, assignment, handoff, or custody state, and never synthesized from those surfaces. 
  * @param retention 
  */
 
@@ -90,6 +91,10 @@ data class TaskSuggestion (
 
     @Json(name = "mergedIntoTaskId")
     val mergedIntoTaskId: kotlin.String? = null,
+
+    /* Canonical Task ID created when this suggestion was approved. Null while pending / unapproved. Exposed on Owner TaskSuggestion list and detail reads so a client that lost the approve success response can recover via read-after-write against the existing persistence linkage. Not responsibility, assignment, handoff, or custody state, and never synthesized from those surfaces.  */
+    @Json(name = "approvedTaskId")
+    val approvedTaskId: kotlin.String? = null,
 
     @Json(name = "retention")
     val retention: RetentionMetadata? = null
