@@ -10,9 +10,9 @@
 
 **Built and deliberately inert:** the reminder and Owner-notification engines. The scheduling domain, persistence, Owner reminder APIs, occurrence processing, real Gmail transport, and the Owner attention surfaces are all deployed, but every feature flag is absent and no scheduler invokes either worker, so nothing sends. Enabling any of it requires its own authorization. **S3.1 shared interpretation and its S3.2 Owner HTTP surface** join them: the interpretation application service, its atomic occurrence/proposal persistence, and the Owner-authenticated `POST /api/v1/manual-captures` route are implemented, but no Android surface, worker, or cron reaches them, provider composition is default closed so the route answers `503` until `INTERPRETATION_AI_ENABLED` is set, and no Production activation has been authorized.
 
-**Not built:** Messages capture, call prompts, the voice pipeline, retention workers, learning signals, and private-deployment hardening. **S3.3 Android capture-to-proposal integration** is **authorized by D171** and not yet implemented.
+**Not built:** Messages capture, call prompts, the voice pipeline, retention workers, learning signals, and private-deployment hardening. **S3.3 Android capture-to-proposal integration** is **authorized by D171** and partially implemented: the **S3.3a** foundation — the Android manual-capture wire DTOs, the `POST /api/v1/manual-captures` repository call over the existing Owner networking stack, and the encrypted 24-hour pending-capture retry store — exists but is **unreachable from the Owner UI**. The Capture screen still uses the legacy direct-create `POST /api/v1/tasks` path, and no proposal result surface exists yet.
 
-**Next:** implement authorized **S3.3** (D171) — Android manual capture → existing `POST /api/v1/manual-captures` → read-only proposal result — then later controlled Android proposal-lifecycle work, product surfaces, and Owner Acceptance Week (deferred under D159). See [Forward sequence](#forward-sequence).
+**Next:** complete authorized **S3.3** (D171) — switch Android manual capture onto the existing `POST /api/v1/manual-captures` route and display the returned proposals read-only — then later controlled Android proposal-lifecycle work, product surfaces, and Owner Acceptance Week (deferred under D159). See [Forward sequence](#forward-sequence).
 
 ## Completed
 
