@@ -100,6 +100,11 @@ const REQUIRED_EXPORTS = [
   'persistFailedPermanentOutcome',
   'persistClaimResolvedForExistingSuggestion',
   'persistClaimReleasedWithoutOutcome',
+  // S3.1 shared interpretation persistence (D169). The application service is dark — no route,
+  // worker, or cron reaches it — but it resolves these through the bridge like every other
+  // persistence caller, so a missing binding must fail at load rather than at first use.
+  'persistInterpretationOccurrence',
+  'resolveInterpretationOccurrence',
   'getCommunicationEventById',
   'getTemporaryCommunicationExcerptByEventId',
   'getTaskSuggestionBySourceEventId',

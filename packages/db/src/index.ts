@@ -373,6 +373,15 @@ export {
   persistDismissTaskSuggestion,
   persistMergeTaskSuggestion,
 } from './transactions/a6-owner-suggestion-transactions.js';
+// S3.1 shared interpretation persistence (D169). Backend only: no route, worker, or cron reaches
+// these, and the AI call stays outside the transaction they open.
+export {
+  persistInterpretationOccurrence,
+  resolveInterpretationOccurrence,
+  type InterpretationOccurrence,
+  type InterpretationOccurrenceResolution,
+  type PersistInterpretationOccurrenceInput,
+} from './transactions/s3-interpretation-transactions.js';
 export {
   persistGmailHistoryPageTransaction,
   persistGmailConnectionTransaction,

@@ -76,6 +76,8 @@ export {
   persistFailedPermanentOutcome,
   persistClaimResolvedForExistingSuggestion,
   persistClaimReleasedWithoutOutcome,
+  persistInterpretationOccurrence,
+  resolveInterpretationOccurrence,
   getCommunicationEventById,
   getTemporaryCommunicationExcerptByEventId,
   getTaskSuggestionBySourceEventId,

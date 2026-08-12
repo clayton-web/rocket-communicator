@@ -120,6 +120,17 @@ export {
   persistMergeTaskSuggestion,
 } from './transactions/a6-owner-suggestion-transactions.js';
 
+// S3.1 shared interpretation persistence (D169). Present on the runtime bridge for the same reason
+// the A8.4a worker primitives are: the application service that calls them is real code that must
+// fail loudly at load if the bundle loses a binding. Nothing reaches that service — there is no
+// interpretation route, worker, or cron, and the provider factory is default closed.
+export {
+  persistInterpretationOccurrence,
+  resolveInterpretationOccurrence,
+  type InterpretationOccurrence,
+  type InterpretationOccurrenceResolution,
+} from './transactions/s3-interpretation-transactions.js';
+
 // A6.3 Application Suggestion Engine processing surface (claim + outcomes).
 // Owner suggestion routes use a6-owner-suggestion-transactions only; they must not
 // import @aicaa/ai. Processing symbols are available on the shared runtime module.

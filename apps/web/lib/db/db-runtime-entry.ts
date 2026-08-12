@@ -121,6 +121,9 @@ export type TracedRuntimeModule = {
   persistFailedPermanentOutcome: typeof TracedRuntimeBindings.persistFailedPermanentOutcome;
   persistClaimResolvedForExistingSuggestion: typeof TracedRuntimeBindings.persistClaimResolvedForExistingSuggestion;
   persistClaimReleasedWithoutOutcome: typeof TracedRuntimeBindings.persistClaimReleasedWithoutOutcome;
+  // S3.1 shared interpretation persistence (D169). Backend only; no route reaches it.
+  persistInterpretationOccurrence: typeof TracedRuntimeBindings.persistInterpretationOccurrence;
+  resolveInterpretationOccurrence: typeof TracedRuntimeBindings.resolveInterpretationOccurrence;
   getCommunicationEventById: typeof TracedRuntimeBindings.getCommunicationEventById;
   getTemporaryCommunicationExcerptByEventId: typeof TracedRuntimeBindings.getTemporaryCommunicationExcerptByEventId;
   getTaskSuggestionBySourceEventId: typeof TracedRuntimeBindings.getTaskSuggestionBySourceEventId;
@@ -242,6 +245,8 @@ export async function loadTracedRuntimeModule(): Promise<TracedRuntimeModule> {
     persistClaimResolvedForExistingSuggestion:
       tracedRuntime.persistClaimResolvedForExistingSuggestion,
     persistClaimReleasedWithoutOutcome: tracedRuntime.persistClaimReleasedWithoutOutcome,
+    persistInterpretationOccurrence: tracedRuntime.persistInterpretationOccurrence,
+    resolveInterpretationOccurrence: tracedRuntime.resolveInterpretationOccurrence,
     getCommunicationEventById: tracedRuntime.getCommunicationEventById,
     getTemporaryCommunicationExcerptByEventId:
       tracedRuntime.getTemporaryCommunicationExcerptByEventId,

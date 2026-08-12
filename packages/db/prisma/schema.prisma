@@ -920,9 +920,11 @@ model OwnerNotificationAttempt {
 /// `interpretationRunId`. There is no unique constraint on that edge, and suggestions without an
 /// occurrence remain valid.
 ///
-/// **Inert foundation.** No application producer writes rows yet. Declaring `sourceKind` is
-/// provenance representation and authorizes no producer, route, or Owner-review surface. No
-/// raw-input retention or CommunicationEvent linkage in this slice.
+/// **Producer (D169 S3.1).** The shared interpretation application service writes rows here through
+/// `persistInterpretationOccurrence`, which commits one occurrence and its 0..N proposals in one
+/// transaction. That service is backend-only: no route, Owner-review surface, worker, or cron
+/// reaches it. Declaring a `sourceKind` still authorizes no further producer. No raw-input retention
+/// and no CommunicationEvent linkage.
 model InterpretationRun {
   id                 String                   @id @db.VarChar(64)
   organizationId     String                   @map("organization_id") @db.VarChar(64)

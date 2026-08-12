@@ -40,3 +40,9 @@ export {
   createSuggestionExtractionProvider,
   type SuggestionAiEnvConfig,
 } from './config.js';
+export {
+  readInterpretationAiEnvConfig,
+  assertInterpretationAiConfigured,
+  createInterpretationProvider,
+  type InterpretationAiEnvConfig,
+} from './interpretation-config.js';
