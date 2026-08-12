@@ -14,7 +14,15 @@ import { assertLocalDatabaseUrl } from '../scripts/assert-local-database-url.mjs
  *
  * The incident was created by a command reaching further than its operator intended. These
  * guards make the two ways that can happen fail a build instead: a package script that
- * inherits a `DATABASE_URL` nobody named, and a drift back to a nine-migration boundary.
+ * inherits a `DATABASE_URL` nobody named, and drift of the fourteen migration directories the
+ * incident is defined in terms of.
+ *
+ * What the repair boundary is made of is a *classification*, not a directory count. The count is
+ * a property of how far the product has shipped; the classification is a property of the
+ * incident and does not change when the product ships again. So the boundary is asserted as set
+ * membership over the historical names below, and the total is deliberately left unbounded —
+ * a later non-A8 product migration is ordinary evolution and must not re-baseline this guard,
+ * while any new `_a8` directory still fails the exact A8 set assertion.
  */
 
 const packageRoot = path.resolve(__dirname, '..');
@@ -22,6 +30,15 @@ const repoRoot = path.resolve(packageRoot, '../..');
 
 /** The commit Production is serving, and the only commit the repair may migrate from. */
 const PRODUCTION_COMMIT = 'ee5e82a';
+
+/** The five migrations Production held when the incident was discovered (pre-A8 boundary). */
+const PRE_A8_MIGRATIONS = [
+  '20260713190000_a4_persistence_foundation',
+  '20260716140000_a5_gmail_persistence',
+  '20260717180000_a6_suggestion_persistence',
+  '20260718210000_a7_handoff_persistence',
+  '20260718223000_a7_handoff_concurrency_hardening',
+] as const;
 
 /** The five A8 migrations present at `ee5e82a`. Applying these repairs the incident. */
 const REPAIR_MIGRATIONS = [
@@ -40,7 +57,33 @@ const PROHIBITED_MIGRATIONS = [
   '20260803120000_a8_5a_owner_notification_intents',
 ] as const;
 
-const PRE_A8_MIGRATION_COUNT = 5;
+/** Production pre-repair migration count at the incident — still five, proven at `ee5e82a`. */
+const PRE_A8_MIGRATION_COUNT = PRE_A8_MIGRATIONS.length;
+
+/**
+ * Every migration the incident is defined in terms of. All fourteen must still exist: deleting,
+ * renaming or squashing one rewrites what the repair means.
+ */
+const HISTORICAL_MIGRATIONS = [
+  ...PRE_A8_MIGRATIONS,
+  ...REPAIR_MIGRATIONS,
+  ...PROHIBITED_MIGRATIONS,
+] as const;
+
+/**
+ * The A8-classified directories among `names`.
+ *
+ * This is the detector the boundary rests on now that the total is unbounded, so it is a plain
+ * function the fixtures below can exercise directly rather than only through the filesystem.
+ */
+export function a8MigrationsIn(names: readonly string[]): string[] {
+  return names.filter((name) => name.includes('_a8')).sort();
+}
+
+/** Historical migrations that have gone missing from `names`. */
+export function missingHistoricalMigrations(names: readonly string[]): string[] {
+  return HISTORICAL_MIGRATIONS.filter((historical) => !names.includes(historical));
+}
 
 describe('A8.7b-INCIDENT migration command safety', () => {
   const pkg = JSON.parse(readFileSync(path.join(packageRoot, 'package.json'), 'utf8')) as {
@@ -169,17 +212,66 @@ describe('A8.7b-INCIDENT migration command safety', () => {
 describe('A8.7b-INCIDENT repair boundary', () => {
   const migrationsDir = path.join(packageRoot, 'prisma/migrations');
 
-  it('holds exactly the five repair migrations and the four prohibited ones at HEAD', () => {
-    const present = readdirSync(migrationsDir, { withFileTypes: true })
+  const presentMigrations = (): string[] =>
+    readdirSync(migrationsDir, { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
       .map((entry) => entry.name)
       .sort();
 
-    const a8 = present.filter((name) => name.includes('_a8'));
+  it('holds exactly the five repair migrations and the four prohibited ones at HEAD', () => {
+    expect(
+      a8MigrationsIn(presentMigrations()),
+      'the A8 classification is fixed by the incident: a directory matching `_a8` that is not one ' +
+        'of the five repair or four prohibited migrations means the repair boundary has moved, ' +
+        'and the A8.7b runbook is no longer describing this repository',
+    ).toEqual([...REPAIR_MIGRATIONS, ...PROHIBITED_MIGRATIONS].sort());
+  });
 
-    expect(a8).toEqual([...REPAIR_MIGRATIONS, ...PROHIBITED_MIGRATIONS].sort());
-    expect(a8).toHaveLength(9);
-    expect(present).toHaveLength(PRE_A8_MIGRATION_COUNT + 9);
+  it('still holds every migration the incident is defined in terms of', () => {
+    expect(
+      missingHistoricalMigrations(presentMigrations()),
+      'deleting, renaming or squashing one of the fourteen historical migrations rewrites what ' +
+        'the repair applies',
+    ).toEqual([]);
+  });
+
+  /**
+   * The total directory count is not asserted anywhere above, so these fixtures are what prove
+   * the classification still bites. A count would only have caught an unexpected directory until
+   * the next authorized product migration bumped it — which is how this guard came to fail on
+   * ordinary growth in the first place.
+   */
+  it('rejects an unexpected A8 migration while allowing ordinary product growth', () => {
+    const atHead = [...HISTORICAL_MIGRATIONS];
+
+    // Ordinary non-A8 product migrations: permitted, however many arrive.
+    const grown = [
+      ...atHead,
+      '20260810210000_interpretation_run_persistence',
+      '20260811190000_responsibility_selection_evidence',
+      '20270101000000_some_future_product_migration',
+    ];
+    expect(a8MigrationsIn(grown)).toEqual([...REPAIR_MIGRATIONS, ...PROHIBITED_MIGRATIONS].sort());
+    expect(missingHistoricalMigrations(grown)).toEqual([]);
+
+    // A new A8-classified migration: caught, regardless of where it sorts.
+    for (const intruder of [
+      '20260804000000_a8_6_unexpected_repair',
+      '20260731050000_a8_backdated_between_repair_migrations',
+    ]) {
+      expect(a8MigrationsIn([...atHead, intruder])).toContain(intruder);
+      expect(a8MigrationsIn([...atHead, intruder])).not.toEqual(
+        [...REPAIR_MIGRATIONS, ...PROHIBITED_MIGRATIONS].sort(),
+      );
+    }
+
+    // A historical migration going missing: caught.
+    expect(
+      missingHistoricalMigrations(atHead.filter((name) => name !== REPAIR_MIGRATIONS[0])),
+    ).toEqual([REPAIR_MIGRATIONS[0]]);
+    expect(
+      missingHistoricalMigrations(atHead.filter((name) => name !== PROHIBITED_MIGRATIONS[0])),
+    ).toEqual([PROHIBITED_MIGRATIONS[0]]);
   });
 
   it('proves the repair set is exactly what a worktree at the production commit would hold', () => {
