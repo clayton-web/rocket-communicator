@@ -55,10 +55,39 @@ class ProposalPresentationTest {
     @Test
     fun onlyPointsThatAlreadyCarryValueAreEditableWording() {
         val wording = point("sp1", "next_action", "Next", order = 0, value = "Get a quote")
-        val valueless = point("sp2", "amount", "Amount", order = 1, value = null)
+        val amount =
+            CaptureSummaryPointWire(
+                id = "sp2",
+                kind = "amount",
+                label = "Amount",
+                order = 1,
+                amount = 500.0,
+                currency = "USD"
+            )
+        val missing =
+            CaptureSummaryPointWire(
+                id = "sp3",
+                kind = "missing_information",
+                label = "Missing",
+                order = 2,
+                missingItem = "Street address"
+            )
+        val inference =
+            CaptureSummaryPointWire(
+                id = "sp4",
+                kind = "inference",
+                label = "Likely",
+                order = 3,
+                value = "Owner sounded urgent",
+                confidence = 0.7
+            )
 
         assertEquals(true, wording.hasEditableWording)
-        assertEquals(false, valueless.hasEditableWording)
+        assertEquals(false, amount.hasEditableWording)
+        assertEquals(false, missing.hasEditableWording)
+        assertEquals(true, inference.hasEditableWording)
+        assertEquals("Amount", summaryPointDetail(amount))
+        assertEquals("Missing", summaryPointDetail(missing))
     }
 
     private fun proposal(vararg points: CaptureSummaryPointWire) = TaskSuggestionWire(

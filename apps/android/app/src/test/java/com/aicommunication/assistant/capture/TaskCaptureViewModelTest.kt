@@ -891,6 +891,8 @@ class TaskCaptureViewModelTest {
         assertEquals("Call the roofer", edit.draftPoints[0].value)
         assertEquals("Get a quote", edit.draftPoints[1].value)
         assertNull(edit.draftPoints[2].value)
+        assertEquals(500.0, edit.draftPoints[2].amount)
+        assertEquals("USD", edit.draftPoints[2].currency)
         assertTrue(edit.canSave)
     }
 
@@ -910,6 +912,10 @@ class TaskCaptureViewModelTest {
         assertEquals("confirmed_fact", point.kind)
         assertEquals("Captured", point.label)
         assertEquals(0, point.order)
+        assertNull(point.amount)
+        assertNull(point.currency)
+        assertNull(point.missingItem)
+        assertNull(point.confidence)
     }
 
     @Test
@@ -1068,6 +1074,107 @@ class TaskCaptureViewModelTest {
         vm.awaitSettled()
         val retry = takeRequestMatching { it?.endsWith("/s1/edit") == true }
         assertEquals("fresh-etag", retry.getHeader("If-Match"))
+    }
+
+    @Test
+    fun saveEdit_mixedKindProposal_roundTripsCanonicalKindSpecificFields() = runTest {
+        enqueueSuccess(mixedKindProposalJson())
+        val vm = viewModel()
+        vm.onDraftChanged("Call the roofer about the 500 deposit")
+        vm.save()
+        vm.awaitSettled()
+        vm.openEdit("s-mixed")
+        vm.updateEditPoint("sp-request", "Call the roofer this afternoon")
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody(
+                    mixedKindProposalJson(
+                        requestValue = "Call the roofer this afternoon",
+                        version = 2,
+                        etag = "etag-s-mixed-v2"
+                    )
+                )
+        )
+
+        vm.saveEdit()
+        vm.awaitSettled()
+
+        val editRequest = takeRequestMatching { it?.endsWith("/s-mixed/edit") == true }
+        assertEquals("POST", editRequest.method)
+        assertEquals("etag-s-mixed", editRequest.getHeader("If-Match"))
+        val raw = editRequest.body.readUtf8()
+        val body =
+            requireNotNull(
+                ownerApiMoshi().adapter(EditProposalRequestWire::class.java).fromJson(raw)
+            )
+        assertEquals(5, body.summaryPoints.size)
+        assertEquals(
+            listOf("sp-request", "sp-amount", "sp-deadline", "sp-missing", "sp-inference"),
+            body.summaryPoints.map { it.id }
+        )
+        assertEquals(
+            listOf("request", "amount", "deadline", "missing_information", "inference"),
+            body.summaryPoints.map { it.kind }
+        )
+        assertEquals(listOf(0, 1, 2, 3, 4), body.summaryPoints.map { it.order })
+
+        val request = body.summaryPoints[0]
+        assertEquals("Call the roofer this afternoon", request.value)
+        assertEquals("Request", request.label)
+        assertNull(request.amount)
+        assertNull(request.currency)
+        assertNull(request.missingItem)
+        assertNull(request.confidence)
+
+        val amount = body.summaryPoints[1]
+        assertNull(amount.value)
+        assertEquals(500.0, amount.amount)
+        assertEquals("USD", amount.currency)
+        assertNull(amount.dueAt)
+        assertNull(amount.localDate)
+        assertNull(amount.timezone)
+        assertNull(amount.missingItem)
+        assertNull(amount.confidence)
+
+        val deadline = body.summaryPoints[2]
+        assertNull(deadline.value)
+        assertNull(deadline.dueAt)
+        assertEquals("2026-08-20", deadline.localDate)
+        assertEquals("America/Los_Angeles", deadline.timezone)
+        assertNull(deadline.amount)
+        assertNull(deadline.currency)
+        assertNull(deadline.missingItem)
+
+        val missing = body.summaryPoints[3]
+        assertNull(missing.value)
+        assertEquals("Property street address", missing.missingItem)
+        assertNull(missing.amount)
+        assertNull(missing.confidence)
+
+        val inference = body.summaryPoints[4]
+        assertEquals("Owner sounded urgent", inference.value)
+        assertEquals(0.7, inference.confidence)
+        assertNull(inference.amount)
+        assertNull(inference.missingItem)
+
+        assertFalse(raw.contains("proposedRecipientId"))
+        assertFalse(raw.contains("proposedDueAt"))
+        assertFalse(raw.contains("proposedPriority"))
+        assertFalse(raw.contains("\"sensitivity\""))
+        assertFalse(raw.contains("sourceSpanRef"))
+
+        val state = vm.uiState.value as CaptureUiState.Proposals
+        assertNull(state.edit)
+        assertEquals(2, state.proposals.single().version)
+        assertEquals("etag-s-mixed-v2", state.proposals.single().etag)
+        assertEquals(
+            "Call the roofer this afternoon",
+            state.proposals.single().summaryPoints.first { it.id == "sp-request" }.value
+        )
+        assertEquals(500.0, state.proposals.single().summaryPoints[1].amount)
+        assertNull(vm.openApprovedTaskId.value)
+        assertTrue(prefs.all.isEmpty())
     }
 
     @Test
@@ -1411,7 +1518,9 @@ class TaskCaptureViewModelTest {
               "id": "sp-c",
               "kind": "amount",
               "label": "Amount",
-              "order": 2
+              "order": 2,
+              "amount": 500,
+              "currency": "USD"
             }
           ]
         }
@@ -1499,6 +1608,60 @@ class TaskCaptureViewModelTest {
           "idempotentReplay": false,
           "interpretedAt": "2026-08-12T15:00:00.000Z",
           "taskSuggestions": [${proposals.joinToString(",")}]
+        }
+    """.trimIndent()
+
+    private fun mixedKindProposalJson(
+        requestValue: String = "Call the roofer",
+        version: Int = 1,
+        etag: String = "etag-s-mixed"
+    ): String = """
+        {
+          "id": "s-mixed",
+          "status": "pending",
+          "version": $version,
+          "etag": "$etag",
+          "createdAt": "2026-08-12T15:00:00.000Z",
+          "summaryPoints": [
+            {
+              "id": "sp-request",
+              "kind": "request",
+              "label": "Request",
+              "order": 0,
+              "value": "$requestValue"
+            },
+            {
+              "id": "sp-amount",
+              "kind": "amount",
+              "label": "Deposit",
+              "order": 1,
+              "amount": 500,
+              "currency": "USD"
+            },
+            {
+              "id": "sp-deadline",
+              "kind": "deadline",
+              "label": "Inspection deadline",
+              "order": 2,
+              "localDate": "2026-08-20",
+              "timezone": "America/Los_Angeles"
+            },
+            {
+              "id": "sp-missing",
+              "kind": "missing_information",
+              "label": "Missing address",
+              "order": 3,
+              "missingItem": "Property street address"
+            },
+            {
+              "id": "sp-inference",
+              "kind": "inference",
+              "label": "Likely urgent",
+              "order": 4,
+              "value": "Owner sounded urgent",
+              "confidence": 0.7
+            }
+          ]
         }
     """.trimIndent()
 

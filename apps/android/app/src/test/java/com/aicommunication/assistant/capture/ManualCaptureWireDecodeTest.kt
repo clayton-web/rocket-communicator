@@ -138,13 +138,61 @@ class ManualCaptureWireDecodeTest {
         val points = parsed.taskSuggestions.single().summaryPoints
         assertEquals(5, points.size)
         assertEquals("Roof leak reported", points[0].value)
+        assertNull(points[0].amount)
+        assertNull(points[0].currency)
+        assertNull(points[0].missingItem)
+        assertNull(points[0].confidence)
+
         assertEquals("amount", points[1].kind)
         assertNull(points[1].value)
+        assertEquals(500.0, points[1].amount)
+        assertEquals("USD", points[1].currency)
+        assertNull(points[1].dueAt)
+        assertNull(points[1].missingItem)
+
         assertEquals("deadline", points[2].kind)
         assertNull(points[2].value)
+        assertNull(points[2].dueAt)
+        assertEquals("2026-08-20", points[2].localDate)
+        assertEquals("America/Los_Angeles", points[2].timezone)
+        assertNull(points[2].amount)
+
         assertEquals("missing_information", points[3].kind)
         assertNull(points[3].value)
+        assertEquals("Property street address", points[3].missingItem)
+        assertNull(points[3].amount)
+        assertNull(points[3].confidence)
+
         assertEquals("Owner sounded urgent", points[4].value)
+        assertEquals(0.7, points[4].confidence)
+        assertNull(points[4].amount)
+        assertNull(points[4].missingItem)
+    }
+
+    @Test
+    fun deadlineDueAtVariantRetainsAbsoluteTimestampAndOmitsLocalDate() {
+        val parsed =
+            requireNotNull(
+                adapter.fromJson(
+                    response(
+                        suggestion(
+                            id = "sug-due",
+                            points =
+                            """
+                            {"id":"p1","kind":"deadline","label":"Due","order":0,
+                             "dueAt":"2026-08-20T17:00:00.000Z"}
+                            """.trimIndent()
+                        )
+                    )
+                )
+            )
+
+        val point = parsed.taskSuggestions.single().summaryPoints.single()
+        assertEquals("deadline", point.kind)
+        assertEquals("2026-08-20T17:00:00.000Z", point.dueAt)
+        assertNull(point.localDate)
+        assertNull(point.timezone)
+        assertNull(point.value)
     }
 
     @Test

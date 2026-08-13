@@ -40,6 +40,8 @@ class SummaryPointWireDecodeTest {
         val point = task.summaryPoints!!.single()
         assertEquals("amount", point.kind)
         assertNull(point.value)
+        assertEquals(4102.0, point.amount)
+        assertEquals("USD", point.currency)
         assertEquals("Invoice total", task.toOwnerTask().displayTitle)
     }
 
@@ -69,6 +71,9 @@ class SummaryPointWireDecodeTest {
         val point = task.summaryPoints!!.single()
         assertEquals("deadline", point.kind)
         assertNull(point.value)
+        assertEquals("2026-08-01", point.localDate)
+        assertEquals("America/Los_Angeles", point.timezone)
+        assertNull(point.dueAt)
         assertEquals("Inspection deadline", task.toOwnerTask().displayTitle)
     }
 
@@ -97,6 +102,7 @@ class SummaryPointWireDecodeTest {
         val point = task.summaryPoints!!.single()
         assertEquals("missing_information", point.kind)
         assertNull(point.value)
+        assertEquals("Property street address", point.missingItem)
         assertEquals("Missing address", task.toOwnerTask().displayTitle)
     }
 
@@ -218,6 +224,8 @@ class SummaryPointWireDecodeTest {
         assertEquals("Reply by Friday", failingShape.summaryPoints!![1].value)
         assertNull(failingShape.summaryPoints!![2].value)
         assertEquals("amount", failingShape.summaryPoints!![2].kind)
+        assertEquals(500.0, failingShape.summaryPoints!![2].amount)
+        assertEquals("USD", failingShape.summaryPoints!![2].currency)
 
         val mapped = failingShape.toOwnerTask()
         assertEquals("Confirm venue", mapped.displayTitle)

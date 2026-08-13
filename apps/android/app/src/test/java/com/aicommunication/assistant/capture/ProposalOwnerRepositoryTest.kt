@@ -284,6 +284,73 @@ class ProposalOwnerRepositoryTest {
     }
 
     @Test
+    fun edit_mixedKindPoints_serializeLosslessKindSpecificFields() = runTest {
+        enqueueSuccess(suggestionJson)
+
+        val mixedPoints =
+            listOf(
+                CaptureSummaryPointWire(
+                    id = "p-request",
+                    kind = "request",
+                    label = "Request",
+                    order = 0,
+                    value = "Call the roofer this afternoon"
+                ),
+                CaptureSummaryPointWire(
+                    id = "p-amount",
+                    kind = "amount",
+                    label = "Deposit",
+                    order = 1,
+                    amount = 500.0,
+                    currency = "USD"
+                ),
+                CaptureSummaryPointWire(
+                    id = "p-deadline",
+                    kind = "deadline",
+                    label = "Due",
+                    order = 2,
+                    localDate = "2026-08-20",
+                    timezone = "America/Los_Angeles"
+                ),
+                CaptureSummaryPointWire(
+                    id = "p-missing",
+                    kind = "missing_information",
+                    label = "Missing",
+                    order = 3,
+                    missingItem = "Property street address"
+                ),
+                CaptureSummaryPointWire(
+                    id = "p-inference",
+                    kind = "inference",
+                    label = "Likely",
+                    order = 4,
+                    value = "Owner sounded urgent",
+                    confidence = 0.7
+                )
+            )
+
+        repository.edit(
+            suggestionId = "sug-1",
+            etag = "\"task-suggestion-sug-1-v1\"",
+            summaryPoints = mixedPoints
+        )
+
+        val raw = server.takeRequest().body.readUtf8()
+        val body = requireNotNull(editRequestAdapter.fromJson(raw))
+        assertEquals(5, body.summaryPoints.size)
+        assertEquals("Call the roofer this afternoon", body.summaryPoints[0].value)
+        assertEquals(500.0, body.summaryPoints[1].amount)
+        assertEquals("USD", body.summaryPoints[1].currency)
+        assertEquals("2026-08-20", body.summaryPoints[2].localDate)
+        assertEquals("America/Los_Angeles", body.summaryPoints[2].timezone)
+        assertEquals("Property street address", body.summaryPoints[3].missingItem)
+        assertEquals(0.7, body.summaryPoints[4].confidence)
+        assertFalse(raw.contains("proposedRecipientId"))
+        assertFalse(raw.contains("proposedDueAt"))
+        assertFalse(raw.contains("proposedPriority"))
+    }
+
+    @Test
     fun dismiss_sendsMinimalJsonObjectWithoutReason() = runTest {
         enqueueSuccess(
             """
