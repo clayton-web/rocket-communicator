@@ -86,6 +86,7 @@ fun AuthenticatedOwnerFlow(
                 modifier = modifier
             )
         // Manual capture proposes and creates no Task. Accept may later open Task detail.
+        // Edit and Dismiss stay on this capture result.
         AuthenticatedDestination.Capture ->
             TaskCaptureScreen(
                 state = captureState,
@@ -106,6 +107,13 @@ fun AuthenticatedOwnerFlow(
                 onConfirmAccept = captureViewModel::confirmAccept,
                 onRetryAcceptRecipients = captureViewModel::retryAcceptRecipients,
                 onRetryAcceptRecovery = captureViewModel::retryAcceptRecovery,
+                onOpenEdit = captureViewModel::openEdit,
+                onCancelEdit = captureViewModel::cancelEdit,
+                onUpdateEditPoint = captureViewModel::updateEditPoint,
+                onSaveEdit = captureViewModel::saveEdit,
+                onOpenDismiss = captureViewModel::openDismiss,
+                onCancelDismiss = captureViewModel::cancelDismiss,
+                onConfirmDismiss = captureViewModel::confirmDismiss,
                 modifier = modifier
             )
         AuthenticatedDestination.TaskList ->

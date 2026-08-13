@@ -52,6 +52,15 @@ class ProposalPresentationTest {
         assertEquals("Get a quote", summaryPointDetail(text))
     }
 
+    @Test
+    fun onlyPointsThatAlreadyCarryValueAreEditableWording() {
+        val wording = point("sp1", "next_action", "Next", order = 0, value = "Get a quote")
+        val valueless = point("sp2", "amount", "Amount", order = 1, value = null)
+
+        assertEquals(true, wording.hasEditableWording)
+        assertEquals(false, valueless.hasEditableWording)
+    }
+
     private fun proposal(vararg points: CaptureSummaryPointWire) = TaskSuggestionWire(
         id = "11111111-1111-1111-1111-111111111111",
         status = "pending",

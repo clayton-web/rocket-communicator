@@ -15,6 +15,8 @@ import androidx.compose.ui.test.performTextReplacement
 import com.aicommunication.assistant.capture.CaptureSummaryPointWire
 import com.aicommunication.assistant.capture.CaptureUiState
 import com.aicommunication.assistant.capture.ProposalAcceptInteraction
+import com.aicommunication.assistant.capture.ProposalDismissInteraction
+import com.aicommunication.assistant.capture.ProposalEditInteraction
 import com.aicommunication.assistant.capture.ProposalResponsibility
 import com.aicommunication.assistant.capture.TaskSuggestionWire
 import com.aicommunication.assistant.tasks.RecipientWire
@@ -27,8 +29,8 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * Capture proposal result surface (S3.3b / S5.2). Capture itself creates no Task; Accept is the
- * only authorized proposal lifecycle action.
+ * Capture proposal result surface (S3.3b / S5.3). Capture itself creates no Task; pending
+ * proposals expose Accept, Edit, and Dismiss. Merge is not offered.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [31], application = Application::class, qualifiers = "w411dp-h891dp")
@@ -151,8 +153,10 @@ class TaskCaptureScreenTest {
     }
 
     @Test
-    fun proposalResults_exposeOnlyAuthorizedAcceptLifecycle() {
-        var opened = ""
+    fun proposalResults_exposeAcceptEditDismissAndNeverMerge() {
+        var openedAccept = ""
+        var openedEdit = ""
+        var openedDismiss = ""
         setScreen(
             CaptureUiState.Proposals(
                 capturedText = "Call the roofer",
@@ -171,20 +175,31 @@ class TaskCaptureScreenTest {
                     )
                 )
             ),
-            onOpenAccept = { opened = it }
+            onOpenAccept = { openedAccept = it },
+            onOpenEdit = { openedEdit = it },
+            onOpenDismiss = { openedDismiss = it }
         )
 
         composeRule.onNodeWithTag("capture_accept_button").assertIsDisplayed()
+        composeRule.onNodeWithTag("capture_edit_button").assertIsDisplayed()
+        composeRule.onNodeWithTag("capture_dismiss_button").assertIsDisplayed()
         composeRule.onNodeWithTag("capture_accept_button").performClick()
-        assertEquals("s1", opened)
+        composeRule.onNodeWithTag("capture_edit_button").performClick()
+        composeRule.onNodeWithTag("capture_dismiss_button").performClick()
+        assertEquals("s1", openedAccept)
+        assertEquals("s1", openedEdit)
+        assertEquals("s1", openedDismiss)
         listOf(
             "capture_success",
             "capture_open_task_button",
             "capture_assign_button",
             "capture_approve_button",
-            "capture_dismiss_button",
-            "capture_edit_button",
-            "capture_merge_button"
+            "capture_merge_button",
+            "capture_due_date",
+            "capture_priority",
+            "capture_reminder",
+            "capture_recipient_edit",
+            "capture_dismiss_reason"
         ).forEach { tag ->
             composeRule.onAllNodesWithTag(tag).assertCountEquals(0)
         }
@@ -218,6 +233,9 @@ class TaskCaptureScreenTest {
         composeRule.onAllNodesWithTag("capture_edit_button").assertCountEquals(0)
         composeRule.onAllNodesWithTag("capture_dismiss_button").assertCountEquals(0)
         composeRule.onAllNodesWithTag("capture_merge_button").assertCountEquals(0)
+        composeRule.onAllNodesWithTag("capture_due_date").assertCountEquals(0)
+        composeRule.onAllNodesWithTag("capture_priority").assertCountEquals(0)
+        composeRule.onAllNodesWithTag("capture_reminder").assertCountEquals(0)
 
         composeRule.onNodeWithTag("capture_accept_confirm").performClick()
         assertEquals(0, confirmed)
@@ -264,6 +282,86 @@ class TaskCaptureScreenTest {
         composeRule.onAllNodesWithTag("capture_accept_confirm").assertCountEquals(0)
     }
 
+    @Test
+    fun editInteraction_rendersOnlyAuthorizedWordingFields() {
+        var saved = 0
+        setScreen(
+            editState(
+                points = listOf(
+                    summaryPoint(
+                        "sp1",
+                        "confirmed_fact",
+                        "Captured",
+                        order = 0,
+                        value = "Call the roofer"
+                    ),
+                    summaryPoint("sp2", "amount", "Amount", order = 1, value = null)
+                )
+            ),
+            onSaveEdit = { saved += 1 }
+        )
+
+        composeRule.onNodeWithTag("capture_edit_field_sp1").assertIsDisplayed()
+        composeRule.onAllNodesWithTag("capture_edit_field_sp2").assertCountEquals(0)
+        composeRule.onNodeWithTag("capture_edit_readonly_sp2").assertIsDisplayed()
+        composeRule.onNodeWithTag("capture_edit_save").assertIsEnabled()
+        composeRule.onAllNodesWithTag("capture_due_date").assertCountEquals(0)
+        composeRule.onAllNodesWithTag("capture_priority").assertCountEquals(0)
+        composeRule.onAllNodesWithTag("capture_reminder").assertCountEquals(0)
+        composeRule.onAllNodesWithTag("capture_recipient_edit").assertCountEquals(0)
+        composeRule.onAllNodesWithTag("capture_merge_button").assertCountEquals(0)
+        composeRule.onNodeWithTag("capture_edit_save").performClick()
+        assertEquals(1, saved)
+    }
+
+    @Test
+    fun editInteraction_disablesSaveWhileInFlight() {
+        setScreen(editState(saving = true))
+        composeRule.onNodeWithTag("capture_edit_save").assertIsNotEnabled()
+        composeRule.onNodeWithText("Saving…").assertIsDisplayed()
+    }
+
+    @Test
+    fun editInteraction_disablesSaveWhenWordingIsBlank() {
+        setScreen(
+            editState(
+                points = listOf(
+                    summaryPoint(
+                        "sp1",
+                        "confirmed_fact",
+                        "Captured",
+                        order = 0,
+                        value = "   "
+                    )
+                )
+            )
+        )
+        composeRule.onNodeWithTag("capture_edit_save").assertIsNotEnabled()
+    }
+
+    @Test
+    fun dismissConfirmation_explainsProposalDismissalAndHasNoReasonField() {
+        var confirmed = 0
+        setScreen(dismissState(), onConfirmDismiss = { confirmed += 1 })
+
+        composeRule.onNodeWithTag("capture_dismiss_confirm_body").assertIsDisplayed()
+        composeRule.onNodeWithText("This dismisses the proposal. It does not create a Task.")
+            .assertIsDisplayed()
+        composeRule.onAllNodesWithTag("capture_dismiss_reason").assertCountEquals(0)
+        composeRule.onAllNodesWithTag("capture_merge_button").assertCountEquals(0)
+        composeRule.onNodeWithTag("capture_dismiss_confirm").assertIsEnabled()
+        composeRule.onNodeWithTag("capture_dismiss_confirm").performClick()
+        assertEquals(1, confirmed)
+    }
+
+    @Test
+    fun dismissConfirmation_disablesDuplicateConfirmWhileInFlight() {
+        setScreen(dismissState(dismissing = true))
+
+        composeRule.onNodeWithTag("capture_dismiss_confirm").assertIsNotEnabled()
+        composeRule.onNodeWithText("Dismissing…").assertIsDisplayed()
+    }
+
     private fun acceptState(
         selected: ProposalResponsibility?,
         recipients: List<RecipientWire> = emptyList(),
@@ -297,12 +395,58 @@ class TaskCaptureScreenTest {
         )
     )
 
+    private fun editState(
+        points: List<CaptureSummaryPointWire> =
+            listOf(
+                summaryPoint(
+                    "sp1",
+                    "confirmed_fact",
+                    "Captured",
+                    order = 0,
+                    value = "Call the roofer"
+                )
+            ),
+        saving: Boolean = false
+    ) = CaptureUiState.Proposals(
+        capturedText = "Call the roofer",
+        proposals = listOf(proposal(id = "s1", points = points)),
+        edit =
+        ProposalEditInteraction(
+            proposalId = "s1",
+            draftPoints = points,
+            saving = saving
+        )
+    )
+
+    private fun dismissState(dismissing: Boolean = false) = CaptureUiState.Proposals(
+        capturedText = "Call the roofer",
+        proposals = listOf(
+            proposal(
+                id = "s1",
+                points = listOf(
+                    summaryPoint(
+                        "sp1",
+                        "confirmed_fact",
+                        "Captured",
+                        order = 0,
+                        value = "Call the roofer"
+                    )
+                )
+            )
+        ),
+        dismiss = ProposalDismissInteraction(proposalId = "s1", dismissing = dismissing)
+    )
+
     private fun setScreen(
         state: CaptureUiState,
         onDraftChanged: (String) -> Unit = {},
         onRephrase: () -> Unit = {},
         onOpenAccept: (String) -> Unit = {},
-        onConfirmAccept: () -> Unit = {}
+        onConfirmAccept: () -> Unit = {},
+        onOpenEdit: (String) -> Unit = {},
+        onSaveEdit: () -> Unit = {},
+        onOpenDismiss: (String) -> Unit = {},
+        onConfirmDismiss: () -> Unit = {}
     ) {
         composeRule.setContent {
             AicaaFoundationTheme {
@@ -316,7 +460,11 @@ class TaskCaptureScreenTest {
                     onCaptureAnother = {},
                     onDone = {},
                     onOpenAccept = onOpenAccept,
-                    onConfirmAccept = onConfirmAccept
+                    onConfirmAccept = onConfirmAccept,
+                    onOpenEdit = onOpenEdit,
+                    onSaveEdit = onSaveEdit,
+                    onOpenDismiss = onOpenDismiss,
+                    onConfirmDismiss = onConfirmDismiss
                 )
             }
         }

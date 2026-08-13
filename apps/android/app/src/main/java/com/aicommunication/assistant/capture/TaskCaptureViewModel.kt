@@ -16,12 +16,13 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
- * Owner manual capture over the shared interpretation route (S3.3b / S5.2, D171 / D176).
+ * Owner manual capture over the shared interpretation route (S3.3b / S5.3, D171 / D176).
  *
  * Capture sends the frozen tuple owned by [ManualCaptureUseCase] to
  * `POST /api/v1/manual-captures` and shows the returned proposals. Capture itself still creates
- * no Task. Accept is an explicit later decision: affirmative Me / saved-Recipient responsibility,
- * the existing approve mutation, then navigation to the canonical Task.
+ * no Task. Accept, Edit, and Dismiss are explicit later decisions. Accept still requires
+ * affirmative Me / saved-Recipient responsibility, then navigates to the canonical Task. Edit
+ * changes summary-point wording only. Dismiss is terminal for the proposal and creates no Task.
  */
 class TaskCaptureViewModel(
     application: Application,
@@ -40,6 +41,8 @@ class TaskCaptureViewModel(
     private var pending: PendingCaptureOperation? = null
 
     private var approveGuard = false
+    private var editGuard = false
+    private var dismissGuard = false
 
     /**
      * Restores an unresolved capture when the Owner enters Capture, including after process death.
@@ -120,13 +123,13 @@ class TaskCaptureViewModel(
     /** Reopens the capture Rocket found nothing actionable in, under a fresh identity. */
     fun rephrase() {
         val current = _uiState.value as? CaptureUiState.Proposals ?: return
-        if (current.accept?.busy == true) return
+        if (current.interactionBusy) return
         resetToEditing(current.capturedText)
     }
 
     fun openAccept(proposalId: String) {
         val current = _uiState.value as? CaptureUiState.Proposals ?: return
-        if (current.accept?.busy == true) return
+        if (current.interactionBusy) return
         val proposal = current.proposals.firstOrNull { it.id == proposalId } ?: return
         if (!proposal.isAcceptable) return
         if (current.accept?.proposalId == proposalId) return
@@ -137,6 +140,8 @@ class TaskCaptureViewModel(
                     proposalId = proposalId,
                     recipientsLoading = true
                 ),
+                edit = null,
+                dismiss = null,
                 notice = null
             )
         viewModelScope.launch { loadRecipients(proposalId) }
@@ -223,6 +228,106 @@ class TaskCaptureViewModel(
         val accept = current.accept ?: return
         if (!accept.recoveryReadFailed || accept.busy || approveGuard) return
         viewModelScope.launch { recoverFromCanonical(accept.proposalId) }
+    }
+
+    fun openEdit(proposalId: String) {
+        val current = _uiState.value as? CaptureUiState.Proposals ?: return
+        if (current.interactionBusy) return
+        val proposal = current.proposals.firstOrNull { it.id == proposalId } ?: return
+        if (!proposal.isAcceptable) return
+        if (current.edit?.proposalId == proposalId) return
+        _uiState.value =
+            current.copy(
+                accept = null,
+                edit =
+                ProposalEditInteraction(
+                    proposalId = proposalId,
+                    draftPoints = orderedSummaryPoints(proposal)
+                ),
+                dismiss = null,
+                notice = null
+            )
+    }
+
+    fun cancelEdit() {
+        val current = _uiState.value as? CaptureUiState.Proposals ?: return
+        val edit = current.edit ?: return
+        if (edit.busy) return
+        _uiState.value = current.copy(edit = null)
+    }
+
+    fun updateEditPoint(pointId: String, text: String) {
+        val current = _uiState.value as? CaptureUiState.Proposals ?: return
+        val edit = current.edit ?: return
+        if (edit.busy) return
+        _uiState.value = current.copy(edit = edit.withPointWording(pointId, text), notice = null)
+    }
+
+    fun saveEdit() {
+        val current = _uiState.value as? CaptureUiState.Proposals ?: return
+        val edit = current.edit ?: return
+        if (!edit.canSave || editGuard) return
+        val proposal = current.proposals.firstOrNull { it.id == edit.proposalId } ?: return
+        editGuard = true
+        _uiState.value =
+            current.copy(
+                edit = edit.copy(saving = true, message = null),
+                notice = null
+            )
+        viewModelScope.launch {
+            val result =
+                proposalRepository.edit(
+                    suggestionId = proposal.id,
+                    etag = proposal.etag,
+                    summaryPoints = edit.summaryPointsForSave()
+                )
+            handleEditResult(proposal.id, result)
+            editGuard = false
+        }
+    }
+
+    fun openDismiss(proposalId: String) {
+        val current = _uiState.value as? CaptureUiState.Proposals ?: return
+        if (current.interactionBusy) return
+        val proposal = current.proposals.firstOrNull { it.id == proposalId } ?: return
+        if (!proposal.isAcceptable) return
+        if (current.dismiss?.proposalId == proposalId) return
+        _uiState.value =
+            current.copy(
+                accept = null,
+                edit = null,
+                dismiss = ProposalDismissInteraction(proposalId = proposalId),
+                notice = null
+            )
+    }
+
+    fun cancelDismiss() {
+        val current = _uiState.value as? CaptureUiState.Proposals ?: return
+        val dismiss = current.dismiss ?: return
+        if (dismiss.busy) return
+        _uiState.value = current.copy(dismiss = null)
+    }
+
+    fun confirmDismiss() {
+        val current = _uiState.value as? CaptureUiState.Proposals ?: return
+        val dismiss = current.dismiss ?: return
+        if (dismiss.busy || dismissGuard) return
+        val proposal = current.proposals.firstOrNull { it.id == dismiss.proposalId } ?: return
+        dismissGuard = true
+        _uiState.value =
+            current.copy(
+                dismiss = dismiss.copy(dismissing = true, message = null),
+                notice = null
+            )
+        viewModelScope.launch {
+            val result =
+                proposalRepository.dismiss(
+                    suggestionId = proposal.id,
+                    etag = proposal.etag
+                )
+            handleDismissResult(proposal.id, result)
+            dismissGuard = false
+        }
     }
 
     fun consumeOpenApprovedTask() {
@@ -487,6 +592,172 @@ class TaskCaptureViewModel(
             )
     }
 
+    private suspend fun handleEditResult(
+        proposalId: String,
+        result: OwnerApiResult<TaskSuggestionWire>
+    ) {
+        when (result) {
+            is OwnerApiResult.Success -> completeEdit(result.value)
+            OwnerApiResult.Unauthorized -> {
+                showEditError(string(R.string.capture_edit_error_session))
+                onSessionInvalidated()
+            }
+            OwnerApiResult.NotConfigured -> showEditError(string(R.string.error_auth_config))
+            OwnerApiResult.Connectivity -> showEditError(string(R.string.error_connectivity))
+            is OwnerApiResult.Unexpected ->
+                showEditError(
+                    result.message.ifBlank { string(R.string.capture_edit_error_generic) }
+                )
+            is OwnerApiResult.HttpError -> {
+                if (isStaleOrConflictOutcome(result)) {
+                    refreshCanonicalAfterConflict(
+                        proposalId = proposalId,
+                        pendingNotice = string(R.string.capture_edit_changed),
+                        sessionMessage = string(R.string.capture_edit_error_session)
+                    )
+                } else {
+                    showEditError(definiteEditMessage(result))
+                }
+            }
+        }
+    }
+
+    private fun completeEdit(suggestion: TaskSuggestionWire) {
+        val current = _uiState.value as? CaptureUiState.Proposals ?: return
+        _uiState.value =
+            current.replaceProposal(suggestion).copy(
+                accept = null,
+                edit = null,
+                dismiss = null,
+                notice = null
+            )
+    }
+
+    private fun showEditError(message: String) {
+        val current = _uiState.value as? CaptureUiState.Proposals ?: return
+        val edit = current.edit ?: return
+        _uiState.value = current.copy(edit = edit.copy(saving = false, message = message))
+    }
+
+    private fun definiteEditMessage(error: OwnerApiResult.HttpError): String = when (error.code) {
+        ErrorCode.VALIDATION_ERROR -> string(R.string.capture_edit_error_validation)
+        ErrorCode.NOT_FOUND -> string(R.string.capture_edit_error_not_found)
+        else -> error.message.ifBlank { string(R.string.capture_edit_error_generic) }
+    }
+
+    private suspend fun handleDismissResult(
+        proposalId: String,
+        result: OwnerApiResult<TaskSuggestionWire>
+    ) {
+        when (result) {
+            is OwnerApiResult.Success -> completeDismiss(result.value)
+            OwnerApiResult.Unauthorized -> {
+                showDismissError(string(R.string.capture_dismiss_error_session))
+                onSessionInvalidated()
+            }
+            OwnerApiResult.NotConfigured -> showDismissError(string(R.string.error_auth_config))
+            OwnerApiResult.Connectivity -> showDismissError(string(R.string.error_connectivity))
+            is OwnerApiResult.Unexpected ->
+                showDismissError(
+                    result.message.ifBlank { string(R.string.capture_dismiss_error_generic) }
+                )
+            is OwnerApiResult.HttpError -> {
+                if (isStaleOrConflictOutcome(result)) {
+                    refreshCanonicalAfterConflict(
+                        proposalId = proposalId,
+                        pendingNotice = string(R.string.capture_dismiss_changed),
+                        sessionMessage = string(R.string.capture_dismiss_error_session)
+                    )
+                } else {
+                    showDismissError(definiteDismissMessage(result))
+                }
+            }
+        }
+    }
+
+    private fun completeDismiss(suggestion: TaskSuggestionWire) {
+        val current = _uiState.value as? CaptureUiState.Proposals ?: return
+        _uiState.value =
+            current.removeProposal(suggestion.id).copy(
+                accept = null,
+                edit = null,
+                dismiss = null,
+                notice = null
+            )
+    }
+
+    private fun showDismissError(message: String) {
+        val current = _uiState.value as? CaptureUiState.Proposals ?: return
+        val dismiss = current.dismiss ?: return
+        _uiState.value =
+            current.copy(dismiss = dismiss.copy(dismissing = false, message = message))
+    }
+
+    private fun definiteDismissMessage(error: OwnerApiResult.HttpError): String =
+        when (error.code) {
+            ErrorCode.NOT_FOUND -> string(R.string.capture_dismiss_error_not_found)
+            else -> error.message.ifBlank { string(R.string.capture_dismiss_error_generic) }
+        }
+
+    private suspend fun refreshCanonicalAfterConflict(
+        proposalId: String,
+        pendingNotice: String,
+        sessionMessage: String
+    ) {
+        when (val read = proposalRepository.getSuggestion(proposalId)) {
+            is OwnerApiResult.Success -> applyCanonicalAfterConflict(read.value, pendingNotice)
+            OwnerApiResult.Unauthorized -> {
+                showConflictRefreshError(proposalId, sessionMessage)
+                onSessionInvalidated()
+            }
+            else ->
+                showConflictRefreshError(
+                    proposalId,
+                    string(R.string.capture_proposal_refresh_failed)
+                )
+        }
+    }
+
+    private fun applyCanonicalAfterConflict(suggestion: TaskSuggestionWire, pendingNotice: String) {
+        val current = _uiState.value as? CaptureUiState.Proposals ?: return
+        if (suggestion.status == "dismissed") {
+            _uiState.value =
+                current.removeProposal(suggestion.id).copy(
+                    accept = null,
+                    edit = null,
+                    dismiss = null,
+                    notice = string(R.string.capture_accept_already_terminal)
+                )
+            return
+        }
+        val updated = current.replaceProposal(suggestion)
+        if (!suggestion.isAcceptable) {
+            _uiState.value =
+                updated.copy(
+                    accept = null,
+                    edit = null,
+                    dismiss = null,
+                    notice = string(R.string.capture_accept_already_terminal)
+                )
+            return
+        }
+        _uiState.value =
+            updated.copy(
+                accept = null,
+                edit = null,
+                dismiss = null,
+                notice = pendingNotice
+            )
+    }
+
+    private fun showConflictRefreshError(proposalId: String, message: String) {
+        val current = _uiState.value as? CaptureUiState.Proposals ?: return
+        when {
+            current.edit?.proposalId == proposalId -> showEditError(message)
+            current.dismiss?.proposalId == proposalId -> showDismissError(message)
+        }
+    }
+
     private fun definiteApproveMessage(error: OwnerApiResult.HttpError): String =
         when (error.code) {
             ErrorCode.VALIDATION_ERROR -> string(R.string.capture_accept_error_validation)
@@ -509,7 +780,7 @@ class TaskCaptureViewModel(
 
     private fun proposalsBusy(): Boolean {
         val current = _uiState.value as? CaptureUiState.Proposals ?: return false
-        return current.accept?.busy == true
+        return current.interactionBusy
     }
 
     private fun unexpectedMessage(result: OwnerApiResult<*>): String = when (result) {
@@ -557,6 +828,12 @@ internal fun CaptureUiState.Proposals.replaceProposal(
     }
 )
 
+internal fun CaptureUiState.Proposals.removeProposal(id: String): CaptureUiState.Proposals {
+    return copy(
+        proposals = proposals.filterNot { it.id == id }
+    )
+}
+
 internal fun isAmbiguousApproveOutcome(result: OwnerApiResult.HttpError): Boolean =
     when (result.code) {
         ErrorCode.PRECONDITION_FAILED,
@@ -568,4 +845,11 @@ internal fun isAmbiguousApproveOutcome(result: OwnerApiResult.HttpError): Boolea
         ErrorCode.FORBIDDEN,
         ErrorCode.PRECONDITION_REQUIRED -> false
         else -> result.httpStatus >= 500
+    }
+
+internal fun isStaleOrConflictOutcome(result: OwnerApiResult.HttpError): Boolean =
+    when (result.code) {
+        ErrorCode.PRECONDITION_FAILED,
+        ErrorCode.INVALID_STATE_TRANSITION -> true
+        else -> false
     }

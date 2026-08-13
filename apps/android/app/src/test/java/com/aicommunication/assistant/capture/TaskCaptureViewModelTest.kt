@@ -38,8 +38,8 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
 /**
- * Owner manual capture drives the shared interpretation route (S3.3b, D171) and Accept
- * creates a Task only after an explicit Owner decision (S5.2, D176).
+ * Owner manual capture drives the shared interpretation route (S3.3b, D171). Accept creates a
+ * Task only after an explicit Owner decision; Edit and Dismiss do not (S5.3, D176).
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -867,6 +867,366 @@ class TaskCaptureViewModelTest {
         assertEquals(1, sessionInvalidated)
     }
 
+    // --- Edit (S5.3) ----------------------------------------------------------------------
+
+    @Test
+    fun openEdit_startsWithCanonicalOrderedWordingAndPreservesStructure() = runTest {
+        enqueueSuccess(multiPointProposalJson())
+        val vm = viewModel()
+        vm.onDraftChanged("Call the roofer by Friday")
+        vm.save()
+        vm.awaitSettled()
+
+        vm.openEdit("s1")
+
+        val state = vm.uiState.value as CaptureUiState.Proposals
+        val edit = requireNotNull(state.edit)
+        assertEquals("s1", edit.proposalId)
+        assertEquals(listOf("sp-a", "sp-b", "sp-c"), edit.draftPoints.map { it.id })
+        assertEquals(
+            listOf("confirmed_fact", "next_action", "amount"),
+            edit.draftPoints.map { it.kind }
+        )
+        assertEquals(listOf(0, 1, 2), edit.draftPoints.map { it.order })
+        assertEquals("Call the roofer", edit.draftPoints[0].value)
+        assertEquals("Get a quote", edit.draftPoints[1].value)
+        assertNull(edit.draftPoints[2].value)
+        assertTrue(edit.canSave)
+    }
+
+    @Test
+    fun updateEditPoint_changesTextOnly() = runTest {
+        val vm = capturedProposal()
+        vm.openEdit("s1")
+
+        vm.updateEditPoint("sp-s1", "Call the roofer this afternoon")
+
+        val point =
+            requireNotNull((vm.uiState.value as CaptureUiState.Proposals).edit)
+                .draftPoints
+                .single()
+        assertEquals("Call the roofer this afternoon", point.value)
+        assertEquals("sp-s1", point.id)
+        assertEquals("confirmed_fact", point.kind)
+        assertEquals("Captured", point.label)
+        assertEquals(0, point.order)
+    }
+
+    @Test
+    fun saveEdit_skipsBlankWordingWithoutSending() = runTest {
+        val vm = capturedProposal()
+        vm.openEdit("s1")
+        vm.updateEditPoint("sp-s1", "   ")
+
+        vm.saveEdit()
+        vm.awaitSettled()
+
+        assertEquals(1, server.requestCount)
+        val edit = requireNotNull((vm.uiState.value as CaptureUiState.Proposals).edit)
+        assertFalse(edit.canSave)
+        assertEquals("   ", edit.draftPoints.single().value)
+    }
+
+    @Test
+    fun cancelEdit_discardsLocalDraftWithoutMutatingTheProposal() = runTest {
+        val vm = capturedProposal()
+        vm.openEdit("s1")
+        vm.updateEditPoint("sp-s1", "Call the plumber instead")
+
+        vm.cancelEdit()
+
+        val state = vm.uiState.value as CaptureUiState.Proposals
+        assertNull(state.edit)
+        assertEquals("Call the roofer", state.proposals.single().summaryPoints.single().value)
+        assertEquals(1, server.requestCount)
+        assertNull(vm.openApprovedTaskId.value)
+    }
+
+    @Test
+    fun saveEdit_sendsCurrentEtagAndOnlyUpdatedSummaryPoints() = runTest {
+        val vm = capturedProposal()
+        vm.openEdit("s1")
+        vm.updateEditPoint("sp-s1", "Call the roofer this afternoon")
+        enqueueEditSuccess("s1", "Call the roofer this afternoon")
+
+        vm.saveEdit()
+        vm.awaitSettled()
+
+        val editRequest = takeRequestMatching { it?.endsWith("/s1/edit") == true }
+        assertEquals("POST", editRequest.method)
+        assertEquals("etag-s1", editRequest.getHeader("If-Match"))
+        val raw = editRequest.body.readUtf8()
+        val body =
+            requireNotNull(
+                ownerApiMoshi().adapter(EditProposalRequestWire::class.java).fromJson(raw)
+            )
+        val point = body.summaryPoints.single()
+        assertEquals("sp-s1", point.id)
+        assertEquals("confirmed_fact", point.kind)
+        assertEquals(0, point.order)
+        assertEquals("Call the roofer this afternoon", point.value)
+        assertFalse(raw.contains("proposedRecipientId"))
+        assertFalse(raw.contains("proposedDueAt"))
+        assertFalse(raw.contains("proposedPriority"))
+        val state = vm.uiState.value as CaptureUiState.Proposals
+        assertNull(state.edit)
+        assertEquals(2, state.proposals.single().version)
+        assertEquals("etag-s1-v2", state.proposals.single().etag)
+        assertEquals(
+            "Call the roofer this afternoon",
+            state.proposals.single().summaryPoints.single().value
+        )
+        assertNull(vm.openApprovedTaskId.value)
+        assertTrue(prefs.all.isEmpty())
+    }
+
+    @Test
+    fun duplicateSaveEditIsBlockedWhileMutationIsInFlight() = runTest {
+        val vm = capturedProposal()
+        vm.openEdit("s1")
+        server.enqueue(
+            MockResponse()
+                .setBodyDelay(250, TimeUnit.MILLISECONDS)
+                .setResponseCode(200)
+                .setBody(editSuccessBody("s1", "Call the roofer"))
+        )
+
+        vm.saveEdit()
+        vm.saveEdit()
+        vm.awaitSettled()
+
+        val paths = drainPaths()
+        assertEquals(1, paths.count { it?.endsWith("/edit") == true })
+        assertNull(vm.openApprovedTaskId.value)
+    }
+
+    @Test
+    fun switchingActionClearsStaleEditDraftAndAcceptSelection() = runTest {
+        enqueueSuccess(
+            proposalJson("s1", "Call the roofer"),
+            proposalJson("s2", "Call the plumber")
+        )
+        val vm = viewModel()
+        vm.onDraftChanged("Two jobs")
+        vm.save()
+        vm.awaitSettled()
+        enqueueRecipients()
+        vm.openAccept("s1")
+        vm.awaitSettled()
+        vm.selectOwnerResponsibility()
+
+        vm.openEdit("s1")
+        vm.updateEditPoint("sp-s1", "Reworded")
+        assertNull((vm.uiState.value as CaptureUiState.Proposals).accept)
+
+        vm.openEdit("s2")
+
+        val state = vm.uiState.value as CaptureUiState.Proposals
+        val edit = requireNotNull(state.edit)
+        assertEquals("s2", edit.proposalId)
+        assertEquals("Call the plumber", edit.draftPoints.single().value)
+        assertNull(state.accept)
+        assertNull(state.dismiss)
+
+        vm.openDismiss("s2")
+        val afterDismiss = vm.uiState.value as CaptureUiState.Proposals
+        assertNull(afterDismiss.edit)
+        assertEquals("s2", afterDismiss.dismiss?.proposalId)
+        assertNull(afterDismiss.accept)
+    }
+
+    @Test
+    fun editConflict_rereadsOnceWithoutRetryingOrMergingTheDraft() = runTest {
+        val vm = capturedProposal()
+        vm.openEdit("s1")
+        vm.updateEditPoint("sp-s1", "Local draft wording")
+        enqueueError(412, "PRECONDITION_FAILED")
+        enqueueSuggestion(
+            id = "s1",
+            status = "pending",
+            etag = "fresh-etag",
+            approvedTaskId = null,
+            value = "Server wording"
+        )
+
+        vm.saveEdit()
+        vm.awaitSettled()
+
+        val paths = drainPaths()
+        assertEquals(1, paths.count { it?.endsWith("/edit") == true })
+        assertEquals(1, paths.count { it == "/api/v1/task-suggestions/s1" })
+        val state = vm.uiState.value as CaptureUiState.Proposals
+        assertNull(state.edit)
+        assertEquals("fresh-etag", state.proposals.single().etag)
+        assertEquals("Server wording", state.proposals.single().summaryPoints.single().value)
+        assertNotNull(state.notice)
+        assertNull(vm.openApprovedTaskId.value)
+
+        vm.openEdit("s1")
+        enqueueEditSuccess("s1", "Edited again")
+        vm.saveEdit()
+        vm.awaitSettled()
+        val retry = takeRequestMatching { it?.endsWith("/s1/edit") == true }
+        assertEquals("fresh-etag", retry.getHeader("If-Match"))
+    }
+
+    @Test
+    fun editConflict_terminalCanonicalStateClearsTheActionSurface() = runTest {
+        val vm = capturedProposal()
+        vm.openEdit("s1")
+        enqueueError(409, "INVALID_STATE_TRANSITION")
+        enqueueSuggestion(
+            id = "s1",
+            status = "approved",
+            etag = "etag-s1-v2",
+            approvedTaskId = "task-9"
+        )
+
+        vm.saveEdit()
+        vm.awaitSettled()
+
+        val paths = drainPaths()
+        assertEquals(1, paths.count { it?.endsWith("/edit") == true })
+        assertEquals(1, paths.count { it == "/api/v1/task-suggestions/s1" })
+        val state = vm.uiState.value as CaptureUiState.Proposals
+        assertNull(state.edit)
+        assertEquals("approved", state.proposals.single().status)
+        assertNotNull(state.notice)
+        assertNull(vm.openApprovedTaskId.value)
+    }
+
+    @Test
+    fun editValidationErrorDoesNotRereadOrRetry() = runTest {
+        val vm = capturedProposal()
+        vm.openEdit("s1")
+        enqueueError(400, "VALIDATION_ERROR")
+
+        vm.saveEdit()
+        vm.awaitSettled()
+
+        val paths = drainPaths()
+        assertEquals(1, paths.count { it?.endsWith("/edit") == true })
+        assertEquals(0, paths.count { it == "/api/v1/task-suggestions/s1" })
+        val edit = requireNotNull((vm.uiState.value as CaptureUiState.Proposals).edit)
+        assertFalse(edit.saving)
+        assertNotNull(edit.message)
+        val proposals = (vm.uiState.value as CaptureUiState.Proposals).proposals
+        assertEquals("etag-s1", proposals.single().etag)
+    }
+
+    // --- Dismiss (S5.3) -------------------------------------------------------------------
+
+    @Test
+    fun confirmDismiss_targetsThatProposalEtagAndRemovesItWithoutCreatingATask() = runTest {
+        enqueueSuccess(
+            proposalJson("s1", "Call the roofer"),
+            proposalJson("s2", "Call the plumber")
+        )
+        val vm = viewModel()
+        vm.onDraftChanged("Two jobs")
+        vm.save()
+        vm.awaitSettled()
+        vm.openDismiss("s1")
+        enqueueDismissSuccess("s1")
+
+        vm.confirmDismiss()
+        vm.awaitSettled()
+
+        val dismissed = takeRequestMatching { it?.endsWith("/s1/dismiss") == true }
+        assertEquals("POST", dismissed.method)
+        assertEquals("etag-s1", dismissed.getHeader("If-Match"))
+        assertEquals("{}", dismissed.body.readUtf8())
+        val state = vm.uiState.value as CaptureUiState.Proposals
+        assertEquals(listOf("s2"), state.proposals.map { it.id })
+        assertNull(state.dismiss)
+        assertNull(vm.openApprovedTaskId.value)
+        assertTrue(prefs.all.isEmpty())
+    }
+
+    @Test
+    fun duplicateDismissIsBlockedWhileMutationIsInFlight() = runTest {
+        val vm = capturedProposal()
+        vm.openDismiss("s1")
+        server.enqueue(
+            MockResponse()
+                .setBodyDelay(250, TimeUnit.MILLISECONDS)
+                .setResponseCode(200)
+                .setBody(dismissSuccessBody("s1"))
+        )
+
+        vm.confirmDismiss()
+        vm.confirmDismiss()
+        vm.awaitSettled()
+
+        val paths = drainPaths()
+        assertEquals(1, paths.count { it?.endsWith("/dismiss") == true })
+        assertTrue((vm.uiState.value as CaptureUiState.Proposals).proposals.isEmpty())
+        assertNull(vm.openApprovedTaskId.value)
+    }
+
+    @Test
+    fun dismissConflict_rereadsOnceAndRequiresANewExplicitDismissWhenStillPending() = runTest {
+        val vm = capturedProposal()
+        vm.openDismiss("s1")
+        enqueueError(412, "PRECONDITION_FAILED")
+        enqueueSuggestion(
+            id = "s1",
+            status = "pending",
+            etag = "fresh-etag",
+            approvedTaskId = null
+        )
+
+        vm.confirmDismiss()
+        vm.awaitSettled()
+
+        val paths = drainPaths()
+        assertEquals(1, paths.count { it?.endsWith("/dismiss") == true })
+        assertEquals(1, paths.count { it == "/api/v1/task-suggestions/s1" })
+        val state = vm.uiState.value as CaptureUiState.Proposals
+        assertNull(state.dismiss)
+        assertEquals("fresh-etag", state.proposals.single().etag)
+        assertNotNull(state.notice)
+        assertNull(vm.openApprovedTaskId.value)
+    }
+
+    @Test
+    fun dismissConflict_alreadyDismissedCanonicalStateRemovesTheProposal() = runTest {
+        val vm = capturedProposal()
+        vm.openDismiss("s1")
+        enqueueError(409, "INVALID_STATE_TRANSITION")
+        enqueueSuggestion(
+            id = "s1",
+            status = "dismissed",
+            etag = "etag-s1-v2",
+            approvedTaskId = null
+        )
+
+        vm.confirmDismiss()
+        vm.awaitSettled()
+
+        val paths = drainPaths()
+        assertEquals(1, paths.count { it?.endsWith("/dismiss") == true })
+        assertEquals(1, paths.count { it == "/api/v1/task-suggestions/s1" })
+        val state = vm.uiState.value as CaptureUiState.Proposals
+        assertTrue(state.proposals.isEmpty())
+        assertNull(state.dismiss)
+        assertNull(vm.openApprovedTaskId.value)
+    }
+
+    @Test
+    fun cancelDismissDoesNotSendAMutation() = runTest {
+        val vm = capturedProposal()
+        vm.openDismiss("s1")
+
+        vm.cancelDismiss()
+
+        val state = vm.uiState.value as CaptureUiState.Proposals
+        assertNull(state.dismiss)
+        assertEquals(1, state.proposals.size)
+        assertEquals(1, server.requestCount)
+        assertNull(vm.openApprovedTaskId.value)
+    }
+
     // --- Helpers ------------------------------------------------------------------------------
 
     /**
@@ -944,7 +1304,8 @@ class TaskCaptureViewModelTest {
         id: String,
         status: String,
         etag: String,
-        approvedTaskId: String?
+        approvedTaskId: String?,
+        value: String = "Call the roofer"
     ) {
         val approved = if (approvedTaskId == null) "null" else "\"$approvedTaskId\""
         server.enqueue(
@@ -964,7 +1325,7 @@ class TaskCaptureViewModelTest {
                           "kind": "confirmed_fact",
                           "label": "Captured",
                           "order": 0,
-                          "value": "Call the roofer"
+                          "value": "$value"
                         }
                       ],
                       "approvedTaskId": $approved
@@ -973,6 +1334,88 @@ class TaskCaptureViewModelTest {
                 )
         )
     }
+
+    private fun enqueueEditSuccess(suggestionId: String, value: String) {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(editSuccessBody(suggestionId, value))
+        )
+    }
+
+    private fun enqueueDismissSuccess(suggestionId: String) {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(dismissSuccessBody(suggestionId))
+        )
+    }
+
+    private fun editSuccessBody(suggestionId: String, value: String): String = """
+        {
+          "id": "$suggestionId",
+          "status": "pending",
+          "version": 2,
+          "etag": "etag-$suggestionId-v2",
+          "createdAt": "2026-08-12T15:00:00.000Z",
+          "summaryPoints": [
+            {
+              "id": "sp-$suggestionId",
+              "kind": "confirmed_fact",
+              "label": "Captured",
+              "order": 0,
+              "value": "$value"
+            }
+          ]
+        }
+    """.trimIndent()
+
+    private fun dismissSuccessBody(suggestionId: String): String = """
+        {
+          "id": "$suggestionId",
+          "status": "dismissed",
+          "version": 2,
+          "etag": "etag-$suggestionId-v2",
+          "createdAt": "2026-08-12T15:00:00.000Z",
+          "summaryPoints": [
+            {
+              "id": "sp-$suggestionId",
+              "kind": "confirmed_fact",
+              "label": "Captured",
+              "order": 0,
+              "value": "Call the roofer"
+            }
+          ]
+        }
+    """.trimIndent()
+
+    private fun multiPointProposalJson(): String = """
+        {
+          "id": "s1",
+          "status": "pending",
+          "version": 1,
+          "etag": "etag-s1",
+          "createdAt": "2026-08-12T15:00:00.000Z",
+          "summaryPoints": [
+            {
+              "id": "sp-a",
+              "kind": "confirmed_fact",
+              "label": "Captured",
+              "order": 0,
+              "value": "Call the roofer"
+            },
+            {
+              "id": "sp-b",
+              "kind": "next_action",
+              "label": "Next",
+              "order": 1,
+              "value": "Get a quote"
+            },
+            {
+              "id": "sp-c",
+              "kind": "amount",
+              "label": "Amount",
+              "order": 2
+            }
+          ]
+        }
+    """.trimIndent()
 
     private fun approveSuccessBody(suggestionId: String, taskId: String): String {
         val suggestion =

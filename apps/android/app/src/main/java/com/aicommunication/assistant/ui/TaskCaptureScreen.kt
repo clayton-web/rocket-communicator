@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -33,17 +34,22 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aicommunication.assistant.R
+import com.aicommunication.assistant.capture.CaptureSummaryPointWire
 import com.aicommunication.assistant.capture.CaptureUiState
 import com.aicommunication.assistant.capture.ProposalAcceptInteraction
+import com.aicommunication.assistant.capture.ProposalDismissInteraction
+import com.aicommunication.assistant.capture.ProposalEditInteraction
 import com.aicommunication.assistant.capture.ProposalResponsibility
 import com.aicommunication.assistant.capture.TaskSuggestionWire
 import com.aicommunication.assistant.capture.deriveProposalTitle
+import com.aicommunication.assistant.capture.hasEditableWording
 import com.aicommunication.assistant.capture.isAcceptable
 import com.aicommunication.assistant.capture.orderedSummaryPoints
 import com.aicommunication.assistant.capture.summaryPointDetail
 import com.aicommunication.assistant.tasks.RecipientWire
 import com.aicommunication.assistant.ui.theme.AicaaCircularProgressIndicator
 import com.aicommunication.assistant.ui.theme.AicaaColors
+import com.aicommunication.assistant.ui.theme.AicaaDestructiveTextButton
 import com.aicommunication.assistant.ui.theme.AicaaFilledButton
 import com.aicommunication.assistant.ui.theme.AicaaOutlinedTextField
 import com.aicommunication.assistant.ui.theme.AicaaRadioButton
@@ -51,9 +57,9 @@ import com.aicommunication.assistant.ui.theme.AicaaTextButton
 import com.aicommunication.assistant.ui.theme.AicaaTextStyles
 
 /**
- * Owner manual capture (S3.3b / S5.2, D171 / D176). Capture itself creates no Task. Pending
- * proposals may expose Accept with affirmative Me / saved-Recipient responsibility selection.
- * Edit, Dismiss, and Merge are not offered.
+ * Owner manual capture (S3.3b / S5.3, D171 / D176). Capture itself creates no Task. Pending
+ * proposals may expose Accept, Edit, and Dismiss. Merge is not offered. Edit changes summary-point
+ * wording only. Dismiss creates no Task.
  */
 @Composable
 fun TaskCaptureScreen(
@@ -72,6 +78,13 @@ fun TaskCaptureScreen(
     onConfirmAccept: () -> Unit = {},
     onRetryAcceptRecipients: () -> Unit = {},
     onRetryAcceptRecovery: () -> Unit = {},
+    onOpenEdit: (String) -> Unit = {},
+    onCancelEdit: () -> Unit = {},
+    onUpdateEditPoint: (String, String) -> Unit = { _, _ -> },
+    onSaveEdit: () -> Unit = {},
+    onOpenDismiss: (String) -> Unit = {},
+    onCancelDismiss: () -> Unit = {},
+    onConfirmDismiss: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     when (state) {
@@ -105,6 +118,13 @@ fun TaskCaptureScreen(
                 onConfirmAccept = onConfirmAccept,
                 onRetryAcceptRecipients = onRetryAcceptRecipients,
                 onRetryAcceptRecovery = onRetryAcceptRecovery,
+                onOpenEdit = onOpenEdit,
+                onCancelEdit = onCancelEdit,
+                onUpdateEditPoint = onUpdateEditPoint,
+                onSaveEdit = onSaveEdit,
+                onOpenDismiss = onOpenDismiss,
+                onCancelDismiss = onCancelDismiss,
+                onConfirmDismiss = onConfirmDismiss,
                 modifier = modifier
             )
     }
@@ -233,10 +253,17 @@ private fun CaptureProposalsPane(
     onConfirmAccept: () -> Unit,
     onRetryAcceptRecipients: () -> Unit,
     onRetryAcceptRecovery: () -> Unit,
+    onOpenEdit: (String) -> Unit,
+    onCancelEdit: () -> Unit,
+    onUpdateEditPoint: (String, String) -> Unit,
+    onSaveEdit: () -> Unit,
+    onOpenDismiss: (String) -> Unit,
+    onCancelDismiss: () -> Unit,
+    onConfirmDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val empty = state.proposals.isEmpty()
-    val interactionBusy = state.accept?.busy == true
+    val interactionBusy = state.interactionBusy
     CapturePane(
         modifier = modifier,
         testTag = "capture_result"
@@ -272,7 +299,7 @@ private fun CaptureProposalsPane(
                 text = state.notice,
                 fontSize = 15.sp,
                 color = AicaaColors.warning,
-                modifier = Modifier.testTag("capture_accept_notice")
+                modifier = Modifier.testTag("capture_proposal_notice")
             )
         }
         if (empty) {
@@ -296,8 +323,8 @@ private fun CaptureProposalsPane(
                 items(items = state.proposals, key = TaskSuggestionWire::id) { proposal ->
                     ProposalCard(
                         proposal = proposal,
-                        accept =
-                        state.accept?.takeIf { it.proposalId == proposal.id },
+                        accept = state.accept?.takeIf { it.proposalId == proposal.id },
+                        edit = state.edit?.takeIf { it.proposalId == proposal.id },
                         interactionBusy = interactionBusy,
                         onOpenAccept = onOpenAccept,
                         onCancelAccept = onCancelAccept,
@@ -305,7 +332,12 @@ private fun CaptureProposalsPane(
                         onSelectRecipientResponsibility = onSelectRecipientResponsibility,
                         onConfirmAccept = onConfirmAccept,
                         onRetryAcceptRecipients = onRetryAcceptRecipients,
-                        onRetryAcceptRecovery = onRetryAcceptRecovery
+                        onRetryAcceptRecovery = onRetryAcceptRecovery,
+                        onOpenEdit = onOpenEdit,
+                        onCancelEdit = onCancelEdit,
+                        onUpdateEditPoint = onUpdateEditPoint,
+                        onSaveEdit = onSaveEdit,
+                        onOpenDismiss = onOpenDismiss
                     )
                 }
             }
@@ -327,6 +359,13 @@ private fun CaptureProposalsPane(
         ) {
             Text(text = stringResource(R.string.capture_done))
         }
+        if (state.dismiss != null) {
+            ProposalDismissDialog(
+                dismiss = state.dismiss,
+                onCancelDismiss = onCancelDismiss,
+                onConfirmDismiss = onConfirmDismiss
+            )
+        }
     }
 }
 
@@ -334,6 +373,7 @@ private fun CaptureProposalsPane(
 private fun ProposalCard(
     proposal: TaskSuggestionWire,
     accept: ProposalAcceptInteraction?,
+    edit: ProposalEditInteraction?,
     interactionBusy: Boolean,
     onOpenAccept: (String) -> Unit,
     onCancelAccept: () -> Unit,
@@ -341,7 +381,12 @@ private fun ProposalCard(
     onSelectRecipientResponsibility: (String) -> Unit,
     onConfirmAccept: () -> Unit,
     onRetryAcceptRecipients: () -> Unit,
-    onRetryAcceptRecovery: () -> Unit
+    onRetryAcceptRecovery: () -> Unit,
+    onOpenEdit: (String) -> Unit,
+    onCancelEdit: () -> Unit,
+    onUpdateEditPoint: (String, String) -> Unit,
+    onSaveEdit: () -> Unit,
+    onOpenDismiss: (String) -> Unit
 ) {
     Card(
         modifier =
@@ -360,35 +405,42 @@ private fun ProposalCard(
                 color = AicaaColors.ink,
                 modifier = Modifier.testTag("capture_proposal_title")
             )
-            orderedSummaryPoints(proposal).forEach { point ->
-                Text(
-                    text = "${point.label}: ${summaryPointDetail(point)}",
-                    fontSize = 15.sp,
-                    color = AicaaColors.ink
-                )
+            if (edit == null) {
+                orderedSummaryPoints(proposal).forEach { point ->
+                    Text(
+                        text = "${point.label}: ${summaryPointDetail(point)}",
+                        fontSize = 15.sp,
+                        color = AicaaColors.ink
+                    )
+                }
             }
             if (proposal.isAcceptable) {
-                if (accept == null) {
-                    AicaaFilledButton(
-                        onClick = { onOpenAccept(proposal.id) },
-                        enabled = !interactionBusy,
-                        modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .testTag("capture_accept_button")
-                    ) {
-                        Text(text = stringResource(R.string.capture_accept))
-                    }
-                } else {
-                    ProposalAcceptPane(
-                        accept = accept,
-                        onCancelAccept = onCancelAccept,
-                        onSelectOwnerResponsibility = onSelectOwnerResponsibility,
-                        onSelectRecipientResponsibility = onSelectRecipientResponsibility,
-                        onConfirmAccept = onConfirmAccept,
-                        onRetryAcceptRecipients = onRetryAcceptRecipients,
-                        onRetryAcceptRecovery = onRetryAcceptRecovery
-                    )
+                when {
+                    accept != null ->
+                        ProposalAcceptPane(
+                            accept = accept,
+                            onCancelAccept = onCancelAccept,
+                            onSelectOwnerResponsibility = onSelectOwnerResponsibility,
+                            onSelectRecipientResponsibility = onSelectRecipientResponsibility,
+                            onConfirmAccept = onConfirmAccept,
+                            onRetryAcceptRecipients = onRetryAcceptRecipients,
+                            onRetryAcceptRecovery = onRetryAcceptRecovery
+                        )
+                    edit != null ->
+                        ProposalEditPane(
+                            edit = edit,
+                            onCancelEdit = onCancelEdit,
+                            onUpdateEditPoint = onUpdateEditPoint,
+                            onSaveEdit = onSaveEdit
+                        )
+                    else ->
+                        ProposalActionButtons(
+                            proposalId = proposal.id,
+                            enabled = !interactionBusy,
+                            onOpenAccept = onOpenAccept,
+                            onOpenEdit = onOpenEdit,
+                            onOpenDismiss = onOpenDismiss
+                        )
                 }
             } else if (!proposal.approvedTaskId.isNullOrBlank()) {
                 Text(
@@ -400,6 +452,184 @@ private fun ProposalCard(
             }
         }
     }
+}
+
+@Composable
+private fun ProposalActionButtons(
+    proposalId: String,
+    enabled: Boolean,
+    onOpenAccept: (String) -> Unit,
+    onOpenEdit: (String) -> Unit,
+    onOpenDismiss: (String) -> Unit
+) {
+    AicaaFilledButton(
+        onClick = { onOpenAccept(proposalId) },
+        enabled = enabled,
+        modifier =
+        Modifier
+            .fillMaxWidth()
+            .testTag("capture_accept_button")
+    ) {
+        Text(text = stringResource(R.string.capture_accept))
+    }
+    AicaaTextButton(
+        onClick = { onOpenEdit(proposalId) },
+        enabled = enabled,
+        modifier =
+        Modifier
+            .fillMaxWidth()
+            .testTag("capture_edit_button")
+    ) {
+        Text(text = stringResource(R.string.capture_edit))
+    }
+    AicaaDestructiveTextButton(
+        onClick = { onOpenDismiss(proposalId) },
+        enabled = enabled,
+        modifier =
+        Modifier
+            .fillMaxWidth()
+            .testTag("capture_dismiss_button")
+    ) {
+        Text(text = stringResource(R.string.capture_dismiss))
+    }
+}
+
+@Composable
+private fun ProposalEditPane(
+    edit: ProposalEditInteraction,
+    onCancelEdit: () -> Unit,
+    onUpdateEditPoint: (String, String) -> Unit,
+    onSaveEdit: () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        edit.draftPoints.forEach { point ->
+            EditPointRow(
+                point = point,
+                enabled = !edit.busy,
+                onValueChange = { text -> onUpdateEditPoint(point.id, text) }
+            )
+        }
+        if (edit.message != null) {
+            Text(
+                text = edit.message,
+                fontSize = 15.sp,
+                color = AicaaColors.warning,
+                modifier = Modifier.testTag("capture_edit_message")
+            )
+        }
+        AicaaFilledButton(
+            onClick = onSaveEdit,
+            enabled = edit.canSave,
+            modifier =
+            Modifier
+                .fillMaxWidth()
+                .testTag("capture_edit_save")
+        ) {
+            Text(
+                text =
+                if (edit.saving) {
+                    stringResource(R.string.capture_edit_saving)
+                } else {
+                    stringResource(R.string.capture_edit_save)
+                }
+            )
+        }
+        AicaaTextButton(
+            onClick = onCancelEdit,
+            enabled = !edit.busy,
+            modifier = Modifier.testTag("capture_edit_cancel")
+        ) {
+            Text(text = stringResource(R.string.capture_edit_cancel))
+        }
+    }
+}
+
+@Composable
+private fun EditPointRow(
+    point: CaptureSummaryPointWire,
+    enabled: Boolean,
+    onValueChange: (String) -> Unit
+) {
+    if (point.hasEditableWording) {
+        Text(
+            text = point.label,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Medium,
+            color = AicaaColors.ink
+        )
+        AicaaOutlinedTextField(
+            value = point.value.orEmpty(),
+            onValueChange = onValueChange,
+            enabled = enabled,
+            modifier =
+            Modifier
+                .fillMaxWidth()
+                .testTag("capture_edit_field_${point.id}"),
+            keyboardOptions =
+            KeyboardOptions(
+                capitalization = KeyboardCapitalization.Sentences
+            )
+        )
+    } else {
+        Text(
+            text = "${point.label}: ${summaryPointDetail(point)}",
+            fontSize = 15.sp,
+            color = AicaaColors.ink,
+            modifier = Modifier.testTag("capture_edit_readonly_${point.id}")
+        )
+    }
+}
+
+@Composable
+private fun ProposalDismissDialog(
+    dismiss: ProposalDismissInteraction,
+    onCancelDismiss: () -> Unit,
+    onConfirmDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = { if (!dismiss.busy) onCancelDismiss() },
+        title = { Text(text = stringResource(R.string.capture_dismiss_confirm_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = stringResource(R.string.capture_dismiss_confirm_body),
+                    modifier = Modifier.testTag("capture_dismiss_confirm_body")
+                )
+                if (dismiss.message != null) {
+                    Text(
+                        text = dismiss.message,
+                        color = AicaaColors.warning,
+                        modifier = Modifier.testTag("capture_dismiss_message")
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            AicaaDestructiveTextButton(
+                onClick = onConfirmDismiss,
+                enabled = !dismiss.busy,
+                modifier = Modifier.testTag("capture_dismiss_confirm")
+            ) {
+                Text(
+                    text =
+                    if (dismiss.dismissing) {
+                        stringResource(R.string.capture_dismissing)
+                    } else {
+                        stringResource(R.string.capture_dismiss_confirm_action)
+                    }
+                )
+            }
+        },
+        dismissButton = {
+            AicaaTextButton(
+                onClick = onCancelDismiss,
+                enabled = !dismiss.busy,
+                modifier = Modifier.testTag("capture_dismiss_dialog_cancel")
+            ) {
+                Text(text = stringResource(R.string.capture_dismiss_cancel))
+            }
+        }
+    )
 }
 
 @Composable
