@@ -3,6 +3,7 @@ package com.aicommunication.assistant.ui
 import android.app.Application
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -13,7 +14,10 @@ import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTextReplacement
 import com.aicommunication.assistant.capture.CaptureSummaryPointWire
 import com.aicommunication.assistant.capture.CaptureUiState
+import com.aicommunication.assistant.capture.ProposalAcceptInteraction
+import com.aicommunication.assistant.capture.ProposalResponsibility
 import com.aicommunication.assistant.capture.TaskSuggestionWire
+import com.aicommunication.assistant.tasks.RecipientWire
 import com.aicommunication.assistant.ui.theme.AicaaFoundationTheme
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -23,7 +27,8 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * Read-only proposal result surface for Owner manual capture (S3.3b, D171).
+ * Capture proposal result surface (S3.3b / S5.2). Capture itself creates no Task; Accept is the
+ * only authorized proposal lifecycle action.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [31], application = Application::class, qualifiers = "w411dp-h891dp")
@@ -146,7 +151,8 @@ class TaskCaptureScreenTest {
     }
 
     @Test
-    fun proposalResults_offerNoTaskOrLifecycleActions() {
+    fun proposalResults_exposeOnlyAuthorizedAcceptLifecycle() {
+        var opened = ""
         setScreen(
             CaptureUiState.Proposals(
                 capturedText = "Call the roofer",
@@ -164,10 +170,13 @@ class TaskCaptureScreenTest {
                         )
                     )
                 )
-            )
+            ),
+            onOpenAccept = { opened = it }
         )
 
-        // S3.3b is read-only: no captured-Task pane, and no proposal lifecycle.
+        composeRule.onNodeWithTag("capture_accept_button").assertIsDisplayed()
+        composeRule.onNodeWithTag("capture_accept_button").performClick()
+        assertEquals("s1", opened)
         listOf(
             "capture_success",
             "capture_open_task_button",
@@ -183,10 +192,117 @@ class TaskCaptureScreenTest {
         composeRule.onNodeWithTag("capture_done_button").assertIsDisplayed()
     }
 
+    @Test
+    fun acceptInteraction_offersMeAndRecipientsWithConfirmGatedOnSelection() {
+        var confirmed = 0
+        setScreen(
+            acceptState(
+                selected = null,
+                recipients = listOf(
+                    RecipientWire(
+                        id = "rec-1",
+                        displayName = "Alex Roofer",
+                        email = "alex@example.com"
+                    )
+                )
+            ),
+            onConfirmAccept = { confirmed += 1 }
+        )
+
+        composeRule.onNodeWithTag("capture_accept_me").assertIsDisplayed()
+        composeRule.onNodeWithText("Me / Owner").assertIsDisplayed()
+        composeRule.onNodeWithTag("capture_accept_recipient_rec-1").assertIsDisplayed()
+        composeRule.onNodeWithText("Alex Roofer").assertIsDisplayed()
+        composeRule.onNodeWithText("alex@example.com").assertIsDisplayed()
+        composeRule.onNodeWithTag("capture_accept_confirm").assertIsNotEnabled()
+        composeRule.onAllNodesWithTag("capture_edit_button").assertCountEquals(0)
+        composeRule.onAllNodesWithTag("capture_dismiss_button").assertCountEquals(0)
+        composeRule.onAllNodesWithTag("capture_merge_button").assertCountEquals(0)
+
+        composeRule.onNodeWithTag("capture_accept_confirm").performClick()
+        assertEquals(0, confirmed)
+    }
+
+    @Test
+    fun acceptInteraction_confirmEnabledAfterOwnerSelection() {
+        var confirmed = 0
+        setScreen(
+            acceptState(selected = ProposalResponsibility.Owner),
+            onConfirmAccept = { confirmed += 1 }
+        )
+
+        composeRule.onNodeWithTag("capture_accept_confirm").assertIsEnabled()
+        composeRule.onNodeWithTag("capture_accept_confirm").performClick()
+        assertEquals(1, confirmed)
+    }
+
+    @Test
+    fun acceptInteraction_mutationStateDisablesDuplicateConfirm() {
+        setScreen(
+            acceptState(
+                selected = ProposalResponsibility.Owner,
+                approving = true
+            )
+        )
+
+        composeRule.onNodeWithTag("capture_accept_confirm").assertIsNotEnabled()
+        composeRule.onNodeWithText("Accepting…").assertIsDisplayed()
+    }
+
+    @Test
+    fun acceptInteraction_rendersRecoverableMessageAndStatusRetry() {
+        setScreen(
+            acceptState(
+                selected = ProposalResponsibility.Owner,
+                recoveryReadFailed = true,
+                message = "Rocket could not confirm whether this proposal was accepted."
+            )
+        )
+
+        composeRule.onNodeWithTag("capture_accept_message").assertIsDisplayed()
+        composeRule.onNodeWithTag("capture_accept_retry_recovery").assertIsDisplayed()
+        composeRule.onAllNodesWithTag("capture_accept_confirm").assertCountEquals(0)
+    }
+
+    private fun acceptState(
+        selected: ProposalResponsibility?,
+        recipients: List<RecipientWire> = emptyList(),
+        approving: Boolean = false,
+        recoveryReadFailed: Boolean = false,
+        message: String? = null
+    ) = CaptureUiState.Proposals(
+        capturedText = "Call the roofer",
+        proposals = listOf(
+            proposal(
+                id = "s1",
+                points = listOf(
+                    summaryPoint(
+                        "sp1",
+                        "confirmed_fact",
+                        "Captured",
+                        order = 0,
+                        value = "Call the roofer"
+                    )
+                )
+            )
+        ),
+        accept =
+        ProposalAcceptInteraction(
+            proposalId = "s1",
+            selectedResponsibility = selected,
+            recipients = recipients,
+            approving = approving,
+            recoveryReadFailed = recoveryReadFailed,
+            message = message
+        )
+    )
+
     private fun setScreen(
         state: CaptureUiState,
         onDraftChanged: (String) -> Unit = {},
-        onRephrase: () -> Unit = {}
+        onRephrase: () -> Unit = {},
+        onOpenAccept: (String) -> Unit = {},
+        onConfirmAccept: () -> Unit = {}
     ) {
         composeRule.setContent {
             AicaaFoundationTheme {
@@ -198,7 +314,9 @@ class TaskCaptureScreenTest {
                     onDiscard = {},
                     onRephrase = onRephrase,
                     onCaptureAnother = {},
-                    onDone = {}
+                    onDone = {},
+                    onOpenAccept = onOpenAccept,
+                    onConfirmAccept = onConfirmAccept
                 )
             }
         }

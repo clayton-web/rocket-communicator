@@ -11,6 +11,7 @@ import com.aicommunication.assistant.network.OwnerApiExecutor
 import com.aicommunication.assistant.network.OwnerApiResult
 import com.aicommunication.assistant.network.OwnerHttpClientFactory
 import com.aicommunication.assistant.network.ownerApiMoshi
+import com.aicommunication.assistant.tasks.RecipientOwnerRepository
 import java.time.Instant
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
@@ -37,11 +38,8 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
 /**
- * Owner manual capture drives the shared interpretation route and shows proposals read-only
- * (S3.3b, D171).
- *
- * These tests run the real use case, repository, and pending store against MockWebServer, so the
- * assertions are about the requests actually sent and the retry identity actually persisted.
+ * Owner manual capture drives the shared interpretation route (S3.3b, D171) and Accept
+ * creates a Task only after an explicit Owner decision (S5.2, D176).
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -474,6 +472,8 @@ class TaskCaptureViewModelTest {
         assertEquals(listOf("/api/v1/manual-captures"), paths)
         val state = vm.uiState.value as CaptureUiState.Proposals
         assertEquals("pending", state.proposals.single().status)
+        assertNull(state.proposals.single().approvedTaskId)
+        assertNull(vm.openApprovedTaskId.value)
     }
 
     // --- Privacy ----------------------------------------------------------------------------
@@ -504,6 +504,369 @@ class TaskCaptureViewModelTest {
         assertTrue(prefs.all.isEmpty())
     }
 
+    // --- Accept (S5.2) --------------------------------------------------------------------
+
+    @Test
+    fun openAccept_startsWithNoResponsibilitySelectedAndConfirmUnavailable() = runTest {
+        val vm = capturedProposal()
+        enqueueRecipients()
+
+        vm.openAccept("s1")
+        vm.awaitSettled()
+
+        val accept = requireNotNull((vm.uiState.value as CaptureUiState.Proposals).accept)
+        assertEquals("s1", accept.proposalId)
+        assertNull(accept.selectedResponsibility)
+        assertFalse(accept.canConfirm)
+    }
+
+    @Test
+    fun selectOwner_enablesConfirmWithoutInferringFromAnEmptyPicker() = runTest {
+        val vm = capturedProposal()
+        enqueueRecipients(itemsJson = "")
+
+        vm.openAccept("s1")
+        vm.awaitSettled()
+        val before = requireNotNull((vm.uiState.value as CaptureUiState.Proposals).accept)
+        assertTrue(before.recipients.isEmpty())
+        assertNull(before.selectedResponsibility)
+        assertFalse(before.canConfirm)
+
+        vm.selectOwnerResponsibility()
+
+        val accept = requireNotNull((vm.uiState.value as CaptureUiState.Proposals).accept)
+        assertEquals(ProposalResponsibility.Owner, accept.selectedResponsibility)
+        assertTrue(accept.canConfirm)
+    }
+
+    @Test
+    fun selectRecipient_usesThatExactRecipientId() = runTest {
+        val vm = capturedProposal()
+        enqueueRecipients()
+
+        vm.openAccept("s1")
+        vm.awaitSettled()
+        vm.selectRecipientResponsibility("rec-1")
+
+        val accept = requireNotNull((vm.uiState.value as CaptureUiState.Proposals).accept)
+        assertEquals(ProposalResponsibility.Recipient("rec-1"), accept.selectedResponsibility)
+        assertTrue(accept.canConfirm)
+    }
+
+    @Test
+    fun recipientLoadingOccursOnlyAfterOpenAccept() = runTest {
+        enqueueSuccess(proposalJson("s1", "Call the roofer"))
+        val vm = viewModel()
+        vm.onDraftChanged("Call the roofer")
+        vm.save()
+        vm.awaitSettled()
+        assertEquals(1, server.requestCount)
+
+        enqueueRecipients()
+        vm.openAccept("s1")
+        vm.awaitSettled()
+
+        assertEquals(2, server.requestCount)
+        server.takeRequest()
+        assertEquals("/api/v1/recipients?limit=50", server.takeRequest().path)
+    }
+
+    @Test
+    fun switchingAcceptClearsStaleResponsibilitySelection() = runTest {
+        enqueueSuccess(
+            proposalJson("s1", "Call the roofer"),
+            proposalJson("s2", "Call the plumber")
+        )
+        val vm = viewModel()
+        vm.onDraftChanged("Two jobs")
+        vm.save()
+        vm.awaitSettled()
+        enqueueRecipients()
+        vm.openAccept("s1")
+        vm.awaitSettled()
+        vm.selectOwnerResponsibility()
+        enqueueRecipients()
+
+        vm.openAccept("s2")
+        vm.awaitSettled()
+
+        val accept = requireNotNull((vm.uiState.value as CaptureUiState.Proposals).accept)
+        assertEquals("s2", accept.proposalId)
+        assertNull(accept.selectedResponsibility)
+        assertFalse(accept.canConfirm)
+    }
+
+    @Test
+    fun cancelAcceptClearsResponsibilitySelection() = runTest {
+        val vm = capturedProposal()
+        enqueueRecipients()
+        vm.openAccept("s1")
+        vm.awaitSettled()
+        vm.selectOwnerResponsibility()
+
+        vm.cancelAccept()
+
+        val state = vm.uiState.value as CaptureUiState.Proposals
+        assertNull(state.accept)
+    }
+
+    @Test
+    fun captureAnotherClearsTransientAcceptState() = runTest {
+        val vm = capturedProposal()
+        enqueueRecipients()
+        vm.openAccept("s1")
+        vm.awaitSettled()
+        vm.selectOwnerResponsibility()
+
+        vm.captureAnother()
+
+        assertEquals(CaptureUiState.Editing(), vm.uiState.value)
+        assertNull(vm.openApprovedTaskId.value)
+    }
+
+    @Test
+    fun duplicateConfirmIsBlockedWhileApproveIsInFlight() = runTest {
+        val vm = capturedProposal()
+        enqueueRecipients()
+        vm.openAccept("s1")
+        vm.awaitSettled()
+        vm.selectOwnerResponsibility()
+        server.enqueue(
+            MockResponse()
+                .setBodyDelay(250, TimeUnit.MILLISECONDS)
+                .setResponseCode(200)
+                .setBody(approveSuccessBody("s1", "task-1"))
+        )
+
+        vm.confirmAccept()
+        vm.confirmAccept()
+        vm.awaitSettled()
+
+        val paths = drainPaths()
+        assertEquals(1, paths.count { it?.endsWith("/approve") == true })
+        assertEquals("task-1", vm.openApprovedTaskId.value)
+    }
+
+    @Test
+    fun confirmOwner_sendsCurrentEtagAndOwnerResponsibilityThenOpensReturnedTask() = runTest {
+        val vm = capturedProposal()
+        enqueueRecipients()
+        vm.openAccept("s1")
+        vm.awaitSettled()
+        vm.selectOwnerResponsibility()
+        enqueueApproveSuccess("s1", "task-9")
+
+        vm.confirmAccept()
+        vm.awaitSettled()
+
+        val approve = takeRequestMatching { it?.endsWith("/s1/approve") == true }
+        assertEquals("POST", approve.method)
+        assertEquals("/api/v1/task-suggestions/s1/approve", approve.path)
+        assertEquals("etag-s1", approve.getHeader("If-Match"))
+        val raw = approve.body.readUtf8()
+        val body =
+            requireNotNull(
+                ownerApiMoshi().adapter(ApproveProposalRequestWire::class.java).fromJson(raw)
+            )
+        assertEquals("owner", body.responsibility.responsibleParty)
+        assertNull(body.responsibility.recipientId)
+        assertFalse(raw.contains("\"recipientId\""))
+        assertEquals("task-9", vm.openApprovedTaskId.value)
+        val state = vm.uiState.value as CaptureUiState.Proposals
+        assertNull(state.accept)
+        assertEquals("approved", state.proposals.single().status)
+    }
+
+    @Test
+    fun confirmRecipient_sendsRecipientResponsibilityVariant() = runTest {
+        val vm = capturedProposal()
+        enqueueRecipients()
+        vm.openAccept("s1")
+        vm.awaitSettled()
+        vm.selectRecipientResponsibility("rec-1")
+        enqueueApproveSuccess("s1", "task-2")
+
+        vm.confirmAccept()
+        vm.awaitSettled()
+
+        val raw = takeRequestMatching { it?.endsWith("/s1/approve") == true }.body.readUtf8()
+        val body =
+            requireNotNull(
+                ownerApiMoshi().adapter(ApproveProposalRequestWire::class.java).fromJson(raw)
+            )
+        assertEquals("recipient", body.responsibility.responsibleParty)
+        assertEquals("rec-1", body.responsibility.recipientId)
+        assertEquals("task-2", vm.openApprovedTaskId.value)
+    }
+
+    @Test
+    fun ambiguousApprove_rereadsOnceAndNavigatesWhenApprovedTaskIdIsPresent() = runTest {
+        val vm = capturedProposal()
+        enqueueRecipients()
+        vm.openAccept("s1")
+        vm.awaitSettled()
+        vm.selectOwnerResponsibility()
+        enqueueError(412, "PRECONDITION_FAILED")
+        enqueueSuggestion(
+            id = "s1",
+            status = "approved",
+            etag = "etag-s1-v2",
+            approvedTaskId = "task-7"
+        )
+
+        vm.confirmAccept()
+        vm.awaitSettled()
+
+        val paths = drainPaths()
+        assertEquals(1, paths.count { it == "/api/v1/task-suggestions/s1" })
+        assertEquals(1, paths.count { it?.endsWith("/approve") == true })
+        assertEquals("task-7", vm.openApprovedTaskId.value)
+    }
+
+    @Test
+    fun ambiguousApprove_rereadWithoutApprovedTaskIdDoesNotNavigateOrRetryApprove() = runTest {
+        val vm = capturedProposal()
+        enqueueRecipients()
+        vm.openAccept("s1")
+        vm.awaitSettled()
+        vm.selectOwnerResponsibility()
+        enqueueError(409, "INVALID_STATE_TRANSITION")
+        enqueueSuggestion(
+            id = "s1",
+            status = "pending",
+            etag = "etag-s1-v2",
+            approvedTaskId = null
+        )
+
+        vm.confirmAccept()
+        vm.awaitSettled()
+
+        val paths = drainPaths()
+        assertEquals(1, paths.count { it?.endsWith("/approve") == true })
+        assertEquals(1, paths.count { it == "/api/v1/task-suggestions/s1" })
+        assertNull(vm.openApprovedTaskId.value)
+        val state = vm.uiState.value as CaptureUiState.Proposals
+        assertEquals("etag-s1-v2", state.proposals.single().etag)
+        val accept = requireNotNull(state.accept)
+        assertNull(accept.selectedResponsibility)
+        assertFalse(accept.canConfirm)
+        assertNotNull(accept.message)
+    }
+
+    @Test
+    fun laterManualAcceptUsesRefreshedEtag() = runTest {
+        val vm = capturedProposal()
+        enqueueRecipients()
+        vm.openAccept("s1")
+        vm.awaitSettled()
+        vm.selectOwnerResponsibility()
+        enqueueError(412, "PRECONDITION_FAILED")
+        enqueueSuggestion(
+            id = "s1",
+            status = "pending",
+            etag = "fresh-etag",
+            approvedTaskId = null
+        )
+
+        vm.confirmAccept()
+        vm.awaitSettled()
+        vm.selectOwnerResponsibility()
+        enqueueApproveSuccess("s1", "task-3")
+
+        vm.confirmAccept()
+        vm.awaitSettled()
+
+        takeRequestMatching { it?.endsWith("/s1/approve") == true }
+        val retry = takeRequestMatching { it?.endsWith("/s1/approve") == true }
+        assertEquals("fresh-etag", retry.getHeader("If-Match"))
+        assertEquals("task-3", vm.openApprovedTaskId.value)
+    }
+
+    @Test
+    fun reReadFailureDoesNotAutoRetryApprove() = runTest {
+        val vm = capturedProposal()
+        enqueueRecipients()
+        vm.openAccept("s1")
+        vm.awaitSettled()
+        vm.selectOwnerResponsibility()
+        enqueueError(503, "DEPENDENCY_UNAVAILABLE")
+        enqueueError(503, "DEPENDENCY_UNAVAILABLE")
+
+        vm.confirmAccept()
+        vm.awaitSettled()
+
+        val paths = drainPaths()
+        assertEquals(1, paths.count { it?.endsWith("/approve") == true })
+        assertEquals(1, paths.count { it == "/api/v1/task-suggestions/s1" })
+        assertNull(vm.openApprovedTaskId.value)
+        val accept = requireNotNull((vm.uiState.value as CaptureUiState.Proposals).accept)
+        assertTrue(accept.recoveryReadFailed)
+        assertFalse(accept.canConfirm)
+        assertNotNull(accept.message)
+    }
+
+    @Test
+    fun validationErrorDoesNotClaimSuccessOrReread() = runTest {
+        val vm = capturedProposal()
+        enqueueRecipients()
+        vm.openAccept("s1")
+        vm.awaitSettled()
+        vm.selectOwnerResponsibility()
+        enqueueError(400, "VALIDATION_ERROR")
+
+        vm.confirmAccept()
+        vm.awaitSettled()
+
+        val paths = drainPaths()
+        assertEquals(1, paths.count { it?.endsWith("/approve") == true })
+        assertEquals(0, paths.count { it == "/api/v1/task-suggestions/s1" })
+        assertNull(vm.openApprovedTaskId.value)
+        val accept = requireNotNull((vm.uiState.value as CaptureUiState.Proposals).accept)
+        assertFalse(accept.recoveryReadFailed)
+        assertNotNull(accept.message)
+        val proposals = vm.uiState.value as CaptureUiState.Proposals
+        assertEquals("etag-s1", proposals.proposals.single().etag)
+    }
+
+    @Test
+    fun notFoundDoesNotClaimSuccessOrReread() = runTest {
+        val vm = capturedProposal()
+        enqueueRecipients()
+        vm.openAccept("s1")
+        vm.awaitSettled()
+        vm.selectOwnerResponsibility()
+        enqueueError(404, "NOT_FOUND")
+
+        vm.confirmAccept()
+        vm.awaitSettled()
+
+        val paths = drainPaths()
+        assertEquals(0, paths.count { it == "/api/v1/task-suggestions/s1" })
+        assertNull(vm.openApprovedTaskId.value)
+    }
+
+    @Test
+    fun unauthorizedDoesNotRereadOrNavigate() = runTest {
+        enqueueSuccess(proposalJson("s1", "Call the roofer"))
+        val vm = viewModel()
+        vm.onDraftChanged("Call the roofer")
+        vm.save()
+        vm.awaitSettled()
+        enqueueRecipients()
+        vm.openAccept("s1")
+        vm.awaitSettled()
+        vm.selectOwnerResponsibility()
+        enqueueError(401, "UNAUTHORIZED")
+
+        vm.confirmAccept()
+        vm.awaitSettled()
+
+        val paths = drainPaths()
+        assertEquals(0, paths.count { it == "/api/v1/task-suggestions/s1" })
+        assertNull(vm.openApprovedTaskId.value)
+        assertEquals(1, sessionInvalidated)
+    }
+
     // --- Helpers ------------------------------------------------------------------------------
 
     /**
@@ -519,15 +882,139 @@ class TaskCaptureViewModelTest {
         validated: Boolean = true,
         token: String? = "access-token",
         store: PendingCaptureStore = pendingStore
-    ): TaskCaptureViewModel = TaskCaptureViewModel(
-        application = application,
-        manualCapture =
-        ManualCaptureUseCase(
-            repository = ManualCaptureRepository(executor(validated, token)),
-            pendingStore = store
-        ),
-        onSessionInvalidated = { sessionInvalidated += 1 }
-    )
+    ): TaskCaptureViewModel {
+        val executor = executor(validated, token)
+        return TaskCaptureViewModel(
+            application = application,
+            manualCapture =
+            ManualCaptureUseCase(
+                repository = ManualCaptureRepository(executor),
+                pendingStore = store
+            ),
+            proposalRepository = ProposalOwnerRepository(executor),
+            recipientRepository = RecipientOwnerRepository(executor),
+            onSessionInvalidated = { sessionInvalidated += 1 }
+        )
+    }
+
+    private suspend fun capturedProposal(): TaskCaptureViewModel {
+        enqueueSuccess(proposalJson("s1", "Call the roofer"))
+        val vm = viewModel()
+        vm.onDraftChanged("Call the roofer")
+        vm.save()
+        vm.awaitSettled()
+        return vm
+    }
+
+    private fun drainPaths(): List<String?> {
+        val paths = mutableListOf<String?>()
+        repeat(server.requestCount) { paths += server.takeRequest().path }
+        return paths
+    }
+
+    private fun takeRequestMatching(
+        predicate: (String?) -> Boolean
+    ): okhttp3.mockwebserver.RecordedRequest {
+        while (true) {
+            val request = server.takeRequest()
+            if (predicate(request.path)) {
+                return request
+            }
+        }
+    }
+
+    private fun enqueueRecipients(
+        itemsJson: String =
+            """{"id":"rec-1","displayName":"Worker","email":"worker@example.com","active":true}"""
+    ) {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody("""{"items":[$itemsJson],"nextCursor":null}""")
+        )
+    }
+
+    private fun enqueueApproveSuccess(suggestionId: String, taskId: String) {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(approveSuccessBody(suggestionId, taskId))
+        )
+    }
+
+    private fun enqueueSuggestion(
+        id: String,
+        status: String,
+        etag: String,
+        approvedTaskId: String?
+    ) {
+        val approved = if (approvedTaskId == null) "null" else "\"$approvedTaskId\""
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody(
+                    """
+                    {
+                      "id": "$id",
+                      "status": "$status",
+                      "version": 2,
+                      "etag": "$etag",
+                      "createdAt": "2026-08-12T15:00:00.000Z",
+                      "summaryPoints": [
+                        {
+                          "id": "sp-$id",
+                          "kind": "confirmed_fact",
+                          "label": "Captured",
+                          "order": 0,
+                          "value": "Call the roofer"
+                        }
+                      ],
+                      "approvedTaskId": $approved
+                    }
+                    """.trimIndent()
+                )
+        )
+    }
+
+    private fun approveSuccessBody(suggestionId: String, taskId: String): String {
+        val suggestion =
+            """
+            {
+              "id": "$suggestionId",
+              "status": "approved",
+              "version": 2,
+              "etag": "etag-$suggestionId-v2",
+              "createdAt": "2026-08-12T15:00:00.000Z",
+              "summaryPoints": [
+                {
+                  "id": "sp-$suggestionId",
+                  "kind": "confirmed_fact",
+                  "label": "Captured",
+                  "order": 0,
+                  "value": "Call the roofer"
+                }
+              ],
+              "approvedTaskId": "$taskId"
+            }
+            """.trimIndent()
+        val task =
+            """
+            {
+              "id": "$taskId",
+              "etag": "task-$taskId-v1",
+              "status": "open",
+              "version": 1,
+              "summaryPoints": [
+                {
+                  "id": "sp-$suggestionId",
+                  "kind": "confirmed_fact",
+                  "label": "Captured",
+                  "order": 0,
+                  "value": "Call the roofer"
+                }
+              ]
+            }
+            """.trimIndent()
+        return """{"suggestion":$suggestion,"task":$task}"""
+    }
 
     private fun executor(validated: Boolean = true, token: String? = "access-token") =
         OwnerApiExecutor(

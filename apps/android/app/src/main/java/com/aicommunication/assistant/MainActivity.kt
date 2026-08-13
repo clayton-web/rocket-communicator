@@ -27,6 +27,8 @@ class MainActivity : ComponentActivity() {
         TaskCaptureViewModel.Factory(
             application = app,
             manualCapture = app.manualCaptureUseCase,
+            proposalRepository = app.proposalOwnerRepository,
+            recipientRepository = app.recipientOwnerRepository,
             onSessionInvalidated = authViewModel::notifySessionInvalidated
         )
     }

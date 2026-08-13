@@ -9,6 +9,7 @@ import com.aicommunication.assistant.capture.CaptureTaskUseCase
 import com.aicommunication.assistant.capture.ManualCaptureRepository
 import com.aicommunication.assistant.capture.ManualCaptureUseCase
 import com.aicommunication.assistant.capture.PendingCaptureStore
+import com.aicommunication.assistant.capture.ProposalOwnerRepository
 import com.aicommunication.assistant.capture.TaskOwnerRepository
 import com.aicommunication.assistant.network.AndroidConnectivityMonitor
 import com.aicommunication.assistant.network.ApiConfig
@@ -62,6 +63,9 @@ class AicaaApplication : Application() {
     lateinit var pendingCaptureStore: PendingCaptureStore
         private set
 
+    lateinit var proposalOwnerRepository: ProposalOwnerRepository
+        private set
+
     lateinit var manualCaptureUseCase: ManualCaptureUseCase
         private set
 
@@ -88,6 +92,7 @@ class AicaaApplication : Application() {
         pendingHandoffStore = PendingHandoffStore(this)
         captureTaskUseCase = CaptureTaskUseCase(taskOwnerRepository)
         pendingCaptureStore = PendingCaptureStore(this)
+        proposalOwnerRepository = ProposalOwnerRepository(ownerApiExecutor)
         manualCaptureUseCase =
             ManualCaptureUseCase(
                 repository = ManualCaptureRepository(ownerApiExecutor),

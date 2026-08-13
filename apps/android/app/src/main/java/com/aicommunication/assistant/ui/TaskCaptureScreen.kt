@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -11,17 +12,20 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Card
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -30,19 +34,26 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aicommunication.assistant.R
 import com.aicommunication.assistant.capture.CaptureUiState
+import com.aicommunication.assistant.capture.ProposalAcceptInteraction
+import com.aicommunication.assistant.capture.ProposalResponsibility
 import com.aicommunication.assistant.capture.TaskSuggestionWire
 import com.aicommunication.assistant.capture.deriveProposalTitle
+import com.aicommunication.assistant.capture.isAcceptable
 import com.aicommunication.assistant.capture.orderedSummaryPoints
 import com.aicommunication.assistant.capture.summaryPointDetail
+import com.aicommunication.assistant.tasks.RecipientWire
+import com.aicommunication.assistant.ui.theme.AicaaCircularProgressIndicator
 import com.aicommunication.assistant.ui.theme.AicaaColors
 import com.aicommunication.assistant.ui.theme.AicaaFilledButton
 import com.aicommunication.assistant.ui.theme.AicaaOutlinedTextField
+import com.aicommunication.assistant.ui.theme.AicaaRadioButton
 import com.aicommunication.assistant.ui.theme.AicaaTextButton
 import com.aicommunication.assistant.ui.theme.AicaaTextStyles
 
 /**
- * Owner manual capture (S3.3b, D171). Results are read-only: this screen offers no approve,
- * dismiss, edit, merge, or responsibility action on a proposal.
+ * Owner manual capture (S3.3b / S5.2, D171 / D176). Capture itself creates no Task. Pending
+ * proposals may expose Accept with affirmative Me / saved-Recipient responsibility selection.
+ * Edit, Dismiss, and Merge are not offered.
  */
 @Composable
 fun TaskCaptureScreen(
@@ -54,6 +65,13 @@ fun TaskCaptureScreen(
     onRephrase: () -> Unit,
     onCaptureAnother: () -> Unit,
     onDone: () -> Unit,
+    onOpenAccept: (String) -> Unit = {},
+    onCancelAccept: () -> Unit = {},
+    onSelectOwnerResponsibility: () -> Unit = {},
+    onSelectRecipientResponsibility: (String) -> Unit = {},
+    onConfirmAccept: () -> Unit = {},
+    onRetryAcceptRecipients: () -> Unit = {},
+    onRetryAcceptRecovery: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     when (state) {
@@ -80,6 +98,13 @@ fun TaskCaptureScreen(
                 onRephrase = onRephrase,
                 onCaptureAnother = onCaptureAnother,
                 onDone = onDone,
+                onOpenAccept = onOpenAccept,
+                onCancelAccept = onCancelAccept,
+                onSelectOwnerResponsibility = onSelectOwnerResponsibility,
+                onSelectRecipientResponsibility = onSelectRecipientResponsibility,
+                onConfirmAccept = onConfirmAccept,
+                onRetryAcceptRecipients = onRetryAcceptRecipients,
+                onRetryAcceptRecovery = onRetryAcceptRecovery,
                 modifier = modifier
             )
     }
@@ -201,9 +226,17 @@ private fun CaptureProposalsPane(
     onRephrase: () -> Unit,
     onCaptureAnother: () -> Unit,
     onDone: () -> Unit,
+    onOpenAccept: (String) -> Unit,
+    onCancelAccept: () -> Unit,
+    onSelectOwnerResponsibility: () -> Unit,
+    onSelectRecipientResponsibility: (String) -> Unit,
+    onConfirmAccept: () -> Unit,
+    onRetryAcceptRecipients: () -> Unit,
+    onRetryAcceptRecovery: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val empty = state.proposals.isEmpty()
+    val interactionBusy = state.accept?.busy == true
     CapturePane(
         modifier = modifier,
         testTag = "capture_result"
@@ -234,10 +267,19 @@ private fun CaptureProposalsPane(
             color = AicaaColors.muted,
             modifier = Modifier.testTag("capture_result_source")
         )
+        if (state.notice != null) {
+            Text(
+                text = state.notice,
+                fontSize = 15.sp,
+                color = AicaaColors.warning,
+                modifier = Modifier.testTag("capture_accept_notice")
+            )
+        }
         if (empty) {
             Spacer(modifier = Modifier.weight(1f))
             AicaaTextButton(
                 onClick = onRephrase,
+                enabled = !interactionBusy,
                 modifier = Modifier.testTag("capture_rephrase_button")
             ) {
                 Text(text = stringResource(R.string.capture_rephrase))
@@ -252,12 +294,25 @@ private fun CaptureProposalsPane(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 items(items = state.proposals, key = TaskSuggestionWire::id) { proposal ->
-                    ProposalCard(proposal = proposal)
+                    ProposalCard(
+                        proposal = proposal,
+                        accept =
+                        state.accept?.takeIf { it.proposalId == proposal.id },
+                        interactionBusy = interactionBusy,
+                        onOpenAccept = onOpenAccept,
+                        onCancelAccept = onCancelAccept,
+                        onSelectOwnerResponsibility = onSelectOwnerResponsibility,
+                        onSelectRecipientResponsibility = onSelectRecipientResponsibility,
+                        onConfirmAccept = onConfirmAccept,
+                        onRetryAcceptRecipients = onRetryAcceptRecipients,
+                        onRetryAcceptRecovery = onRetryAcceptRecovery
+                    )
                 }
             }
         }
         AicaaFilledButton(
             onClick = onCaptureAnother,
+            enabled = !interactionBusy,
             modifier =
             Modifier
                 .fillMaxWidth()
@@ -267,6 +322,7 @@ private fun CaptureProposalsPane(
         }
         AicaaTextButton(
             onClick = onDone,
+            enabled = !interactionBusy,
             modifier = Modifier.testTag("capture_done_button")
         ) {
             Text(text = stringResource(R.string.capture_done))
@@ -275,7 +331,18 @@ private fun CaptureProposalsPane(
 }
 
 @Composable
-private fun ProposalCard(proposal: TaskSuggestionWire) {
+private fun ProposalCard(
+    proposal: TaskSuggestionWire,
+    accept: ProposalAcceptInteraction?,
+    interactionBusy: Boolean,
+    onOpenAccept: (String) -> Unit,
+    onCancelAccept: () -> Unit,
+    onSelectOwnerResponsibility: () -> Unit,
+    onSelectRecipientResponsibility: (String) -> Unit,
+    onConfirmAccept: () -> Unit,
+    onRetryAcceptRecipients: () -> Unit,
+    onRetryAcceptRecovery: () -> Unit
+) {
     Card(
         modifier =
         Modifier
@@ -300,8 +367,223 @@ private fun ProposalCard(proposal: TaskSuggestionWire) {
                     color = AicaaColors.ink
                 )
             }
+            if (proposal.isAcceptable) {
+                if (accept == null) {
+                    AicaaFilledButton(
+                        onClick = { onOpenAccept(proposal.id) },
+                        enabled = !interactionBusy,
+                        modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .testTag("capture_accept_button")
+                    ) {
+                        Text(text = stringResource(R.string.capture_accept))
+                    }
+                } else {
+                    ProposalAcceptPane(
+                        accept = accept,
+                        onCancelAccept = onCancelAccept,
+                        onSelectOwnerResponsibility = onSelectOwnerResponsibility,
+                        onSelectRecipientResponsibility = onSelectRecipientResponsibility,
+                        onConfirmAccept = onConfirmAccept,
+                        onRetryAcceptRecipients = onRetryAcceptRecipients,
+                        onRetryAcceptRecovery = onRetryAcceptRecovery
+                    )
+                }
+            } else if (!proposal.approvedTaskId.isNullOrBlank()) {
+                Text(
+                    text = stringResource(R.string.capture_accept_accepted),
+                    fontSize = 15.sp,
+                    color = AicaaColors.muted,
+                    modifier = Modifier.testTag("capture_proposal_accepted")
+                )
+            }
         }
     }
+}
+
+@Composable
+private fun ProposalAcceptPane(
+    accept: ProposalAcceptInteraction,
+    onCancelAccept: () -> Unit,
+    onSelectOwnerResponsibility: () -> Unit,
+    onSelectRecipientResponsibility: (String) -> Unit,
+    onConfirmAccept: () -> Unit,
+    onRetryAcceptRecipients: () -> Unit,
+    onRetryAcceptRecovery: () -> Unit
+) {
+    val selectionEnabled = !accept.busy && !accept.recoveryReadFailed
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            text = stringResource(R.string.capture_accept_responsibility_heading),
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Medium,
+            color = AicaaColors.ink,
+            modifier = Modifier.testTag("capture_accept_heading")
+        )
+        ResponsibilityChoiceRow(
+            selected = accept.selectedResponsibility is ProposalResponsibility.Owner,
+            enabled = selectionEnabled,
+            onClick = onSelectOwnerResponsibility,
+            testTag = "capture_accept_me",
+            title = stringResource(R.string.capture_accept_me)
+        )
+        if (accept.recipientsLoading) {
+            AicaaCircularProgressIndicator(
+                modifier = Modifier.testTag("capture_accept_recipients_loading")
+            )
+        }
+        if (accept.recipientsError != null) {
+            Text(
+                text = accept.recipientsError,
+                fontSize = 15.sp,
+                color = AicaaColors.destructive,
+                modifier = Modifier.testTag("capture_accept_recipients_error")
+            )
+            AicaaTextButton(
+                onClick = onRetryAcceptRecipients,
+                enabled = !accept.busy,
+                modifier = Modifier.testTag("capture_accept_retry_recipients")
+            ) {
+                Text(text = stringResource(R.string.retry))
+            }
+        }
+        if (
+            !accept.recipientsLoading &&
+            accept.recipientsError == null &&
+            accept.recipients.isEmpty()
+        ) {
+            Text(
+                text = stringResource(R.string.capture_accept_no_recipients),
+                fontSize = 15.sp,
+                color = AicaaColors.muted,
+                modifier = Modifier.testTag("capture_accept_no_recipients")
+            )
+        }
+        accept.recipients.forEach { recipient ->
+            RecipientChoiceRow(
+                recipient = recipient,
+                selected =
+                (accept.selectedResponsibility as? ProposalResponsibility.Recipient)
+                    ?.recipientId == recipient.id,
+                enabled = selectionEnabled,
+                onClick = { onSelectRecipientResponsibility(recipient.id) }
+            )
+        }
+        if (accept.message != null) {
+            Text(
+                text = accept.message,
+                fontSize = 15.sp,
+                color = AicaaColors.warning,
+                modifier = Modifier.testTag("capture_accept_message")
+            )
+        }
+        if (accept.recoveryReadFailed) {
+            AicaaFilledButton(
+                onClick = onRetryAcceptRecovery,
+                enabled = !accept.busy,
+                modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .testTag("capture_accept_retry_recovery")
+            ) {
+                Text(
+                    text =
+                    if (accept.recovering) {
+                        stringResource(R.string.capture_accept_checking)
+                    } else {
+                        stringResource(R.string.capture_accept_retry_status)
+                    }
+                )
+            }
+        } else {
+            AicaaFilledButton(
+                onClick = onConfirmAccept,
+                enabled = accept.canConfirm,
+                modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .testTag("capture_accept_confirm")
+            ) {
+                Text(
+                    text =
+                    when {
+                        accept.approving -> stringResource(R.string.capture_accepting)
+                        accept.recovering -> stringResource(R.string.capture_accept_checking)
+                        else -> stringResource(R.string.capture_accept_confirm)
+                    }
+                )
+            }
+        }
+        AicaaTextButton(
+            onClick = onCancelAccept,
+            enabled = !accept.busy,
+            modifier = Modifier.testTag("capture_accept_cancel")
+        ) {
+            Text(text = stringResource(R.string.capture_accept_cancel))
+        }
+    }
+}
+
+@Composable
+private fun ResponsibilityChoiceRow(
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    testTag: String,
+    title: String,
+    subtitle: String? = null
+) {
+    Row(
+        modifier =
+        Modifier
+            .fillMaxWidth()
+            .selectable(
+                selected = selected,
+                enabled = enabled,
+                onClick = onClick,
+                role = Role.RadioButton
+            )
+            .padding(vertical = 6.dp)
+            .testTag(testTag),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        AicaaRadioButton(
+            selected = selected,
+            onClick = { if (enabled) onClick() }
+        )
+        Column(modifier = Modifier.padding(start = 8.dp)) {
+            Text(
+                text = title,
+                color = AicaaColors.ink,
+                fontWeight = FontWeight.Medium
+            )
+            if (subtitle != null) {
+                Text(
+                    text = subtitle,
+                    color = AicaaColors.muted,
+                    fontSize = 14.sp
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecipientChoiceRow(
+    recipient: RecipientWire,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    ResponsibilityChoiceRow(
+        selected = selected,
+        enabled = enabled,
+        onClick = onClick,
+        testTag = "capture_accept_recipient_${recipient.id}",
+        title = recipient.displayName,
+        subtitle = recipient.email
+    )
 }
 
 @Composable

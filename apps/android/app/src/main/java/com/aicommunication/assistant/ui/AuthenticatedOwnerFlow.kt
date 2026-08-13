@@ -49,9 +49,18 @@ fun AuthenticatedOwnerFlow(
     val context = LocalContext.current
 
     val captureState by captureViewModel.uiState.collectAsState()
+    val openApprovedTaskId by captureViewModel.openApprovedTaskId.collectAsState()
     val listState by taskListViewModel.uiState.collectAsState()
     val detailState by taskDetailViewModel.uiState.collectAsState()
     val handoffState by taskHandoffViewModel.uiState.collectAsState()
+
+    LaunchedEffect(openApprovedTaskId) {
+        val taskId = openApprovedTaskId ?: return@LaunchedEffect
+        activeTaskId = taskId
+        detailReturn = AuthenticatedDestination.Capture.name
+        destination = AuthenticatedDestination.TaskDetail
+        captureViewModel.consumeOpenApprovedTask()
+    }
 
     LaunchedEffect(destination, activeTaskId) {
         when (destination) {
@@ -76,7 +85,7 @@ fun AuthenticatedOwnerFlow(
                 onSignOut = onSignOut,
                 modifier = modifier
             )
-        // Manual capture proposes; it creates no Task, so it opens no Task destination.
+        // Manual capture proposes and creates no Task. Accept may later open Task detail.
         AuthenticatedDestination.Capture ->
             TaskCaptureScreen(
                 state = captureState,
@@ -90,6 +99,13 @@ fun AuthenticatedOwnerFlow(
                     captureViewModel.onLeaveCapture()
                     destination = AuthenticatedDestination.Shell
                 },
+                onOpenAccept = captureViewModel::openAccept,
+                onCancelAccept = captureViewModel::cancelAccept,
+                onSelectOwnerResponsibility = captureViewModel::selectOwnerResponsibility,
+                onSelectRecipientResponsibility = captureViewModel::selectRecipientResponsibility,
+                onConfirmAccept = captureViewModel::confirmAccept,
+                onRetryAcceptRecipients = captureViewModel::retryAcceptRecipients,
+                onRetryAcceptRecovery = captureViewModel::retryAcceptRecovery,
                 modifier = modifier
             )
         AuthenticatedDestination.TaskList ->
