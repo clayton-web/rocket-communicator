@@ -211,3 +211,101 @@ components:
           type: string
           maxLength: 64
       description: Aggregate poll outcome. No tokens or per-message bodies.
+    GmailIntakeItem:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - fromAddress
+        - receivedAt
+      properties:
+        id:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: |
+            Organization-scoped CommunicationEvent id. Stable identity for a later Owner
+            Review-with-Rocket request. Not a Gmail API message id.
+        fromAddress:
+          type: string
+          maxLength: 320
+          description: Sender address already stored on the A5 CommunicationEvent.
+        subject:
+          type:
+            - string
+            - 'null'
+          maxLength: 256
+        snippet:
+          type:
+            - string
+            - 'null'
+          maxLength: 512
+          description: |
+            Capped A5 preview already stored on the event. Not the TemporaryCommunicationExcerpt
+            body and not a raw Gmail payload.
+        receivedAt:
+          type: string
+          format: date-time
+      description: |
+        One currently reviewable Gmail occurrence for the Owner Gmail intake surface (D179 / S7).
+        Narrow on purpose: enough to select a message and later Review with Rocket, not a
+        communication-event browser. Omits labels, recipients, attachments, A6 processing state,
+        excerpt bodies, provider tokens, and organization/account ids.
+    CreateGmailReviewRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - communicationEventId
+      properties:
+        communicationEventId:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: |
+            The CommunicationEvent id returned by the Gmail intake list. The server resolves the
+            Gmail occurrence and its temporary excerpt; clients do not send source kind,
+            organization, raw text, or capturedAt. Current Inbox eligibility is required to start
+            a new interpretation, not to replay an already-persisted exact result.
+      description: |
+        Owner request to Review one eligible Gmail occurrence with Rocket (D179). Provenance is
+        fixed server-side as `gmail`. The organization comes from the authenticated Owner session.
+    GmailReviewResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - idempotentReplay
+        - interpretedAt
+        - taskSuggestions
+      properties:
+        idempotentReplay:
+          type: boolean
+          description: |
+            `true` when this response replays a prior committed interpretation for the same
+            organization, Idempotency-Key, and request payload. A replay is answered from canonical
+            state and does not call the interpretation provider again.
+        interpretedAt:
+          type: string
+          format: date-time
+          description: |
+            When the interpretation that produced these proposals committed. On a replay this is the
+            original occurrence's time, not the time of the replayed request.
+        taskSuggestions:
+          type: array
+          maxItems: 10
+          items:
+            $ref: './task-suggestion.yaml#/components/schemas/TaskSuggestion'
+          description: |
+            The 0..N canonical pending proposals this Gmail Review produced, using the same
+            `TaskSuggestion` schema the Owner proposal reads return. An empty array is truthful
+            success, not a failure.
+      description: |
+        Result of an Owner Gmail Review with Rocket (D179).
+
+        Same public interpretation result shape as manual capture: replay flag, commit time, and
+        canonical proposals. Interpretation provenance is persistence-only and is not published:
+        no `interpretationRunId`, no request fingerprint, no persisted idempotency key, no
+        `modelVersion` or `policyVersion`, and no excerpt echo.
+
+        Creates no canonical Task, no approval, no responsibility selection, and no TaskAssignment.
+        Acceptance remains the Owner's through the existing S5 proposal review path.
+

@@ -213,3 +213,138 @@ paths:
           $ref: '../components/responses.yaml#/components/responses/Unauthorized'
         '500':
           $ref: '../components/responses.yaml#/components/responses/InternalError'
+  /api/v1/gmail/intake:
+    get:
+      operationId: listGmailIntake
+      tags: [Gmail]
+      summary: List eligible Gmail messages for Review with Rocket
+      description: |
+        Owner-authenticated Gmail intake read surface (D179 / S7). Returns currently reviewable
+        Gmail occurrences already stored by A5: active Inbox-eligible events that still have an
+        unpurged, unexpired TemporaryCommunicationExcerpt.
+
+        This is **not** a general-purpose communication-event archive or browser (D073, D179):
+        only Gmail is exposed, ineligible/purged/expired rows are omitted, excerpt bodies are not
+        returned, and no historical mailbox backfill is performed. Cursor-paginated newest first
+        (`receivedAt` DESC, then `id` DESC). The listing scans a bounded window of active Gmail
+        candidates; when that budget is reached before exhaustion, `nextCursor` continues from the
+        last scanned candidate even if the page has no eligible items.
+      parameters:
+        - $ref: '../components/parameters.yaml#/components/parameters/Cursor'
+        - $ref: '../components/parameters.yaml#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Paginated eligible Gmail intake items
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '../openapi.yaml#/components/schemas/CursorPage'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: '../openapi.yaml#/components/schemas/GmailIntakeItem'
+        '400':
+          $ref: '../components/responses.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: '../components/responses.yaml#/components/responses/Unauthorized'
+        '500':
+          $ref: '../components/responses.yaml#/components/responses/InternalError'
+  /api/v1/gmail/reviews:
+    post:
+      operationId: createGmailReview
+      tags: [Gmail]
+      summary: Review one eligible Gmail message with Rocket
+      description: |
+        Owner-authenticated Gmail-specific adapter into the shared interpretation service
+        (D179 / S7). Resolves the requested CommunicationEvent from existing A5 data, verifies
+        organization ownership, reads the temporary capped excerpt, and interprets with
+        server-fixed `sourceKind = gmail`.
+
+        Current Inbox eligibility is required to start a **new** Gmail interpretation. An exact
+        D161 replay may return the already-persisted result with `idempotentReplay: true` without
+        calling the provider again even if the source is no longer currently Inbox-eligible,
+        provided the temporary excerpt still exists so the fingerprint can be reconstructed.
+        Unavailable or purged excerpts remain fail-closed and are not recovered by key-only replay.
+
+        This is **not** a generic `/interpretations` endpoint: clients neither send nor choose a
+        source kind. Organization scope comes only from the authenticated Owner session (D059).
+        Requires `Idempotency-Key` (D094): an exact retry replays the original proposal set from
+        committed state with `idempotentReplay: true` and does not call the provider again, while
+        the same key reused for a different request responds 409 IDEMPOTENCY_KEY_CONFLICT.
+
+        HTTP **200** covers first success, exact replay, and valid zero-proposal success alike.
+        This endpoint creates no canonical Task, approves nothing, selects no responsibility, and
+        writes no TaskAssignment. Suggestions remain on the existing S5 proposal lifecycle.
+      parameters:
+        - $ref: '../components/parameters.yaml#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/CreateGmailReviewRequest'
+      responses:
+        '200':
+          description: |
+            Interpretation completed, or an idempotent replay of a prior completed interpretation
+            for the same Idempotency-Key and matching payload. `taskSuggestions` may be empty.
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/GmailReviewResponse'
+        '400':
+          description: |
+            Validation failure (`VALIDATION_ERROR`): malformed JSON, unsupported body fields, a
+            missing or invalid `communicationEventId`, or a malformed or oversized
+            `Idempotency-Key`.
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '../components/responses.yaml#/components/responses/Unauthorized'
+        '404':
+          description: |
+            The referenced Gmail occurrence was not found for this Owner organization
+            (`NOT_FOUND`). Other-organization ids are indistinguishable from missing.
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        '409':
+          description: |
+            Conflict — a new interpretation was refused because the Gmail occurrence is not
+            currently Inbox-eligible, or the temporary excerpt is unavailable so the fingerprint
+            cannot be reconstructed (`DOMAIN_CONFLICT`); the Idempotency-Key was reused for a
+            different request (`IDEMPOTENCY_KEY_CONFLICT`); or persistence refused the write for a
+            reason unrelated to this occurrence's idempotency (`DOMAIN_CONFLICT`). An exact durable
+            replay is not refused merely because the source later left Inbox. None replaces
+            committed state.
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        '415':
+          description: |
+            Unsupported media type (`VALIDATION_ERROR`); `Content-Type: application/json` is required.
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        '428':
+          $ref: '../components/responses.yaml#/components/responses/PreconditionRequired'
+        '503':
+          description: |
+            Retryable interpretation dependency failure (`DEPENDENCY_UNAVAILABLE`), including
+            disabled or missing provider configuration, network/timeout/provider 5xx, quota or rate
+            limiting, and retryable invalid provider output. Nothing was persisted, so the same
+            Idempotency-Key may be retried with the identical payload.
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '../components/responses.yaml#/components/responses/InternalError'

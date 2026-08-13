@@ -151,6 +151,7 @@ export {
 export {
   getCommunicationEventById,
   getTemporaryCommunicationExcerptByEventId,
+  listEligibleGmailIntakeEvents,
 } from './repositories/communication-event-repository.js';
 export { getTaskSuggestionBySourceEventId } from './repositories/suggestion-repository.js';
 

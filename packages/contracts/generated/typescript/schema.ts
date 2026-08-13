@@ -1108,6 +1108,76 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/gmail/intake": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List eligible Gmail messages for Review with Rocket
+         * @description Owner-authenticated Gmail intake read surface (D179 / S7). Returns currently reviewable
+         *     Gmail occurrences already stored by A5: active Inbox-eligible events that still have an
+         *     unpurged, unexpired TemporaryCommunicationExcerpt.
+         *
+         *     This is **not** a general-purpose communication-event archive or browser (D073, D179):
+         *     only Gmail is exposed, ineligible/purged/expired rows are omitted, excerpt bodies are not
+         *     returned, and no historical mailbox backfill is performed. Cursor-paginated newest first
+         *     (`receivedAt` DESC, then `id` DESC). The listing scans a bounded window of active Gmail
+         *     candidates; when that budget is reached before exhaustion, `nextCursor` continues from the
+         *     last scanned candidate even if the page has no eligible items.
+         *
+         */
+        get: operations["listGmailIntake"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gmail/reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Review one eligible Gmail message with Rocket
+         * @description Owner-authenticated Gmail-specific adapter into the shared interpretation service
+         *     (D179 / S7). Resolves the requested CommunicationEvent from existing A5 data, verifies
+         *     organization ownership, reads the temporary capped excerpt, and interprets with
+         *     server-fixed `sourceKind = gmail`.
+         *
+         *     Current Inbox eligibility is required to start a **new** Gmail interpretation. An exact
+         *     D161 replay may return the already-persisted result with `idempotentReplay: true` without
+         *     calling the provider again even if the source is no longer currently Inbox-eligible,
+         *     provided the temporary excerpt still exists so the fingerprint can be reconstructed.
+         *     Unavailable or purged excerpts remain fail-closed and are not recovered by key-only replay.
+         *
+         *     This is **not** a generic `/interpretations` endpoint: clients neither send nor choose a
+         *     source kind. Organization scope comes only from the authenticated Owner session (D059).
+         *     Requires `Idempotency-Key` (D094): an exact retry replays the original proposal set from
+         *     committed state with `idempotentReplay: true` and does not call the provider again, while
+         *     the same key reused for a different request responds 409 IDEMPOTENCY_KEY_CONFLICT.
+         *
+         *     HTTP **200** covers first success, exact replay, and valid zero-proposal success alike.
+         *     This endpoint creates no canonical Task, approves nothing, selects no responsibility, and
+         *     writes no TaskAssignment. Suggestions remain on the existing S5 proposal lifecycle.
+         *
+         */
+        post: operations["createGmailReview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/internal/gmail/poll": {
         parameters: {
             query?: never;
@@ -2283,6 +2353,66 @@ export interface components {
             runsProcessed: number;
             skippedLocked: number;
             requestId: string;
+        };
+        /** @description One currently reviewable Gmail occurrence for the Owner Gmail intake surface (D179 / S7).
+         *     Narrow on purpose: enough to select a message and later Review with Rocket, not a
+         *     communication-event browser. Omits labels, recipients, attachments, A6 processing state,
+         *     excerpt bodies, provider tokens, and organization/account ids.
+         *      */
+        GmailIntakeItem: {
+            /** @description Organization-scoped CommunicationEvent id. Stable identity for a later Owner
+             *     Review-with-Rocket request. Not a Gmail API message id.
+             *      */
+            id: string;
+            /** @description Sender address already stored on the A5 CommunicationEvent. */
+            fromAddress: string;
+            subject?: string | null;
+            /** @description Capped A5 preview already stored on the event. Not the TemporaryCommunicationExcerpt
+             *     body and not a raw Gmail payload.
+             *      */
+            snippet?: string | null;
+            /** Format: date-time */
+            receivedAt: string;
+        };
+        /** @description Owner request to Review one eligible Gmail occurrence with Rocket (D179). Provenance is
+         *     fixed server-side as `gmail`. The organization comes from the authenticated Owner session.
+         *      */
+        CreateGmailReviewRequest: {
+            /** @description The CommunicationEvent id returned by the Gmail intake list. The server resolves the
+             *     Gmail occurrence and its temporary excerpt; clients do not send source kind,
+             *     organization, raw text, or capturedAt. Current Inbox eligibility is required to start
+             *     a new interpretation, not to replay an already-persisted exact result.
+             *      */
+            communicationEventId: string;
+        };
+        /** @description Result of an Owner Gmail Review with Rocket (D179).
+         *
+         *     Same public interpretation result shape as manual capture: replay flag, commit time, and
+         *     canonical proposals. Interpretation provenance is persistence-only and is not published:
+         *     no `interpretationRunId`, no request fingerprint, no persisted idempotency key, no
+         *     `modelVersion` or `policyVersion`, and no excerpt echo.
+         *
+         *     Creates no canonical Task, no approval, no responsibility selection, and no TaskAssignment.
+         *     Acceptance remains the Owner's through the existing S5 proposal review path.
+         *      */
+        GmailReviewResponse: {
+            /** @description `true` when this response replays a prior committed interpretation for the same
+             *     organization, Idempotency-Key, and request payload. A replay is answered from canonical
+             *     state and does not call the interpretation provider again.
+             *      */
+            idempotentReplay: boolean;
+            /**
+             * Format: date-time
+             * @description When the interpretation that produced these proposals committed. On a replay this is the
+             *     original occurrence's time, not the time of the replayed request.
+             *
+             */
+            interpretedAt: string;
+            /** @description The 0..N canonical pending proposals this Gmail Review produced, using the same
+             *     `TaskSuggestion` schema the Owner proposal reads return. An empty array is truthful
+             *     success, not a failure.
+             *      */
+            taskSuggestions: components["schemas"]["TaskSuggestion"][];
         };
         /** @enum {string} */
         SummaryPointKind: "confirmed_fact" | "request" | "commitment" | "amount" | "deadline" | "risk" | "inference" | "missing_information" | "next_action";
@@ -4339,6 +4469,140 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+        };
+    };
+    listGmailIntake: {
+        parameters: {
+            query?: {
+                /** @description Opaque pagination cursor from a prior response `nextCursor`.
+                 *     For `GET /api/v1/tasks`, the cursor represents composite order
+                 *     `updatedAt` DESC, then `id` DESC.
+                 *      */
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paginated eligible Gmail intake items */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CursorPage"] & {
+                        items?: components["schemas"]["GmailIntakeItem"][];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    createGmailReview: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Client-generated idempotency key for safe retries of side-effecting Owner mutations (D094).
+                 *     Introduced for A7 handoff; reuse the same key only with an identical request payload for the
+                 *     same operation and resource. Replay of a completed success returns the original success body
+                 *     with `idempotentReplay: true`. Reuse with a conflicting payload returns 409 IDEMPOTENCY_KEY_CONFLICT.
+                 *     Missing header → 428 PRECONDITION_REQUIRED.
+                 *
+                 * @example handoff-01JXYZ-attempt-1
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateGmailReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Interpretation completed, or an idempotent replay of a prior completed interpretation
+             *     for the same Idempotency-Key and matching payload. `taskSuggestions` may be empty.
+             *      */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GmailReviewResponse"];
+                };
+            };
+            /** @description Validation failure (`VALIDATION_ERROR`): malformed JSON, unsupported body fields, a
+             *     missing or invalid `communicationEventId`, or a malformed or oversized
+             *     `Idempotency-Key`.
+             *      */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description The referenced Gmail occurrence was not found for this Owner organization
+             *     (`NOT_FOUND`). Other-organization ids are indistinguishable from missing.
+             *      */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict — a new interpretation was refused because the Gmail occurrence is not
+             *     currently Inbox-eligible, or the temporary excerpt is unavailable so the fingerprint
+             *     cannot be reconstructed (`DOMAIN_CONFLICT`); the Idempotency-Key was reused for a
+             *     different request (`IDEMPOTENCY_KEY_CONFLICT`); or persistence refused the write for a
+             *     reason unrelated to this occurrence's idempotency (`DOMAIN_CONFLICT`). An exact durable
+             *     replay is not refused merely because the source later left Inbox. None replaces
+             *     committed state.
+             *      */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported media type (`VALIDATION_ERROR`); `Content-Type: application/json` is required.
+             *      */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            428: components["responses"]["PreconditionRequired"];
+            500: components["responses"]["InternalError"];
+            /** @description Retryable interpretation dependency failure (`DEPENDENCY_UNAVAILABLE`), including
+             *     disabled or missing provider configuration, network/timeout/provider 5xx, quota or rate
+             *     limiting, and retryable invalid provider output. Nothing was persisted, so the same
+             *     Idempotency-Key may be retried with the identical payload.
+             *      */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     pollGmailInternalGet: {

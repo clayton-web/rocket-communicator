@@ -3,6 +3,7 @@ import type { components } from '@aicaa/contracts/schema';
 import type { InterpretationServiceResult } from './service';
 
 export type ManualCaptureResponseDto = components['schemas']['ManualCaptureResponse'];
+export type GmailReviewResponseDto = components['schemas']['GmailReviewResponse'];
 
 /**
  * Map an interpretation outcome onto the public manual-capture response (S3.2 / D170).
@@ -20,6 +21,21 @@ export type ManualCaptureResponseDto = components['schemas']['ManualCaptureRespo
 export function mapManualCaptureResponse(
   result: InterpretationServiceResult,
 ): ManualCaptureResponseDto {
+  return {
+    idempotentReplay: result.outcome === 'replayed',
+    interpretedAt: result.occurrence.interpretedAt,
+    taskSuggestions: result.suggestions.map(mapSuggestionToDto),
+  };
+}
+
+/**
+ * Map an interpretation outcome onto the public Gmail Review-with-Rocket response (D179 / S7).
+ *
+ * Same public result shape as manual capture — replay flag, commit time, canonical proposals —
+ * built field by field so occurrence provenance cannot silently become published API. `sourceKind`
+ * stays unpublished because this Gmail adapter already fixed it.
+ */
+export function mapGmailReviewResponse(result: InterpretationServiceResult): GmailReviewResponseDto {
   return {
     idempotentReplay: result.outcome === 'replayed',
     interpretedAt: result.occurrence.interpretedAt,

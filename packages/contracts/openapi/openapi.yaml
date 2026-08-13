@@ -38,7 +38,8 @@ tags:
       Owner manual capture interpretation (S3.2; D169–D170). Submits transient capture text to the
       shared interpretation service and returns the canonical TaskSuggestions it proposed. Source
       kind is fixed server-side; raw input is never persisted, echoed, or logged. Creates no Task,
-      approval, responsibility, or assignment. Gmail and SMS capture are not implemented.
+      approval, responsibility, or assignment. SMS capture is not implemented. Gmail Review with
+      Rocket is a separate Gmail-tag adapter (D179), not this route.
   - name: Capabilities
     description: |
       Recipient capability-token routes (separate from Owner session APIs).
@@ -50,7 +51,11 @@ tags:
       internal poll are implemented and production-operational. Does not create Task
       Suggestions (D077). Internal poll uses InternalCronBearer (CRON_SECRET), not Owner session.
       A7.1 adds optional send-capability flags on GmailConnection (D093); runtime OAuth scope
-      expansion is a later A7 phase.
+      expansion is a later A7 phase. **D179 / S7** adds the Owner-authenticated Gmail intake
+      read surface and Gmail-specific Review-with-Rocket adapter into the shared interpretation
+      service; that backend slice is implemented. Android Gmail UI and Exclude sender remain
+      later S7 work. This is not a generic communication browser and not a generic
+      `/interpretations` API.
   - name: OwnerNotifications
     description: |
       Owner Event Notification Engine (A8.5; D133–D136). Event-driven and Owner-audience, separate
@@ -145,6 +150,10 @@ paths:
     $ref: './paths/gmail.yaml#/paths/~1api~1v1~1gmail~1sync'
   /api/v1/gmail/sync-runs:
     $ref: './paths/gmail.yaml#/paths/~1api~1v1~1gmail~1sync-runs'
+  /api/v1/gmail/intake:
+    $ref: './paths/gmail.yaml#/paths/~1api~1v1~1gmail~1intake'
+  /api/v1/gmail/reviews:
+    $ref: './paths/gmail.yaml#/paths/~1api~1v1~1gmail~1reviews'
   /api/v1/internal/gmail/poll:
     $ref: './paths/gmail.yaml#/paths/~1api~1v1~1internal~1gmail~1poll'
 components:
@@ -313,6 +322,12 @@ components:
       $ref: './components/schemas/gmail.yaml#/components/schemas/GmailSyncResponse'
     GmailPollResponse:
       $ref: './components/schemas/gmail.yaml#/components/schemas/GmailPollResponse'
+    GmailIntakeItem:
+      $ref: './components/schemas/gmail.yaml#/components/schemas/GmailIntakeItem'
+    CreateGmailReviewRequest:
+      $ref: './components/schemas/gmail.yaml#/components/schemas/CreateGmailReviewRequest'
+    GmailReviewResponse:
+      $ref: './components/schemas/gmail.yaml#/components/schemas/GmailReviewResponse'
   securitySchemes:
     bearerAuth:
       $ref: './components/security.yaml#/components/securitySchemes/bearerAuth'

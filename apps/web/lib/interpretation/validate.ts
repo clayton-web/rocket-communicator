@@ -3,16 +3,38 @@ import { AiProviderError } from '@aicaa/ai';
 import { interpretationServiceError } from './errors';
 
 /**
- * The only interpretation source kind authorized to produce occurrences today (D169). The service
- * itself is source-neutral: a later authorized Gmail or SMS adapter supplies its own kind and
- * captured-at and reuses everything below rather than growing a second interpretation system.
+ * Interpretation source kinds authorized to produce occurrences through this service.
+ *
+ * `owner_manual_capture` is the S3.1 / S3.2 Owner capture path (D169, D170). `gmail` is the S7
+ * Gmail Review-with-Rocket adapter (D179). The service stays source-neutral beyond these two:
+ * an adapter supplies its own kind, captured-at, and provenance rather than growing a second
+ * interpretation system. SMS remains unauthorized.
  */
-export type AuthorizedInterpretationSourceKind = 'owner_manual_capture';
+export type AuthorizedInterpretationSourceKind = 'owner_manual_capture' | 'gmail';
+
+/**
+ * Gmail occurrence identity required to build truthful Gmail source provenance (D179).
+ *
+ * Supplied only by the Gmail Review adapter after it has resolved an A5 event and its temporary
+ * excerpt. Current Inbox eligibility is a new-interpretation gate in the adapter, not a
+ * prerequisite for reconstructing this provenance. Not accepted from a client as an interpretation
+ * source-kind claim.
+ */
+export interface GmailInterpretationProvenance {
+  communicationEventId: string;
+  providerMessageId: string;
+  providerThreadId: string;
+  excerptId: string;
+  excerptByteLength: number;
+  subject: string | null;
+  fromAddress: string;
+  dedupeKey: string;
+}
 
 export interface InterpretationRequest {
   organizationId: string;
   sourceKind: AuthorizedInterpretationSourceKind;
-  /** Owner capture text. Interpreted transiently and never persisted (D169). */
+  /** Source text. Interpreted transiently and never persisted as raw input by this service. */
   rawInput: string;
   /** Organization-scoped idempotency key supplied by the caller. */
   idempotencyKey: string;
@@ -25,10 +47,17 @@ export interface InterpretationRequest {
    * Required, because it is fingerprinted request semantics. A retry of one capture must describe
    * the same capture, and the service has no way to recover a value it invented for an occurrence
    * that never committed. See the module comment on `capturedAt` stability below.
+   *
+   * For Gmail Review, the adapter supplies the A5 event's receivedAt rather than the server clock.
    */
   capturedAt: string;
   /** Owner/org IANA timezone when known. Mechanical context only. */
   timezone?: string | null;
+  /**
+   * Required when `sourceKind` is `gmail`; forbidden for manual capture so Gmail provenance cannot
+   * leak onto a manual occurrence.
+   */
+  gmailProvenance?: GmailInterpretationProvenance;
 }
 
 /**
@@ -52,6 +81,20 @@ const MAX_REQUEST_ID = 64;
 const IDEMPOTENCY_KEY_MAX = 128;
 /** `InterpretationRun.model_version` / `policy_version` persistence ceiling. */
 export const MAX_INTERPRETATION_VERSION_LENGTH = 64;
+
+/** Published `SourceReference` / CommunicationEvent identity ceilings. */
+const MAX_GMAIL_EVENT_ID = 64;
+const MAX_GMAIL_PROVIDER_ID = 256;
+const MAX_GMAIL_EXCERPT_ID = 64;
+const MAX_GMAIL_DEDUPE_KEY = 128;
+const MAX_GMAIL_SUBJECT = 256;
+/** CommunicationEvent.fromAddress persistence ceiling; contactHint is truncated at build time. */
+const MAX_GMAIL_FROM_ADDRESS = 320;
+
+const AUTHORIZED_SOURCE_KINDS = new Set<AuthorizedInterpretationSourceKind>([
+  'owner_manual_capture',
+  'gmail',
+]);
 
 /**
  * Same key shape the contracted `Idempotency-Key` header is parsed against (A7.7 / D094): 8–128
@@ -142,9 +185,88 @@ function requireCapturedAt(value: string): string {
  * Runs before the idempotency read, before the provider call, and before any transaction, so an
  * unusable request costs no interpretation and leaves no state.
  */
+function requireAuthorizedSourceKind(value: string): AuthorizedInterpretationSourceKind {
+  if (!AUTHORIZED_SOURCE_KINDS.has(value as AuthorizedInterpretationSourceKind)) {
+    validationError('sourceKind', 'sourceKind is not an authorized interpretation source.');
+  }
+  return value as AuthorizedInterpretationSourceKind;
+}
+
+function requireGmailProvenance(
+  provenance: GmailInterpretationProvenance | undefined,
+): GmailInterpretationProvenance {
+  if (provenance == null) {
+    validationError('gmailProvenance', 'gmailProvenance is required for a Gmail interpretation.');
+  }
+  const excerptByteLength = provenance.excerptByteLength;
+  if (!Number.isInteger(excerptByteLength) || excerptByteLength < 0) {
+    validationError(
+      'gmailProvenance.excerptByteLength',
+      'gmailProvenance.excerptByteLength must be a non-negative integer.',
+    );
+  }
+  return {
+    communicationEventId: requireBoundedIdentifier(
+      provenance.communicationEventId,
+      'gmailProvenance.communicationEventId',
+      MAX_GMAIL_EVENT_ID,
+    ),
+    providerMessageId: requireBoundedIdentifier(
+      provenance.providerMessageId,
+      'gmailProvenance.providerMessageId',
+      MAX_GMAIL_PROVIDER_ID,
+    ),
+    providerThreadId: requireBoundedIdentifier(
+      provenance.providerThreadId,
+      'gmailProvenance.providerThreadId',
+      MAX_GMAIL_PROVIDER_ID,
+    ),
+    excerptId: requireBoundedIdentifier(
+      provenance.excerptId,
+      'gmailProvenance.excerptId',
+      MAX_GMAIL_EXCERPT_ID,
+    ),
+    excerptByteLength,
+    subject:
+      provenance.subject == null
+        ? null
+        : requireBoundedIdentifier(
+            provenance.subject,
+            'gmailProvenance.subject',
+            MAX_GMAIL_SUBJECT,
+          ),
+    fromAddress: requireBoundedIdentifier(
+      provenance.fromAddress,
+      'gmailProvenance.fromAddress',
+      MAX_GMAIL_FROM_ADDRESS,
+    ),
+    dedupeKey: requireBoundedIdentifier(
+      provenance.dedupeKey,
+      'gmailProvenance.dedupeKey',
+      MAX_GMAIL_DEDUPE_KEY,
+    ),
+  };
+}
+
+/**
+ * Validate one interpretation request at the application-service boundary (D169 S3.1, D179 S7).
+ *
+ * Runs before the idempotency read, before the provider call, and before any transaction, so an
+ * unusable request costs no interpretation and leaves no state.
+ */
 export function validateInterpretationRequest(
   request: InterpretationRequest,
 ): ValidatedInterpretationRequest {
+  const sourceKind = requireAuthorizedSourceKind(request.sourceKind);
+  if (sourceKind === 'owner_manual_capture' && request.gmailProvenance != null) {
+    validationError(
+      'gmailProvenance',
+      'gmailProvenance is not valid for a manual capture interpretation.',
+    );
+  }
+  const gmailProvenance =
+    sourceKind === 'gmail' ? requireGmailProvenance(request.gmailProvenance) : undefined;
+
   return {
     ...request,
     organizationId: requireBoundedIdentifier(
@@ -152,10 +274,12 @@ export function validateInterpretationRequest(
       'organizationId',
       MAX_ORGANIZATION_ID,
     ),
+    sourceKind,
     requestId: requireBoundedIdentifier(request.requestId, 'requestId', MAX_REQUEST_ID),
     idempotencyKey: requireIdempotencyKey(request.idempotencyKey),
     capturedAt: requireCapturedAt(request.capturedAt),
     timezone: request.timezone ?? null,
+    gmailProvenance,
   };
 }
 

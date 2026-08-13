@@ -541,7 +541,7 @@ describe('contracts package', () => {
 
     // The route is manual capture only. A generic arbitrary-source interpretation endpoint would
     // let a client claim any provenance it liked, which is exactly what fixing it server-side
-    // prevents. Gmail and SMS capture remain unimplemented.
+    // prevents. Gmail Review with Rocket is a separate Gmail-tag adapter (D179), not this route.
     const routes = Object.keys(bundled.paths ?? {});
     expect(routes).not.toContain('/api/v1/interpretations');
     expect(routes.filter((route) => route.includes('interpretation'))).toEqual([]);
@@ -562,6 +562,145 @@ describe('contracts package', () => {
       'INTERNAL_ERROR',
     ]) {
       expect(errorEnum).toContain(code);
+    }
+  });
+
+  it('contracts the S7 Gmail intake and Review-with-Rocket adapter without a generic interpretations API (D179)', () => {
+    execSync('pnpm bundle', { cwd: root, stdio: 'pipe' });
+    const bundled = parseYaml(readFileSync(path.join(root, 'dist/openapi.bundled.yaml'), 'utf8'));
+    const schemas = (bundled.components?.schemas ?? {}) as Record<string, unknown>;
+    const routes = Object.keys(bundled.paths ?? {});
+
+    expect(routes).toContain('/api/v1/gmail/intake');
+    expect(routes).toContain('/api/v1/gmail/reviews');
+    expect(routes).not.toContain('/api/v1/interpretations');
+    expect(routes.filter((route) => route.includes('communication-event'))).toEqual([]);
+
+    const intakePath = bundled.paths?.['/api/v1/gmail/intake'] as
+      Record<string, unknown> | undefined;
+    expect(Object.keys(intakePath ?? {}).sort()).toEqual(['get']);
+    const intakeGet = intakePath!.get as {
+      operationId?: string;
+      parameters?: { $ref?: string }[];
+      responses?: Record<string, unknown>;
+    };
+    expect(intakeGet.operationId).toBe('listGmailIntake');
+    expect((intakeGet.parameters ?? []).map((parameter) => parameter.$ref ?? '').join()).toMatch(
+      /Cursor/,
+    );
+    expect((intakeGet.parameters ?? []).map((parameter) => parameter.$ref ?? '').join()).toMatch(
+      /Limit/,
+    );
+    expect(Object.keys(intakeGet.responses ?? {}).sort()).toEqual(['200', '400', '401', '500']);
+
+    const item = schemas.GmailIntakeItem as {
+      additionalProperties?: boolean;
+      required?: string[];
+      properties?: Record<string, unknown>;
+    };
+    expect(item.additionalProperties).toBe(false);
+    expect(Object.keys(item.properties ?? {}).sort()).toEqual([
+      'fromAddress',
+      'id',
+      'receivedAt',
+      'snippet',
+      'subject',
+    ]);
+    expect([...(item.required ?? [])].sort()).toEqual(['fromAddress', 'id', 'receivedAt']);
+    for (const forbidden of [
+      'organizationId',
+      'accountId',
+      'labelIds',
+      'toAddresses',
+      'excerpt',
+      'content',
+      'providerMessageId',
+      'suggestionProcessingStatus',
+      'sourceKind',
+    ]) {
+      expect(
+        Object.keys(item.properties ?? {}),
+        `GmailIntakeItem must not expose ${forbidden}`,
+      ).not.toContain(forbidden);
+    }
+
+    const reviewPath = bundled.paths?.['/api/v1/gmail/reviews'] as
+      Record<string, unknown> | undefined;
+    expect(Object.keys(reviewPath ?? {}).sort()).toEqual(['post']);
+    const reviewPost = reviewPath!.post as {
+      operationId?: string;
+      parameters?: { $ref?: string }[];
+      responses?: Record<string, unknown>;
+    };
+    expect(reviewPost.operationId).toBe('createGmailReview');
+    expect((reviewPost.parameters ?? []).map((parameter) => parameter.$ref ?? '').join()).toMatch(
+      /IdempotencyKey/,
+    );
+    expect(Object.keys(reviewPost.responses ?? {}).sort()).toEqual([
+      '200',
+      '400',
+      '401',
+      '404',
+      '409',
+      '415',
+      '428',
+      '500',
+      '503',
+    ]);
+
+    const request = schemas.CreateGmailReviewRequest as {
+      additionalProperties?: boolean;
+      required?: string[];
+      properties?: Record<string, unknown>;
+    };
+    expect(request.additionalProperties).toBe(false);
+    expect(Object.keys(request.properties ?? {}).sort()).toEqual(['communicationEventId']);
+    expect(request.required).toEqual(['communicationEventId']);
+    for (const forbidden of [
+      'sourceKind',
+      'organizationId',
+      'rawInput',
+      'capturedAt',
+      'timezone',
+      'excerpt',
+    ]) {
+      expect(
+        Object.keys(request.properties ?? {}),
+        `CreateGmailReviewRequest must not accept ${forbidden}`,
+      ).not.toContain(forbidden);
+    }
+
+    const response = schemas.GmailReviewResponse as {
+      additionalProperties?: boolean;
+      required?: string[];
+      properties?: Record<string, { items?: { $ref?: string } }>;
+    };
+    expect(response.additionalProperties).toBe(false);
+    expect(Object.keys(response.properties ?? {}).sort()).toEqual([
+      'idempotentReplay',
+      'interpretedAt',
+      'taskSuggestions',
+    ]);
+    expect([...(response.required ?? [])].sort()).toEqual(
+      Object.keys(response.properties ?? {}).sort(),
+    );
+    expect(response.properties?.taskSuggestions?.items?.$ref).toBe(
+      '#/components/schemas/TaskSuggestion',
+    );
+    for (const forbidden of [
+      'interpretationRunId',
+      'requestFingerprint',
+      'idempotencyKey',
+      'modelVersion',
+      'policyVersion',
+      'sourceKind',
+      'rawInput',
+      'excerpt',
+    ]) {
+      expect(
+        Object.keys(response.properties ?? {}),
+        `GmailReviewResponse must not expose ${forbidden}`,
+      ).not.toContain(forbidden);
     }
   });
 

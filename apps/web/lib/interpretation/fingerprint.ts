@@ -7,6 +7,12 @@ export interface InterpretationFingerprintInputs {
   rawInput: string;
   capturedAt: string | null;
   timezone: string | null;
+  /**
+   * Gmail occurrence identity. Present only for `sourceKind = gmail` so two different messages
+   * with identical excerpt text cannot collide. Must stay absent for manual capture so existing
+   * D161 fingerprints do not change.
+   */
+  gmailOccurrenceId?: string;
 }
 
 /**
@@ -20,13 +26,18 @@ export interface InterpretationFingerprintInputs {
  * than the interpretation service and its provider call.
  */
 export function canonicalizeInterpretationRequest(inputs: InterpretationFingerprintInputs): string {
-  return [
+  const lines = [
     `capturedAt=${JSON.stringify(inputs.capturedAt)}`,
     `organizationId=${JSON.stringify(inputs.organizationId)}`,
     `rawInput=${JSON.stringify(inputs.rawInput)}`,
     `sourceKind=${JSON.stringify(inputs.sourceKind)}`,
     `timezone=${JSON.stringify(inputs.timezone)}`,
-  ].join('\n');
+  ];
+  // Appended only for Gmail so the manual-capture canonical form stays byte-identical.
+  if (inputs.sourceKind === 'gmail' && inputs.gmailOccurrenceId) {
+    lines.push(`gmailOccurrenceId=${JSON.stringify(inputs.gmailOccurrenceId)}`);
+  }
+  return lines.join('\n');
 }
 
 /**

@@ -27,16 +27,30 @@ import {
   assertInterpretationResultFitsPersistence,
   validateInterpretationRequest,
   type AuthorizedInterpretationSourceKind,
+  type GmailInterpretationProvenance,
   type InterpretationRequest,
   type ValidatedInterpretationRequest,
 } from './validate';
 
-export type { AuthorizedInterpretationSourceKind, InterpretationRequest };
+export type {
+  AuthorizedInterpretationSourceKind,
+  GmailInterpretationProvenance,
+  InterpretationRequest,
+};
 
 export interface InterpretationServiceDeps {
   /** Injected provider for tests. Production composition is default closed (D169). */
   provider?: InterpretationProvider;
 }
+
+/**
+ * Caller-owned gate that runs only when this request would start a new interpretation.
+ *
+ * Replay and idempotency-conflict classification already happened against durable
+ * `(organizationId, idempotencyKey)` + fingerprint state. The Gmail adapter uses this to require
+ * current Inbox eligibility only for a new interpretation, not for an exact D161 replay.
+ */
+export type BeforeNewInterpretation = () => void | Promise<void>;
 
 /**
  * What the committed occurrence itself says, for a caller that needs more than the proposals.
@@ -108,6 +122,77 @@ function buildManualCaptureSourceReference(input: {
     dedupeKey: `${input.sourceKind}:${dedupeDigest}`,
     capturedAt: input.capturedAt,
   };
+}
+
+/** Published `SourceReference.contactHint` ceiling (`source-reference.yaml`). */
+const MAX_CONTACT_HINT = 128;
+
+/**
+ * Truthful Gmail source provenance for an Owner Review-with-Rocket occurrence (D179).
+ *
+ * Built only from A5 identity the Gmail adapter already resolved. `sourceType` is `gmail`; this
+ * helper never claims `manual`. `id` is the CommunicationEvent id so sibling proposals of one
+ * Review share the Gmail occurrence, and a later Review of the same message remains a separate
+ * InterpretationRun (D161) with the same source identity.
+ *
+ * `sourceCommunicationEventId` stays unset: that column is A6 Gmail-origin suggestion linkage and
+ * is not the S7 provenance path.
+ */
+function buildGmailSourceReference(input: {
+  provenance: GmailInterpretationProvenance;
+  capturedAt: string;
+}): SourceReference {
+  const contactHint =
+    input.provenance.fromAddress.length <= MAX_CONTACT_HINT
+      ? input.provenance.fromAddress
+      : input.provenance.fromAddress.slice(0, MAX_CONTACT_HINT);
+
+  const externalIds = [
+    {
+      provider: 'gmail',
+      idType: 'message',
+      id: input.provenance.providerMessageId,
+    },
+    {
+      provider: 'gmail',
+      idType: 'thread',
+      id: input.provenance.providerThreadId,
+    },
+  ];
+
+  return {
+    id: input.provenance.communicationEventId,
+    sourceType: 'gmail',
+    dedupeKey: input.provenance.dedupeKey,
+    capturedAt: input.capturedAt,
+    externalIds,
+    title: input.provenance.subject ?? undefined,
+    contactHint,
+    excerptRef: {
+      excerptId: input.provenance.excerptId,
+      byteLength: input.provenance.excerptByteLength,
+      contentClassification: 'temporary_communication',
+    },
+  };
+}
+
+function buildSourceReference(input: {
+  occurrenceToken: string;
+  request: ValidatedInterpretationRequest;
+}): SourceReference {
+  if (input.request.sourceKind === 'gmail') {
+    return buildGmailSourceReference({
+      provenance: input.request.gmailProvenance!,
+      capturedAt: input.request.capturedAt,
+    });
+  }
+  return buildManualCaptureSourceReference({
+    occurrenceToken: input.occurrenceToken,
+    organizationId: input.request.organizationId,
+    sourceKind: input.request.sourceKind,
+    idempotencyKey: input.request.idempotencyKey,
+    capturedAt: input.request.capturedAt,
+  });
 }
 
 /**
@@ -205,12 +290,15 @@ async function resolveCommittedOccurrence(
  * 2. Resolve organization-scoped idempotency **before** interpreting. An exact replay is answered
  *    from committed canonical state, so the provider is not called a second time, and a reused key
  *    with a different fingerprint conflicts before any work.
- * 3. Call the provider with no database transaction open. A failed call leaves nothing behind:
+ * 3. If this would be a new interpretation, run the optional caller gate. Gmail uses this to require
+ *    current Inbox eligibility only for a new run — an exact replay does not need the source to
+ *    still be Inbox-eligible.
+ * 4. Call the provider with no database transaction open. A failed call leaves nothing behind:
  *    there is no InterpretationRun, no TaskSuggestion, and no attempt row to record it.
- * 4. Refuse provider-returned `policyVersion` / `modelVersion` that cannot fit the occurrence
+ * 5. Refuse provider-returned `policyVersion` / `modelVersion` that cannot fit the occurrence
  *    columns. Oversized provenance is invalid interpreted output, not a raw database length error,
  *    and it is never truncated.
- * 5. Persist the occurrence and its 0..N proposals in one transaction. `tasks: []` is truthful
+ * 6. Persist the occurrence and its 0..N proposals in one transaction. `tasks: []` is truthful
  *    success recorded as `no_proposals`, not a failure and not a manufactured placeholder.
  *
  * Everything the fingerprint covers is supplied by the caller, including `capturedAt`. The service
@@ -227,6 +315,7 @@ export async function interpretCapture(input: {
   request: InterpretationRequest;
   now?: string;
   deps?: InterpretationServiceDeps;
+  beforeNewInterpretation?: BeforeNewInterpretation;
 }): Promise<InterpretationServiceResult> {
   const request: ValidatedInterpretationRequest = validateInterpretationRequest(input.request);
   const runtime = await loadDbRuntime();
@@ -241,12 +330,18 @@ export async function interpretCapture(input: {
       rawInput: request.rawInput,
       capturedAt: request.capturedAt,
       timezone: request.timezone,
+      gmailOccurrenceId:
+        request.sourceKind === 'gmail' ? request.gmailProvenance?.communicationEventId : undefined,
     }),
   };
 
   const resolved = await resolveCommittedOccurrence(runtime, input.db, idempotency);
   if (resolved.kind === 'replay') {
     return toServiceResult('replayed', resolved.occurrence);
+  }
+
+  if (input.beforeNewInterpretation) {
+    await input.beforeNewInterpretation();
   }
 
   const provider = input.deps?.provider ?? createInterpretationProvider();
@@ -260,12 +355,9 @@ export async function interpretCapture(input: {
   // One generated token, two namespaced identities: the occurrence row and the source reference its
   // sibling proposals share.
   const occurrenceToken = randomToken();
-  const sourceReference = buildManualCaptureSourceReference({
+  const sourceReference = buildSourceReference({
     occurrenceToken,
-    organizationId: request.organizationId,
-    sourceKind: request.sourceKind,
-    idempotencyKey: request.idempotencyKey,
-    capturedAt: request.capturedAt,
+    request,
   });
   const suggestions = interpretation.tasks.map((proposal) =>
     buildProposedSuggestion({

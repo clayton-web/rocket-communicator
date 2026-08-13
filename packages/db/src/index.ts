@@ -320,6 +320,10 @@ export {
   purgeTemporaryCommunicationExcerpt,
   getTemporaryCommunicationExcerptByEventId,
   updateExcerptPurgeAtIfPresent,
+  listEligibleGmailIntakeEvents,
+  GMAIL_INTAKE_MAX_SCAN,
+  type ListEligibleGmailIntakeEventsQuery,
+  type ListEligibleGmailIntakeEventsResult,
 } from './repositories/communication-event-repository.js';
 export {
   createGmailSyncRun,

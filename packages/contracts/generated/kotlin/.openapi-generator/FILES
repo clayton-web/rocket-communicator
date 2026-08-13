@@ -15,6 +15,7 @@ docs/CommunicationProvider.md
 docs/CompleteCapabilityTaskRequest.md
 docs/CompleteTaskRequest.md
 docs/ConfirmedFactSummaryPoint.md
+docs/CreateGmailReviewRequest.md
 docs/CreateManualCaptureRequest.md
 docs/CreateRecipientRequest.md
 docs/CreateTaskRequest.md
@@ -35,7 +36,9 @@ docs/GmailConnectionStatus.md
 docs/GmailDisconnectRequest.md
 docs/GmailDisconnectResponse.md
 docs/GmailHistoryState.md
+docs/GmailIntakeItem.md
 docs/GmailPollResponse.md
+docs/GmailReviewResponse.md
 docs/GmailSyncOutcome.md
 docs/GmailSyncResponse.md
 docs/GmailSyncRun.md
@@ -47,6 +50,7 @@ docs/HandoffTaskResponse.md
 docs/InferenceSummaryPoint.md
 docs/IssueTaskCapabilityRequest.md
 docs/IssuedCapabilityLink.md
+docs/ListGmailIntake200Response.md
 docs/ListGmailSyncRuns200Response.md
 docs/ListRecipientsResponse.md
 docs/ListTaskSuggestions200Response.md
@@ -122,6 +126,7 @@ src/main/kotlin/com/aicommunication/assistant/contracts/models/CommunicationProv
 src/main/kotlin/com/aicommunication/assistant/contracts/models/CompleteCapabilityTaskRequest.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/CompleteTaskRequest.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/ConfirmedFactSummaryPoint.kt
+src/main/kotlin/com/aicommunication/assistant/contracts/models/CreateGmailReviewRequest.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/CreateManualCaptureRequest.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/CreateRecipientRequest.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/CreateTaskRequest.kt
@@ -142,7 +147,9 @@ src/main/kotlin/com/aicommunication/assistant/contracts/models/GmailConnectionSt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/GmailDisconnectRequest.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/GmailDisconnectResponse.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/GmailHistoryState.kt
+src/main/kotlin/com/aicommunication/assistant/contracts/models/GmailIntakeItem.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/GmailPollResponse.kt
+src/main/kotlin/com/aicommunication/assistant/contracts/models/GmailReviewResponse.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/GmailSyncOutcome.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/GmailSyncResponse.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/GmailSyncRun.kt
@@ -154,6 +161,7 @@ src/main/kotlin/com/aicommunication/assistant/contracts/models/HandoffTaskRespon
 src/main/kotlin/com/aicommunication/assistant/contracts/models/InferenceSummaryPoint.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/IssueTaskCapabilityRequest.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/IssuedCapabilityLink.kt
+src/main/kotlin/com/aicommunication/assistant/contracts/models/ListGmailIntake200Response.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/ListGmailSyncRuns200Response.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/ListRecipientsResponse.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/ListTaskSuggestions200Response.kt

@@ -209,6 +209,156 @@ export async function getTemporaryCommunicationExcerptByEventId(
   return row ? mapTemporaryCommunicationExcerpt(row) : null;
 }
 
+export type ListEligibleGmailIntakeEventsQuery = {
+  organizationId: string;
+  /** Instant used for TemporaryCommunicationExcerpt.purgeAt comparison. */
+  now: string;
+  cursor?: string | null;
+  limit?: number;
+};
+
+export type ListEligibleGmailIntakeEventsResult = {
+  items: CommunicationEvent[];
+  nextCursor: string | null;
+};
+
+const GMAIL_INTAKE_SCAN_BATCH = 50;
+/** Max active Gmail candidates examined per request before returning a continuation cursor. */
+export const GMAIL_INTAKE_MAX_SCAN = 250;
+
+type GmailIntakeCursor = { receivedAt: Date; id: string };
+
+function encodeGmailIntakeCursor(value: GmailIntakeCursor): string {
+  const payload = `${value.receivedAt.toISOString()}|${value.id}`;
+  return Buffer.from(payload, 'utf8').toString('base64url');
+}
+
+function decodeGmailIntakeCursor(raw: string | null | undefined): GmailIntakeCursor | null {
+  if (!raw) {
+    return null;
+  }
+  let decoded: string;
+  try {
+    decoded = Buffer.from(raw, 'base64url').toString('utf8');
+  } catch {
+    throw persistenceValidation('Gmail intake list cursor is invalid.');
+  }
+  const separator = decoded.lastIndexOf('|');
+  if (separator <= 0) {
+    throw persistenceValidation('Gmail intake list cursor is invalid.');
+  }
+  const receivedAtRaw = decoded.slice(0, separator);
+  const id = decoded.slice(separator + 1);
+  const receivedAt = new Date(receivedAtRaw);
+  if (!id || Number.isNaN(receivedAt.getTime())) {
+    throw persistenceValidation('Gmail intake list cursor is invalid.');
+  }
+  return { receivedAt, id };
+}
+
+function gmailIntakeCursorWhere(cursor: GmailIntakeCursor): Prisma.CommunicationEventWhereInput {
+  return {
+    OR: [
+      { receivedAt: { lt: cursor.receivedAt } },
+      {
+        AND: [{ receivedAt: cursor.receivedAt }, { id: { lt: cursor.id } }],
+      },
+    ],
+  };
+}
+
+/**
+ * Organization-scoped Gmail intake listing for Owner Review with Rocket (D179 / S7).
+ *
+ * Returns only currently reviewable Gmail occurrences: active Gmail events that still satisfy
+ * Inbox eligibility (D068) and still have an unpurged, unexpired TemporaryCommunicationExcerpt.
+ * Not a general CommunicationEvent browser: non-Gmail source kinds, purged events, and
+ * ineligible/expired rows are omitted rather than described.
+ *
+ * Order: receivedAt DESC, then id DESC. Cursor-paginated. Non-mutating. Does not return excerpt
+ * bodies — those stay on TemporaryCommunicationExcerpt until a later Owner Review action.
+ *
+ * Inbox eligibility is applied in memory because `labelIds` is stored as JSON and the D068
+ * predicate (INBOX required; DRAFT/SPAM/TRASH excluded) is not a simple column filter. The scan
+ * is bounded. When that budget is reached before the keyset is exhausted, `nextCursor` continues
+ * from the last *scanned* candidate — even if the page has zero eligible items — so older
+ * eligible mail behind a run of ineligible candidates remains reachable.
+ */
+export async function listEligibleGmailIntakeEvents(
+  db: Client,
+  query: ListEligibleGmailIntakeEventsQuery,
+): Promise<ListEligibleGmailIntakeEventsResult> {
+  const limit = Math.min(Math.max(query.limit ?? 25, 1), 100);
+  let cursor = decodeGmailIntakeCursor(query.cursor);
+  const now = fromIso(query.now);
+  if (!now) {
+    throw persistenceValidation('Gmail intake list now instant is invalid.');
+  }
+
+  const eligible: CommunicationEvent[] = [];
+  let scanned = 0;
+  let exhausted = false;
+  let lastScanned: GmailIntakeCursor | null = null;
+
+  while (eligible.length < limit + 1 && scanned < GMAIL_INTAKE_MAX_SCAN) {
+    const rows = await db.communicationEvent.findMany({
+      where: {
+        organizationId: query.organizationId,
+        sourceType: 'gmail',
+        status: 'active',
+        ...(cursor ? gmailIntakeCursorWhere(cursor) : {}),
+        excerpt: {
+          purgedAt: null,
+          content: { not: '' },
+          purgeAt: { gt: now },
+        },
+      },
+      orderBy: [{ receivedAt: 'desc' }, { id: 'desc' }],
+      take: GMAIL_INTAKE_SCAN_BATCH,
+    });
+
+    if (rows.length === 0) {
+      exhausted = true;
+      break;
+    }
+
+    scanned += rows.length;
+    for (const row of rows) {
+      const event = mapCommunicationEvent(row);
+      if (isGmailInboxEligible(event.labelIds)) {
+        eligible.push(event);
+        if (eligible.length >= limit + 1) {
+          break;
+        }
+      }
+    }
+
+    const last = rows[rows.length - 1]!;
+    lastScanned = { receivedAt: last.receivedAt, id: last.id };
+    cursor = lastScanned;
+    if (rows.length < GMAIL_INTAKE_SCAN_BATCH) {
+      exhausted = true;
+      break;
+    }
+  }
+
+  const page = eligible.slice(0, limit);
+  const lastReturned = page[page.length - 1];
+  const nextCursor =
+    eligible.length > limit && lastReturned
+      ? encodeGmailIntakeCursor({
+          receivedAt: fromIso(lastReturned.receivedAt)!,
+          id: lastReturned.id,
+        })
+      : exhausted
+        ? null
+        : lastScanned
+          ? encodeGmailIntakeCursor(lastScanned)
+          : null;
+
+  return { items: page, nextCursor };
+}
+
 /**
  * Replace TemporaryCommunicationExcerpt.purgeAt when the excerpt still exists and is not purged.
  * No-op (returns false) when missing or already purged — never restores content (D082).

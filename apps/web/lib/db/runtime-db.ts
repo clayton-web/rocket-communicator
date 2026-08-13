@@ -107,6 +107,7 @@ const REQUIRED_EXPORTS = [
   'resolveInterpretationOccurrence',
   'getCommunicationEventById',
   'getTemporaryCommunicationExcerptByEventId',
+  'listEligibleGmailIntakeEvents',
   'getTaskSuggestionBySourceEventId',
   'getCommunicationAccountByOrganization',
   'getCommunicationAccountById',
