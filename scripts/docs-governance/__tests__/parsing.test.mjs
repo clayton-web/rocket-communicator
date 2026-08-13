@@ -206,8 +206,8 @@ test('the real register parses in its fully converted representation with no pro
 
   assert.deepEqual(problems, []);
   assert.deepEqual(representations, ['heading']);
-  assert.equal(records.length, 179);
-  assert.equal(new Set(records.map((record) => record.id)).size, 179);
+  assert.equal(records.length, 181);
+  assert.equal(new Set(records.map((record) => record.id)).size, 181);
 });
 
 /**

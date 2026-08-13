@@ -42,19 +42,22 @@ Applies to an **existing** Owner-owned Task (typically an **unassigned** Task fr
 
 Recipient email from Owner-managed Recipient records only (D087)—not hard-coded and not an env default. Proposed-Recipient hint resolution is **not** in the current handoff request schema and remains deferred.
 
-## 3. Google Messages → interpretation → proposals _(planned — A10; law: D160)_
+## 3. Google Messages → interpretation → proposals _(authorized — D181; law: D160; not implemented)_
 
-**Initial model is manual and Owner-initiated** (D160). Continuous automatic SMS monitoring, and automatic backend analysis of incoming Messages content, are **not** the initial model.
+**Initial model is manual and Owner-initiated** (D160). Continuous automatic SMS monitoring, and automatic backend analysis of incoming Messages content, are **not** the initial model. **D181** is the implementation authorization for that direction. Notification arrival must not by itself cause server upload, shared interpretation, TaskSuggestion creation, Task creation, durable server-side communication persistence, or automatic backend analysis.
 
-1. Owner enables Messages as a source on the device (D043 — enablement, source, and draft-only outbound facts remain operative).
-2. Owner selects or reviews a **recent SMS / conversation**.
-3. Owner chooses **"Review with Rocket"**.
-4. **Shared interpretation** runs only then (D157), producing **zero, one, or several** proposals.
-5. Owner decides; only then does a canonical Task or assignment exist.
-6. A **phone-number exclusion list** is required: an excluded number must never be interpreted by Rocket AI.
-7. Optional SMS draft may open in Google Messages for Owner send (no direct SMS send — D043).
+1. Owner enables Messages notification access on the device (D043 enablement remains operative; Rocket is not the default SMS app and must not request `READ_SMS`, `RECEIVE_SMS`, or `SEND_SMS`).
+2. Rocket shows recent eligible one-to-one plain-text Google Messages notification items on a **device-local** recent-review surface (bounded/recent; not a historical archive; Google Messages packages allowlisted; fail closed when unsafe).
+3. Owner selects an eligible item.
+4. Owner explicitly chooses **"Review with Rocket"**.
+5. Android sends the selected occurrence to the Owner-authenticated Messages-specific Review route. The server creates/reuses canonical `CommunicationEvent`, persists selected text under existing `TemporaryCommunicationExcerpt` retention law, and runs **shared interpretation** only then (D157, D181), producing **zero, one, or several** proposals. `CommunicationEvent.accountId` may be null; no synthetic Google Messages `CommunicationAccount`. A6 must not process these events.
+6. Existing S5 proposal presentation/lifecycle handles 0..N proposals. Owner decides; only then does a canonical Task exist.
+7. Owner may choose **Exclude Number** where a valid canonical E.164 sender exists (D181). Excluded numbers leave the local review surface once authoritative exclusion state is known and are refused for new Review; exact committed D161 replay remains valid. Immediate in-memory Undo may remove that exclusion. No number-management settings screen or allow list.
+8. Optional SMS draft in Google Messages remains D043 operative product direction and is **not** authorized for implementation by D181 (no direct SMS send).
 
-**Future automatic mode** (non-excluded conversations interpreted without a per-message Owner "Review with Rocket") requires its own approved decision — same shape as email (D156). This section does **not** authorize NotificationListener work, an intake surface, an exclusion store, routes, schema, or prompts.
+**SMS / RCS boundary (D181):** one-to-one plain-text Google Messages notifications only. SMS or RCS may appear as represented by an eligible notification. Rocket does not claim direct RCS protocol/inbox access. Media-only MMS, attachments/media, first-class group conversations, historical import, guaranteed RCS completeness, conversation reconstruction, and direct SMS sending are excluded. Unidentifiable occurrences fail closed.
+
+**Future automatic mode** (non-excluded conversations interpreted without a per-message Owner "Review with Rocket") requires its own approved decision — same shape as email (D156). This section does **not** authorize automatic A10 mode, Production `INTERPRETATION_AI_ENABLED`, OAW, or D043 outbound-draft implementation.
 
 ## 4. Missed call → voice proposal _(planned — A11/A12)_
 

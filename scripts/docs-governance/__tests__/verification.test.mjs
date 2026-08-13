@@ -508,7 +508,7 @@ test('the live fully converted register verifies with no hard failure', () => {
     [],
   );
   assert.deepEqual(result.representations, ['heading']);
-  assert.equal(result.records.length, 179);
+  assert.equal(result.records.length, 181);
   assert.equal(result.ordering.state, 'converted');
 });
 
@@ -730,5 +730,5 @@ test('the live register verifies green against the committed frozen baseline', (
     [],
   );
   assert.equal(result.classifications.identical, 165);
-  assert.equal(result.highestAssignedId, 'D179');
+  assert.equal(result.highestAssignedId, 'D181');
 });
