@@ -182,6 +182,10 @@ const OWNER_STYLESHEETS = [
   '(owner)/_components/presentation.module.css',
 ];
 
+const RECIPIENT_STYLESHEET = 'c/[token]/recipient-capability.module.css';
+
+const NO_BARE_COLOUR_STYLESHEETS = [...OWNER_STYLESHEETS, RECIPIENT_STYLESHEET];
+
 describe('packages/ui is a tokens-only layer (D116)', () => {
   it('ships no React component, hook, or logic module', () => {
     const files = collectFiles(uiPackage, ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']);
@@ -246,16 +250,16 @@ describe('token extraction was a verified no-op (D116)', () => {
     expect(dangling).toEqual([]);
   });
 
-  it('leaves no bare colour literal in the Owner stylesheets it extracted', () => {
-    // Owner S4.1 stylesheets. `/c/[token]` keeps its own stylesheet and is deliberately
-    // excluded: Recipient presentation is unchanged in this slice (D173).
-    for (const relative of OWNER_STYLESHEETS) {
+  it('leaves no bare colour literal in the Owner and Recipient stylesheets it extracted', () => {
+    // S4.2 (D174): the Recipient stylesheet joins this set because it now contains no bare
+    // colour literal. Owner files may still carry the single-use dialog-shadow rgb.
+    for (const relative of NO_BARE_COLOUR_STYLESHEETS) {
       const css = stripComments(readFileSync(join(webApp, relative), 'utf8'));
       const hexColours = [...css.matchAll(/#[0-9a-f]{3,8}\b/gi)].map((match) => match[0]);
       const rgbColours = [...css.matchAll(/\brgba?\([^)]*\)/gi)].map((match) => match[0]);
 
       expect(hexColours, `${relative} must not hardcode hex colours`).toEqual([]);
-      // One shadow colour remains a literal: it is a single-use elevation value with no
+      // One Owner shadow colour remains a literal: it is a single-use elevation value with no
       // second consumer, so a token would add indirection without removing duplication.
       expect(rgbColours.filter((value) => !value.includes('28, 25, 23, 0.18'))).toEqual([]);
     }
@@ -290,8 +294,8 @@ describe('S4.1 Owner presentation roles are additive (D173)', () => {
     },
   );
 
-  it('does not re-value the legacy tokens the Recipient surface still consumes', () => {
-    const recipientConsumed = [
+  it('does not re-value the legacy tokens / and /login still consume', () => {
+    const lightSurfaceTokens = [
       '--aicaa-color-ink',
       '--aicaa-color-muted',
       '--aicaa-color-line',
@@ -301,8 +305,16 @@ describe('S4.1 Owner presentation roles are additive (D173)', () => {
       '--aicaa-color-accent-glow',
     ];
 
-    for (const name of recipientConsumed) {
+    for (const name of lightSurfaceTokens) {
       expect(tokens.get(name)).toBe(PRE_P1_4_LITERALS[name]);
+    }
+
+    const globals = stripComments(readFileSync(join(webApp, 'globals.css'), 'utf8'));
+    const recipient = stripComments(readFileSync(join(webApp, RECIPIENT_STYLESHEET), 'utf8'));
+
+    for (const name of lightSurfaceTokens) {
+      expect(globals, `/ and /login still consume ${name}`).toContain(`var(${name})`);
+      expect(recipient, `Recipient must not consume ${name}`).not.toContain(`var(${name})`);
     }
   });
 

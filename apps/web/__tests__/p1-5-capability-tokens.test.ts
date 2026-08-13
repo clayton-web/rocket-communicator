@@ -4,19 +4,16 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 /**
- * Removal of the last P1.4 compatibility aliases from the Recipient capability surface.
+ * Recipient capability stylesheet on the S4 role tokens (S4.2 / D174).
  *
- * P1.4 tokenized the Owner stylesheets but deliberately left `/c/{token}` alone, because that
- * surface is externally visible and security-sensitive and P1 touches it last. It bridged the
- * gap by declaring `--ink`, `--muted`, `--line`, and `--accent` in `globals.css` as direct
- * aliases of the `--aicaa-*` tokens, and recorded that P1.5 should migrate the stylesheet and
- * delete the block.
+ * P1.5 migrated `/c/{token}` off the `--ink`/`--muted`/`--line`/`--accent` aliases onto the
+ * `--aicaa-color-*` names those aliases pointed at, and left the light presentation in place.
+ * S4.2 is the authorized visual migration: the same stylesheet now consumes the S4 semantic
+ * roles directly, scoped to the Recipient page container, without remapping the legacy tokens
+ * the way the Owner shell does.
  *
- * This is that migration: eighteen `var(--short)` references became `var(--aicaa-color-*)`,
- * and the four declarations went. Because each alias was a single unconditional reference
- * with no fallback and no transformation, the resolved value at every use is unchanged —
- * proven separately by comparing computed styles before and after across every state and both
- * viewports.
+ * Counts cannot detect a swap of which element gets which role, so the companion browser
+ * spec compares computed style against the token value read from `:root` at runtime.
  */
 
 const webApp = join(__dirname, '../app');
@@ -28,25 +25,20 @@ const capabilityCode = stripComments(capability);
 const globalsCode = stripComments(readFileSync(join(webApp, 'globals.css'), 'utf8'));
 
 const LEGACY_ALIASES = ['--ink', '--muted', '--line', '--accent'] as const;
+const LEGACY_SHARED_TOKENS = [
+  '--aicaa-color-ink',
+  '--aicaa-color-muted',
+  '--aicaa-color-line',
+  '--aicaa-color-accent',
+] as const;
 
 /**
- * Colour literals present before the cleanup, which was authorized to change no literal.
- * Recorded as a multiset so a token reference silently becoming a hard-coded colour, or a
- * literal quietly disappearing, both fail.
+ * Colour literals present after S4.2. The pre-migration light multiset is gone; the dialog
+ * shadow uses `--aicaa-color-scrim-dark` rather than a second elevation literal. An empty
+ * multiset is the exact post-migration expectation, not a loosened guard: a token reference
+ * silently becoming a hard-coded colour still fails.
  */
-const PRE_CLEANUP_LITERALS = [
-  '#fff',
-  '#fff',
-  '#fff',
-  '#fff',
-  '#b91c1c',
-  '#b91c1c',
-  '#991b1b',
-  'rgba(255, 255, 255, 0.65)',
-  'rgba(255, 255, 255, 0.75)',
-  'rgba(28, 25, 23, 0.45)',
-  'rgba(28, 25, 23, 0.18)',
-];
+const POST_S4_2_LITERALS: string[] = [];
 
 /** Class selectors present before the cleanup. Renaming one would break the components. */
 const PRE_CLEANUP_CLASSES = [
@@ -73,7 +65,7 @@ const PRE_CLEANUP_CLASSES = [
   'srOnly',
 ];
 
-describe('Recipient capability stylesheet uses canonical tokens (P1.5 / D116)', () => {
+describe('Recipient capability stylesheet uses S4 role tokens (S4.2 / D174)', () => {
   it.each(LEGACY_ALIASES)('no longer consumes %s', (alias) => {
     expect(capabilityCode).not.toContain(`var(${alias})`);
   });
@@ -82,32 +74,61 @@ describe('Recipient capability stylesheet uses canonical tokens (P1.5 / D116)', 
     expect(globalsCode).not.toMatch(new RegExp(`${alias}\\s*:`));
   });
 
-  it('references the canonical token for every colour it used an alias for', () => {
+  it.each(LEGACY_SHARED_TOKENS)('no longer consumes legacy shared token %s', (token) => {
+    expect(capabilityCode).not.toContain(`var(${token})`);
+  });
+
+  it('references every S4 role the Recipient surface was authorized to consume', () => {
     for (const token of [
-      '--aicaa-color-ink',
-      '--aicaa-color-muted',
-      '--aicaa-color-line',
-      '--aicaa-color-accent',
+      '--aicaa-color-background',
+      '--aicaa-color-text',
+      '--aicaa-color-text-muted',
+      '--aicaa-color-surface-raised-solid',
+      '--aicaa-color-surface-base',
+      '--aicaa-color-surface-cool',
+      '--aicaa-color-border',
+      '--aicaa-color-border-strong',
+      '--aicaa-color-border-cool',
+      '--aicaa-color-primary',
+      '--aicaa-color-on-primary',
+      '--aicaa-color-info',
+      '--aicaa-color-destructive',
+      '--aicaa-color-focus',
+      '--aicaa-color-scrim-dark',
+      '--aicaa-target-min',
     ]) {
       expect(capabilityCode).toContain(`var(${token})`);
     }
   });
 
-  it('replaced each alias use one-for-one, with no use lost or invented', () => {
+  it('replaced each role use one-for-one, with no use lost or invented', () => {
     const count = (needle: string) => capabilityCode.split(needle).length - 1;
 
-    // The pre-cleanup counts, so a dropped declaration or a stray extra one is visible.
-    expect(count('var(--aicaa-color-ink)')).toBe(6);
-    expect(count('var(--aicaa-color-muted)')).toBe(2);
-    expect(count('var(--aicaa-color-line)')).toBe(5);
-    expect(count('var(--aicaa-color-accent)')).toBe(5);
+    expect(count('var(--aicaa-color-background)')).toBe(2);
+    expect(count('var(--aicaa-color-text)')).toBe(8);
+    expect(count('var(--aicaa-color-text-muted)')).toBe(2);
+    expect(count('var(--aicaa-color-surface-raised-solid)')).toBe(3);
+    expect(count('var(--aicaa-color-surface-base)')).toBe(1);
+    expect(count('var(--aicaa-color-surface-cool)')).toBe(1);
+    expect(count('var(--aicaa-color-border)')).toBe(4);
+    expect(count('var(--aicaa-color-border-strong)')).toBe(1);
+    expect(count('var(--aicaa-color-border-cool)')).toBe(1);
+    expect(count('var(--aicaa-color-primary)')).toBe(2);
+    expect(count('var(--aicaa-color-on-primary)')).toBe(1);
+    expect(count('var(--aicaa-color-info)')).toBe(1);
+    expect(count('var(--aicaa-color-destructive)')).toBe(3);
+    expect(count('var(--aicaa-color-focus)')).toBe(1);
+    expect(count('var(--aicaa-color-scrim-dark)')).toBe(2);
+    expect(count('var(--aicaa-target-min)')).toBe(2);
+    expect(count('var(--aicaa-font-sans)')).toBe(2);
+    expect(count('var(--aicaa-font-serif)')).toBe(1);
   });
 
   it('introduced no replacement colour literal', () => {
     const hex = [...capabilityCode.matchAll(/#[0-9a-f]{3,8}\b/gi)].map((m) => m[0]);
     const rgb = [...capabilityCode.matchAll(/\brgba?\([^)]*\)/gi)].map((m) => m[0]);
 
-    expect([...hex, ...rgb].sort()).toEqual([...PRE_CLEANUP_LITERALS].sort());
+    expect([...hex, ...rgb].sort()).toEqual([...POST_S4_2_LITERALS].sort());
   });
 
   it('renamed no class', () => {
@@ -122,6 +143,18 @@ describe('Recipient capability stylesheet uses canonical tokens (P1.5 / D116)', 
     // Consuming `--aicaa-*` is the point; declaring one here would fork the palette (D124).
     expect(capabilityCode).not.toMatch(/^\s*--aicaa-[a-z0-9-]+\s*:/m);
     expect(capabilityCode).not.toMatch(/^\s*--[a-z0-9-]+\s*:/m);
+  });
+
+  it('introduces no motion', () => {
+    expect(capabilityCode).not.toMatch(/transition(?:-|$|\s*:)/i);
+    expect(capabilityCode).not.toMatch(/animation(?:-|$|\s*:)/i);
+    expect(capabilityCode).not.toMatch(/@keyframes/i);
+  });
+
+  it('establishes the dark canvas on the Recipient page container, not globally', () => {
+    expect(capabilityCode).toMatch(/color-scheme:\s*dark/);
+    expect(globalsCode).toMatch(/color-scheme:\s*light/);
+    expect(globalsCode).not.toMatch(/color-scheme:\s*dark/);
   });
 
   it('leaves the short names unused everywhere else too', () => {

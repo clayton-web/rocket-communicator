@@ -2,15 +2,31 @@
   max-width: 40rem;
   margin: 0 auto;
   padding: 2.5rem 1.25rem 4rem;
-  font-family:
-    'Segoe UI',
-    system-ui,
-    -apple-system,
-    sans-serif;
+  min-height: 100vh;
+  isolation: isolate;
+  color-scheme: dark;
+  background: var(--aicaa-color-background);
+  color: var(--aicaa-color-text);
+  font-family: var(--aicaa-font-sans);
+}
+
+/*
+ * Full-viewport Recipient canvas from the existing page container (D174). `.page` is the
+ * shared measure-constrained `<main>` on every Recipient view; the fixed layer covers the
+ * sides that the light global html/body gradient would otherwise show, without touching
+ * globals, `:root`, `/`, or `/login`.
+ */
+.page::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--aicaa-color-background);
 }
 
 .page h1 {
-  font-family: 'Iowan Old Style', 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, serif;
+  font-family: var(--aicaa-font-serif);
   font-size: clamp(1.6rem, 3.5vw, 2rem);
   margin: 0 0 0.75rem;
 }
@@ -20,9 +36,14 @@
 .point,
 .noteBody,
 .hint {
-  color: var(--aicaa-color-muted);
   line-height: 1.5;
   margin: 0 0 0.75rem;
+}
+
+.lede,
+.meta,
+.hint {
+  color: var(--aicaa-color-text-muted);
 }
 
 .meta {
@@ -32,19 +53,15 @@
 .section {
   margin-top: 1.75rem;
   padding-top: 1.25rem;
-  border-top: 1px solid var(--aicaa-color-line);
+  border-top: 1px solid var(--aicaa-color-border);
 }
 
 .section h2 {
   font-size: 1.05rem;
   margin: 0 0 0.75rem;
-  font-family:
-    'Segoe UI',
-    system-ui,
-    -apple-system,
-    sans-serif;
+  font-family: var(--aicaa-font-sans);
   font-weight: 600;
-  color: var(--aicaa-color-ink);
+  color: var(--aicaa-color-text);
 }
 
 .points {
@@ -58,8 +75,9 @@
 .point {
   margin: 0;
   padding: 0.75rem 0.85rem;
-  border-left: 3px solid var(--aicaa-color-accent);
-  background: rgba(255, 255, 255, 0.65);
+  border-left: 3px solid var(--aicaa-color-border-cool);
+  background: var(--aicaa-color-surface-raised-solid);
+  color: var(--aicaa-color-text);
 }
 
 .pointLabel {
@@ -67,7 +85,7 @@
   font-size: 0.8rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--aicaa-color-muted);
+  color: var(--aicaa-color-text-muted);
   margin-bottom: 0.25rem;
 }
 
@@ -82,11 +100,12 @@
 .dialogActions button,
 .formActions button {
   appearance: none;
-  border: 1px solid var(--aicaa-color-line);
-  background: #fff;
-  color: var(--aicaa-color-ink);
+  border: 1px solid var(--aicaa-color-border-strong);
+  background: var(--aicaa-color-surface-raised-solid);
+  color: var(--aicaa-color-text);
   border-radius: 0.35rem;
   padding: 0.55rem 0.85rem;
+  min-height: var(--aicaa-target-min);
   font: inherit;
   cursor: pointer;
 }
@@ -97,7 +116,7 @@
 .field input:focus-visible,
 .field textarea:focus-visible,
 .field select:focus-visible {
-  outline: 2px solid var(--aicaa-color-accent);
+  outline: 2px solid var(--aicaa-color-focus);
   outline-offset: 2px;
 }
 
@@ -109,27 +128,27 @@
 }
 
 .primary {
-  background: var(--aicaa-color-accent) !important;
-  border-color: var(--aicaa-color-accent) !important;
-  color: #fff !important;
+  background: var(--aicaa-color-primary) !important;
+  border-color: var(--aicaa-color-primary) !important;
+  color: var(--aicaa-color-on-primary) !important;
 }
 
 .danger {
-  border-color: #b91c1c !important;
-  color: #991b1b !important;
+  border-color: var(--aicaa-color-destructive) !important;
+  color: var(--aicaa-color-destructive) !important;
 }
 
 .alert {
   margin: 1rem 0 0;
   padding: 0.75rem 0.9rem;
-  border: 1px solid var(--aicaa-color-line);
-  border-left: 3px solid var(--aicaa-color-accent);
-  background: rgba(255, 255, 255, 0.75);
-  color: var(--aicaa-color-ink);
+  border: 1px solid var(--aicaa-color-border);
+  border-left: 3px solid var(--aicaa-color-info);
+  background: var(--aicaa-color-surface-cool);
+  color: var(--aicaa-color-text);
 }
 
 .alertError {
-  border-left-color: #b91c1c;
+  border-left-color: var(--aicaa-color-destructive);
 }
 
 .notes {
@@ -142,13 +161,13 @@
 
 .noteBody {
   margin: 0;
-  color: var(--aicaa-color-ink);
+  color: var(--aicaa-color-text);
 }
 
 .backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(28, 25, 23, 0.45);
+  background: var(--aicaa-color-scrim-dark);
   display: grid;
   place-items: center;
   padding: 1rem;
@@ -157,11 +176,11 @@
 
 .dialog {
   width: min(100%, 28rem);
-  background: #fff;
-  border: 1px solid var(--aicaa-color-line);
+  background: var(--aicaa-color-surface-raised-solid);
+  border: 1px solid var(--aicaa-color-border);
   border-radius: 0.5rem;
   padding: 1.25rem;
-  box-shadow: 0 12px 40px rgba(28, 25, 23, 0.18);
+  box-shadow: 0 12px 40px var(--aicaa-color-scrim-dark);
 }
 
 .dialog h2 {
@@ -177,7 +196,7 @@
 
 .field label {
   font-size: 0.9rem;
-  color: var(--aicaa-color-ink);
+  color: var(--aicaa-color-text);
 }
 
 .field input,
@@ -185,10 +204,11 @@
 .field select {
   font: inherit;
   padding: 0.55rem 0.65rem;
-  border: 1px solid var(--aicaa-color-line);
+  border: 1px solid var(--aicaa-color-border);
   border-radius: 0.35rem;
-  background: #fff;
-  color: var(--aicaa-color-ink);
+  background: var(--aicaa-color-surface-base);
+  color: var(--aicaa-color-text);
+  min-height: var(--aicaa-target-min);
 }
 
 .dialogActions,
