@@ -42,6 +42,7 @@ class GmailIntakeViewModel(
 
     fun load() {
         if ((_uiState.value as? GmailIntakeUiState.Ready)?.reviewing == true) return
+        if ((_uiState.value as? GmailIntakeUiState.Ready)?.excluding == true) return
         viewModelScope.launch {
             _uiState.value = GmailIntakeUiState.Loading
             when (val result = repository.listIntake()) {
@@ -81,7 +82,7 @@ class GmailIntakeViewModel(
 
     fun refresh() {
         val current = _uiState.value as? GmailIntakeUiState.Ready ?: return load()
-        if (current.reviewing) return
+        if (current.reviewing || current.excluding) return
         viewModelScope.launch {
             _uiState.value =
                 current.copy(
@@ -92,13 +93,16 @@ class GmailIntakeViewModel(
             when (val result = repository.listIntake()) {
                 is OwnerApiResult.Success ->
                     _uiState.value =
-                        GmailIntakeUiState.Ready(
+                        current.copy(
                             items = result.value.items,
                             nextCursor = result.value.nextCursor,
                             selectedId =
                             current.selectedId?.takeIf { id ->
                                 result.value.items.any { it.id == id }
-                            }
+                            },
+                            refreshing = false,
+                            errorMessage = null,
+                            connectivityIssue = false
                         )
                 OwnerApiResult.Unauthorized -> onSessionInvalidated()
                 OwnerApiResult.Connectivity ->
@@ -121,16 +125,17 @@ class GmailIntakeViewModel(
     fun loadMore() {
         val current = _uiState.value as? GmailIntakeUiState.Ready ?: return
         val cursor = current.nextCursor ?: return
-        if (current.loadingMore || current.reviewing) return
+        if (current.loadingMore || current.reviewing || current.excluding) return
         viewModelScope.launch {
             _uiState.value = current.copy(loadingMore = true, errorMessage = null)
             when (val result = repository.listIntake(cursor = cursor)) {
                 is OwnerApiResult.Success ->
                     _uiState.value =
-                        GmailIntakeUiState.Ready(
+                        current.copy(
                             items = current.items + result.value.items,
                             nextCursor = result.value.nextCursor,
-                            selectedId = current.selectedId
+                            loadingMore = false,
+                            errorMessage = null
                         )
                 OwnerApiResult.Unauthorized -> onSessionInvalidated()
                 OwnerApiResult.Connectivity ->
@@ -152,7 +157,7 @@ class GmailIntakeViewModel(
 
     fun select(id: String) {
         val current = _uiState.value as? GmailIntakeUiState.Ready ?: return
-        if (current.reviewing) return
+        if (current.reviewing || current.excluding) return
         if (current.items.none { it.id == id }) return
         if (pendingAttempt?.communicationEventId != id) {
             pendingAttempt = null
@@ -174,7 +179,7 @@ class GmailIntakeViewModel(
         val current = _uiState.value as? GmailIntakeUiState.Ready ?: return
         val selectedId = current.selectedId ?: return
         if (!current.canReview && !current.canRetryReview) return
-        if (current.reviewing || reviewGuard) return
+        if (current.reviewing || current.excluding || reviewGuard) return
         val selected = current.items.firstOrNull { it.id == selectedId } ?: return
         val attempt =
             pendingAttempt?.takeIf { it.communicationEventId == selectedId }
@@ -203,6 +208,179 @@ class GmailIntakeViewModel(
 
     fun consumeReviewResult() {
         _openReviewResult.value = null
+    }
+
+    /**
+     * Exclude the selected Gmail sender. The server is authoritative: items are removed only after
+     * a successful exclusion response. Failure leaves the current intake list unchanged.
+     */
+    fun excludeSender() {
+        val current = _uiState.value as? GmailIntakeUiState.Ready ?: return
+        val selectedId = current.selectedId ?: return
+        if (!current.canExclude) return
+        val selected = current.items.firstOrNull { it.id == selectedId } ?: return
+        _uiState.value =
+            current.copy(
+                excluding = true,
+                excludeError = null,
+                excludeSuccessMessage = null,
+                errorMessage = null
+            )
+        viewModelScope.launch {
+            when (val result = repository.excludeSender(selected.id)) {
+                is OwnerApiResult.Success -> {
+                    val remaining = current.items.filter { it.fromAddress != selected.fromAddress }
+                    _uiState.value =
+                        current.copy(
+                            items = remaining,
+                            selectedId = remaining.firstOrNull { it.id == selectedId }?.id,
+                            excluding = false,
+                            excludeError = null,
+                            undoExclusionId = result.value.id,
+                            excludeSuccessMessage = string(R.string.gmail_exclude_sender_done)
+                        )
+                    refreshAfterExclusion(result.value.id, selected.fromAddress)
+                }
+                OwnerApiResult.Unauthorized -> {
+                    onSessionInvalidated()
+                    val ready = _uiState.value as? GmailIntakeUiState.Ready ?: return@launch
+                    _uiState.value =
+                        ready.copy(
+                            excluding = false,
+                            excludeError = string(R.string.gmail_exclude_error_session)
+                        )
+                }
+                else -> {
+                    val ready = _uiState.value as? GmailIntakeUiState.Ready ?: return@launch
+                    _uiState.value =
+                        ready.copy(
+                            excluding = false,
+                            excludeError = excludeErrorMessage(result),
+                            undoExclusionId = null,
+                            excludeSuccessMessage = null
+                        )
+                }
+            }
+        }
+    }
+
+    fun undoExcludeSender() {
+        val current = _uiState.value as? GmailIntakeUiState.Ready ?: return
+        val exclusionId = current.undoExclusionId ?: return
+        if (!current.canUndoExclude) return
+        _uiState.value =
+            current.copy(
+                excluding = true,
+                excludeError = null,
+                errorMessage = null
+            )
+        viewModelScope.launch {
+            when (val result = repository.removeSenderExclusion(exclusionId)) {
+                is OwnerApiResult.Success -> {
+                    val ready = _uiState.value as? GmailIntakeUiState.Ready ?: return@launch
+                    _uiState.value =
+                        ready.copy(
+                            excluding = false,
+                            undoExclusionId = null,
+                            excludeSuccessMessage = null,
+                            excludeError = null
+                        )
+                    refreshIntakeAfterUndo()
+                }
+                OwnerApiResult.Unauthorized -> {
+                    onSessionInvalidated()
+                    val ready = _uiState.value as? GmailIntakeUiState.Ready ?: return@launch
+                    _uiState.value =
+                        ready.copy(
+                            excluding = false,
+                            excludeError = string(R.string.gmail_exclude_error_session)
+                        )
+                }
+                else -> {
+                    val ready = _uiState.value as? GmailIntakeUiState.Ready ?: return@launch
+                    _uiState.value =
+                        ready.copy(
+                            excluding = false,
+                            excludeError = excludeErrorMessage(result)
+                        )
+                }
+            }
+        }
+    }
+
+    private suspend fun refreshAfterExclusion(exclusionId: String, fromAddress: String) {
+        when (val result = repository.listIntake()) {
+            is OwnerApiResult.Success -> {
+                val current = _uiState.value as? GmailIntakeUiState.Ready ?: return
+                _uiState.value =
+                    current.copy(
+                        items = result.value.items,
+                        nextCursor = result.value.nextCursor,
+                        selectedId =
+                        current.selectedId?.takeIf { id ->
+                            result.value.items.any { it.id == id }
+                        },
+                        undoExclusionId = exclusionId,
+                        excludeSuccessMessage = current.excludeSuccessMessage,
+                        refreshing = false,
+                        errorMessage = null
+                    )
+            }
+            OwnerApiResult.Unauthorized -> onSessionInvalidated()
+            else -> {
+                val current = _uiState.value as? GmailIntakeUiState.Ready ?: return
+                _uiState.value =
+                    current.copy(
+                        items = current.items.filter { it.fromAddress != fromAddress },
+                        undoExclusionId = exclusionId
+                    )
+            }
+        }
+    }
+
+    private suspend fun refreshIntakeAfterUndo() {
+        when (val result = repository.listIntake()) {
+            is OwnerApiResult.Success -> {
+                val current = _uiState.value as? GmailIntakeUiState.Ready ?: return
+                _uiState.value =
+                    current.copy(
+                        items = result.value.items,
+                        nextCursor = result.value.nextCursor,
+                        selectedId =
+                        current.selectedId?.takeIf { id ->
+                            result.value.items.any { it.id == id }
+                        },
+                        excluding = false,
+                        refreshing = false,
+                        errorMessage = null
+                    )
+            }
+            OwnerApiResult.Unauthorized -> onSessionInvalidated()
+            else -> {
+                val current = _uiState.value as? GmailIntakeUiState.Ready ?: return
+                _uiState.value =
+                    current.copy(
+                        excluding = false,
+                        errorMessage = string(R.string.gmail_intake_error_generic)
+                    )
+            }
+        }
+    }
+
+    private fun excludeErrorMessage(result: OwnerApiResult<*>): String = when (result) {
+        OwnerApiResult.Connectivity -> string(R.string.error_connectivity)
+        OwnerApiResult.NotConfigured -> string(R.string.error_auth_config)
+        OwnerApiResult.Unauthorized -> string(R.string.gmail_exclude_error_session)
+        is OwnerApiResult.HttpError ->
+            when (result.code) {
+                ErrorCode.NOT_FOUND -> string(R.string.gmail_exclude_error_not_found)
+                ErrorCode.VALIDATION_ERROR -> string(R.string.gmail_exclude_error_validation)
+                else ->
+                    result.message.ifBlank { string(R.string.gmail_exclude_error_generic) }
+            }
+        is OwnerApiResult.Unexpected ->
+            result.message.ifBlank { string(R.string.gmail_exclude_error_generic) }
+        else -> string(R.string.gmail_exclude_error_generic)
     }
 
     private fun handleReviewResult(

@@ -529,6 +529,25 @@ model GmailSyncRun {
   @@map("gmail_sync_runs")
 }
 
+/// Organization-scoped Gmail sender exclusion for S7 Review with Rocket (D180).
+///
+/// Canonical durable preference: unique `(organizationId, senderAddress)`. `senderAddress` is the
+/// existing Gmail-ingestion normalized From address (`parseEmailAddress`). This is not a generic
+/// source-exclusion framework, not a Recipient record, not an AuditEvent, and not a
+/// CommunicationEvent flag. It contains no message body or excerpt and may outlive the original
+/// occurrence and its TemporaryCommunicationExcerpt. A5 ingestion is unaffected.
+model GmailSenderExclusion {
+  id               String   @id @db.VarChar(64)
+  organizationId   String   @map("organization_id") @db.VarChar(64)
+  senderAddress    String   @map("sender_address") @db.VarChar(320)
+  createdByOwnerId String   @map("created_by_owner_id") @db.VarChar(64)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, senderAddress])
+  @@index([organizationId])
+  @@map("gmail_sender_exclusions")
+}
+
 /// Short-lived, single-use Owner Gmail OAuth state + PKCE binding (A5.3, D069/D070).
 /// Persists SHA-256 `stateHash` only (never the raw OAuth state) and an AES-256-GCM
 /// encrypted PKCE verifier envelope. Rows are consumed atomically once and expire quickly;

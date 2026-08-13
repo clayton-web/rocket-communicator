@@ -101,3 +101,12 @@ components:
         minimum: 1
         maximum: 100
         default: 25
+    GmailSenderExclusionId:
+      name: exclusionId
+      in: path
+      required: true
+      description: Organization-scoped Gmail sender-exclusion id returned by create.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 64

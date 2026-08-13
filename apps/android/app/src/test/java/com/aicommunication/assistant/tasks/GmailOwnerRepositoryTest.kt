@@ -219,6 +219,46 @@ class GmailOwnerRepositoryTest {
         assertTrue(key.matches(Regex("^[A-Za-z0-9._~-]+$")))
     }
 
+    @Test
+    fun excludeSender_postsCommunicationEventIdAndOmitsTheAddress() = runTest {
+        enqueueExclusionSuccess("gsex_1")
+
+        val result = repository.excludeSender("evt_exclude_ok") as OwnerApiResult.Success
+
+        val sent = server.takeRequest()
+        assertEquals("POST", sent.method)
+        assertEquals("/api/v1/gmail/sender-exclusions", sent.path)
+        assertEquals("Bearer access-token", sent.getHeader("Authorization"))
+        val body = sent.body.readUtf8()
+        assertTrue(body.contains("\"communicationEventId\":\"evt_exclude_ok\""))
+        assertFalse(body.contains("fromAddress"))
+        assertFalse(body.contains("senderAddress"))
+        assertEquals("gsex_1", result.value.id)
+        assertEquals("2026-08-13T21:00:00.000Z", result.value.createdAt)
+    }
+
+    @Test
+    fun removeSenderExclusion_deletesById() = runTest {
+        enqueueExclusionSuccess("gsex_1")
+
+        val result = repository.removeSenderExclusion("gsex_1") as OwnerApiResult.Success
+
+        val sent = server.takeRequest()
+        assertEquals("DELETE", sent.method)
+        assertEquals("/api/v1/gmail/sender-exclusions/gsex_1", sent.path)
+        assertEquals("gsex_1", result.value.id)
+    }
+
+    private fun enqueueExclusionSuccess(id: String) {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody(
+                    """{"id":"$id","createdAt":"2026-08-13T21:00:00.000Z"}"""
+                )
+        )
+    }
+
     private fun enqueueReviewSuccess(body: String) {
         server.enqueue(MockResponse().setResponseCode(200).setBody(body))
     }

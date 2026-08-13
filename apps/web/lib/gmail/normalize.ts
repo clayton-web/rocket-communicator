@@ -74,6 +74,28 @@ export function parseEmailAddress(raw: string | null | undefined): string | null
   return candidate;
 }
 
+/**
+ * Sentinel stored by Gmail ingestion when From cannot be parsed (see {@link normalizeGmailMessage}).
+ *
+ * This value is a valid-looking `parseEmailAddress` result, so Exclude Sender must refuse it
+ * explicitly. One unparseable From must never become an exclusion key shared by every malformed
+ * sender (D180).
+ */
+export const UNPARSEABLE_GMAIL_FROM_SENTINEL = 'unknown@invalid';
+
+/**
+ * Canonical Gmail sender exclusion key using existing ingestion normalization only.
+ *
+ * Returns null for missing/unparseable addresses and for the unparseable-From sentinel.
+ */
+export function gmailSenderExclusionKey(fromAddress: string | null | undefined): string | null {
+  const parsed = parseEmailAddress(fromAddress);
+  if (parsed == null || parsed === UNPARSEABLE_GMAIL_FROM_SENTINEL) {
+    return null;
+  }
+  return parsed;
+}
+
 export function parseAddressList(raw: string | null | undefined): string[] {
   if (!raw) {
     return [];
@@ -265,7 +287,8 @@ export function normalizeGmailMessage(raw: GmailMessage): NormalizedGmailMessage
   }
 
   const headers = raw.payload?.headers;
-  const fromAddress = parseEmailAddress(headerValue(headers, 'From')) ?? 'unknown@invalid';
+  const fromAddress =
+    parseEmailAddress(headerValue(headers, 'From')) ?? UNPARSEABLE_GMAIL_FROM_SENTINEL;
   const toAddresses = parseAddressList(headerValue(headers, 'To'));
   const subject = truncateGmailSubject(headerValue(headers, 'Subject'));
   const snippet = truncateGmailSnippet(raw.snippet ?? null);

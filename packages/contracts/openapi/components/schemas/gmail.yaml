@@ -308,4 +308,39 @@ components:
 
         Creates no canonical Task, no approval, no responsibility selection, and no TaskAssignment.
         Acceptance remains the Owner's through the existing S5 proposal review path.
-
+    CreateGmailSenderExclusionRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - communicationEventId
+      properties:
+        communicationEventId:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: |
+            CommunicationEvent id of a Gmail occurrence whose normalized sender should be excluded.
+            The server resolves the stored From address; clients do not send the email address,
+            organization, or source kind.
+      description: |
+        Owner request to exclude a Gmail sender from S7 Review with Rocket (D180). The exclusion
+        key is the existing Gmail-ingestion normalized sender address for this occurrence.
+    GmailSenderExclusion:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - createdAt
+      properties:
+        id:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: Organization-scoped exclusion id used to remove the exclusion.
+        createdAt:
+          type: string
+          format: date-time
+      description: |
+        Public Gmail sender-exclusion handle (D180). Deliberately omits the excluded address: the
+        canonical preference row remains the durable store, and this response is only enough to
+        undo. Contains no message body or excerpt.

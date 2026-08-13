@@ -139,7 +139,9 @@ function requireSchedulableTask(task: Task): 'active' | 'suspended_waiting' {
  * choices, not Task or message content, so recording them leaks nothing — and deliberately nothing
  * else is recorded: no worker internals, no message body, no capability token, no provider id.
  */
-function reminderAuditNote(fields: Record<string, string | number | null | undefined>): string {
+function reminderAuditNote(
+  fields: Record<string, string | number | boolean | null | undefined>,
+): string {
   return Object.entries(fields)
     .filter(([, value]) => value !== null && value !== undefined)
     .map(([key, value]) => `${key}=${String(value)}`)

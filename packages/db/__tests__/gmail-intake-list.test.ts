@@ -5,6 +5,7 @@ import {
   createOrUpdatePendingCommunicationAccount,
   listEligibleGmailIntakeEvents,
   persistConnectedCommunicationAccount,
+  persistGmailSenderExclusion,
   purgeTemporaryCommunicationExcerpt,
   upsertCommunicationEvent,
   upsertTemporaryCommunicationExcerpt,
@@ -326,5 +327,50 @@ describe('S7 Gmail intake listing (PGlite)', () => {
 
     expect(foundEligible).toBe(true);
     expect(pages).toBeGreaterThan(1);
+  });
+
+  it('omits currently eligible occurrences from an organization-scoped excluded sender (D180)', async () => {
+    await upsertCommunicationEvent(db.prisma, {
+      organizationId: org,
+      accountId: 'acct_intake',
+      message: inboxMessage({
+        eventId: asCommunicationEventId('evt_excluded_sender'),
+        providerMessageId: 'msg_excluded_sender',
+        fromAddress: 'blocked@example.com',
+        receivedAt: later,
+      }),
+    });
+    await upsertTemporaryCommunicationExcerpt(db.prisma, {
+      organizationId: org,
+      communicationEventId: 'evt_excluded_sender',
+      excerptId: 'ex_excluded_sender',
+      content: 'Please ignore this sender.',
+      purgeAt: futurePurge,
+    });
+    await persistGmailSenderExclusion({
+      db: db.prisma,
+      exclusion: {
+        id: 'gsex_intake_blocked',
+        organizationId: org,
+        senderAddress: 'blocked@example.com',
+        createdByOwnerId: 'owner_intake',
+      },
+      audit: {
+        id: 'audit_intake_exclude',
+        organizationId: org,
+        actorKind: 'owner',
+        ownerId: 'owner_intake',
+        action: 'gmail_sender_excluded',
+        outcome: 'succeeded',
+        recordedAt: now,
+      },
+    });
+
+    const page = await listEligibleGmailIntakeEvents(db.prisma, {
+      organizationId: org,
+      now,
+      limit: 25,
+    });
+    expect(page.items.map((item) => item.id)).not.toContain('evt_excluded_sender');
   });
 });

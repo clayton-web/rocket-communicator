@@ -11,6 +11,8 @@ import {
   normalizeGmailMessage,
   parseAddressList,
   parseEmailAddress,
+  gmailSenderExclusionKey,
+  UNPARSEABLE_GMAIL_FROM_SENTINEL,
   stripHtmlToPlain,
   trimQuotedReply,
   truncateUtf8Bytes,
@@ -66,6 +68,15 @@ describe('A5.4 Gmail normalize', () => {
       expect(parseEmailAddress('  ')).toBeNull();
       expect(parseEmailAddress('not-an-email')).toBeNull();
       expect(parseEmailAddress(null)).toBeNull();
+    });
+
+    it('refuses the unparseable-From sentinel as an exclusion key', () => {
+      expect(UNPARSEABLE_GMAIL_FROM_SENTINEL).toBe('unknown@invalid');
+      expect(parseEmailAddress('unknown@invalid')).toBe('unknown@invalid');
+      expect(gmailSenderExclusionKey('unknown@invalid')).toBeNull();
+      expect(gmailSenderExclusionKey('not-an-email')).toBeNull();
+      expect(gmailSenderExclusionKey(null)).toBeNull();
+      expect(gmailSenderExclusionKey('Alice <Alice@Example.COM>')).toBe('alice@example.com');
     });
 
     it('parses To lists with dedupe and recipient cap', () => {

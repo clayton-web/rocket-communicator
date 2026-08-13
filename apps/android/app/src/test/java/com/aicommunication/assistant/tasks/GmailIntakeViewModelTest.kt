@@ -240,6 +240,78 @@ class GmailIntakeViewModelTest {
         assertEquals(1, sessionInvalidated)
     }
 
+    @Test
+    fun excludeSender_removesThatSenderAfterServerSuccess() = runTest {
+        enqueueIntake(
+            itemJson("evt_blocked", "Blocked", "blocked@example.com"),
+            itemJson("evt_keep", "Keep", "keep@example.com")
+        )
+        enqueueExclusion("gsex_1")
+        enqueueIntake(itemJson("evt_keep", "Keep", "keep@example.com"))
+        val vm = viewModel()
+        vm.load()
+        vm.awaitSettled()
+        vm.select("evt_blocked")
+
+        vm.excludeSender()
+        vm.awaitSettled()
+
+        val ready = vm.uiState.value as GmailIntakeUiState.Ready
+        assertEquals(listOf("evt_keep"), ready.items.map { it.id })
+        assertEquals("gsex_1", ready.undoExclusionId)
+        assertNotNull(ready.excludeSuccessMessage)
+        assertNull(ready.excludeError)
+        server.takeRequest()
+        val exclude = server.takeRequest()
+        assertEquals("POST", exclude.method)
+        assertEquals("/api/v1/gmail/sender-exclusions", exclude.path)
+        assertTrue(exclude.body.readUtf8().contains("\"communicationEventId\":\"evt_blocked\""))
+        assertEquals("/api/v1/gmail/intake?limit=25", server.takeRequest().path)
+    }
+
+    @Test
+    fun excludeSender_failureLeavesItemsUnchanged() = runTest {
+        enqueueIntake(itemJson("evt_blocked", "Blocked", "blocked@example.com"))
+        enqueueError(400, "VALIDATION_ERROR")
+        val vm = loadedAndSelected("evt_blocked")
+
+        vm.excludeSender()
+        vm.awaitSettled()
+
+        val ready = vm.uiState.value as GmailIntakeUiState.Ready
+        assertEquals(listOf("evt_blocked"), ready.items.map { it.id })
+        assertNull(ready.undoExclusionId)
+        assertNotNull(ready.excludeError)
+        assertEquals(2, server.requestCount)
+    }
+
+    @Test
+    fun undoExclude_clearsUndoStateAfterServerSuccess() = runTest {
+        enqueueIntake(itemJson("evt_blocked", "Blocked", "blocked@example.com"))
+        enqueueExclusion("gsex_1")
+        enqueueIntake()
+        enqueueExclusion("gsex_1")
+        enqueueIntake(itemJson("evt_blocked", "Blocked", "blocked@example.com"))
+        val vm = loadedAndSelected("evt_blocked")
+
+        vm.excludeSender()
+        vm.awaitSettled()
+        assertEquals("gsex_1", (vm.uiState.value as GmailIntakeUiState.Ready).undoExclusionId)
+
+        vm.undoExcludeSender()
+        vm.awaitSettled()
+
+        val ready = vm.uiState.value as GmailIntakeUiState.Ready
+        assertNull(ready.undoExclusionId)
+        assertEquals(listOf("evt_blocked"), ready.items.map { it.id })
+        server.takeRequest()
+        server.takeRequest()
+        server.takeRequest()
+        val undo = server.takeRequest()
+        assertEquals("DELETE", undo.method)
+        assertEquals("/api/v1/gmail/sender-exclusions/gsex_1", undo.path)
+    }
+
     private suspend fun loadedAndSelected(id: String): GmailIntakeViewModel {
         val vm = viewModel()
         vm.load()
@@ -278,6 +350,14 @@ class GmailIntakeViewModelTest {
         )
     }
 
+    private fun enqueueExclusion(id: String) {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody("""{"id":"$id","createdAt":"2026-08-13T21:00:00.000Z"}""")
+        )
+    }
+
     private fun enqueueReview(body: String) {
         server.enqueue(MockResponse().setResponseCode(200).setBody(body))
     }
@@ -290,10 +370,14 @@ class GmailIntakeViewModelTest {
         )
     }
 
-    private fun itemJson(id: String, subject: String): String = """
+    private fun itemJson(
+        id: String,
+        subject: String,
+        fromAddress: String = "sender@example.com"
+    ): String = """
         {
           "id": "$id",
-          "fromAddress": "sender@example.com",
+          "fromAddress": "$fromAddress",
           "subject": "$subject",
           "snippet": "Can you look at this",
           "receivedAt": "2026-08-13T18:00:00.000Z"

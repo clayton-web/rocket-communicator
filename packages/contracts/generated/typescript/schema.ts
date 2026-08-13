@@ -1128,6 +1128,10 @@ export interface paths {
          *     candidates; when that budget is reached before exhaustion, `nextCursor` continues from the
          *     last scanned candidate even if the page has no eligible items.
          *
+         *     Organization-scoped Gmail sender exclusions (D180) are applied immediately: currently
+         *     eligible occurrences from an excluded sender are omitted, and later eligible occurrences
+         *     from that sender are likewise omitted. A5 ingestion is unchanged.
+         *
          */
         get: operations["listGmailIntake"];
         put?: never;
@@ -1160,6 +1164,12 @@ export interface paths {
          *     provided the temporary excerpt still exists so the fingerprint can be reconstructed.
          *     Unavailable or purged excerpts remain fail-closed and are not recovered by key-only replay.
          *
+         *     A Gmail sender exclusion (D180) refuses a **new** Review for that sender with
+         *     `DOMAIN_CONFLICT`. An exact D161 replay of an interpretation committed *before* exclusion
+         *     may still return the persisted result without calling the provider again and without
+         *     creating a new InterpretationRun or TaskSuggestions, provided the existing replay
+         *     requirements are otherwise satisfied.
+         *
          *     This is **not** a generic `/interpretations` endpoint: clients neither send nor choose a
          *     source kind. Organization scope comes only from the authenticated Owner session (D059).
          *     Requires `Idempotency-Key` (D094): an exact retry replays the original proposal set from
@@ -1173,6 +1183,66 @@ export interface paths {
          */
         post: operations["createGmailReview"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gmail/sender-exclusions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Exclude a Gmail sender from Review with Rocket
+         * @description Owner-authenticated Gmail sender exclusion (D180 / S7). Resolves the sender from an
+         *     existing A5 Gmail CommunicationEvent using the already-established Gmail ingestion
+         *     normalized From address. The exclusion is organization-scoped and unique on
+         *     `(organizationId, normalized sender address)`.
+         *
+         *     Takes effect immediately: currently eligible and future eligible Gmail occurrences from
+         *     that sender disappear from `GET /api/v1/gmail/intake`, and a new
+         *     `POST /api/v1/gmail/reviews` for that sender is refused. A5 ingestion is unchanged. An
+         *     exact D161 replay of an interpretation committed before exclusion remains valid.
+         *
+         *     Re-excluding an already-excluded sender is idempotent and returns the existing row.
+         *     The unparseable-From sentinel (`unknown@invalid`) is refused so one malformed sender
+         *     cannot exclude every other malformed sender.
+         *
+         *     This is **not** a generic `/communications/exclusions` API and not a sender-management
+         *     list. The public response does not echo the excluded address; the canonical exclusion
+         *     record remains the durable store.
+         *
+         */
+        post: operations["createGmailSenderExclusion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gmail/sender-exclusions/{exclusionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a Gmail sender exclusion
+         * @description Removes one organization-scoped Gmail sender exclusion (D180 / S7). After removal, Gmail
+         *     occurrences from that sender that still satisfy ordinary S7 eligibility reappear on
+         *     intake and may be newly reviewed. This is not a sender-management list or an allow list.
+         *
+         */
+        delete: operations["deleteGmailSenderExclusion"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2414,6 +2484,26 @@ export interface components {
              *      */
             taskSuggestions: components["schemas"]["TaskSuggestion"][];
         };
+        /** @description Owner request to exclude a Gmail sender from S7 Review with Rocket (D180). The exclusion
+         *     key is the existing Gmail-ingestion normalized sender address for this occurrence.
+         *      */
+        CreateGmailSenderExclusionRequest: {
+            /** @description CommunicationEvent id of a Gmail occurrence whose normalized sender should be excluded.
+             *     The server resolves the stored From address; clients do not send the email address,
+             *     organization, or source kind.
+             *      */
+            communicationEventId: string;
+        };
+        /** @description Public Gmail sender-exclusion handle (D180). Deliberately omits the excluded address: the
+         *     canonical preference row remains the durable store, and this response is only enough to
+         *     undo. Contains no message body or excerpt.
+         *      */
+        GmailSenderExclusion: {
+            /** @description Organization-scoped exclusion id used to remove the exclusion. */
+            id: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
         /** @enum {string} */
         SummaryPointKind: "confirmed_fact" | "request" | "commitment" | "amount" | "deadline" | "risk" | "inference" | "missing_information" | "next_action";
         /** @enum {string} */
@@ -2693,6 +2783,8 @@ export interface components {
          *      */
         Cursor: string;
         Limit: number;
+        /** @description Organization-scoped Gmail sender-exclusion id returned by create. */
+        GmailSenderExclusionId: string;
         /**
          * @description Strong ETag for the *reminder* resource, from `GET /api/v1/tasks/{taskId}/reminder` or the
          *     `ETag` header of a previous reminder mutation.
@@ -4563,12 +4655,13 @@ export interface operations {
                 };
             };
             /** @description Conflict — a new interpretation was refused because the Gmail occurrence is not
-             *     currently Inbox-eligible, or the temporary excerpt is unavailable so the fingerprint
-             *     cannot be reconstructed (`DOMAIN_CONFLICT`); the Idempotency-Key was reused for a
-             *     different request (`IDEMPOTENCY_KEY_CONFLICT`); or persistence refused the write for a
-             *     reason unrelated to this occurrence's idempotency (`DOMAIN_CONFLICT`). An exact durable
-             *     replay is not refused merely because the source later left Inbox. None replaces
-             *     committed state.
+             *     currently Inbox-eligible, the sender is excluded from Review with Rocket (D180), or the
+             *     temporary excerpt is unavailable so the fingerprint cannot be reconstructed
+             *     (`DOMAIN_CONFLICT`); the Idempotency-Key was reused for a different request
+             *     (`IDEMPOTENCY_KEY_CONFLICT`); or persistence refused the write for a reason unrelated to
+             *     this occurrence's idempotency (`DOMAIN_CONFLICT`). An exact durable replay is not refused
+             *     merely because the source later left Inbox or the sender was later excluded. None
+             *     replaces committed state.
              *      */
             409: {
                 headers: {
@@ -4603,6 +4696,103 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+        };
+    };
+    createGmailSenderExclusion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateGmailSenderExclusionRequest"];
+            };
+        };
+        responses: {
+            /** @description Exclusion created, or the existing organization-scoped exclusion for this sender.
+             *      */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GmailSenderExclusion"];
+                };
+            };
+            /** @description Validation failure (`VALIDATION_ERROR`): malformed JSON, unsupported body fields, a
+             *     missing or invalid `communicationEventId`, or a missing/unparseable From address that
+             *     cannot be used as an exclusion key.
+             *      */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description The referenced Gmail occurrence was not found for this Owner organization
+             *     (`NOT_FOUND`). Other-organization ids are indistinguishable from missing.
+             *      */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported media type (`VALIDATION_ERROR`); `Content-Type: application/json` is required.
+             *      */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            500: components["responses"]["InternalError"];
+        };
+    };
+    deleteGmailSenderExclusion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization-scoped Gmail sender-exclusion id returned by create. */
+                exclusionId: components["parameters"]["GmailSenderExclusionId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Exclusion removed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GmailSenderExclusion"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            /** @description The exclusion was not found for this Owner organization (`NOT_FOUND`).
+             *     Other-organization ids are indistinguishable from missing.
+             *      */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            500: components["responses"]["InternalError"];
         };
     };
     pollGmailInternalGet: {

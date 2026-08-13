@@ -39,6 +39,8 @@ class GmailIntakeScreenTest {
                     onBack = {},
                     onSelect = { selected = it },
                     onReview = { reviewed += 1 },
+                    onExclude = {},
+                    onUndoExclude = {},
                     onRetry = {},
                     onRefresh = {},
                     onLoadMore = {}
@@ -72,6 +74,8 @@ class GmailIntakeScreenTest {
                     onBack = {},
                     onSelect = {},
                     onReview = { reviewed += 1 },
+                    onExclude = {},
+                    onUndoExclude = {},
                     onRetry = {},
                     onRefresh = {},
                     onLoadMore = {}
@@ -94,6 +98,8 @@ class GmailIntakeScreenTest {
                     onBack = {},
                     onSelect = {},
                     onReview = {},
+                    onExclude = {},
+                    onUndoExclude = {},
                     onRetry = {},
                     onRefresh = {},
                     onLoadMore = {}
@@ -115,6 +121,8 @@ class GmailIntakeScreenTest {
                     onBack = {},
                     onSelect = {},
                     onReview = {},
+                    onExclude = {},
+                    onUndoExclude = {},
                     onRetry = { retried += 1 },
                     onRefresh = {},
                     onLoadMore = {}
@@ -144,6 +152,8 @@ class GmailIntakeScreenTest {
                     onBack = {},
                     onSelect = {},
                     onReview = { reviewed += 1 },
+                    onExclude = {},
+                    onUndoExclude = {},
                     onRetry = {},
                     onRefresh = {},
                     onLoadMore = {}
@@ -155,6 +165,100 @@ class GmailIntakeScreenTest {
         composeRule.onNodeWithText("Retry").assertIsDisplayed()
         composeRule.onNodeWithTag("gmail_review_button").performClick()
         assertEquals(1, reviewed)
+    }
+
+    @Test
+    fun selectedMessage_enablesExcludeSenderWithoutActingUntilTapped() {
+        var excluded = 0
+        composeRule.setContent {
+            AicaaFoundationTheme {
+                GmailIntakeScreen(
+                    state =
+                    GmailIntakeUiState.Ready(
+                        items = listOf(item("evt_1", "Please review")),
+                        nextCursor = null,
+                        selectedId = "evt_1"
+                    ),
+                    onBack = {},
+                    onSelect = {},
+                    onReview = {},
+                    onExclude = { excluded += 1 },
+                    onUndoExclude = {},
+                    onRetry = {},
+                    onRefresh = {},
+                    onLoadMore = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("gmail_exclude_button").assertIsEnabled()
+        composeRule.onNodeWithText("Exclude sender").assertIsDisplayed()
+        composeRule.onNodeWithTag("gmail_exclude_undo").assertDoesNotExist()
+        assertEquals(0, excluded)
+        composeRule.onNodeWithTag("gmail_exclude_button").performClick()
+        assertEquals(1, excluded)
+    }
+
+    @Test
+    fun excludeFailure_showsTruthfulErrorAndKeepsTheItem() {
+        composeRule.setContent {
+            AicaaFoundationTheme {
+                GmailIntakeScreen(
+                    state =
+                    GmailIntakeUiState.Ready(
+                        items = listOf(item("evt_1", "Please review")),
+                        nextCursor = null,
+                        selectedId = "evt_1",
+                        excludeError = "Could not exclude that sender. Try again."
+                    ),
+                    onBack = {},
+                    onSelect = {},
+                    onReview = {},
+                    onExclude = {},
+                    onUndoExclude = {},
+                    onRetry = {},
+                    onRefresh = {},
+                    onLoadMore = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("gmail_exclude_error").assertIsDisplayed()
+        composeRule.onNodeWithTag("gmail_intake_empty").assertDoesNotExist()
+        composeRule.onNodeWithTag("gmail_intake_items").assertExists()
+        composeRule.onNodeWithTag("gmail_exclude_undo").assertDoesNotExist()
+    }
+
+    @Test
+    fun excludeSuccess_offersImmediateUndo() {
+        var undone = 0
+        composeRule.setContent {
+            AicaaFoundationTheme {
+                GmailIntakeScreen(
+                    state =
+                    GmailIntakeUiState.Ready(
+                        items = emptyList(),
+                        nextCursor = null,
+                        undoExclusionId = "gsex_1",
+                        excludeSuccessMessage =
+                        "Sender excluded. That sender will not appear for Review with Rocket."
+                    ),
+                    onBack = {},
+                    onSelect = {},
+                    onReview = {},
+                    onExclude = {},
+                    onUndoExclude = { undone += 1 },
+                    onRetry = {},
+                    onRefresh = {},
+                    onLoadMore = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("gmail_exclude_success").assertIsDisplayed()
+        composeRule.onNodeWithTag("gmail_exclude_undo").assertIsEnabled()
+        composeRule.onNodeWithTag("gmail_exclude_undo").performClick()
+        assertEquals(1, undone)
     }
 
     private fun item(id: String, subject: String) = GmailIntakeItemWire(

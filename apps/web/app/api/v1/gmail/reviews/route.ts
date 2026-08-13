@@ -15,6 +15,7 @@ import {
   isGmailCurrentlyEligibleForNewInterpretation,
   resolveGmailReviewSource,
 } from '@/lib/gmail/intake-service';
+import { isGmailSenderExcludedForNewInterpretation } from '@/lib/gmail/sender-exclusion-service';
 
 export const runtime = 'nodejs';
 
@@ -36,9 +37,10 @@ const GMAIL_SOURCE_KIND = 'gmail' as const;
  * Resolves one A5 Gmail occurrence and its temporary capped excerpt, then interprets with
  * server-fixed `sourceKind = gmail`. Fingerprinting, idempotency, the provider call, and
  * occurrence persistence stay in the shared interpretation service. Current Inbox eligibility
- * is required only to start a new interpretation; an exact D161 replay may return the already
- * persisted result after the source leaves Inbox, provided the excerpt still reconstructs the
- * fingerprint.
+ * Current Inbox eligibility is required only to start a new interpretation; an exact D161 replay
+ * may return the already persisted result after the source leaves Inbox, provided the excerpt still
+ * reconstructs the fingerprint. A later Gmail sender exclusion likewise refuses a *new*
+ * interpretation and still allows that exact committed replay (D180).
  *
  * HTTP 200 answers first success, exact replay, and zero proposals alike. No canonical Task is
  * created, nothing is approved, no responsibility is chosen, and no assignment is written.
@@ -90,9 +92,17 @@ export async function POST(request: Request) {
           gmailProvenance: resolved.source.provenance,
         },
         now: ctx.now,
-        beforeNewInterpretation: () => {
+        beforeNewInterpretation: async () => {
           if (!isGmailCurrentlyEligibleForNewInterpretation(resolved.source.event)) {
             throw new GmailNewInterpretationIneligibleError();
+          }
+          if (
+            await isGmailSenderExcludedForNewInterpretation(
+              { owner: ctx.owner, db: ctx.db },
+              resolved.source.event.fromAddress,
+            )
+          ) {
+            throw new GmailSenderExcludedError();
           }
         },
       });
@@ -105,13 +115,16 @@ export async function POST(request: Request) {
       if (error instanceof GmailNewInterpretationIneligibleError) {
         return withNoStore(gmailReviewFailure('ineligible'));
       }
+      if (error instanceof GmailSenderExcludedError) {
+        return withNoStore(gmailReviewFailure('excluded'));
+      }
       throw error;
     }
   });
 }
 
 function gmailReviewFailure(
-  code: 'not_found' | 'ineligible' | 'excerpt_unavailable',
+  code: 'not_found' | 'ineligible' | 'excerpt_unavailable' | 'excluded',
 ): NextResponse {
   if (code === 'not_found') {
     return jsonErrorResponse('NOT_FOUND', 'Gmail message was not found.', 404);
@@ -123,7 +136,23 @@ function gmailReviewFailure(
       409,
     );
   }
+  if (code === 'excluded') {
+    return jsonErrorResponse(
+      'DOMAIN_CONFLICT',
+      'This sender is excluded from Review with Rocket.',
+      409,
+    );
+  }
   return jsonErrorResponse('DOMAIN_CONFLICT', 'Gmail message content is no longer available.', 409);
+}
+
+class GmailSenderExcludedError extends Error {
+  readonly code = 'excluded' as const;
+
+  constructor() {
+    super('This sender is excluded from Review with Rocket.');
+    this.name = 'GmailSenderExcludedError';
+  }
 }
 
 function withNoStore(response: Response): Response {

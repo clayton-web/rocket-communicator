@@ -21,6 +21,7 @@ import {
   organizationMismatch,
   persistenceValidation,
 } from '../errors/persistence-errors.js';
+import { listGmailExcludedSenderAddresses } from './gmail-sender-exclusion-repository.js';
 
 type Client = DbClient | DbTransaction;
 
@@ -279,10 +280,12 @@ function gmailIntakeCursorWhere(cursor: GmailIntakeCursor): Prisma.Communication
  * bodies — those stay on TemporaryCommunicationExcerpt until a later Owner Review action.
  *
  * Inbox eligibility is applied in memory because `labelIds` is stored as JSON and the D068
- * predicate (INBOX required; DRAFT/SPAM/TRASH excluded) is not a simple column filter. The scan
- * is bounded. When that budget is reached before the keyset is exhausted, `nextCursor` continues
- * from the last *scanned* candidate — even if the page has zero eligible items — so older
- * eligible mail behind a run of ineligible candidates remains reachable.
+ * predicate (INBOX required; DRAFT/SPAM/TRASH excluded) is not a simple column filter.
+ * Organization-scoped Gmail sender exclusions (D180) are applied in the same scan so excluded
+ * senders never occupy a returned page. The scan is bounded. When that budget is reached before
+ * the keyset is exhausted, `nextCursor` continues from the last *scanned* candidate — even if
+ * the page has zero eligible items — so older eligible mail behind a run of ineligible candidates
+ * remains reachable.
  */
 export async function listEligibleGmailIntakeEvents(
   db: Client,
@@ -299,6 +302,7 @@ export async function listEligibleGmailIntakeEvents(
   let scanned = 0;
   let exhausted = false;
   let lastScanned: GmailIntakeCursor | null = null;
+  const excludedSenders = new Set(await listGmailExcludedSenderAddresses(db, query.organizationId));
 
   while (eligible.length < limit + 1 && scanned < GMAIL_INTAKE_MAX_SCAN) {
     const rows = await db.communicationEvent.findMany({
@@ -325,7 +329,7 @@ export async function listEligibleGmailIntakeEvents(
     scanned += rows.length;
     for (const row of rows) {
       const event = mapCommunicationEvent(row);
-      if (isGmailInboxEligible(event.labelIds)) {
+      if (isGmailInboxEligible(event.labelIds) && !excludedSenders.has(event.fromAddress)) {
         eligible.push(event);
         if (eligible.length >= limit + 1) {
           break;

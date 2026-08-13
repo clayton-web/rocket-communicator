@@ -15,6 +15,10 @@ sealed class GmailIntakeUiState {
         val canRetryReview: Boolean = false,
         val loadingMore: Boolean = false,
         val refreshing: Boolean = false,
+        val excluding: Boolean = false,
+        val excludeError: String? = null,
+        val undoExclusionId: String? = null,
+        val excludeSuccessMessage: String? = null,
         val errorMessage: String? = null,
         val connectivityIssue: Boolean = false
     ) : GmailIntakeUiState() {
@@ -22,7 +26,18 @@ sealed class GmailIntakeUiState {
             get() =
                 selectedId != null &&
                     !reviewing &&
+                    !excluding &&
                     items.any { it.id == selectedId }
+
+        val canExclude: Boolean
+            get() =
+                selectedId != null &&
+                    !reviewing &&
+                    !excluding &&
+                    items.any { it.id == selectedId }
+
+        val canUndoExclude: Boolean
+            get() = undoExclusionId != null && !reviewing && !excluding
     }
 
     data class Error(

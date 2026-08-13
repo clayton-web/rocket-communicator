@@ -162,6 +162,8 @@ fun AuthenticatedOwnerFlow(
                 onBack = { destination = AuthenticatedDestination.Shell },
                 onSelect = gmailIntakeViewModel::select,
                 onReview = gmailIntakeViewModel::reviewWithRocket,
+                onExclude = gmailIntakeViewModel::excludeSender,
+                onUndoExclude = gmailIntakeViewModel::undoExcludeSender,
                 onRetry = gmailIntakeViewModel::load,
                 onRefresh = gmailIntakeViewModel::refresh,
                 onLoadMore = gmailIntakeViewModel::loadMore,

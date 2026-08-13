@@ -704,6 +704,81 @@ describe('contracts package', () => {
     }
   });
 
+  it('contracts Gmail-specific sender exclusion without a generic communications exclusion API (D180)', () => {
+    execSync('pnpm bundle', { cwd: root, stdio: 'pipe' });
+    const bundled = parseYaml(readFileSync(path.join(root, 'dist/openapi.bundled.yaml'), 'utf8'));
+    const schemas = (bundled.components?.schemas ?? {}) as Record<string, unknown>;
+    const routes = Object.keys(bundled.paths ?? {});
+
+    expect(routes).toContain('/api/v1/gmail/sender-exclusions');
+    expect(routes).toContain('/api/v1/gmail/sender-exclusions/{exclusionId}');
+    expect(routes).not.toContain('/api/v1/communications/exclusions');
+    expect(routes.filter((route) => route.includes('communication-event'))).toEqual([]);
+    expect(
+      routes.filter((route) => route.includes('/exclusions') && !route.includes('gmail')),
+    ).toEqual([]);
+
+    const createPath = bundled.paths?.['/api/v1/gmail/sender-exclusions'] as
+      Record<string, unknown> | undefined;
+    expect(Object.keys(createPath ?? {}).sort()).toEqual(['post']);
+    const createPost = createPath!.post as {
+      operationId?: string;
+      responses?: Record<string, unknown>;
+    };
+    expect(createPost.operationId).toBe('createGmailSenderExclusion');
+    expect(Object.keys(createPost.responses ?? {}).sort()).toEqual([
+      '200',
+      '400',
+      '401',
+      '404',
+      '415',
+      '500',
+    ]);
+
+    const request = schemas.CreateGmailSenderExclusionRequest as {
+      additionalProperties?: boolean;
+      required?: string[];
+      properties?: Record<string, unknown>;
+    };
+    expect(request.additionalProperties).toBe(false);
+    expect(Object.keys(request.properties ?? {}).sort()).toEqual(['communicationEventId']);
+    expect(request.required).toEqual(['communicationEventId']);
+    for (const forbidden of [
+      'fromAddress',
+      'senderAddress',
+      'email',
+      'organizationId',
+      'sourceKind',
+      'rawInput',
+    ]) {
+      expect(
+        Object.keys(request.properties ?? {}),
+        `CreateGmailSenderExclusionRequest must not accept ${forbidden}`,
+      ).not.toContain(forbidden);
+    }
+
+    const exclusion = schemas.GmailSenderExclusion as {
+      additionalProperties?: boolean;
+      required?: string[];
+      properties?: Record<string, unknown>;
+    };
+    expect(exclusion.additionalProperties).toBe(false);
+    expect(Object.keys(exclusion.properties ?? {}).sort()).toEqual(['createdAt', 'id']);
+    expect([...(exclusion.required ?? [])].sort()).toEqual(['createdAt', 'id']);
+    for (const forbidden of ['senderAddress', 'fromAddress', 'email', 'excerpt', 'content']) {
+      expect(
+        Object.keys(exclusion.properties ?? {}),
+        `GmailSenderExclusion must not expose ${forbidden}`,
+      ).not.toContain(forbidden);
+    }
+
+    const deletePath = bundled.paths?.['/api/v1/gmail/sender-exclusions/{exclusionId}'] as
+      Record<string, unknown> | undefined;
+    expect(Object.keys(deletePath ?? {}).sort()).toEqual(['delete']);
+    const deleteOp = deletePath!.delete as { operationId?: string };
+    expect(deleteOp.operationId).toBe('deleteGmailSenderExclusion');
+  });
+
   it('has no stale generated Kotlin artifacts outside the generator manifest', () => {
     execSync('node scripts/cleanup-kotlin-orphans.mjs --check', { cwd: root, stdio: 'pipe' });
     const kotlinDocs = path.join(root, 'generated/kotlin/docs');

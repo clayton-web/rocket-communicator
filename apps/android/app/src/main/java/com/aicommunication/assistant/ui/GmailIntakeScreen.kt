@@ -38,6 +38,8 @@ fun GmailIntakeScreen(
     onBack: () -> Unit,
     onSelect: (String) -> Unit,
     onReview: () -> Unit,
+    onExclude: () -> Unit,
+    onUndoExclude: () -> Unit,
     onRetry: () -> Unit,
     onRefresh: () -> Unit,
     onLoadMore: () -> Unit,
@@ -98,6 +100,8 @@ fun GmailIntakeScreen(
                     state = state,
                     onSelect = onSelect,
                     onReview = onReview,
+                    onExclude = onExclude,
+                    onUndoExclude = onUndoExclude,
                     onRefresh = onRefresh,
                     onLoadMore = onLoadMore
                 )
@@ -114,6 +118,8 @@ private fun ColumnScope.ReadyIntakeContent(
     state: GmailIntakeUiState.Ready,
     onSelect: (String) -> Unit,
     onReview: () -> Unit,
+    onExclude: () -> Unit,
+    onUndoExclude: () -> Unit,
     onRefresh: () -> Unit,
     onLoadMore: () -> Unit
 ) {
@@ -133,7 +139,7 @@ private fun ColumnScope.ReadyIntakeContent(
         if (state.nextCursor != null) {
             AicaaTextButton(
                 onClick = onLoadMore,
-                enabled = !state.loadingMore && !state.reviewing,
+                enabled = !state.loadingMore && !state.reviewing && !state.excluding,
                 modifier = Modifier.testTag("gmail_intake_load_more")
             ) {
                 Text(text = stringResource(R.string.gmail_intake_load_more))
@@ -151,7 +157,7 @@ private fun ColumnScope.ReadyIntakeContent(
                 GmailIntakeRow(
                     item = item,
                     selected = item.id == state.selectedId,
-                    enabled = !state.reviewing,
+                    enabled = !state.reviewing && !state.excluding,
                     onClick = { onSelect(item.id) }
                 )
                 HorizontalDivider()
@@ -160,7 +166,7 @@ private fun ColumnScope.ReadyIntakeContent(
                 item {
                     AicaaTextButton(
                         onClick = onLoadMore,
-                        enabled = !state.loadingMore && !state.reviewing,
+                        enabled = !state.loadingMore && !state.reviewing && !state.excluding,
                         modifier = Modifier.testTag("gmail_intake_load_more")
                     ) {
                         Text(text = stringResource(R.string.gmail_intake_load_more))
@@ -195,9 +201,52 @@ private fun ColumnScope.ReadyIntakeContent(
             }
         )
     }
+    if (state.excludeError != null) {
+        Text(
+            text = state.excludeError,
+            color = AicaaColors.destructive,
+            modifier = Modifier.testTag("gmail_exclude_error")
+        )
+    }
+    if (state.excludeSuccessMessage != null) {
+        Text(
+            text = state.excludeSuccessMessage,
+            color = AicaaColors.muted,
+            modifier = Modifier.testTag("gmail_exclude_success")
+        )
+    }
+    AicaaTextButton(
+        onClick = onExclude,
+        enabled = state.canExclude,
+        modifier =
+        Modifier
+            .fillMaxWidth()
+            .testTag("gmail_exclude_button")
+    ) {
+        Text(
+            text =
+            if (state.excluding && state.undoExclusionId == null) {
+                stringResource(R.string.gmail_excluding_sender)
+            } else {
+                stringResource(R.string.gmail_exclude_sender)
+            }
+        )
+    }
+    if (state.undoExclusionId != null) {
+        AicaaTextButton(
+            onClick = onUndoExclude,
+            enabled = state.canUndoExclude,
+            modifier =
+            Modifier
+                .fillMaxWidth()
+                .testTag("gmail_exclude_undo")
+        ) {
+            Text(text = stringResource(R.string.gmail_exclude_undo))
+        }
+    }
     AicaaTextButton(
         onClick = onRefresh,
-        enabled = !state.refreshing && !state.reviewing
+        enabled = !state.refreshing && !state.reviewing && !state.excluding
     ) {
         Text(text = stringResource(R.string.gmail_intake_refresh))
     }

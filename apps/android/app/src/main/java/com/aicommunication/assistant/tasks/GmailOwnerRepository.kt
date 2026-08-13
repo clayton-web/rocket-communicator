@@ -17,6 +17,8 @@ class GmailOwnerRepository(
     executor: OwnerApiExecutor
 ) : OwnerApiRepository(executor) {
     private val reviewRequestAdapter = ownerApiMoshi().adapter(GmailReviewRequestWire::class.java)
+    private val exclusionRequestAdapter =
+        ownerApiMoshi().adapter(CreateGmailSenderExclusionRequestWire::class.java)
 
     suspend fun getConnection(): OwnerApiResult<GmailConnectionWire> =
         get("/api/v1/gmail/connection", GmailConnectionWire::class.java)
@@ -51,6 +53,27 @@ class GmailOwnerRepository(
             "Content-Type" to "application/json",
             "Idempotency-Key" to idempotencyKey
         )
+    )
+
+    suspend fun excludeSender(
+        communicationEventId: String
+    ): OwnerApiResult<GmailSenderExclusionWire> = send(
+        method = OwnerApiRequest.Method.POST,
+        path = "/api/v1/gmail/sender-exclusions",
+        clazz = GmailSenderExclusionWire::class.java,
+        jsonBody =
+        exclusionRequestAdapter.toJson(
+            CreateGmailSenderExclusionRequestWire(communicationEventId)
+        ),
+        headers = mapOf("Content-Type" to "application/json")
+    )
+
+    suspend fun removeSenderExclusion(
+        exclusionId: String
+    ): OwnerApiResult<GmailSenderExclusionWire> = send(
+        method = OwnerApiRequest.Method.DELETE,
+        path = "/api/v1/gmail/sender-exclusions/$exclusionId",
+        clazz = GmailSenderExclusionWire::class.java
     )
 
     companion object {

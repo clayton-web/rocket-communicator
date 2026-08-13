@@ -1264,6 +1264,17 @@ describe('A8.3b Owner reminder routes: audit events', () => {
     );
   });
 
+  it('records an explicit D178 OFF preference as advanceEnabled=false', async () => {
+    const task = await seedTask();
+
+    await establishWithPreference(task.id, '2026-04-01', false);
+
+    const audits = await reminderAudits(task.id);
+    expect(audits[0]?.note).toBe(
+      'dueLocalDate=2026-04-01 generation=1 state=active advanceEnabled=false',
+    );
+  });
+
   it('records a suspended establishment as suspended', async () => {
     const task = await seedTask();
     await toWaiting(task.id, task.etag);
@@ -1701,12 +1712,7 @@ describe('D178 optional D105 advance preference', () => {
     const stale = await reminderEtag(task.id);
     await establishWithPreference(task.id, '2026-04-01', false);
 
-    const { response, body } = await establishWithPreference(
-      task.id,
-      '2026-04-01',
-      true,
-      stale,
-    );
+    const { response, body } = await establishWithPreference(task.id, '2026-04-01', true, stale);
     expect(response.status).toBe(412);
     expect(body.error.code).toBe('PRECONDITION_FAILED');
   });

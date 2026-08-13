@@ -16,6 +16,7 @@ docs/CompleteCapabilityTaskRequest.md
 docs/CompleteTaskRequest.md
 docs/ConfirmedFactSummaryPoint.md
 docs/CreateGmailReviewRequest.md
+docs/CreateGmailSenderExclusionRequest.md
 docs/CreateManualCaptureRequest.md
 docs/CreateRecipientRequest.md
 docs/CreateTaskRequest.md
@@ -39,6 +40,7 @@ docs/GmailHistoryState.md
 docs/GmailIntakeItem.md
 docs/GmailPollResponse.md
 docs/GmailReviewResponse.md
+docs/GmailSenderExclusion.md
 docs/GmailSyncOutcome.md
 docs/GmailSyncResponse.md
 docs/GmailSyncRun.md
@@ -127,6 +129,7 @@ src/main/kotlin/com/aicommunication/assistant/contracts/models/CompleteCapabilit
 src/main/kotlin/com/aicommunication/assistant/contracts/models/CompleteTaskRequest.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/ConfirmedFactSummaryPoint.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/CreateGmailReviewRequest.kt
+src/main/kotlin/com/aicommunication/assistant/contracts/models/CreateGmailSenderExclusionRequest.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/CreateManualCaptureRequest.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/CreateRecipientRequest.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/CreateTaskRequest.kt
@@ -150,6 +153,7 @@ src/main/kotlin/com/aicommunication/assistant/contracts/models/GmailHistoryState
 src/main/kotlin/com/aicommunication/assistant/contracts/models/GmailIntakeItem.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/GmailPollResponse.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/GmailReviewResponse.kt
+src/main/kotlin/com/aicommunication/assistant/contracts/models/GmailSenderExclusion.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/GmailSyncOutcome.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/GmailSyncResponse.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/GmailSyncRun.kt

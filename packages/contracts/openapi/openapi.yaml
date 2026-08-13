@@ -53,8 +53,9 @@ tags:
       A7.1 adds optional send-capability flags on GmailConnection (D093); runtime OAuth scope
       expansion is a later A7 phase. **D179 / S7** adds the Owner-authenticated Gmail intake
       read surface and Gmail-specific Review-with-Rocket adapter into the shared interpretation
-      service; that backend slice is implemented. Android Gmail UI and Exclude sender remain
-      later S7 work. This is not a generic communication browser and not a generic
+      service; that backend slice is implemented. **D180** adds Gmail-specific Exclude Sender
+      persistence, intake filtering, new-Review refusal, and a bounded Android Exclude Sender
+      control. S7 is not complete. This is not a generic communication browser and not a generic
       `/interpretations` API.
   - name: OwnerNotifications
     description: |
@@ -154,6 +155,10 @@ paths:
     $ref: './paths/gmail.yaml#/paths/~1api~1v1~1gmail~1intake'
   /api/v1/gmail/reviews:
     $ref: './paths/gmail.yaml#/paths/~1api~1v1~1gmail~1reviews'
+  /api/v1/gmail/sender-exclusions:
+    $ref: './paths/gmail.yaml#/paths/~1api~1v1~1gmail~1sender-exclusions'
+  /api/v1/gmail/sender-exclusions/{exclusionId}:
+    $ref: './paths/gmail.yaml#/paths/~1api~1v1~1gmail~1sender-exclusions~1{exclusionId}'
   /api/v1/internal/gmail/poll:
     $ref: './paths/gmail.yaml#/paths/~1api~1v1~1internal~1gmail~1poll'
 components:
@@ -328,6 +333,10 @@ components:
       $ref: './components/schemas/gmail.yaml#/components/schemas/CreateGmailReviewRequest'
     GmailReviewResponse:
       $ref: './components/schemas/gmail.yaml#/components/schemas/GmailReviewResponse'
+    CreateGmailSenderExclusionRequest:
+      $ref: './components/schemas/gmail.yaml#/components/schemas/CreateGmailSenderExclusionRequest'
+    GmailSenderExclusion:
+      $ref: './components/schemas/gmail.yaml#/components/schemas/GmailSenderExclusion'
   securitySchemes:
     bearerAuth:
       $ref: './components/security.yaml#/components/securitySchemes/bearerAuth'
@@ -350,6 +359,8 @@ components:
       $ref: './components/parameters.yaml#/components/parameters/Cursor'
     Limit:
       $ref: './components/parameters.yaml#/components/parameters/Limit'
+    GmailSenderExclusionId:
+      $ref: './components/parameters.yaml#/components/parameters/GmailSenderExclusionId'
   responses:
     BadRequest:
       $ref: './components/responses.yaml#/components/responses/BadRequest'

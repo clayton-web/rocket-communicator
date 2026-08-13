@@ -203,6 +203,49 @@ describe('A5 Gmail Prisma schema contracts', () => {
   });
 });
 
+describe('S7 Gmail sender exclusion schema contracts (D180)', () => {
+  const exclusionMigration = readFileSync(
+    path.join(root, 'prisma/migrations/20260813210000_s7_gmail_sender_exclusion/migration.sql'),
+    'utf8',
+  );
+
+  it('defines a Gmail-specific organization-scoped sender exclusion table', () => {
+    expect(schema).toContain('model GmailSenderExclusion');
+    expect(schema).toContain('@@unique([organizationId, senderAddress])');
+    expect(schema).toContain('@@map("gmail_sender_exclusions")');
+    expect(exclusionMigration).toContain('CREATE TABLE "gmail_sender_exclusions"');
+    expect(exclusionMigration).toContain(
+      'gmail_sender_exclusions_organization_id_sender_address_key',
+    );
+    expect(exclusionMigration).toContain(
+      'ALTER TABLE "gmail_sender_exclusions" ENABLE ROW LEVEL SECURITY',
+    );
+  });
+
+  it('stores the normalized sender address and no message body or excerpt', () => {
+    const block = schema.match(
+      /model GmailSenderExclusion \{[\s\S]*?@@map\("gmail_sender_exclusions"\)/,
+    )?.[0];
+    expect(block).toBeDefined();
+    expect(block).toContain('senderAddress');
+    expect(block).not.toMatch(/\bcontent\b/);
+    expect(block).not.toMatch(/excerpt/i);
+    expect(block).not.toMatch(/body/i);
+    const createTable = exclusionMigration.match(
+      /CREATE TABLE "gmail_sender_exclusions" \([\s\S]*?\);/,
+    )?.[0];
+    expect(createTable).toBeDefined();
+    expect(createTable).toContain('"sender_address"');
+    expect(createTable).not.toMatch(/excerpt|content|body/i);
+  });
+
+  it('does not invent a generic communication-source exclusion table', () => {
+    expect(schema).not.toContain('model CommunicationSourceExclusion');
+    expect(schema).not.toContain('model SenderExclusion');
+    expect(exclusionMigration).not.toContain('communication_source_exclusions');
+  });
+});
+
 const a6Migration = readFileSync(
   path.join(root, 'prisma/migrations/20260717180000_a6_suggestion_persistence/migration.sql'),
   'utf8',
@@ -522,7 +565,9 @@ describe('D178 advance-enabled preference schema', () => {
     const scheduleBlock = schema.match(
       /model TaskReminderSchedule \{[\s\S]*?@@map\("task_reminder_schedules"\)/,
     )?.[0];
-    expect(scheduleBlock).toMatch(/advanceEnabled\s+Boolean\s+@default\(true\)\s+@map\("advance_enabled"\)/);
+    expect(scheduleBlock).toMatch(
+      /advanceEnabled\s+Boolean\s+@default\(true\)\s+@map\("advance_enabled"\)/,
+    );
     expect(d178Migration).toContain('ADD COLUMN "advance_enabled" BOOLEAN NOT NULL DEFAULT true');
     expect(d178Migration).not.toMatch(/CREATE TABLE/);
   });

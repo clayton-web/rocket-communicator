@@ -154,6 +154,15 @@ export {
   listEligibleGmailIntakeEvents,
 } from './repositories/communication-event-repository.js';
 export { getTaskSuggestionBySourceEventId } from './repositories/suggestion-repository.js';
+export {
+  findGmailSenderExclusionById,
+  findGmailSenderExclusionByOrgAndAddress,
+  listGmailExcludedSenderAddresses,
+} from './repositories/gmail-sender-exclusion-repository.js';
+export {
+  persistGmailSenderExclusion,
+  removeGmailSenderExclusion,
+} from './transactions/gmail-sender-exclusion-transactions.js';
 
 // A5.3 Owner Gmail OAuth / connection surface (server-only runtime bridge).
 export {

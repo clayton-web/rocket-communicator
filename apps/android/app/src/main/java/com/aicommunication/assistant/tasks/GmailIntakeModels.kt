@@ -57,3 +57,17 @@ data class GmailReviewResponseWire(
 internal fun GmailIntakeItemWire.reviewSourceText(): String = subject?.takeIf { it.isNotBlank() }
     ?: snippet?.takeIf { it.isNotBlank() }
     ?: fromAddress
+
+@JsonClass(generateAdapter = false)
+data class CreateGmailSenderExclusionRequestWire(
+    @Json(name = "communicationEventId")
+    val communicationEventId: String
+)
+
+@JsonClass(generateAdapter = false)
+data class GmailSenderExclusionWire(
+    @Json(name = "id")
+    val id: String,
+    @Json(name = "createdAt")
+    val createdAt: String
+)

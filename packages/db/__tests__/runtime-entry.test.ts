@@ -52,6 +52,9 @@ const REQUIRED_RUNTIME_EXPORTS = [
   'finishGmailSyncRun',
   'listGmailSyncRuns',
   'persistGmailHistoryPageTransaction',
+  'findGmailSenderExclusionByOrgAndAddress',
+  'persistGmailSenderExclusion',
+  'removeGmailSenderExclusion',
 ];
 
 describe('@aicaa/db/runtime entry', () => {

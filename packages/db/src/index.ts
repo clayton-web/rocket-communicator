@@ -326,6 +326,19 @@ export {
   type ListEligibleGmailIntakeEventsResult,
 } from './repositories/communication-event-repository.js';
 export {
+  findGmailSenderExclusionById,
+  findGmailSenderExclusionByOrgAndAddress,
+  listGmailExcludedSenderAddresses,
+  type GmailSenderExclusionRecord,
+} from './repositories/gmail-sender-exclusion-repository.js';
+export {
+  persistGmailSenderExclusion,
+  removeGmailSenderExclusion,
+  type PersistGmailSenderExclusionInput,
+  type PersistGmailSenderExclusionResult,
+  type RemoveGmailSenderExclusionInput,
+} from './transactions/gmail-sender-exclusion-transactions.js';
+export {
   createGmailSyncRun,
   finishGmailSyncRun,
   getGmailSyncRunById,
