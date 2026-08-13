@@ -22,7 +22,19 @@ class ManualCaptureWireDecodeTest {
         }
     """.trimIndent()
 
-    private fun suggestion(id: String, points: String, version: Int = 1) = """
+    private fun suggestion(
+        id: String,
+        points: String,
+        version: Int = 1,
+        approvedTaskIdJson: String? = null
+    ): String {
+        val approved =
+            if (approvedTaskIdJson == null) {
+                ""
+            } else {
+                ",\n          \"approvedTaskId\": $approvedTaskIdJson"
+            }
+        return """
         {
           "id": "$id",
           "organizationId": "org-1",
@@ -31,9 +43,10 @@ class ManualCaptureWireDecodeTest {
           "version": $version,
           "etag": "\"task-suggestion-$id-v$version\"",
           "createdAt": "2026-08-12T15:04:05.123Z",
-          "updatedAt": "2026-08-12T15:04:05.123Z"
+          "updatedAt": "2026-08-12T15:04:05.123Z"$approved
         }
-    """.trimIndent()
+        """.trimIndent()
+    }
 
     @Test
     fun zeroProposalsIsSuccessfullyParsedAsAnEmptyList() {
@@ -69,6 +82,7 @@ class ManualCaptureWireDecodeTest {
         assertEquals("\"task-suggestion-sug-1-v1\"", proposal.etag)
         assertEquals("2026-08-12T15:04:05.123Z", proposal.createdAt)
         assertEquals("Call the roofer", proposal.summaryPoints.single().value)
+        assertNull(proposal.approvedTaskId)
     }
 
     @Test
@@ -190,6 +204,49 @@ class ManualCaptureWireDecodeTest {
             )
 
         assertEquals("sug-1", parsed.taskSuggestions.single().id)
+        assertNull(parsed.taskSuggestions.single().approvedTaskId)
+    }
+
+    @Test
+    fun approvedTaskIdDecodesWhenPresent() {
+        val parsed =
+            requireNotNull(
+                adapter.fromJson(
+                    response(
+                        suggestion(
+                            id = "sug-1",
+                            points =
+                            """{"id":"p1","kind":"request","label":"Request","order":0,
+                               "value":"Confirm venue"}
+                            """.trimIndent(),
+                            approvedTaskIdJson = "\"task-1\""
+                        )
+                    )
+                )
+            )
+
+        assertEquals("task-1", parsed.taskSuggestions.single().approvedTaskId)
+    }
+
+    @Test
+    fun approvedTaskIdNullDecodesAsNull() {
+        val parsed =
+            requireNotNull(
+                adapter.fromJson(
+                    response(
+                        suggestion(
+                            id = "sug-1",
+                            points =
+                            """{"id":"p1","kind":"request","label":"Request","order":0,
+                               "value":"Confirm venue"}
+                            """.trimIndent(),
+                            approvedTaskIdJson = "null"
+                        )
+                    )
+                )
+            )
+
+        assertNull(parsed.taskSuggestions.single().approvedTaskId)
     }
 
     @Test

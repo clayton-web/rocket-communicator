@@ -35,10 +35,10 @@ data class ManualCaptureResponseWire(
 )
 
 /**
- * Public proposal fields S3.3 needs: stable identity, status, displayable summary points, the
- * concurrency pair a later lifecycle slice must send back, and creation time. Advisory and
- * provenance fields the read-only result cannot act on are deliberately not modelled; Moshi
- * ignores them on decode.
+ * Public proposal fields Android needs: stable identity, status, displayable summary points, the
+ * concurrency pair lifecycle mutations send back as If-Match, creation time, and the nullable
+ * approved-Task recovery id. Advisory and provenance fields the client cannot act on are
+ * deliberately not modelled; Moshi ignores them on decode.
  */
 @JsonClass(generateAdapter = false)
 data class TaskSuggestionWire(
@@ -53,5 +53,12 @@ data class TaskSuggestionWire(
     @Json(name = "etag")
     val etag: String,
     @Json(name = "createdAt")
-    val createdAt: String
+    val createdAt: String,
+    /**
+     * Canonical Task id created when this suggestion was approved. Null while pending / unapproved,
+     * and when a manual-capture response omits the field. S5.2 recovery reads this after a lost
+     * approve response; S5.1 only decodes it.
+     */
+    @Json(name = "approvedTaskId")
+    val approvedTaskId: String? = null
 )
