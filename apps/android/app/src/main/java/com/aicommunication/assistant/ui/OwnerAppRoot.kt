@@ -2,7 +2,6 @@ package com.aicommunication.assistant.ui
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -20,6 +19,8 @@ import com.aicommunication.assistant.network.ApiConfig
 import com.aicommunication.assistant.tasks.TaskDetailViewModel
 import com.aicommunication.assistant.tasks.TaskHandoffViewModel
 import com.aicommunication.assistant.tasks.TaskListViewModel
+import com.aicommunication.assistant.ui.theme.AicaaCircularProgressIndicator
+import com.aicommunication.assistant.ui.theme.AicaaColors
 
 @Composable
 fun OwnerAppRoot(
@@ -33,7 +34,7 @@ fun OwnerAppRoot(
 ) {
     val state by authViewModel.uiState.collectAsState()
 
-    Surface(modifier = modifier.fillMaxSize()) {
+    Surface(modifier = modifier.fillMaxSize(), color = AicaaColors.background) {
         when (val current = state) {
             AuthUiState.Loading -> LoadingPane(stringResource(R.string.session_loading))
             AuthUiState.SigningIn ->
@@ -77,9 +78,10 @@ private fun LoadingPane(label: String) {
             .testTag("auth_loading"),
         contentAlignment = Alignment.Center
     ) {
-        CircularProgressIndicator()
+        AicaaCircularProgressIndicator()
         Text(
             text = label,
+            color = AicaaColors.ink,
             modifier = Modifier.align(Alignment.BottomCenter)
         )
     }

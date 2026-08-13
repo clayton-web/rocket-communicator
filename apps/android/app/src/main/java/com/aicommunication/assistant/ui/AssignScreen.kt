@@ -12,16 +12,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -32,7 +26,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aicommunication.assistant.R
 import com.aicommunication.assistant.tasks.HandoffUiState
+import com.aicommunication.assistant.ui.theme.AicaaCircularProgressIndicator
 import com.aicommunication.assistant.ui.theme.AicaaColors
+import com.aicommunication.assistant.ui.theme.AicaaFilledButton
+import com.aicommunication.assistant.ui.theme.AicaaOutlinedTextField
+import com.aicommunication.assistant.ui.theme.AicaaRadioButton
+import com.aicommunication.assistant.ui.theme.AicaaTextButton
 import com.aicommunication.assistant.ui.theme.AicaaTextStyles
 
 @Composable
@@ -55,7 +54,7 @@ fun AssignScreen(
         modifier =
         modifier
             .fillMaxSize()
-            .background(AicaaColors.paper)
+            .background(AicaaColors.background)
             .padding(horizontal = 24.dp, vertical = 48.dp)
             .testTag("assign_screen"),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -75,12 +74,14 @@ fun AssignScreen(
         when (state) {
             HandoffUiState.Loading -> {
                 Spacer(modifier = Modifier.weight(1f))
-                CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
+                AicaaCircularProgressIndicator(
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                )
                 Spacer(modifier = Modifier.weight(1f))
             }
             is HandoffUiState.Error -> {
-                Text(text = state.message, color = AicaaColors.critical)
-                Button(onClick = onRetryLoad, modifier = Modifier.fillMaxWidth()) {
+                Text(text = state.message, color = AicaaColors.destructive)
+                AicaaFilledButton(onClick = onRetryLoad, modifier = Modifier.fillMaxWidth()) {
                     Text(text = stringResource(R.string.retry))
                 }
             }
@@ -94,6 +95,7 @@ fun AssignScreen(
                 ) {
                     Text(
                         text = state.task.displayTitle,
+                        color = AicaaColors.ink,
                         fontWeight = FontWeight.Medium,
                         modifier = Modifier.testTag("assign_task_title")
                     )
@@ -102,10 +104,10 @@ fun AssignScreen(
                     if (state.banner != null) {
                         val color =
                             when (state.bannerTone) {
-                                HandoffUiState.BannerTone.Success -> AicaaColors.accent
-                                HandoffUiState.BannerTone.Warning -> AicaaColors.caution
-                                HandoffUiState.BannerTone.Error -> AicaaColors.critical
-                                HandoffUiState.BannerTone.Info -> Color(0xFF44403C)
+                                HandoffUiState.BannerTone.Success -> AicaaColors.success
+                                HandoffUiState.BannerTone.Warning -> AicaaColors.warning
+                                HandoffUiState.BannerTone.Error -> AicaaColors.destructive
+                                HandoffUiState.BannerTone.Info -> AicaaColors.info
                             }
                         Text(
                             text = state.banner,
@@ -114,7 +116,7 @@ fun AssignScreen(
                         )
                     }
                     if (state.errorMessage != null) {
-                        Text(text = state.errorMessage, color = AicaaColors.critical)
+                        Text(text = state.errorMessage, color = AicaaColors.destructive)
                     }
 
                     if (state.notConnected || state.needsReconsent) {
@@ -125,9 +127,9 @@ fun AssignScreen(
                             } else {
                                 stringResource(R.string.handoff_reconsent_instructions)
                             },
-                            color = AicaaColors.caution
+                            color = AicaaColors.warning
                         )
-                        Button(
+                        AicaaTextButton(
                             onClick = onOpenGmailSetup,
                             modifier =
                             Modifier
@@ -140,6 +142,7 @@ fun AssignScreen(
 
                     Text(
                         text = stringResource(R.string.handoff_recipients_heading),
+                        color = AicaaColors.ink,
                         fontWeight = FontWeight.Medium
                     )
                     if (state.recipients.isEmpty()) {
@@ -163,13 +166,14 @@ fun AssignScreen(
                                     .testTag("assign_recipient_${recipient.id}"),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                RadioButton(
+                                AicaaRadioButton(
                                     selected = state.selectedRecipientId == recipient.id,
                                     onClick = { onSelectRecipient(recipient.id) }
                                 )
                                 Column(modifier = Modifier.padding(start = 8.dp)) {
                                     Text(
                                         text = recipient.displayName,
+                                        color = AicaaColors.ink,
                                         fontWeight = FontWeight.Medium
                                     )
                                     Text(
@@ -182,7 +186,7 @@ fun AssignScreen(
                         }
                     }
 
-                    OutlinedTextField(
+                    AicaaOutlinedTextField(
                         value = state.createName,
                         onValueChange = onCreateNameChanged,
                         enabled = !state.creatingRecipient,
@@ -192,7 +196,7 @@ fun AssignScreen(
                             .testTag("assign_create_name"),
                         placeholder = { Text(text = stringResource(R.string.handoff_create_name)) }
                     )
-                    OutlinedTextField(
+                    AicaaOutlinedTextField(
                         value = state.createEmail,
                         onValueChange = onCreateEmailChanged,
                         enabled = !state.creatingRecipient,
@@ -202,7 +206,7 @@ fun AssignScreen(
                             .testTag("assign_create_email"),
                         placeholder = { Text(text = stringResource(R.string.handoff_create_email)) }
                     )
-                    TextButton(
+                    AicaaTextButton(
                         onClick = onCreateRecipient,
                         enabled =
                         !state.creatingRecipient &&
@@ -214,7 +218,7 @@ fun AssignScreen(
                     }
 
                     if (state.task.canAssign && state.successDeliveryPath == null) {
-                        Button(
+                        AicaaFilledButton(
                             onClick = onOpenConfirm,
                             enabled = state.canConfirm,
                             modifier =
@@ -234,7 +238,7 @@ fun AssignScreen(
                     }
 
                     if (state.pending != null && state.successDeliveryPath == null) {
-                        Button(
+                        AicaaTextButton(
                             onClick = onRetryHandoff,
                             enabled = !state.submitting,
                             modifier =
@@ -265,7 +269,7 @@ fun AssignScreen(
                             )
                         },
                         confirmButton = {
-                            Button(
+                            AicaaFilledButton(
                                 onClick = onConfirm,
                                 modifier = Modifier.testTag("assign_confirm_send")
                             ) {
@@ -273,7 +277,7 @@ fun AssignScreen(
                             }
                         },
                         dismissButton = {
-                            TextButton(onClick = onCloseConfirm) {
+                            AicaaTextButton(onClick = onCloseConfirm) {
                                 Text(text = stringResource(R.string.handoff_cancel))
                             }
                         }
@@ -282,7 +286,7 @@ fun AssignScreen(
             }
         }
 
-        TextButton(onClick = onBack, modifier = Modifier.testTag("assign_back")) {
+        AicaaTextButton(onClick = onBack, modifier = Modifier.testTag("assign_back")) {
             Text(text = stringResource(R.string.tasks_back))
         }
     }

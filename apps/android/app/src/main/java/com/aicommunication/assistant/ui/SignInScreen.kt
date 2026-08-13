@@ -6,9 +6,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -19,6 +17,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aicommunication.assistant.R
 import com.aicommunication.assistant.ui.theme.AicaaColors
+import com.aicommunication.assistant.ui.theme.AicaaFilledButton
+import com.aicommunication.assistant.ui.theme.AicaaTextButton
 import com.aicommunication.assistant.ui.theme.AicaaTextStyles
 
 @Composable
@@ -34,7 +34,7 @@ fun SignInScreen(
         modifier =
         modifier
             .fillMaxSize()
-            .background(AicaaColors.paper)
+            .background(AicaaColors.background)
             .padding(horizontal = 24.dp, vertical = 48.dp)
             .testTag("sign_in_screen"),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -59,11 +59,11 @@ fun SignInScreen(
             Text(
                 text = errorMessage,
                 fontSize = 15.sp,
-                color = AicaaColors.critical,
+                color = AicaaColors.destructive,
                 modifier = Modifier.testTag("sign_in_error")
             )
         }
-        Button(
+        AicaaFilledButton(
             onClick = onSignIn,
             enabled = !signingIn,
             modifier =
@@ -81,7 +81,7 @@ fun SignInScreen(
             )
         }
         if (connectivityIssue) {
-            TextButton(
+            AicaaTextButton(
                 onClick = onRetry,
                 modifier = Modifier.testTag("sign_in_retry")
             ) {

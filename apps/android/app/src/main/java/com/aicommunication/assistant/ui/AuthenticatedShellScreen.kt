@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -19,6 +18,8 @@ import androidx.compose.ui.unit.sp
 import com.aicommunication.assistant.R
 import com.aicommunication.assistant.contracts.models.Session
 import com.aicommunication.assistant.ui.theme.AicaaColors
+import com.aicommunication.assistant.ui.theme.AicaaFilledButton
+import com.aicommunication.assistant.ui.theme.AicaaTextButton
 import com.aicommunication.assistant.ui.theme.AicaaTextStyles
 
 @Composable
@@ -38,7 +39,7 @@ fun AuthenticatedShellScreen(
         modifier =
         modifier
             .fillMaxSize()
-            .background(AicaaColors.paper)
+            .background(AicaaColors.background)
             .padding(horizontal = 24.dp, vertical = 48.dp)
             .testTag("authenticated_shell"),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -62,10 +63,10 @@ fun AuthenticatedShellScreen(
         Text(
             text = "Signed in as $display",
             fontSize = 15.sp,
-            color = AicaaColors.accent,
+            color = AicaaColors.info,
             modifier = Modifier.testTag("authenticated_identity")
         )
-        Button(
+        AicaaFilledButton(
             onClick = onCapture,
             enabled = !signingOut,
             modifier =
@@ -75,7 +76,7 @@ fun AuthenticatedShellScreen(
         ) {
             Text(text = stringResource(R.string.capture_entry))
         }
-        Button(
+        AicaaTextButton(
             onClick = onTasks,
             enabled = !signingOut,
             modifier =
@@ -85,7 +86,7 @@ fun AuthenticatedShellScreen(
         ) {
             Text(text = stringResource(R.string.tasks_entry))
         }
-        Button(
+        AicaaTextButton(
             onClick = onSignOut,
             enabled = !signingOut,
             modifier =

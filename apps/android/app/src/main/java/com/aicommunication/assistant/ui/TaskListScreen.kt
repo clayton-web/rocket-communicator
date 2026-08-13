@@ -10,15 +10,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
@@ -29,7 +25,10 @@ import androidx.compose.ui.unit.sp
 import com.aicommunication.assistant.R
 import com.aicommunication.assistant.tasks.OwnerTask
 import com.aicommunication.assistant.tasks.TaskListUiState
+import com.aicommunication.assistant.ui.theme.AicaaCircularProgressIndicator
 import com.aicommunication.assistant.ui.theme.AicaaColors
+import com.aicommunication.assistant.ui.theme.AicaaFilledButton
+import com.aicommunication.assistant.ui.theme.AicaaTextButton
 import com.aicommunication.assistant.ui.theme.AicaaTextStyles
 
 @Composable
@@ -47,7 +46,7 @@ fun TaskListScreen(
         modifier =
         modifier
             .fillMaxSize()
-            .background(AicaaColors.paper)
+            .background(AicaaColors.background)
             .padding(horizontal = 24.dp, vertical = 48.dp)
             .testTag("task_list_screen"),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -67,9 +66,12 @@ fun TaskListScreen(
         when (state) {
             TaskListUiState.Loading -> {
                 Spacer(modifier = Modifier.weight(1f))
-                CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
+                AicaaCircularProgressIndicator(
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                )
                 Text(
                     text = stringResource(R.string.tasks_loading),
+                    color = AicaaColors.muted,
                     modifier = Modifier.align(Alignment.CenterHorizontally)
                 )
                 Spacer(modifier = Modifier.weight(1f))
@@ -77,10 +79,10 @@ fun TaskListScreen(
             is TaskListUiState.Error -> {
                 Text(
                     text = state.message,
-                    color = AicaaColors.critical,
+                    color = AicaaColors.destructive,
                     modifier = Modifier.testTag("task_list_error")
                 )
-                Button(
+                AicaaFilledButton(
                     onClick = onRetry,
                     modifier =
                     Modifier
@@ -92,7 +94,7 @@ fun TaskListScreen(
             }
             is TaskListUiState.Ready -> {
                 if (state.errorMessage != null) {
-                    Text(text = state.errorMessage, color = AicaaColors.critical)
+                    Text(text = state.errorMessage, color = AicaaColors.destructive)
                 }
                 if (state.tasks.isEmpty()) {
                     Text(
@@ -100,7 +102,7 @@ fun TaskListScreen(
                         color = AicaaColors.muted,
                         modifier = Modifier.testTag("task_list_empty")
                     )
-                    Button(
+                    AicaaFilledButton(
                         onClick = onCapture,
                         modifier =
                         Modifier
@@ -119,11 +121,11 @@ fun TaskListScreen(
                     ) {
                         items(state.tasks, key = { it.id }) { task ->
                             TaskListRow(task = task, onClick = { onOpenTask(task.id) })
-                            HorizontalDivider(color = Color(0xFFE7E5E4))
+                            HorizontalDivider()
                         }
                         if (state.nextCursor != null) {
                             item {
-                                TextButton(
+                                AicaaTextButton(
                                     onClick = onLoadMore,
                                     enabled = !state.loadingMore,
                                     modifier = Modifier.testTag("task_list_load_more")
@@ -134,13 +136,13 @@ fun TaskListScreen(
                         }
                     }
                 }
-                TextButton(onClick = onRefresh, enabled = !state.refreshing) {
+                AicaaTextButton(onClick = onRefresh, enabled = !state.refreshing) {
                     Text(text = stringResource(R.string.tasks_refresh))
                 }
             }
         }
 
-        TextButton(onClick = onBack, modifier = Modifier.testTag("task_list_back")) {
+        AicaaTextButton(onClick = onBack, modifier = Modifier.testTag("task_list_back")) {
             Text(text = stringResource(R.string.tasks_back))
         }
     }

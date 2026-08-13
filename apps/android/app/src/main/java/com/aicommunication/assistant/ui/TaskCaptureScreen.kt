@@ -12,11 +12,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -38,6 +35,9 @@ import com.aicommunication.assistant.capture.deriveProposalTitle
 import com.aicommunication.assistant.capture.orderedSummaryPoints
 import com.aicommunication.assistant.capture.summaryPointDetail
 import com.aicommunication.assistant.ui.theme.AicaaColors
+import com.aicommunication.assistant.ui.theme.AicaaFilledButton
+import com.aicommunication.assistant.ui.theme.AicaaOutlinedTextField
+import com.aicommunication.assistant.ui.theme.AicaaTextButton
 import com.aicommunication.assistant.ui.theme.AicaaTextStyles
 
 /**
@@ -112,7 +112,7 @@ private fun CaptureEditingPane(
         )
         PaneError(message = state.errorMessage)
         Spacer(modifier = Modifier.weight(1f))
-        Button(
+        AicaaFilledButton(
             onClick = onSave,
             enabled = !state.submitting && state.draft.trim().isNotEmpty(),
             modifier =
@@ -129,7 +129,7 @@ private fun CaptureEditingPane(
                 }
             )
         }
-        TextButton(
+        AicaaTextButton(
             onClick = onDone,
             enabled = !state.submitting,
             modifier = Modifier.testTag("capture_cancel_button")
@@ -161,7 +161,7 @@ private fun CaptureRecoveryPane(
         )
         PaneError(message = state.errorMessage)
         Spacer(modifier = Modifier.weight(1f))
-        Button(
+        AicaaFilledButton(
             onClick = onRetry,
             enabled = !state.submitting,
             modifier =
@@ -178,14 +178,14 @@ private fun CaptureRecoveryPane(
                 }
             )
         }
-        TextButton(
+        AicaaTextButton(
             onClick = onDiscard,
             enabled = !state.submitting,
             modifier = Modifier.testTag("capture_discard")
         ) {
             Text(text = stringResource(R.string.capture_discard))
         }
-        TextButton(
+        AicaaTextButton(
             onClick = onDone,
             enabled = !state.submitting,
             modifier = Modifier.testTag("capture_cancel_button")
@@ -236,7 +236,7 @@ private fun CaptureProposalsPane(
         )
         if (empty) {
             Spacer(modifier = Modifier.weight(1f))
-            TextButton(
+            AicaaTextButton(
                 onClick = onRephrase,
                 modifier = Modifier.testTag("capture_rephrase_button")
             ) {
@@ -256,7 +256,7 @@ private fun CaptureProposalsPane(
                 }
             }
         }
-        Button(
+        AicaaFilledButton(
             onClick = onCaptureAnother,
             modifier =
             Modifier
@@ -265,7 +265,7 @@ private fun CaptureProposalsPane(
         ) {
             Text(text = stringResource(R.string.capture_another))
         }
-        TextButton(
+        AicaaTextButton(
             onClick = onDone,
             modifier = Modifier.testTag("capture_done_button")
         ) {
@@ -290,7 +290,7 @@ private fun ProposalCard(proposal: TaskSuggestionWire) {
                 text = deriveProposalTitle(proposal),
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Medium,
-                color = AicaaColors.accent,
+                color = AicaaColors.ink,
                 modifier = Modifier.testTag("capture_proposal_title")
             )
             orderedSummaryPoints(proposal).forEach { point ->
@@ -314,7 +314,7 @@ private fun CapturePane(
         modifier =
         modifier
             .fillMaxSize()
-            .background(AicaaColors.paper)
+            .background(AicaaColors.background)
             .padding(horizontal = 24.dp, vertical = 48.dp)
             .testTag(testTag),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -347,7 +347,7 @@ private fun PaneError(message: String?) {
     Text(
         text = message,
         fontSize = 15.sp,
-        color = AicaaColors.critical,
+        color = AicaaColors.destructive,
         modifier = Modifier.testTag("capture_error")
     )
 }
@@ -359,7 +359,7 @@ private fun CaptureField(
     enabled: Boolean,
     modifier: Modifier = Modifier
 ) {
-    OutlinedTextField(
+    AicaaOutlinedTextField(
         value = value,
         onValueChange = onValueChange,
         enabled = enabled,

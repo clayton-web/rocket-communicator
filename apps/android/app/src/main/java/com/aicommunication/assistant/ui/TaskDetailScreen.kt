@@ -10,15 +10,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
@@ -28,7 +23,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aicommunication.assistant.R
 import com.aicommunication.assistant.tasks.TaskDetailUiState
+import com.aicommunication.assistant.ui.theme.AicaaCircularProgressIndicator
 import com.aicommunication.assistant.ui.theme.AicaaColors
+import com.aicommunication.assistant.ui.theme.AicaaDestructiveTextButton
+import com.aicommunication.assistant.ui.theme.AicaaFilledButton
+import com.aicommunication.assistant.ui.theme.AicaaOutlinedTextField
+import com.aicommunication.assistant.ui.theme.AicaaTextButton
 import com.aicommunication.assistant.ui.theme.AicaaTextStyles
 
 @Composable
@@ -50,7 +50,7 @@ fun TaskDetailScreen(
         modifier =
         modifier
             .fillMaxSize()
-            .background(AicaaColors.paper)
+            .background(AicaaColors.background)
             .padding(horizontal = 24.dp, vertical = 48.dp)
             .testTag("task_detail_screen"),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -58,16 +58,18 @@ fun TaskDetailScreen(
         when (state) {
             TaskDetailUiState.Loading -> {
                 Spacer(modifier = Modifier.weight(1f))
-                CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
+                AicaaCircularProgressIndicator(
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                )
                 Spacer(modifier = Modifier.weight(1f))
             }
             is TaskDetailUiState.Error -> {
                 Text(
                     text = state.message,
-                    color = AicaaColors.critical,
+                    color = AicaaColors.destructive,
                     modifier = Modifier.testTag("task_detail_error")
                 )
-                Button(onClick = onRetry, modifier = Modifier.fillMaxWidth()) {
+                AicaaFilledButton(onClick = onRetry, modifier = Modifier.fillMaxWidth()) {
                     Text(text = stringResource(R.string.retry))
                 }
             }
@@ -93,7 +95,7 @@ fun TaskDetailScreen(
                     Text(
                         text = state.task.statusLabel,
                         style = AicaaTextStyles.body,
-                        color = AicaaColors.accent,
+                        color = AicaaColors.muted,
                         modifier = Modifier.testTag("task_detail_status")
                     )
                     Text(
@@ -103,12 +105,12 @@ fun TaskDetailScreen(
                         modifier = Modifier.testTag("task_detail_ownership")
                     )
                     if (state.banner != null) {
-                        Text(text = state.banner, color = AicaaColors.accent)
+                        Text(text = state.banner, color = AicaaColors.info)
                     }
                     if (state.errorMessage != null) {
                         Text(
                             text = state.errorMessage,
-                            color = AicaaColors.critical,
+                            color = AicaaColors.destructive,
                             modifier = Modifier.testTag("task_detail_mutation_error")
                         )
                     }
@@ -116,7 +118,7 @@ fun TaskDetailScreen(
                     if (!state.task.isTerminal) {
                         when (state.task.status) {
                             "open" ->
-                                Button(
+                                AicaaFilledButton(
                                     onClick = onStart,
                                     enabled = !state.mutating,
                                     modifier =
@@ -127,7 +129,7 @@ fun TaskDetailScreen(
                                     Text(text = stringResource(R.string.task_action_start))
                                 }
                             "in_progress" ->
-                                Button(
+                                AicaaFilledButton(
                                     onClick = onWaiting,
                                     enabled = !state.mutating,
                                     modifier =
@@ -138,7 +140,7 @@ fun TaskDetailScreen(
                                     Text(text = stringResource(R.string.task_action_waiting))
                                 }
                             "waiting" ->
-                                Button(
+                                AicaaFilledButton(
                                     onClick = onResume,
                                     enabled = !state.mutating,
                                     modifier =
@@ -149,7 +151,7 @@ fun TaskDetailScreen(
                                     Text(text = stringResource(R.string.task_action_resume))
                                 }
                         }
-                        Button(
+                        AicaaTextButton(
                             onClick = onComplete,
                             enabled = !state.mutating,
                             modifier =
@@ -159,7 +161,7 @@ fun TaskDetailScreen(
                         ) {
                             Text(text = stringResource(R.string.task_action_complete))
                         }
-                        TextButton(
+                        AicaaDestructiveTextButton(
                             onClick = onDismiss,
                             enabled = !state.mutating,
                             modifier = Modifier.testTag("task_action_dismiss")
@@ -167,7 +169,7 @@ fun TaskDetailScreen(
                             Text(text = stringResource(R.string.task_action_dismiss))
                         }
                         if (state.task.canAssign) {
-                            Button(
+                            AicaaTextButton(
                                 onClick = onAssign,
                                 enabled = !state.mutating,
                                 modifier =
@@ -182,13 +184,14 @@ fun TaskDetailScreen(
 
                     Text(
                         text = stringResource(R.string.task_notes_heading),
+                        color = AicaaColors.ink,
                         fontWeight = FontWeight.Medium
                     )
                     state.task.noteBodies.forEach { note ->
-                        Text(text = note, color = Color(0xFF44403C))
+                        Text(text = note, color = AicaaColors.muted)
                     }
                     if (!state.task.isTerminal) {
-                        OutlinedTextField(
+                        AicaaOutlinedTextField(
                             value = state.noteDraft,
                             onValueChange = onNoteChanged,
                             enabled = !state.mutating,
@@ -199,7 +202,7 @@ fun TaskDetailScreen(
                                 .testTag("task_note_field"),
                             placeholder = { Text(text = stringResource(R.string.task_note_hint)) }
                         )
-                        TextButton(
+                        AicaaTextButton(
                             onClick = onSaveNote,
                             enabled = !state.mutating && state.noteDraft.trim().isNotEmpty(),
                             modifier = Modifier.testTag("task_note_save")
@@ -211,7 +214,7 @@ fun TaskDetailScreen(
             }
         }
 
-        TextButton(onClick = onBack, modifier = Modifier.testTag("task_detail_back")) {
+        AicaaTextButton(onClick = onBack, modifier = Modifier.testTag("task_detail_back")) {
             Text(text = stringResource(R.string.tasks_back))
         }
     }
