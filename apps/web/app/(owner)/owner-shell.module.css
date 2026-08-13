@@ -9,6 +9,30 @@
 
 .shell {
   min-height: 100vh;
+  color-scheme: dark;
+  background: var(--aicaa-color-background);
+  color: var(--aicaa-color-text);
+
+  /*
+   * Owner-scoped remaps of 1:1 legacy roles (D173). :root keeps the P1.4 values that
+   * `/c/{token}` still consumes. `--aicaa-color-accent` is deliberately not remapped:
+   * Owner accent uses are split onto primary / info / focus instead of being pointed at
+   * Rocket red as a block.
+   */
+  --aicaa-color-ink: var(--aicaa-color-text);
+  --aicaa-color-muted: var(--aicaa-color-text-muted);
+  --aicaa-color-line: var(--aicaa-color-border);
+  --aicaa-color-surface: var(--aicaa-color-surface-base);
+  --aicaa-color-surface-veil: var(--aicaa-color-surface-base);
+  --aicaa-color-surface-raised: var(--aicaa-color-surface-raised-solid);
+  --aicaa-color-surface-card: var(--aicaa-color-surface-raised-solid);
+  --aicaa-color-surface-banner: var(--aicaa-color-surface-cool);
+  --aicaa-color-positive: var(--aicaa-color-success);
+  --aicaa-color-critical: var(--aicaa-color-destructive);
+  --aicaa-color-caution: var(--aicaa-color-warning);
+  --aicaa-color-focus-ring: var(--aicaa-color-focus);
+  --aicaa-color-focus-ring-subtle: var(--aicaa-color-focus);
+  --aicaa-color-scrim: var(--aicaa-color-scrim-dark);
 }
 
 /*
@@ -26,7 +50,7 @@
   align-items: center;
   min-height: var(--aicaa-target-min);
   padding: var(--aicaa-space-2xs) var(--aicaa-space-md);
-  border: var(--aicaa-border-width) var(--aicaa-border-style) var(--aicaa-color-accent);
+  border: var(--aicaa-border-width) var(--aicaa-border-style) var(--aicaa-color-focus);
   background: var(--aicaa-color-surface);
   color: var(--aicaa-color-ink);
   font-family: var(--aicaa-font-sans);
@@ -36,6 +60,8 @@
 
 .skipLink:focus {
   transform: translateY(0);
+  outline: var(--aicaa-focus-ring-width) var(--aicaa-border-style) var(--aicaa-color-focus);
+  outline-offset: var(--aicaa-focus-ring-offset);
 }
 
 .header {
@@ -119,7 +145,7 @@
   margin: 0;
   border: 0;
   background: none;
-  color: var(--aicaa-color-accent);
+  color: var(--aicaa-color-info);
   font-family: var(--aicaa-font-sans);
   font-size: var(--aicaa-text-sm);
   cursor: pointer;
@@ -152,7 +178,7 @@
    * marking a destination current does not shift the row by 3px.
    */
   border-bottom: var(--aicaa-border-emphasis-width) var(--aicaa-border-style) transparent;
-  color: var(--aicaa-color-accent);
+  color: var(--aicaa-color-info);
   font-family: var(--aicaa-font-sans);
   font-size: var(--aicaa-text-md);
   text-decoration: none;
@@ -171,7 +197,7 @@
 .navLinkCurrent {
   color: var(--aicaa-color-ink);
   font-weight: var(--aicaa-weight-semibold);
-  border-bottom-color: var(--aicaa-color-accent);
+  border-bottom-color: var(--aicaa-color-info);
 }
 
 .main {

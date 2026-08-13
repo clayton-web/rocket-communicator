@@ -37,7 +37,7 @@
 }
 
 .bannerInfo {
-  border-left-color: var(--aicaa-color-accent);
+  border-left-color: var(--aicaa-color-info);
 }
 
 .actions {
@@ -51,9 +51,9 @@
   min-height: var(--aicaa-target-min);
   min-width: var(--aicaa-target-min);
   padding: 0.55rem var(--aicaa-space-lg);
-  border: var(--aicaa-border-width) var(--aicaa-border-style) var(--aicaa-color-accent);
-  background: var(--aicaa-color-accent);
-  color: var(--aicaa-color-surface);
+  border: var(--aicaa-border-width) var(--aicaa-border-style) var(--aicaa-color-primary);
+  background: var(--aicaa-color-primary);
+  color: var(--aicaa-color-on-primary);
   font-family: var(--aicaa-font-sans);
   font-size: var(--aicaa-text-md);
   cursor: pointer;

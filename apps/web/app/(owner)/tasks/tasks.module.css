@@ -45,7 +45,7 @@
 
 .list a:hover,
 .list a:focus-visible {
-  border-color: var(--aicaa-color-accent);
+  border-color: var(--aicaa-color-border-cool);
   outline: var(--aicaa-focus-ring-width) var(--aicaa-border-style)
     var(--aicaa-color-focus-ring-subtle);
   outline-offset: var(--aicaa-focus-ring-offset);
@@ -189,18 +189,21 @@
   min-height: var(--aicaa-target-min);
   min-width: var(--aicaa-target-min);
   padding: 0.55rem var(--aicaa-space-lg);
-  border: var(--aicaa-border-width) var(--aicaa-border-style) var(--aicaa-color-accent);
-  background: var(--aicaa-color-accent);
-  color: var(--aicaa-color-surface);
   font-family: var(--aicaa-font-sans);
   font-size: var(--aicaa-text-md);
   cursor: pointer;
 }
 
+.button {
+  border: var(--aicaa-border-width) var(--aicaa-border-style) var(--aicaa-color-primary);
+  background: var(--aicaa-color-primary);
+  color: var(--aicaa-color-on-primary);
+}
+
 .buttonSecondary {
+  border: var(--aicaa-border-width) var(--aicaa-border-style) var(--aicaa-color-line);
   background: var(--aicaa-color-surface);
   color: var(--aicaa-color-ink);
-  border-color: var(--aicaa-color-line);
 }
 
 .button:disabled,
@@ -241,7 +244,7 @@
 }
 
 .bannerInfo {
-  border-left-color: var(--aicaa-color-accent);
+  border-left-color: var(--aicaa-color-info);
 }
 
 .card {

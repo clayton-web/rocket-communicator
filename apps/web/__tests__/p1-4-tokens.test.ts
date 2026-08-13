@@ -140,6 +140,48 @@ const PRE_P1_4_LITERALS: Record<string, string> = {
   '--aicaa-focus-ring-offset': '2px',
 };
 
+/**
+ * Additive S4.1 Owner presentation roles (D173). Legacy P1.4 colour tokens above keep their
+ * original values; these names are new. Changing a value here without a recorded visual
+ * decision is the same drift D116 prohibits.
+ */
+const S4_1_OWNER_ROLES: Record<string, string> = {
+  '--aicaa-color-background': '#050506',
+  '--aicaa-color-surface-base': '#0b0b0d',
+  '--aicaa-color-surface-raised-solid': '#121216',
+  '--aicaa-color-surface-soft': '#18181d',
+  '--aicaa-color-surface-cool': '#171a21',
+  '--aicaa-color-border': '#2b2b33',
+  '--aicaa-color-border-strong': '#454550',
+  '--aicaa-color-border-cool': '#343946',
+  '--aicaa-color-text': '#f5f5f7',
+  '--aicaa-color-text-muted': '#a1a1aa',
+  '--aicaa-color-text-subtle': '#7c7c87',
+  '--aicaa-color-text-disabled': '#52525b',
+  '--aicaa-color-primary': '#e10613',
+  '--aicaa-color-on-primary': '#ffffff',
+  '--aicaa-color-info': '#8fa3bf',
+  '--aicaa-color-focus': '#d4d4d8',
+  '--aicaa-color-success': '#22c55e',
+  '--aicaa-color-warning': '#f59e0b',
+  '--aicaa-color-destructive': '#ef4444',
+  '--aicaa-color-scrim-dark': 'rgba(5, 5, 6, 0.72)',
+};
+
+const RECORDED_TOKENS: Record<string, string> = {
+  ...PRE_P1_4_LITERALS,
+  ...S4_1_OWNER_ROLES,
+};
+
+const OWNER_STYLESHEETS = [
+  'globals.css',
+  '(owner)/owner-shell.module.css',
+  '(owner)/owner-boundary.module.css',
+  '(owner)/tasks/tasks.module.css',
+  '(owner)/attention/attention.module.css',
+  '(owner)/_components/presentation.module.css',
+];
+
 describe('packages/ui is a tokens-only layer (D116)', () => {
   it('ships no React component, hook, or logic module', () => {
     const files = collectFiles(uiPackage, ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']);
@@ -181,7 +223,7 @@ describe('token extraction was a verified no-op (D116)', () => {
 
   it('defines no token beyond the recorded set, so nothing arrived undocumented', () => {
     const unexpected = [...tokens.keys()].filter(
-      (name) => name.startsWith('--aicaa-') && !(name in PRE_P1_4_LITERALS),
+      (name) => name.startsWith('--aicaa-') && !(name in RECORDED_TOKENS),
     );
 
     expect(unexpected).toEqual([]);
@@ -205,9 +247,9 @@ describe('token extraction was a verified no-op (D116)', () => {
   });
 
   it('leaves no bare colour literal in the Owner stylesheets it extracted', () => {
-    // Scoped to the two files P1.4 tokenized. `/c/[token]` keeps its own stylesheet until
-    // P1.5 legitimately touches that surface, and is deliberately excluded here.
-    for (const relative of ['globals.css', '(owner)/tasks/tasks.module.css']) {
+    // Owner S4.1 stylesheets. `/c/[token]` keeps its own stylesheet and is deliberately
+    // excluded: Recipient presentation is unchanged in this slice (D173).
+    for (const relative of OWNER_STYLESHEETS) {
       const css = stripComments(readFileSync(join(webApp, relative), 'utf8'));
       const hexColours = [...css.matchAll(/#[0-9a-f]{3,8}\b/gi)].map((match) => match[0]);
       const rgbColours = [...css.matchAll(/\brgba?\([^)]*\)/gi)].map((match) => match[0]);
@@ -237,5 +279,52 @@ describe('token extraction was a verified no-op (D116)', () => {
         new RegExp(`${legacy}\\s*:`, 'm'),
       );
     }
+  });
+});
+
+describe('S4.1 Owner presentation roles are additive (D173)', () => {
+  it.each(Object.entries(S4_1_OWNER_ROLES))(
+    'records the authorized value of %s',
+    (name, expected) => {
+      expect(tokens.get(name)).toBe(expected);
+    },
+  );
+
+  it('does not re-value the legacy tokens the Recipient surface still consumes', () => {
+    const recipientConsumed = [
+      '--aicaa-color-ink',
+      '--aicaa-color-muted',
+      '--aicaa-color-line',
+      '--aicaa-color-accent',
+      '--aicaa-color-paper',
+      '--aicaa-color-canvas-top',
+      '--aicaa-color-accent-glow',
+    ];
+
+    for (const name of recipientConsumed) {
+      expect(tokens.get(name)).toBe(PRE_P1_4_LITERALS[name]);
+    }
+  });
+
+  it('does not consume the legacy accent token on Owner stylesheets', () => {
+    const ownerOnly = OWNER_STYLESHEETS.filter((relative) => relative.startsWith('(owner)/'));
+
+    for (const relative of ownerOnly) {
+      const css = stripComments(readFileSync(join(webApp, relative), 'utf8'));
+      expect(css, `${relative} must not use var(--aicaa-color-accent)`).not.toContain(
+        'var(--aicaa-color-accent)',
+      );
+    }
+  });
+
+  it('keeps global canvas and color-scheme rules on the legacy light tokens', () => {
+    const globals = stripComments(readFileSync(join(webApp, 'globals.css'), 'utf8'));
+
+    expect(globals).toMatch(/color-scheme:\s*light/);
+    expect(globals).toContain('var(--aicaa-color-accent-glow)');
+    expect(globals).toContain('var(--aicaa-color-canvas-top)');
+    expect(globals).toContain('var(--aicaa-color-paper)');
+    expect(globals).not.toContain('var(--aicaa-color-background)');
+    expect(globals).not.toMatch(/color-scheme:\s*dark/);
   });
 });

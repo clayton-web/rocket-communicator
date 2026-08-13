@@ -6,13 +6,14 @@
  * activates `packages/ui` as a semantic-token layer and does NOT authorize a component
  * library, so no React, no markup, and no logic belongs here.
  *
- * P1.4 introduced these tokens as a NO-OP REFACTOR: every value below is byte-identical
- * to the literal it replaced in `apps/web/app/globals.css` and
+ * P1.4 introduced the original tokens as a NO-OP REFACTOR: every legacy value below is
+ * byte-identical to the literal it replaced in `apps/web/app/globals.css` and
  * `apps/web/app/tasks/tasks.module.css` at commit 34d048e7. Radius and motion are
  * included because their current absence is itself the shipped value — the interface is
  * square and static — and recording that makes any future change traceable rather than
- * incidental. `apps/web/__tests__/p1-4-tokens.test.ts` pins each value, so a visual
- * change cannot enter through token extraction.
+ * incidental. S4.1 (D173) adds Owner presentation roles without re-valuing those legacy
+ * tokens; `/c/{token}` continues to consume the original values. `apps/web/__tests__/p1-4-tokens.test.ts`
+ * pins each value, so a visual change cannot enter through token extraction.
  *
  * Android parity is achieved by re-implementing documented rules against these values,
  * not by sharing code (D116). No Kotlin generation exists or is authorized in P1.
@@ -50,6 +51,33 @@
 
   /* Colour — modal scrim, derived from --aicaa-color-ink. */
   --aicaa-color-scrim: rgba(28, 25, 23, 0.45);
+
+  /*
+   * S4.1 Owner presentation roles (D173). Additive. The legacy colour tokens above keep
+   * their P1.4 values so the un-migrated Recipient surface is unchanged. Owner stylesheets
+   * consume these roles directly, or through Owner-shell remaps that never write back to
+   * :root.
+   */
+  --aicaa-color-background: #050506;
+  --aicaa-color-surface-base: #0b0b0d;
+  --aicaa-color-surface-raised-solid: #121216;
+  --aicaa-color-surface-soft: #18181d;
+  --aicaa-color-surface-cool: #171a21;
+  --aicaa-color-border: #2b2b33;
+  --aicaa-color-border-strong: #454550;
+  --aicaa-color-border-cool: #343946;
+  --aicaa-color-text: #f5f5f7;
+  --aicaa-color-text-muted: #a1a1aa;
+  --aicaa-color-text-subtle: #7c7c87;
+  --aicaa-color-text-disabled: #52525b;
+  --aicaa-color-primary: #e10613;
+  --aicaa-color-on-primary: #ffffff;
+  --aicaa-color-info: #8fa3bf;
+  --aicaa-color-focus: #d4d4d8;
+  --aicaa-color-success: #22c55e;
+  --aicaa-color-warning: #f59e0b;
+  --aicaa-color-destructive: #ef4444;
+  --aicaa-color-scrim-dark: rgba(5, 5, 6, 0.72);
 
   /* Typeface */
   --aicaa-font-serif:
