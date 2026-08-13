@@ -1,272 +1,258 @@
-# Rocket Communicator — Brand Guide
+# Rocket Communicator Brand and Product UI Authority
 
-**Status:** Documentation guidance only.  
-**Authority:** Below authority. Subordinate to [docs/PROJECT_CONSTITUTION.md](docs/PROJECT_CONSTITUTION.md). Describes current brand, voice, and application surfaces; does **not** define product architecture and does **not** amend Decisions, OpenAPI, or milestones.  
-**Source material:** Adapted from a sibling Rocket product brand note used as **reference only**. That source’s inspection workflows, tenant/report language, dark/red palette, and implementation prompts are **not** approved for this product.
+## 1. Purpose and authority
 
----
+This document is the product-level branding and UI authority for **Rocket Communicator**.
 
-## Governance (read first)
+```text
+Rocket Logic
+├── Rocket Inspections
+└── Rocket Communicator
+```
 
-| Rule                                    | Meaning                                                                                                                                                                                                                                                                                                                                     |
-| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Guidance, not redesign authority        | This file describes identity, voice, and visual _policy_. It does **not** authorize restyling Android, web, tokens, or components.                                                                                                                                                                                                          |
-| Application changes need their own gate | UI, token, or copy changes require separate roadmap authorization (Decision and/or milestone slice).                                                                                                                                                                                                                                        |
-| Owner Acceptance Week                   | **Deferred — must not be executed** (**D159**). D142 still defines the gate; sequencing and exit criteria: [docs/MILESTONES.md](docs/MILESTONES.md).                                                                                                                                                                                        |
-| After OAW                               | **P2.2 — Remove Friction** (D143). Nothing after OAW is authorized without a separate decision.                                                                                                                                                                                                                                             |
-| P2.2a — People (planning)               | Planned first slice inside P2.2 (**D151** / MILESTONES). **Planning only — does not authorize implementation.**                                                                                                                                                                                                                             |
-| People filter (Task list)               | Approved future shape under P2.2a: keep recency (`updatedAt` DESC, `id` DESC); Android-first **People** filter **Everyone / Me / individual Recipients**; server-side so cursor pagination stays truthful; display names primary; Android local remember of last filter; no Task sorting, search, Recipient pages, or server prefs in P2.2. |
-| Naming                                  | The product is **Rocket Communicator** / **Rocket** (**D153**; D120 closed). Shipped artifacts — package namespace, application id, OpenAPI `info.title`, web copy — still carry the original working name as **repository provenance**; renaming them is separately authorized implementation work and is not authorized by this file.     |
+- **Rocket Logic** is the upstream authority for corporate identity.
+- **Rocket Communicator** owns its product-specific UI/design decisions within that framework.
+- **Rocket Inspections** is a sibling product and visual-kinship reference only. It is not Communicator's brand authority.
 
-Label certainty honestly:
+Communicator inherits Rocket Logic's naming architecture, corporate identity, logo direction, accessibility and truthful-branding principles, typography direction, high-level action semantics, Rocket red `#E10613`, Rocket dark `#050506`, and Rocket navy `#10172F`.
 
-- **Approved** — established by shipped tokens, Decisions, or [docs/PROJECT_CONSTITUTION.md](docs/PROJECT_CONSTITUTION.md).
-- **Provisional** — matches current UI practice but is not a locked brand system.
-- **Future exploration** — may be considered later; not approved.
-- **Requires product approval** — must not be treated as decided.
+This file does not duplicate the Rocket Logic master guide. Communicator-specific rules below do not automatically apply to other Rocket products.
 
----
+**Authority scope (D172).** This is a **scoped rank-4 domain authority** for Communicator branding, visual language, UI presentation, and interaction presentation ([PROJECT_CONSTITUTION.md § Authority model](docs/PROJECT_CONSTITUTION.md#authority-model-d158)). It is subordinate to ranks 1–3 and originates no behavioural product law, architecture, API/contract, security/privacy, authorization, persistence, or roadmap sequencing. It defines the canonical product-brand/UI **target**; it does not by itself authorize changes to shipped implementation. Implementation changes occur through separately authorized roadmap/implementation slices.
 
-## Brand purpose
+## 2. Product identity
 
-**The Owner’s trusted external memory.**
+Rocket Communicator is an Owner-focused product for task capture, interpretation, proposal review, responsibility selection, and follow-through.
 
-Rocket exists so the Owner can **capture, organize, assign, and follow through** on what must happen next — with confidence through an ordinary day — without relying on parallel notes or memory alone.
+> **Rocket proposes. The Owner decides.**
 
----
+```text
+Owner capture → shared interpretation → 0..N proposals → Owner review
+→ Owner decision → canonical Task only after acceptance
+```
 
-## Product positioning
+A proposal is not a Task. AI interpretation is assistive and must never be presented as the final Owner decision.
 
-| Principle          | Statement                                                                                                                                                                            |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Primary surface    | The Owner’s primary instrument is the native mobile client; Android is the one that ships today. Product architecture: [docs/PROJECT_CONSTITUTION.md](docs/PROJECT_CONSTITUTION.md). |
-| Web role           | Administration, review, debugging, and fallback — not the intended day-to-day Owner surface.                                                                                         |
-| What Rocket does   | Remembers what must happen next.                                                                                                                                                     |
-| What Rocket is not | Not a replacement for Gmail, Messages, or Phone. Not a conventional task manager, calendar manager, inbox replacement, or permanent communication archive.                           |
+The product should feel like a **command centre for turning messy communication into clear action**.
 
-Core feeling: **dependable instrument, not theatre.**  
-Avoid inspection-field or “mission control for property work” metaphors. This product is about ordinary follow-through, not site inspections or printable reports.
+## 3. Brand direction
 
----
+Target qualities: **fast, focused, trustworthy, calm, high-contrast, professional**.
 
-## Brand personality
+Use:
 
-- **Calm** — steady, unhurried; never frantic.
-- **Direct** — say the thing; short labels.
-- **Dependable** — prefer a truthful incomplete state over a polished guess.
-- **Focused** — one job per screen; simple by default.
-- **Confident without theatrics** — no hype, glow, or “AI magic” framing.
-- **Practical rather than futuristic** — field-ready language for real work, not sci-fi chrome.
+- dark operational presentation;
+- Rocket-red primary actions;
+- dark/neutral supporting surfaces;
+- white and muted-grey text hierarchy;
+- green positive/success states;
+- amber warning/attention states;
+- distinct destructive/error treatment;
+- mobile-first usability.
 
----
+Visual kinship with Rocket Inspections may come from dark presentation, red primary actions, green positive states, raised dark surfaces, muted secondary text, thin borders, strong contrast, large touch targets, and concise copy.
 
-## Writing and UX voice
+Do not copy Inspection-specific workflows, taxonomies, components, implementation patterns, or exact palette values. Avoid cute, playful, ornamental, or visually noisy UI.
 
-### Do
+## 4. Colour system
 
-- Plain language and short labels.
-- Sentence case for buttons and labels unless a formal proper name requires otherwise.
-- State what is true (loading, empty, error, ambiguous, offline) — see D112.
-- Prefer ordinary words over jargon when both are accurate.
-- Name the action: Save, Assign, Complete, Dismiss, Try again.
+### Corporate inherited colours
 
-### Do not
+| Role        | Value     | Use                                             |
+| ----------- | --------- | ----------------------------------------------- |
+| Rocket red  | `#E10613` | Corporate identity and ordinary primary actions |
+| Rocket dark | `#050506` | Core dark foundation/background                 |
+| Rocket navy | `#10172F` | Corporate supporting colour where appropriate   |
 
-- Exaggerated AI language (“smart,” “magical,” “auto-handles everything”).
-- Guilt, pressure, or productivity-shaming (“You’re behind,” “Don’t forget again”).
-- Claiming success before the server confirms it.
-- Claiming offline capability the product does not have (online-first; D132).
-- Claiming reminder or notification delivery is live when flags and gates say it is not.
+### Communicator product tokens
 
-### Preferred vs avoided copy (examples)
+These values belong to Rocket Communicator; they are not universal Rocket standards.
 
-| Preferred                   | Avoided                                     |
-| --------------------------- | ------------------------------------------- |
-| Saved                       | Synced to the cloud and verified everywhere |
-| Owner work (unassigned)     | Unowned / orphaned task                     |
-| Assigned to Alex            | Delegated to resource                       |
-| Delivery failed — try again | Oops! Something went wrong with AI handoff  |
-| Waiting                     | Paused by the system                        |
-| Could not confirm delivery  | Definitely not received                     |
-| Capture                     | Quick-add productivity sprint               |
-| Sign in                     | Launch your mission                         |
+| Token          | Value     |
+| -------------- | --------- |
+| Background     | `#050506` |
+| Surface        | `#0B0B0D` |
+| Raised surface | `#121216` |
+| Soft surface   | `#18181D` |
+| Border         | `#2B2B33` |
+| Strong border  | `#454550` |
+| Primary text   | `#F5F5F7` |
+| Muted text     | `#A1A1AA` |
+| Subtle text    | `#7C7C87` |
+| Disabled text  | `#52525B` |
 
----
+### Semantic colours
 
-## Visual principles
+| Role                           | Value     |
+| ------------------------------ | --------- |
+| Success/positive               | `#22C55E` |
+| Warning/attention              | `#F59E0B` |
+| Critical/destructive           | `#EF4444` |
+| Strong neutral focus indicator | `#D4D4D8` |
 
-| Principle            | Guidance                                                                                                              |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| One-handed first     | Ordinary-day use on a phone must work with one hand; interaction cost is a product constraint.                        |
-| Strong hierarchy     | Title → status → secondary meta; one primary action.                                                                  |
-| High contrast        | Readable ink on paper/stone surfaces; muted text for secondary only.                                                  |
-| Generous tap targets | Meet or exceed the current minimum target token (see below).                                                          |
-| Restrained motion    | Shipped Owner web motion is none; do not add animation casually. Respect reduced-motion if motion is ever authorized. |
-| Simple by default    | No decorative cards, badge clusters, or promo chrome unless interaction requires a container.                         |
-| Avoid clutter        | No stat strips, pill clusters, or competing headlines on the primary capture/list surfaces.                           |
+**Neutral/informational:** prefer the dark-neutral system unless another semantic colour is genuinely necessary. Do not mechanically reuse Rocket Inspections' similar primary red as Communicator's ordinary primary colour.
 
-**Approved current visual system:** light / stone surfaces with teal accent on Owner web (D116 tokens). Android currently uses a light Material theme with a similar light canvas in Owner screens — **provisional** parity, not a generated shared token pipeline.
+Never communicate status by colour alone.
 
-**Not approved:** adopting a sibling product’s dark canvas + rocket-red primary system, rounded “card-first” inspection layouts, or report/print white+red hierarchy as Communicator defaults. Those may be noted only as **source inspiration (not approved)**.
+### Contrast evidence
 
----
+Measured against the `#050506` background (WCAG 2.x sRGB relative luminance): `#F5F5F7` 18.7:1, `#A1A1AA` 8.0:1, `#7C7C87` 4.9:1, `#22C55E` 8.9:1, `#F59E0B` 9.5:1, `#EF4444` 5.4:1, `#D4D4D8` 13.8:1. Each clears the WCAG AA 4.5:1 normal-text target against the background.
 
-## Accessibility
+Contrast against raised and soft surfaces is lower and must be checked per surface — subtle text `#7C7C87` measures 4.3:1 on `#18181D` and does not meet the normal-text target there.
 
-| Requirement    | Guidance                                                                                                                     |
-| -------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| Touch targets  | Prefer at least the shipped web minimum `--aicaa-target-min` (**2.75rem** ≈ 44px). Larger is better for one-handed use.      |
-| Contrast       | Aim for WCAG AA for body text and essential controls on the light surfaces in use.                                           |
-| Type size      | Prefer readable body sizes at or above the shipped `md` scale; do not shrink critical status text to fit badges.             |
-| Color          | Status must not rely on color alone — always pair with a text label.                                                         |
-| Keyboard / SR  | Web Owner and Recipient surfaces must remain operable with keyboard focus and sensible semantics where those surfaces exist. |
-| Reduced motion | Today web motion is none. If motion is later authorized, honor `prefers-reduced-motion`.                                     |
+### Primary versus destructive
 
----
+`#E10613` is the canonical primary-action colour, normally used as a **filled** primary-action treatment with appropriate contrasting text: white on filled `#E10613` measures 5.0:1, while `#E10613` as text on `#050506` measures 4.1:1 and fails the normal-text target. It is not the generic colour for navigation, links, focus, borders, informational chrome, or every interactive element.
 
-## Logo and naming
+`#EF4444` is the critical/destructive semantic colour. Ordinary primary actions and destructive actions must remain visually distinguishable.
 
-| Item                         | Status                    | Guidance                                                                                                                                                             |
-| ---------------------------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Full name (brand voice)      | Approved (D153)           | **Rocket Communicator**                                                                                                                                              |
-| Short reference              | Approved (D153)           | **Rocket** when the product is already clear in context                                                                                                              |
-| Formal repo / contract title | Current implementation    | **AI Communication Action Assistant** — provenance only, pending an authorized rename slice                                                                          |
-| Logo / wordmark / icon set   | Requires product approval | No approved Communicator logo pack is defined in-repo. Do not import inspection logos, report marks, tenant branding, or flame-clearspace rules from other products. |
-| Asset paths                  | Future exploration        | Any future assets would need an approved location and Decision; do not invent `/public/brand/…` as authorized.                                                       |
+### No replacement decorative accent
 
----
+There is no new chromatic accent. Ordinary non-primary interactive presentation uses the neutral system — text hierarchy, dark and raised surfaces, borders, strong borders, neutral focus treatment, and typography or weight where appropriate — with `#D4D4D8` where an explicit strong neutral focus indicator is required, so Rocket red does not flood general UI chrome.
 
-## Color and typography policy
+## 5. Typography
 
-### Approved — Owner web semantic tokens (D116)
+**Inter** is the canonical Rocket Logic sans-serif direction. This does not require an immediate Android font dependency; migration timing is controlled separately.
 
-Source of truth: [`packages/ui/tokens.css`](packages/ui/tokens.css). Values are pinned; changing them is a visual product change, not a drive-by edit.
+Prioritize readability, native performance, compact headings, short body copy, sentence case, clear hierarchy, and mobile scanning. Do not require monospace or oversized display typography.
 
-**Surfaces and text**
+## 6. Layout and visual hierarchy
 
-| Token                      | Value     |
-| -------------------------- | --------- |
-| `--aicaa-color-ink`        | `#1c1917` |
-| `--aicaa-color-muted`      | `#57534e` |
-| `--aicaa-color-paper`      | `#f5f5f4` |
-| `--aicaa-color-line`       | `#d6d3d1` |
-| `--aicaa-color-accent`     | `#0f766e` |
-| `--aicaa-color-surface`    | `#fff`    |
-| `--aicaa-color-canvas-top` | `#fafaf9` |
+- Put the current decision or next meaningful action in the strongest visual position.
+- Keep the primary action unmistakable; let secondary actions recede appropriately.
+- Do not give every control equal visual weight.
+- Prefer spacing, typography, contrast, and thin borders over decorative containers.
+- Keep operational information scannable without excessive badges or cards.
+- Preserve strong contrast across dark surfaces.
+- Avoid unnecessary chrome and repeated labels.
 
-**State (always with text labels)**
+**Shape (D172).** Existing per-platform shape behaviour is preserved and no radius or shape system is established here: Android's existing Material 3 default shapes may remain, and existing Recipient-specific radii may remain. Do not square Android controls, and do not introduce a rounded-card or pill system, as part of brand alignment.
 
-| Token                    | Value     |
-| ------------------------ | --------- |
-| `--aicaa-color-positive` | `#15803d` |
-| `--aicaa-color-critical` | `#b91c1c` |
-| `--aicaa-color-caution`  | `#b45309` |
+Radius, shape language, and motion may evolve only through deliberate later product decisions. Do not invent a motion system.
 
-**Type**
+## 7. Components and interaction semantics
 
-| Token                | Value                                                                              |
-| -------------------- | ---------------------------------------------------------------------------------- |
-| `--aicaa-font-sans`  | `'Segoe UI', system-ui, -apple-system, sans-serif`                                 |
-| `--aicaa-font-serif` | `'Iowan Old Style', 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, serif` |
+**Primary actions:** use Rocket red for the single most important ordinary action in a context, such as **Capture**, **Accept**, **Start**, or **Complete** when it is the clear next action. Avoid competing red actions in one decision area.
 
-Type scale, spacing, focus rings, and `--aicaa-target-min: 2.75rem` are defined in the same file.
+**Secondary actions:** use neutral surfaces, borders, or restrained text treatment for actions such as **Edit**, **Wait**, **Resume**, and **Add note** when secondary.
 
-**Shape and motion (approved current truth)**
+**Destructive actions:** **Dismiss** and other destructive/critical actions must not look interchangeable with ordinary primary actions.
 
-- Radius tokens are **`0`** (square controls/surfaces).
-- Motion duration/transition tokens are **`none` / `0s`**.
+**States:** loading, empty, error, warning, recovery, success, and disabled states must be explicit and readable. Provide explanatory text when the Owner needs to understand what is happening.
 
-### Provisional — Android
+**Touch:** interactive targets should be approximately **44 px minimum** in both dimensions, with adequate separation.
 
-- Theme parent: Material Light, no action bar (`Theme.Aicaa`).
-- Owner list/capture screens currently use a light paper-like canvas and dark ink consistent with the web stone/ink direction.
-- There is **no** authorized Kotlin token generation or shared design-system package. Parity is by re-implementing documented rules (D116), not by copying CSS.
+## 8. Product-specific UI guidance
 
-### Future exploration / not approved
+### Owner Android sign-in
 
-| Idea                                                           | Status                                                         |
-| -------------------------------------------------------------- | -------------------------------------------------------------- |
-| Dark mode Owner UI                                             | Future exploration; explicitly not a P1 requirement            |
-| Rocket-red primary (`#E10613` family) from sibling brand notes | Source inspiration only — **not** approved Communicator tokens |
-| Inter as a required webfont                                    | Not approved; would need licensing and product approval        |
-| Pill-heavy / card-heavy inspection-style chrome                | Not aligned with simple-by-default Communicator UI             |
-| Shared cross-platform token codegen                            | Requires product/architecture approval                         |
+Keep sign-in focused, credible, and minimal. Corporate identity should support, not overwhelm, authentication and recovery.
 
----
+### Manual capture
 
-## Component guidance
+Make capture immediate and prominent. Do not imply that a Task exists before interpretation and acceptance.
 
-Guidance for tone and behavior. **Not** a component library and **not** a redesign brief.
+### Proposal review
 
-### Task capture
+A proposal is a reviewable suggestion, not committed work. The inherited proposal-review target is deliberately limited to:
 
-- **Presentation target (D154, D164):** AI-first interpretation → proposal review → accept and answer **one** question, “Who is responsible for this Task?” — **Me** or a **Recipient**. Never offer a separate **Keep** action beside **Assign**. Brand surfaces that story; it does not invent the workflow.
-- **Interim current UI (D154):** direct Save → `POST /api/v1/tasks` remains shipped on Android/web until the AI-first path is authorized. Do not brand the interim path as the permanent Rocket experience.
-- Fastest path from the shell to “what must happen next.”
-- Success only after server confirmation.
-- Unassigned create = Owner work. Do not force assign on capture.
+- **Edit**
+- **Dismiss**
+- **Accept**
 
-### Task list
+Do not introduce Merge UI through brand work. These review semantics are inherited product law (D164), not established here.
 
-- Preserve server recency order (`updatedAt` descending, then `id` descending) unless a later Decision changes list semantics. Recency is not replaced by alternate sorts.
-- Show status and ownership (Owner work vs assigned) in plain language.
-- Prefer Recipient **display name** as the primary human identifier; show email as secondary (e.g. name on the first line, email on the second).
-- Avoid inventing filters or sorts in the client that lie across paginated pages.
-- **People** filter (Everyone / Me / individual Recipients), when built under planned **P2.2a** after OAW, must be server-side and Android-first; changing the filter resets pagination (**D151**).
+### Accept and responsibility
 
-### Reduce decisions
+Accept includes affirmative responsibility selection:
 
-- Rocket should reduce decisions, not create them.
-- When two designs solve the same problem, prefer the one that removes choices, screens, and controls while preserving truthful information.
+- **Me / Owner**
+- **saved Recipient**
 
-### Status labels
+There is no separate **Keep** action. Make the selected responsible party explicit. Do not confuse responsibility evidence with the later external handoff mutation.
 
-- Use established presentation labels (Open, In progress, Waiting, Completed, Dismissed, etc.).
-- Pair tone/color with text.
-- Delivery failure may surface when the Owner must notice; do not spam “pending” on every assigned row.
+### Task list and detail
 
-### Recipient selection
+Tasks represent committed follow-through. Prioritize status, responsibility, deadline/reminder context, and the next meaningful action without turning every attribute into a visual badge.
 
-- Recipients come from Owner-managed records.
-- Selection is part of handoff confirmation, not silent auto-assign.
-- Confirm before send; disclose truthful delivery/follow-up limits.
-- Do not imply a Recipient has the work before the send is confirmed, or that a failed handoff undid the Owner's choice.
+### Loading, error, and recovery
 
-### Empty states
+Use plain language and a clear next step where one exists. Recovery should feel controlled and trustworthy, not alarming by default.
 
-- Calm, short, actionable (“No Tasks yet” + how one appears).
-- Do not invent fake sample work.
+### Recipient web experience
 
-### Errors and connectivity
+Use the same Communicator visual language in a simpler surface. Emphasize the assigned Task, relevant context/status, and permitted actions. Do not expose Owner-only controls or backend concepts.
 
-- Truthful, retryable where appropriate.
-- Never imply a write succeeded when it did not.
-- Ambiguous outcomes stay ambiguous until an authoritative read settles them.
+## 9. Voice and microcopy
 
-### Confirmations
+Voice is **short, calm, clear, actionable, non-technical, truthful**.
 
-- One clear confirm for irreversible or externally visible actions (handoff, dismiss).
-- Say what will happen in ordinary language; do not over-promise side effects that are not operational.
+Prefer precise verbs: **Capture, Edit, Dismiss, Accept, Start, Wait, Resume, Complete, Add note**.
 
-### Destructive or irreversible actions
+Avoid vague **Submit** when a more specific verb exists. Use sentence case and brief mobile-friendly instructions.
 
-- Use critical tone + explicit verb (Dismiss, Remove due date).
-- Prefer confirm for external or hard-to-undo effects.
-- Do not hide destructive actions behind icons alone.
+Do not expose API, database, provider, synchronization, or infrastructure terminology unless genuinely necessary.
 
----
+Never imply Rocket has accepted, assigned, completed, or made an Owner decision when it has only produced a proposal or interpretation.
 
-## Roadmap reminder (brand work does not move gates)
+## 10. Accessibility
 
-Sequencing lives in [docs/MILESTONES.md](docs/MILESTONES.md), not here. Owner Acceptance Week is deferred (D159); A8 operational enablement remains separately authorized and is outside this guide.
+- Target **WCAG AA** contrast for normal text.
+- Maintain approximately **44 px minimum** touch targets.
+- Provide visible focus states on applicable web surfaces.
+- Never communicate status by colour alone.
+- Provide textual success, warning, error, and recovery states.
+- Preserve usability with large text/accessibility font scaling.
+- Avoid layouts that break when text expands.
+- Optimize contrast and legibility for outdoor/mobile use.
+- If motion is later introduced, respect reduced-motion preferences and keep motion non-essential.
 
----
+## 11. Logo and identity assets
 
-## What this file must never become
+The production-ready transparent Rocket Logic master logo asset is deferred.
 
-- An authorization to restyle the app to match another Rocket product.
-- A vehicle for tenant, personal, or organization-specific marketing copy.
-- An embedded implementation prompt that edits tokens or UI without a Decision.
-- A silent closure of any Open Decision, or a rename of shipped artifacts without its own authorized slice.
+Do not invent or redraw a Communicator logo, treat a placeholder as canonical, or block UI work on the missing asset. Adopt approved Rocket Logic identity assets through the appropriate implementation process when available.
 
-When in doubt: keep the interface calm, truthful, and simple — and leave visual invention for an authorized slice.
+## 12. Architecture guardrails
+
+Brand work is visual and linguistic unless a separately authorized product/architecture slice says otherwise. It must not alter or redefine:
+
+- shared interpretation architecture;
+- `TaskSuggestion` lifecycle;
+- canonical Task architecture;
+- responsibility evidence semantics;
+- ETag / `If-Match` concurrency;
+- API contracts or database schema;
+- Gmail/SMS architecture;
+- authentication/authorization;
+- reminder semantics.
+
+This document governs presentation of these concepts, not their underlying architecture.
+
+## 13. Implementation principles
+
+1. Inherit corporate identity from Rocket Logic; keep Communicator UI decisions product-local.
+2. Use Rocket Inspections for family resemblance only, never as authority.
+3. Prefer reusable product tokens and semantic roles over scattered literal values.
+4. Use `#E10613` for ordinary primary brand/action treatment and preserve distinct destructive/error treatment.
+5. Make hierarchy obvious before adding decoration.
+6. Keep mobile interaction fast, readable, and forgiving.
+7. Do not introduce broad radius, component, font-dependency, or motion migrations incidentally.
+8. Keep language aligned with architectural truth, especially proposal vs. Task and proposal vs. Owner decision.
+9. If branding guidance conflicts with architecture or security, preserve architecture/security and resolve presentation separately.
+
+## 14. Success criteria
+
+Rocket Communicator is on-brand when it:
+
+- is recognizably part of the Rocket Logic family without copying Rocket Inspections;
+- uses a dark, high-contrast operational presentation;
+- uses Rocket red clearly for ordinary primary actions;
+- keeps destructive/error states distinct from primary actions;
+- preserves proposals as proposals until Owner acceptance;
+- makes responsibility selection explicit within Accept;
+- establishes clear primary, secondary, warning, success, and destructive hierarchy;
+- uses concise, specific, truthful, non-technical copy;
+- keeps Owner Android and Recipient web surfaces visually related without requiring identical layouts;
+- remains usable with mobile, large-text, focus, and outdoor-readability constraints; and
+- never silently changes product architecture through branding work.

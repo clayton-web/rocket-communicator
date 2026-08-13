@@ -187,6 +187,15 @@ Procedures: [DEPLOYMENT.md](DEPLOYMENT.md).
 - [ ] Structural gates pass: **one** Owner authentication call per Owner page request, and a documented and asserted maximum database round-trip count per route
 - [ ] Copy does not claim a capability the milestone has not shipped
 
+### Presentation and brand (apply to any brand-affecting or S4 change)
+
+- [ ] Presentation matches [../BRAND.md](../BRAND.md) within its scope; no behavioural, contract, security, persistence, or sequencing rule was originated there (D172)
+- [ ] Text meets the **WCAG AA** normal-text contrast target **against the surface it actually sits on**, not only against the background
+- [ ] Focus is visibly indicated wherever focus applies
+- [ ] Status is never communicated by colour alone
+- [ ] Primary and destructive actions remain visually distinguishable; `#E10613` is not used as generic chrome, link, focus, or border colour
+- [ ] No unauthorized shape, radius, motion, animation, or font-dependency change; token **value** changes are deliberate and their pinning assertions were updated rather than weakened or removed (D116, D124, D172)
+
 ## Documentation
 
 - [ ] Docs updated **before** or as part of completion (Engineering Rule #1)
