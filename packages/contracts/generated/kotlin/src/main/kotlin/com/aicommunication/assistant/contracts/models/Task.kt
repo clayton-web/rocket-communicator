@@ -45,6 +45,7 @@ import java.io.Serializable
  * @param assignment 
  * @param sourceReference 
  * @param dueAt 
+ * @param dueLocalDate 
  * @param waitingUntil 
  * @param priority 
  * @param derivedUrgency 
@@ -92,6 +93,9 @@ data class Task (
 
     @Json(name = "dueAt")
     val dueAt: kotlin.String? = null,
+
+    @Json(name = "dueLocalDate")
+    val dueLocalDate: kotlin.String? = null,
 
     @Json(name = "waitingUntil")
     val waitingUntil: kotlin.String? = null,

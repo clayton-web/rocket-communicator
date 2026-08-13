@@ -1,3 +1,4 @@
+import type { LocalDate } from '../reminders/local-date.js';
 import type { OrganizationId, RecipientId, TaskId } from '../types/ids.js';
 import type { UtcInstant } from '../types/timestamps.js';
 import type { ReminderMetadata, RetentionMetadata } from '../value-objects/metadata.js';
@@ -20,6 +21,8 @@ export interface Task {
   assignment?: TaskAssignment;
   sourceReference?: SourceReference;
   dueAt?: UtcInstant | null;
+  /** Canonical organization-local due calendar date (`YYYY-MM-DD`). Independent of vestigial `dueAt`. */
+  dueLocalDate?: LocalDate | null;
   waitingUntil?: UtcInstant | null;
   priority?: 'low' | 'normal' | 'high' | 'urgent';
   outcome?: TaskOutcome;

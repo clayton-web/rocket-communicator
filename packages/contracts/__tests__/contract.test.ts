@@ -140,6 +140,18 @@ describe('contracts package', () => {
     const taskProperties = Object.keys(
       (schemas.Task as { properties?: Record<string, unknown> })?.properties ?? {},
     );
+    expect(taskProperties).toContain('dueAt');
+    expect(taskProperties).toContain('dueLocalDate');
+    expect(taskProperties).toContain('derivedUrgency');
+    const dueLocalDate = (
+      schemas.Task as {
+        properties?: { dueLocalDate?: { oneOf?: Array<{ type?: string; pattern?: string }> } };
+      }
+    ).properties?.dueLocalDate;
+    expect(dueLocalDate?.oneOf?.some((entry) => entry.pattern === '^\\d{4}-\\d{2}-\\d{2}$')).toBe(
+      true,
+    );
+    expect(dueLocalDate?.oneOf?.some((entry) => entry.type === 'null')).toBe(true);
     for (const forbidden of [
       'responsibility',
       'responsibleParty',

@@ -1553,6 +1553,13 @@ export interface components {
             sourceReference?: components["schemas"]["SourceReference"];
             /** Format: date-time */
             dueAt?: string | null;
+            /** @description Canonical Owner-selected organization-local due calendar date. Null when the Owner
+             *     has not chosen one. Authoritative for current due-date read semantics and for
+             *     derived `due_soon` / `overdue` (D109, D177). Instant-typed `dueAt` is retained for
+             *     compatibility and is not the source of those labels. The local date is never
+             *     reconstructed from `dueAt`.
+             *      */
+            dueLocalDate?: string | null;
             /** Format: date-time */
             waitingUntil?: string | null;
             priority?: components["schemas"]["TaskPriority"];

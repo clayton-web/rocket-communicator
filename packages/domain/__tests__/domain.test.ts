@@ -34,6 +34,7 @@ import {
   mergeTaskSuggestion,
   ownerActor,
   parseETag,
+  parseLocalDate,
   requestClarification,
   resumeTask,
   returnTaskToOwner,
@@ -603,10 +604,10 @@ describe('retention and urgency', () => {
     expect(computeFailedAudioDeleteAt(now)).toBe('2026-07-15T12:00:00.000Z');
   });
 
-  it('derives overdue and due soon without persisting', () => {
-    expect(deriveTaskUrgency('open', '2026-07-12T12:00:00.000Z', now)).toBe('overdue');
-    expect(deriveTaskUrgency('open', '2026-07-13T20:00:00.000Z', now)).toBe('due_soon');
-    expect(deriveTaskUrgency('waiting', '2026-07-12T12:00:00.000Z', now)).toBeNull();
+  it('derives overdue and due soon from the canonical local date without persisting', () => {
+    expect(deriveTaskUrgency('open', parseLocalDate('2026-07-12'), now)).toBe('overdue');
+    expect(deriveTaskUrgency('open', parseLocalDate('2026-07-13'), now)).toBe('due_soon');
+    expect(deriveTaskUrgency('waiting', parseLocalDate('2026-07-12'), now)).toBeNull();
   });
 });
 

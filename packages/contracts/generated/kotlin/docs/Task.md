@@ -16,6 +16,7 @@
 | **assignment** | [**TaskAssignment**](TaskAssignment.md) |  |  [optional] |
 | **sourceReference** | [**SourceReference**](SourceReference.md) |  |  [optional] |
 | **dueAt** | **kotlin.String** |  |  [optional] |
+| **dueLocalDate** | **kotlin.String** |  |  [optional] |
 | **waitingUntil** | **kotlin.String** |  |  [optional] |
 | **priority** | [**TaskPriority**](TaskPriority.md) |  |  [optional] |
 | **derivedUrgency** | [**DerivedTaskUrgency**](DerivedTaskUrgency.md) |  |  [optional] |

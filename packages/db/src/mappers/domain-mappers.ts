@@ -30,6 +30,7 @@ import {
   asTaskId,
   asTaskSuggestionId,
   asTemporaryCommunicationExcerptId,
+  parseLocalDate,
   toUtcInstant,
 } from '../../../domain/dist/index.js';
 import type {
@@ -115,6 +116,7 @@ export function mapTask(
     assignment: assignment && assignment.clearedAt == null ? mapAssignment(assignment) : undefined,
     sourceReference: (row.sourceReference as unknown as SourceReference | null) ?? undefined,
     dueAt: row.dueAt ? toIso(row.dueAt) : null,
+    dueLocalDate: row.dueLocalDate ? parseLocalDate(row.dueLocalDate) : null,
     waitingUntil: row.waitingUntil ? toIso(row.waitingUntil) : null,
     priority: row.priority ?? undefined,
     outcome: (row.outcome as unknown as TaskOutcome | null) ?? undefined,

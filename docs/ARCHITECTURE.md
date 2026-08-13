@@ -147,7 +147,7 @@ Persisted states: `open` · `in_progress` · `waiting` · `completed` · `dismis
 
 `due_soon` and `overdue` are derived for display only, and are not computed while `waiting`, `completed`, or `dismissed`. They **must not** be a scheduling mechanism: reminder occurrences are computed from the due **date** by [WORKFLOWS.md](WORKFLOWS.md) §10a (D103), never from a label, and label-triggered sends remain prohibited (D102, D117). Rendered through `apps/web/lib/presentation/task-status.ts` and formatted in the organization timezone by `apps/web/lib/presentation/datetime.ts` (D034, D117, D122) — never the browser, device, or machine-local timezone.
 
-**Contract debt.** Both labels are still computed from the instant-typed `dueAt`, an artefact of the pre-A8.1 representation. **D177** authorizes restating the derivation in local-calendar terms onto the canonical `dueLocalDate` / `due_local_date` (D109). Until that implementation lands, the current `dueAt` derivation remains implementation truth and is not reminder law. S6 must not reconstruct the local date from `dueAt` and must not introduce new writes that perpetuate `dueAt` as a competing source of truth.
+**Contract debt.** Both labels are derived in local-calendar terms from the canonical `dueLocalDate` / `due_local_date` (D109, D177). Instant-typed `dueAt` remains compatibility/contract debt and is not the source of current due-date read semantics or reminder law. S6 must not reconstruct the local date from `dueAt` and must not introduce new writes that perpetuate `dueAt` as a competing source of truth.
 
 ## Auth boundary
 

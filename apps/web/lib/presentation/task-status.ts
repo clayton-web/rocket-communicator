@@ -28,7 +28,7 @@ const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
 /**
  * Urgency labels.
  *
- * `due_soon` and `overdue` are derived at read time from `dueAt` and are never persisted.
+ * `due_soon` and `overdue` are derived at read time from `dueLocalDate` and are never persisted.
  * They describe the due date only. They must not be worded as though a reminder had fired or
  * a schedule were being tracked, because no reminder automation is wired to them
  * (STATE_MACHINE.md, D089).

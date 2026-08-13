@@ -18,7 +18,8 @@ export type ActionAttributionDto = components['schemas']['ActionAttribution'];
 
 /**
  * Map a domain Task to the OpenAPI Task DTO.
- * Never passes through Prisma records. Adds `etag` and read-time `derivedUrgency`.
+ * Never passes through Prisma records. Adds `etag` and read-time `derivedUrgency`
+ * from canonical `dueLocalDate` (D177). Vestigial `dueAt` is passed through unchanged.
  */
 export function mapTaskToDto(task: Task, now: UtcInstant = task.updatedAt): TaskDto {
   return {
@@ -30,9 +31,10 @@ export function mapTaskToDto(task: Task, now: UtcInstant = task.updatedAt): Task
     assignment: task.assignment ? mapAssignmentToDto(task.assignment) : undefined,
     sourceReference: task.sourceReference as TaskDto['sourceReference'],
     dueAt: task.dueAt ?? null,
+    dueLocalDate: task.dueLocalDate ?? null,
     waitingUntil: task.waitingUntil ?? null,
     priority: task.priority,
-    derivedUrgency: deriveTaskUrgency(task.status, task.dueAt ?? null, now),
+    derivedUrgency: deriveTaskUrgency(task.status, task.dueLocalDate ?? null, now),
     outcome: task.outcome ? mapOutcomeToDto(task.outcome) : undefined,
     notes: task.notes.map(mapNoteToDto),
     reminder: task.reminder as TaskDto['reminder'],

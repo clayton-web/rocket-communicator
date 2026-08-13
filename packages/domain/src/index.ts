@@ -165,7 +165,7 @@ export {
 
 export {
   deriveTaskUrgency,
-  DEFAULT_DUE_SOON_WINDOW_MS,
+  DEFAULT_DUE_SOON_CALENDAR_DAYS,
   type DerivedTaskUrgency,
 } from './derived/urgency.js';
 
