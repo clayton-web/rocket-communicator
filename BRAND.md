@@ -90,6 +90,22 @@ These values belong to Rocket Communicator; they are not universal Rocket standa
 | Critical/destructive           | `#EF4444` |
 | Strong neutral focus indicator | `#D4D4D8` |
 
+### Supporting presentation colours (D173)
+
+Communicator-owned product colours added as optional supporting presentation tools. They are not Rocket Logic corporate colours, not status semantics, and not replacements for any value above.
+
+| Role             | Value     | May be used for                                                                                         |
+| ---------------- | --------- | ------------------------------------------------------------------------------------------------------- |
+| Cool surface     | `#171A21` | Selected rows, quiet informational panels, subtle differentiated regions, restrained emphasis           |
+| Cool border      | `#343946` | Selected or active boundaries, informational separation, subtle cool-toned structural emphasis          |
+| Info/interactive | `#8FA3BF` | Restrained informational text and icons, links where contrast permits, non-primary interactive emphasis |
+
+Cool surface must not become the default surface merely because it exists. Cool border must not be assumed to satisfy accessibility-critical 3:1 boundary contrast — it reaches at most 1.77:1, against `#050506`, and less against every raised surface — so verify the actual adjacent-surface contrast before relying on it. Info/interactive must not be used for primary actions, success, warning, or destructive/error, and is not a general decorative accent.
+
+`#8FA3BF` measures 7.9:1 on `#050506` and at least 6.7:1 on every surface named in this document, so it clears the AA normal-text target throughout. No further chromatic colour is authorized.
+
+**On-primary (D173).** The foreground of a filled `#E10613` primary action is `#FFFFFF` (4.96:1). This is a separate role from primary text `#F5F5F7`; do not substitute one for the other.
+
 **Neutral/informational:** prefer the dark-neutral system unless another semantic colour is genuinely necessary. Do not mechanically reuse Rocket Inspections' similar primary red as Communicator's ordinary primary colour.
 
 Never communicate status by colour alone.
@@ -108,7 +124,7 @@ Contrast against raised and soft surfaces is lower and must be checked per surfa
 
 ### No replacement decorative accent
 
-There is no new chromatic accent. Ordinary non-primary interactive presentation uses the neutral system — text hierarchy, dark and raised surfaces, borders, strong borders, neutral focus treatment, and typography or weight where appropriate — with `#D4D4D8` where an explicit strong neutral focus indicator is required, so Rocket red does not flood general UI chrome.
+S4 does not introduce a general decorative accent that competes with Rocket red or floods ordinary UI chrome. Rocket Communicator may use the restrained supporting informational/interactive colour `#8FA3BF` only for the limited roles authorized by D173. Ordinary non-primary interactive presentation uses the neutral system — text hierarchy, dark and raised surfaces, borders, strong borders, neutral focus treatment, and typography or weight where appropriate — with `#D4D4D8` where an explicit strong neutral focus indicator is required, so Rocket red does not flood general UI chrome.
 
 ## 5. Typography
 
