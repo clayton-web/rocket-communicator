@@ -17,6 +17,7 @@ import com.aicommunication.assistant.capture.CaptureUiState
 import com.aicommunication.assistant.capture.ProposalAcceptInteraction
 import com.aicommunication.assistant.capture.ProposalDismissInteraction
 import com.aicommunication.assistant.capture.ProposalEditInteraction
+import com.aicommunication.assistant.capture.ProposalOrigin
 import com.aicommunication.assistant.capture.ProposalResponsibility
 import com.aicommunication.assistant.capture.TaskSuggestionWire
 import com.aicommunication.assistant.tasks.RecipientWire
@@ -93,6 +94,26 @@ class TaskCaptureScreenTest {
 
         composeRule.onNodeWithTag("capture_rephrase_button").performClick()
         assertEquals(1, rephrased)
+    }
+
+    @Test
+    fun gmailZeroProposals_showsTruthfulResultWithoutRephrase() {
+        setScreen(
+            CaptureUiState.Proposals(
+                capturedText = "Quote revision",
+                proposals = emptyList(),
+                origin = ProposalOrigin.GmailReview
+            )
+        )
+
+        composeRule.onNodeWithTag("capture_result").assertIsDisplayed()
+        composeRule
+            .onNodeWithText("Rocket didn't find anything actionable in this email.")
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("You reviewed: Quote revision").assertIsDisplayed()
+        composeRule.onAllNodesWithTag("capture_proposal_card").assertCountEquals(0)
+        composeRule.onNodeWithTag("capture_rephrase_button").assertDoesNotExist()
+        composeRule.onNodeWithTag("gmail_review_another_button").assertIsDisplayed()
     }
 
     @Test

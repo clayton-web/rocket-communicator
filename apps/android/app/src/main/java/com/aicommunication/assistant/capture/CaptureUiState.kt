@@ -30,12 +30,16 @@ sealed class CaptureUiState {
      * A committed interpretation. [proposals] may be empty, which is truthful success rather than
      * failure. [capturedText] is kept so the Owner can rephrase a capture Rocket could not use.
      *
+     * [origin] distinguishes manual capture from Gmail Review so footer copy can return to the
+     * right surface without a second proposal-review UI.
+     *
      * At most one of [accept], [edit], or [dismiss] is open at a time. Responsibility starts
      * unselected. Edit drafts live only in this in-memory state.
      */
     data class Proposals(
         val capturedText: String,
         val proposals: List<TaskSuggestionWire>,
+        val origin: ProposalOrigin = ProposalOrigin.ManualCapture,
         val accept: ProposalAcceptInteraction? = null,
         val edit: ProposalEditInteraction? = null,
         val dismiss: ProposalDismissInteraction? = null,
@@ -44,6 +48,12 @@ sealed class CaptureUiState {
         val interactionBusy: Boolean
             get() = accept?.busy == true || edit?.busy == true || dismiss?.busy == true
     }
+}
+
+/** Which Owner action produced the proposals currently on the shared S5 review surface. */
+enum class ProposalOrigin {
+    ManualCapture,
+    GmailReview
 }
 
 /**

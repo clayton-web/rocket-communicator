@@ -27,6 +27,7 @@ fun AuthenticatedShellScreen(
     session: Session,
     signingOut: Boolean,
     onCapture: () -> Unit,
+    onGmail: () -> Unit,
     onTasks: () -> Unit,
     onSignOut: () -> Unit,
     modifier: Modifier = Modifier
@@ -75,6 +76,16 @@ fun AuthenticatedShellScreen(
                 .testTag("capture_entry_button")
         ) {
             Text(text = stringResource(R.string.capture_entry))
+        }
+        AicaaTextButton(
+            onClick = onGmail,
+            enabled = !signingOut,
+            modifier =
+            Modifier
+                .fillMaxWidth()
+                .testTag("gmail_entry_button")
+        ) {
+            Text(text = stringResource(R.string.gmail_entry))
         }
         AicaaTextButton(
             onClick = onTasks,

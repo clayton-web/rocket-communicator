@@ -1334,6 +1334,71 @@ class TaskCaptureViewModelTest {
         assertNull(vm.openApprovedTaskId.value)
     }
 
+    // --- Gmail Review seam ----------------------------------------------------------------
+
+    @Test
+    fun presentGmailReview_hydratesExistingProposalSurfaceWithoutTouchingCaptureStore() = runTest {
+        val vm = viewModel()
+        val proposals =
+            listOf(
+                TaskSuggestionWire(
+                    id = "sug-g1",
+                    status = "pending",
+                    summaryPoints =
+                    listOf(
+                        CaptureSummaryPointWire(
+                            id = "p1",
+                            kind = "request",
+                            label = "Request",
+                            order = 0,
+                            value = "Send the revised quote"
+                        )
+                    ),
+                    version = 1,
+                    etag = "etag-g1",
+                    createdAt = "2026-08-13T18:00:00.000Z"
+                )
+            )
+
+        vm.presentGmailReview("Quote revision", proposals)
+
+        val state = vm.uiState.value as CaptureUiState.Proposals
+        assertEquals(ProposalOrigin.GmailReview, state.origin)
+        assertEquals("Quote revision", state.capturedText)
+        assertEquals(1, state.proposals.size)
+        assertEquals("sug-g1", state.proposals.single().id)
+        assertNull(pendingStore.read())
+        assertEquals(0, server.requestCount)
+        assertNull(vm.openApprovedTaskId.value)
+    }
+
+    @Test
+    fun presentGmailReview_zeroSuggestionsIsTruthfulSuccess() = runTest {
+        val vm = viewModel()
+
+        vm.presentGmailReview("Thinking out loud", emptyList())
+
+        val state = vm.uiState.value as CaptureUiState.Proposals
+        assertEquals(ProposalOrigin.GmailReview, state.origin)
+        assertTrue(state.proposals.isEmpty())
+        assertEquals("Thinking out loud", state.capturedText)
+        assertNull(pendingStore.read())
+        assertEquals(0, server.requestCount)
+    }
+
+    @Test
+    fun presentGmailReview_doesNotCreateATaskAndLeavesRephraseClosed() = runTest {
+        val vm = viewModel()
+        vm.presentGmailReview("Quote revision", emptyList())
+
+        vm.rephrase()
+        vm.captureAnother()
+
+        assertTrue(vm.uiState.value is CaptureUiState.Proposals)
+        assertEquals(0, server.requestCount)
+        assertNull(vm.openApprovedTaskId.value)
+    }
+
     // --- Helpers ------------------------------------------------------------------------------
 
     /**

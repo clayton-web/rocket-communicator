@@ -39,6 +39,7 @@ import com.aicommunication.assistant.capture.CaptureUiState
 import com.aicommunication.assistant.capture.ProposalAcceptInteraction
 import com.aicommunication.assistant.capture.ProposalDismissInteraction
 import com.aicommunication.assistant.capture.ProposalEditInteraction
+import com.aicommunication.assistant.capture.ProposalOrigin
 import com.aicommunication.assistant.capture.ProposalResponsibility
 import com.aicommunication.assistant.capture.TaskSuggestionWire
 import com.aicommunication.assistant.capture.deriveProposalTitle
@@ -263,6 +264,7 @@ private fun CaptureProposalsPane(
     modifier: Modifier = Modifier
 ) {
     val empty = state.proposals.isEmpty()
+    val gmail = state.origin == ProposalOrigin.GmailReview
     val interactionBusy = state.interactionBusy
     CapturePane(
         modifier = modifier,
@@ -279,7 +281,13 @@ private fun CaptureProposalsPane(
         Text(
             text =
             if (empty) {
-                stringResource(R.string.capture_result_empty_body)
+                if (gmail) {
+                    stringResource(R.string.gmail_review_result_empty_body)
+                } else {
+                    stringResource(R.string.capture_result_empty_body)
+                }
+            } else if (gmail) {
+                stringResource(R.string.gmail_review_result_body)
             } else {
                 stringResource(R.string.capture_result_body)
             },
@@ -289,7 +297,12 @@ private fun CaptureProposalsPane(
             Modifier.testTag(if (empty) "capture_result_empty" else "capture_result_summary")
         )
         Text(
-            text = stringResource(R.string.capture_result_source, state.capturedText),
+            text =
+            if (gmail) {
+                stringResource(R.string.gmail_review_result_source, state.capturedText)
+            } else {
+                stringResource(R.string.capture_result_source, state.capturedText)
+            },
             fontSize = 15.sp,
             color = AicaaColors.muted,
             modifier = Modifier.testTag("capture_result_source")
@@ -302,7 +315,7 @@ private fun CaptureProposalsPane(
                 modifier = Modifier.testTag("capture_proposal_notice")
             )
         }
-        if (empty) {
+        if (empty && !gmail) {
             Spacer(modifier = Modifier.weight(1f))
             AicaaTextButton(
                 onClick = onRephrase,
@@ -311,6 +324,8 @@ private fun CaptureProposalsPane(
             ) {
                 Text(text = stringResource(R.string.capture_rephrase))
             }
+        } else if (empty) {
+            Spacer(modifier = Modifier.weight(1f))
         } else {
             LazyColumn(
                 modifier =
@@ -348,9 +363,16 @@ private fun CaptureProposalsPane(
             modifier =
             Modifier
                 .fillMaxWidth()
-                .testTag("capture_another_button")
+                .testTag(if (gmail) "gmail_review_another_button" else "capture_another_button")
         ) {
-            Text(text = stringResource(R.string.capture_another))
+            Text(
+                text =
+                if (gmail) {
+                    stringResource(R.string.gmail_review_another)
+                } else {
+                    stringResource(R.string.capture_another)
+                }
+            )
         }
         AicaaTextButton(
             onClick = onDone,

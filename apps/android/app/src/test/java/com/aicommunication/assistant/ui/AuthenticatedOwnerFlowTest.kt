@@ -5,6 +5,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
 import com.aicommunication.assistant.capture.ManualCaptureRepository
@@ -20,6 +21,7 @@ import com.aicommunication.assistant.network.ApiConfig
 import com.aicommunication.assistant.network.FixedConnectivityMonitor
 import com.aicommunication.assistant.network.OwnerApiExecutor
 import com.aicommunication.assistant.network.OwnerHttpClientFactory
+import com.aicommunication.assistant.tasks.GmailIntakeViewModel
 import com.aicommunication.assistant.tasks.GmailOwnerRepository
 import com.aicommunication.assistant.tasks.PendingHandoffStore
 import com.aicommunication.assistant.tasks.RecipientOwnerRepository
@@ -102,6 +104,12 @@ class AuthenticatedOwnerFlowTest {
                     onSignOut = {},
                     apiConfig = ApiConfig(server.url("/").toString().trimEnd('/')),
                     captureViewModel = captureViewModel,
+                    gmailIntakeViewModel =
+                    GmailIntakeViewModel(
+                        application,
+                        GmailOwnerRepository(executor),
+                        onSessionInvalidated = {}
+                    ),
                     taskListViewModel =
                     TaskListViewModel(application, taskRepository, onSessionInvalidated = {}),
                     taskDetailViewModel =
@@ -149,6 +157,91 @@ class AuthenticatedOwnerFlowTest {
                 .isNotEmpty()
         }
         composeRule.onNodeWithTag("task_detail_screen").assertIsDisplayed()
+    }
+
+    @Test
+    fun gmailReviewRoutesZeroAndNSuggestionsOntoExistingProposalSurface() {
+        enqueueIntake()
+        enqueueGmailReviewSuccess()
+
+        val executor = executor()
+        val captureViewModel =
+            TaskCaptureViewModel(
+                application = application,
+                manualCapture =
+                ManualCaptureUseCase(
+                    repository = ManualCaptureRepository(executor),
+                    pendingStore =
+                    PendingCaptureStore.forTests(
+                        application.getSharedPreferences("flow-gmail", 0)
+                    )
+                ),
+                proposalRepository = ProposalOwnerRepository(executor),
+                recipientRepository = RecipientOwnerRepository(executor),
+                onSessionInvalidated = {}
+            )
+        val taskRepository = TaskOwnerRepository(executor)
+
+        composeRule.setContent {
+            AicaaFoundationTheme {
+                AuthenticatedOwnerFlow(
+                    session =
+                    Session(
+                        ownerId = "owner-1",
+                        organizationId = "org-1",
+                        role = AuthenticatedRole.owner,
+                        displayName = "Ada Owner"
+                    ),
+                    signingOut = false,
+                    onSignOut = {},
+                    apiConfig = ApiConfig(server.url("/").toString().trimEnd('/')),
+                    captureViewModel = captureViewModel,
+                    gmailIntakeViewModel =
+                    GmailIntakeViewModel(
+                        application,
+                        GmailOwnerRepository(executor),
+                        onSessionInvalidated = {}
+                    ),
+                    taskListViewModel =
+                    TaskListViewModel(application, taskRepository, onSessionInvalidated = {}),
+                    taskDetailViewModel =
+                    TaskDetailViewModel(
+                        application,
+                        taskRepository,
+                        ReminderOwnerRepository(executor),
+                        onSessionInvalidated = {}
+                    ),
+                    taskHandoffViewModel =
+                    TaskHandoffViewModel(
+                        application,
+                        taskRepository,
+                        RecipientOwnerRepository(executor),
+                        GmailOwnerRepository(executor),
+                        PendingHandoffStore(application),
+                        onSessionInvalidated = {}
+                    )
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("gmail_entry_button").performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule
+                .onAllNodesWithTag("gmail_intake_item_evt_review_ok")
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
+        composeRule.onNodeWithTag("gmail_intake_item_evt_review_ok").performClick()
+        composeRule.onNodeWithTag("gmail_review_button").performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule
+                .onAllNodesWithTag("capture_result")
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
+        composeRule.onNodeWithTag("capture_result").assertIsDisplayed()
+        composeRule.onNodeWithTag("capture_accept_button").assertIsDisplayed()
+        composeRule.onNodeWithText("You reviewed: Quote revision").assertIsDisplayed()
     }
 
     private fun executor() = OwnerApiExecutor(
@@ -256,6 +349,62 @@ class AuthenticatedOwnerFlowTest {
                           }
                         ]
                       }
+                    }
+                    """.trimIndent()
+                )
+        )
+    }
+
+    private fun enqueueIntake() {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody(
+                    """
+                    {
+                      "items": [
+                        {
+                          "id": "evt_review_ok",
+                          "fromAddress": "sender@example.com",
+                          "subject": "Quote revision",
+                          "snippet": "Please send the revised quote",
+                          "receivedAt": "2026-08-13T18:00:00.000Z"
+                        }
+                      ],
+                      "nextCursor": null
+                    }
+                    """.trimIndent()
+                )
+        )
+    }
+
+    private fun enqueueGmailReviewSuccess() {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody(
+                    """
+                    {
+                      "idempotentReplay": false,
+                      "interpretedAt": "2026-08-13T18:00:00.000Z",
+                      "taskSuggestions": [
+                        {
+                          "id": "s1",
+                          "status": "pending",
+                          "version": 1,
+                          "etag": "etag-s1",
+                          "createdAt": "2026-08-13T18:00:00.000Z",
+                          "summaryPoints": [
+                            {
+                              "id": "sp-s1",
+                              "kind": "request",
+                              "label": "Request",
+                              "order": 0,
+                              "value": "Send the revised quote"
+                            }
+                          ]
+                        }
+                      ]
                     }
                     """.trimIndent()
                 )

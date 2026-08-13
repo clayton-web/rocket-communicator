@@ -117,6 +117,8 @@ class TaskCaptureViewModel(
 
     fun captureAnother() {
         if (proposalsBusy()) return
+        val current = _uiState.value as? CaptureUiState.Proposals
+        if (current?.origin == ProposalOrigin.GmailReview) return
         resetToEditing()
     }
 
@@ -124,6 +126,7 @@ class TaskCaptureViewModel(
     fun rephrase() {
         val current = _uiState.value as? CaptureUiState.Proposals ?: return
         if (current.interactionBusy) return
+        if (current.origin != ProposalOrigin.ManualCapture) return
         resetToEditing(current.capturedText)
     }
 
@@ -332,6 +335,19 @@ class TaskCaptureViewModel(
 
     fun consumeOpenApprovedTask() {
         _openApprovedTaskId.value = null
+    }
+
+    /**
+     * Hydrates the existing S5 proposal-review surface from a Gmail Review result. Does not touch
+     * [PendingCaptureStore]: that store remains capture-retry infrastructure only.
+     */
+    fun presentGmailReview(sourceText: String, proposals: List<TaskSuggestionWire>) {
+        _uiState.value =
+            CaptureUiState.Proposals(
+                capturedText = sourceText,
+                proposals = proposals,
+                origin = ProposalOrigin.GmailReview
+            )
     }
 
     private suspend fun send(operation: PendingCaptureOperation) {

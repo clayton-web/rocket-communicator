@@ -15,7 +15,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [31], application = Application::class)
+@Config(sdk = [31], application = Application::class, qualifiers = "w411dp-h891dp")
 class AuthScreensTest {
     @get:Rule
     val composeRule = createComposeRule()
@@ -53,6 +53,7 @@ class AuthScreensTest {
                     ),
                     signingOut = false,
                     onCapture = {},
+                    onGmail = {},
                     onTasks = {},
                     onSignOut = {}
                 )
@@ -62,8 +63,10 @@ class AuthScreensTest {
         composeRule.onNodeWithTag("authenticated_shell").assertIsDisplayed()
         composeRule.onNodeWithText("Signed in as Ada Owner").assertIsDisplayed()
         composeRule.onNodeWithTag("capture_entry_button").assertIsDisplayed()
+        composeRule.onNodeWithTag("gmail_entry_button").assertIsDisplayed()
         composeRule.onNodeWithTag("tasks_entry_button").assertIsDisplayed()
         composeRule.onNodeWithText("Capture").assertIsDisplayed()
+        composeRule.onNodeWithText("Gmail").assertIsDisplayed()
         composeRule.onNodeWithText("Tasks").assertIsDisplayed()
         composeRule.onNodeWithText("Sign out").assertIsDisplayed()
     }

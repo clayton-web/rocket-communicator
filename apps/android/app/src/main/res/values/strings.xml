@@ -8,6 +8,7 @@
     <string name="authenticated_shell_title">Owner shell</string>
     <string name="authenticated_shell_subtitle">Capture first. Organize and assign when you are ready.</string>
     <string name="capture_entry">Capture</string>
+    <string name="gmail_entry">Gmail</string>
     <string name="tasks_entry">Tasks</string>
     <string name="capture_title">Capture</string>
     <string name="capture_subtitle">What needs to get done? Use the keyboard mic to dictate.</string>
@@ -146,4 +147,26 @@
     <string name="error_connectivity">Cannot reach Rocket right now. Check your connection and try again.</string>
     <string name="error_session_unavailable">Your session could not be confirmed. Sign in again.</string>
     <string name="retry">Retry</string>
+    <string name="gmail_intake_title">Gmail</string>
+    <string name="gmail_intake_subtitle">Choose a message, then Review with Rocket. Reviewing proposes work — it does not create a Task.</string>
+    <string name="gmail_intake_empty">No Gmail messages are ready to review.</string>
+    <string name="gmail_intake_loading">Loading Gmail…</string>
+    <string name="gmail_intake_load_more">Load more</string>
+    <string name="gmail_intake_refresh">Refresh</string>
+    <string name="gmail_intake_error_generic">Could not load Gmail. Try again.</string>
+    <string name="gmail_intake_back">Back</string>
+    <string name="gmail_intake_no_subject">(No subject)</string>
+    <string name="gmail_review_action">Review with Rocket</string>
+    <string name="gmail_reviewing">Reviewing…</string>
+    <string name="gmail_review_another">Review another</string>
+    <string name="gmail_review_result_body">Proposals only. Rocket created no Task from this email.</string>
+    <string name="gmail_review_result_empty_body">Rocket didn\'t find anything actionable in this email.</string>
+    <string name="gmail_review_result_source">You reviewed: %1$s</string>
+    <string name="gmail_review_error_generic">Could not review that email. Try again.</string>
+    <string name="gmail_review_error_validation">That review could not be started. Choose a message and try again.</string>
+    <string name="gmail_review_error_not_found">That Gmail message is no longer available.</string>
+    <string name="gmail_review_error_ineligible">This Gmail message is not eligible for Review with Rocket.</string>
+    <string name="gmail_review_error_conflict">Rocket could not confirm that review. Try again.</string>
+    <string name="gmail_review_error_dependency">Rocket could not review that email right now. Try again.</string>
+    <string name="gmail_review_error_session">Your session ended. Sign in again to review Gmail.</string>
 </resources>
