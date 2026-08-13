@@ -59,6 +59,11 @@ export interface PersistedReminderSchedule {
   readonly stoppedAt: string | null;
   readonly suspendedAt: string | null;
   readonly requiresOwnerAttention: boolean;
+  /**
+   * Owner preference for the existing D105 advance occurrence (D178). Independent of due date,
+   * schedule status, Waiting, and `advanceDisposition`.
+   */
+  readonly advanceEnabled: boolean;
   readonly advanceDisposition: ReminderAdvanceDisposition;
   readonly advanceOccurrenceLocalDate: LocalDate;
   readonly advanceOccurrenceAt: string;
@@ -202,6 +207,7 @@ export function mapReminderSchedule(row: PrismaTaskReminderSchedule): PersistedR
     stoppedAt: row.stoppedAt ? toIso(row.stoppedAt) : null,
     suspendedAt: row.suspendedAt ? toIso(row.suspendedAt) : null,
     requiresOwnerAttention: row.requiresOwnerAttention,
+    advanceEnabled: row.advanceEnabled,
     advanceDisposition: row.advanceDisposition,
     advanceOccurrenceLocalDate: brandLocalDate(row.advanceOccurrenceLocalDate),
     advanceOccurrenceAt: toIso(row.advanceOccurrenceAt),

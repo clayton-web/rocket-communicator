@@ -9,6 +9,7 @@ import {
   isDueDateChangeMaterial,
   OVERDUE_SUCCESSFUL_DELIVERY_CEILING,
   parseLocalDate,
+  resolveAdvanceReminderEnabled,
   selectNextOverdueOccurrence,
   type LocalDate,
   type ReminderOccurrenceOutcome,
@@ -138,13 +139,100 @@ describe('advance reminder disposition (D105)', () => {
     }
   });
 
-  it('is derived entirely from its establishment inputs', () => {
+  it('does not arm an advance occurrence when the Owner preference is OFF (D178)', () => {
+    const disposition = decideAdvanceReminder({
+      dueLocalDate: localDate('2026-07-31'),
+      establishedAt: '2026-07-29T12:00:00.000Z',
+      advanceEnabled: false,
+    });
+
+    expect(disposition.kind).toBe('not_enabled');
+    expect(disposition.occurrenceLocalDate).toBe('2026-07-30');
+    expect(disposition.occurrenceAt).toBe('2026-07-30T16:00:00.000Z');
+  });
+
+  it('preserves existing D105 behavior when the preference is omitted or ON (D178)', () => {
     const input = {
       dueLocalDate: localDate('2026-07-31'),
       establishedAt: '2026-07-29T12:00:00.000Z' as const,
     };
 
-    expect(decideAdvanceReminder(input)).toEqual(decideAdvanceReminder(input));
+    expect(decideAdvanceReminder(input).kind).toBe('scheduled');
+    expect(decideAdvanceReminder({ ...input, advanceEnabled: true }).kind).toBe('scheduled');
+  });
+});
+
+describe('advance reminder preference resolution (D178)', () => {
+  const liveOn = {
+    status: 'active' as const,
+    stopReason: null,
+    advanceEnabled: true,
+  };
+  const liveOff = {
+    status: 'active' as const,
+    stopReason: null,
+    advanceEnabled: false,
+  };
+
+  it('defaults new establishment without an explicit preference to ON', () => {
+    expect(resolveAdvanceReminderEnabled({ requested: undefined, priorSchedule: null })).toBe(
+      true,
+    );
+  });
+
+  it('lets an explicit OFF win on new establishment', () => {
+    expect(resolveAdvanceReminderEnabled({ requested: false, priorSchedule: null })).toBe(false);
+  });
+
+  it('preserves OFF across a live due-date change when the preference is omitted', () => {
+    expect(
+      resolveAdvanceReminderEnabled({ requested: undefined, priorSchedule: liveOff }),
+    ).toBe(false);
+  });
+
+  it('preserves ON across a live due-date change when the preference is omitted', () => {
+    expect(resolveAdvanceReminderEnabled({ requested: undefined, priorSchedule: liveOn })).toBe(
+      true,
+    );
+  });
+
+  it('defaults re-establishment after due-date removal to ON', () => {
+    expect(
+      resolveAdvanceReminderEnabled({
+        requested: undefined,
+        priorSchedule: {
+          status: 'stopped',
+          stopReason: 'due_date_removed',
+          advanceEnabled: false,
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it('lets an explicit OFF win on re-establishment after due-date removal', () => {
+    expect(
+      resolveAdvanceReminderEnabled({
+        requested: false,
+        priorSchedule: {
+          status: 'stopped',
+          stopReason: 'due_date_removed',
+          advanceEnabled: true,
+        },
+      }),
+    ).toBe(false);
+  });
+
+  it('preserves OFF through Waiting rather than treating OFF as a pause', () => {
+    expect(
+      resolveAdvanceReminderEnabled({
+        requested: undefined,
+        priorSchedule: {
+          status: 'suspended_waiting',
+          stopReason: null,
+          advanceEnabled: false,
+        },
+      }),
+    ).toBe(false);
   });
 });
 

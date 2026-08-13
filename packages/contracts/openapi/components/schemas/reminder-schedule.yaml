@@ -48,6 +48,9 @@ components:
         Decided at establishment:
 
         - `scheduled` — the advance reminder is owed and has not yet been processed.
+        - `not_enabled` — the Owner D178 preference left the existing D105 occurrence unarmed. The
+          deadline is retained and D106 overdue follow-through is unchanged. This is not a window
+          skip, not Waiting, and not a stopped schedule.
         - `skipped_window_elapsed` — the day before the due date had already passed when the Owner
           chose the date, so no advance reminder was ever scheduled.
 
@@ -79,6 +82,7 @@ components:
         - skipped_not_eligible
         - failed_permanent
         - ambiguous
+        - not_enabled
 
     TaskReminderOccurrence:
       type: object
@@ -194,14 +198,29 @@ components:
           oneOf:
             - $ref: '#/components/schemas/TaskReminderStopReason'
             - type: 'null'
+        advanceEnabled:
+          description: |
+            Owner preference for the existing D105 automatic advance reminder (D178). Independent of
+            the deadline, of schedule status, and of Waiting. `true` is ON; `false` is OFF; `null`
+            when no schedule exists. Existing schedules and unspecified establishments default ON.
+          oneOf:
+            - type: boolean
+            - type: 'null'
 
     SetTaskReminderRequest:
       type: object
       description: |
-        The only Owner-selectable reminder input is the due date. There is no reminder-time field —
-        occurrences are fixed at 09:00 organization-local (D103) — no preset interval (D102), no
-        recurrence, and no timezone field. Occurrence dates, instants, generation, status, counts,
-        and stop reasons are all server-derived and must never be accepted from a client.
+        Owner-selectable reminder inputs are the due date and, optionally, the D178 Automatic
+        Reminder ON/OFF preference for the existing D105 advance occurrence. There is no
+        reminder-time field — occurrences are fixed at 09:00 organization-local (D103) — no preset
+        interval (D102), no recurrence, and no timezone field. Occurrence dates, instants,
+        generation, status, counts, and stop reasons are all server-derived and must never be
+        accepted from a client.
+
+        `advanceEnabled` is optional for backwards compatibility. Omitting it on a new establishment
+        or after due-date removal defaults ON. Omitting it on a live schedule preserves the
+        persisted ON/OFF value, including across a due-date change. An existing client that PUTs
+        only `dueLocalDate` therefore cannot accidentally disable an ON reminder.
       required:
         - dueLocalDate
       additionalProperties: false
@@ -210,6 +229,12 @@ components:
           type: string
           pattern: '^\d{4}-\d{2}-\d{2}$'
           description: Owner-selected organization-local calendar date. No time component (D103).
+        advanceEnabled:
+          type: boolean
+          description: |
+            Owner ON/OFF choice for the existing D105 advance reminder (D178). When false, retain
+            the deadline and do not arm the advance occurrence; D106 overdue follow-through is
+            unchanged. When omitted, D178 defaults apply.
 
     ReminderProcessResponse:
       type: object

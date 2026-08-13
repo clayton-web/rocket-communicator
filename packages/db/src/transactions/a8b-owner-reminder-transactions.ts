@@ -1,5 +1,5 @@
 import type { TaskStatus } from '@aicaa/domain';
-import { decideReminderScheduling, isDueDateChangeMaterial } from '../../../domain/dist/index.js';
+import { decideReminderScheduling, isDueDateChangeMaterial, resolveAdvanceReminderEnabled } from '../../../domain/dist/index.js';
 import type { DbClient } from '../client/create-prisma-client.js';
 import type { AuditEventRecord } from '../mappers/domain-mappers.js';
 import { createAuditEvent, type CreateAuditEventInput } from '../repositories/audit-repository.js';
@@ -17,8 +17,11 @@ import {
   findReminderScheduleByTaskId,
   openNextReminderGeneration,
   stopReminderSchedule,
+  updateReminderAdvancePreference,
   type CreateReminderScheduleInput,
   type OpenNextReminderGenerationInput,
+  type ReminderAdvanceEstablishmentDisposition,
+  type ReminderOccurrenceInput,
   type ReminderScheduleInitialStatus,
 } from '../repositories/reminder-schedule-repository.js';
 import {
@@ -219,6 +222,21 @@ export interface OwnerReminderSaveOutcome {
   readonly reactivating: boolean;
 }
 
+/** Domain-decided advance occurrence for one resolved D178 preference value. */
+export interface AdvancePreferenceDecision {
+  readonly disposition: ReminderAdvanceEstablishmentDisposition;
+  readonly occurrence: ReminderOccurrenceInput;
+  readonly skippedAdvanceAttempt?: SkippedAdvanceAttemptInput;
+}
+
+function chooseAdvanceDecision(
+  enabled: boolean,
+  whenEnabled: AdvancePreferenceDecision,
+  whenDisabled: AdvancePreferenceDecision,
+): AdvancePreferenceDecision {
+  return enabled ? whenEnabled : whenDisabled;
+}
+
 /**
  * Close the current generation, open the next one, update the canonical due date, and audit it —
  * or answer a truthful no-op when the requested date is already in force.
@@ -248,16 +266,18 @@ export interface OwnerReminderSaveOutcome {
  * exactly as in the removal transaction, so a stale caller is refused with
  * `OPTIMISTIC_CONCURRENCY` rather than told its no-op succeeded.
  *
- * The no-op requires all three of: a schedule that is not stopped, a requested date the domain calls
- * immaterial, and a canonical due date that agrees with the schedule's own. The third is what makes
- * the returned representation coherent by construction — the caller can project the response from
- * the schedule alone and cannot pair it with a due date from a different snapshot. A stopped schedule
- * is never a no-op: re-saving even an identical date after a stop is the only way reminders restart
- * (D109), and treating it as immaterial would silently refuse the Owner.
+ * The no-op requires: a schedule that is not stopped, a requested date the domain calls
+ * immaterial, a canonical due date that agrees with the schedule's own, *and* a resolved D178
+ * advance preference that already matches the persisted value. A same-date preference toggle is a
+ * real Owner act and must write; it does not open a generation. A stopped schedule is never a
+ * no-op: re-saving even an identical date after a stop is the only way reminders restart (D109).
  */
 export async function persistOwnerReminderGenerationChange(input: {
   readonly db: DbClient;
-  readonly generation: OpenNextReminderGenerationInput & {
+  readonly generation: Omit<
+    OpenNextReminderGenerationInput,
+    'advanceDisposition' | 'advanceOccurrence' | 'advanceEnabled'
+  > & {
     /**
      * The reminder version the Owner observed, from the reminder ETag. Required — the no-op branch
      * performs no compare-and-set of its own, so this is the only thing standing between a stale
@@ -265,7 +285,10 @@ export async function persistOwnerReminderGenerationChange(input: {
      */
     readonly expectedReminderVersion: number;
   };
-  readonly skippedAdvanceAttempt?: SkippedAdvanceAttemptInput;
+  /** Explicit Owner preference, or omitted so D178 defaults apply under the lock. */
+  readonly requestedAdvanceEnabled?: boolean;
+  readonly advanceWhenEnabled: AdvancePreferenceDecision;
+  readonly advanceWhenDisabled: AdvancePreferenceDecision;
   /** Builds the audit event from authoritative in-transaction state. */
   readonly audit: (outcome: OwnerReminderSaveOutcome) => CreateAuditEventInput;
 }): Promise<OwnerReminderSaveResult> {
@@ -289,8 +312,6 @@ export async function persistOwnerReminderGenerationChange(input: {
       );
     }
     if (priorSchedule === null) {
-      // The caller routed here because it saw a schedule. Absence now, with a matching version, can
-      // only mean the caller presented the no-schedule token, which establishment handles.
       throw optimisticConcurrency(`Task ${scope.taskId} has no reminder schedule to change.`);
     }
 
@@ -300,26 +321,90 @@ export async function persistOwnerReminderGenerationChange(input: {
     });
     const priorDueLocalDate = taskRow?.dueLocalDate ?? null;
 
-    const immaterialRepeat =
+    const resolvedAdvanceEnabled = resolveAdvanceReminderEnabled({
+      requested: input.requestedAdvanceEnabled,
+      priorSchedule: {
+        status: priorSchedule.status,
+        stopReason: priorSchedule.stopReason,
+        advanceEnabled: priorSchedule.advanceEnabled,
+      },
+    });
+    const chosenAdvance = chooseAdvanceDecision(
+      resolvedAdvanceEnabled,
+      input.advanceWhenEnabled,
+      input.advanceWhenDisabled,
+    );
+
+    const dateImmaterial =
       priorSchedule.status !== 'stopped' &&
       !isDueDateChangeMaterial(priorSchedule.dueLocalDate, input.generation.dueLocalDate) &&
       priorDueLocalDate === priorSchedule.dueLocalDate;
-    if (immaterialRepeat) {
+
+    if (dateImmaterial && resolvedAdvanceEnabled === priorSchedule.advanceEnabled) {
       return { schedule: priorSchedule, skippedAdvanceAttempt: null, audit: null, changed: false };
+    }
+
+    if (dateImmaterial) {
+      const preferenceWrite =
+        !resolvedAdvanceEnabled && priorSchedule.advanceDisposition === 'scheduled'
+          ? {
+              advanceDisposition: input.advanceWhenDisabled.disposition,
+              advanceOccurrence: input.advanceWhenDisabled.occurrence,
+            }
+          : resolvedAdvanceEnabled && priorSchedule.advanceDisposition === 'not_enabled'
+            ? {
+                advanceDisposition: input.advanceWhenEnabled.disposition,
+                advanceOccurrence: input.advanceWhenEnabled.occurrence,
+              }
+            : {};
+      const schedule = await updateReminderAdvancePreference(tx, {
+        organizationId: scope.organizationId,
+        taskId: scope.taskId,
+        expectedReminderVersion: priorSchedule.reminderVersion,
+        advanceEnabled: resolvedAdvanceEnabled,
+        ...preferenceWrite,
+      });
+      const skippedAdvanceAttempt =
+        resolvedAdvanceEnabled &&
+        priorSchedule.advanceDisposition === 'not_enabled' &&
+        input.advanceWhenEnabled.skippedAdvanceAttempt &&
+        input.generation.status !== 'suspended_waiting'
+          ? await recordSkippedAdvance(
+              tx,
+              schedule,
+              input.advanceWhenEnabled.skippedAdvanceAttempt,
+            )
+          : null;
+      const audit = await createAuditEvent(
+        tx,
+        input.audit({
+          priorSchedule,
+          priorDueLocalDate,
+          schedule,
+          reactivating: false,
+        }),
+      );
+      return { schedule, skippedAdvanceAttempt, audit, changed: true };
     }
 
     assertLockedTaskAllowsSchedule(scope, input.generation.status ?? 'active');
 
-    const schedule = await openNextReminderGeneration(tx, input.generation);
+    const schedule = await openNextReminderGeneration(tx, {
+      ...input.generation,
+      advanceEnabled: resolvedAdvanceEnabled,
+      advanceDisposition: chosenAdvance.disposition,
+      advanceOccurrence: chosenAdvance.occurrence,
+    });
 
     await tx.task.update({
       where: { id: schedule.taskId },
       data: { dueLocalDate: schedule.dueLocalDate },
     });
 
-    const skippedAdvanceAttempt = input.skippedAdvanceAttempt
-      ? await recordSkippedAdvance(tx, schedule, input.skippedAdvanceAttempt)
-      : null;
+    const skippedAdvanceAttempt =
+      chosenAdvance.skippedAdvanceAttempt && input.generation.status !== 'suspended_waiting'
+        ? await recordSkippedAdvance(tx, schedule, chosenAdvance.skippedAdvanceAttempt)
+        : null;
 
     const audit = await createAuditEvent(
       tx,

@@ -269,16 +269,19 @@ describe('contracts package', () => {
       );
     }
 
-    // The only Owner-selectable input is the local due date. A reminder-time, preset-interval,
-    // recurrence, or timezone field would each contradict D102/D103.
+    // Owner-selectable inputs are the local due date and the optional D178 advance preference.
+    // A reminder-time, preset-interval, recurrence, or timezone field would each contradict D102/D103.
     const requestProperties = Object.keys(
       (schemas.SetTaskReminderRequest as { properties?: Record<string, unknown> })?.properties ??
         {},
     );
-    expect(requestProperties).toEqual(['dueLocalDate']);
+    expect(requestProperties).toEqual(['dueLocalDate', 'advanceEnabled']);
     expect(
       (schemas.SetTaskReminderRequest as { additionalProperties?: boolean }).additionalProperties,
     ).toBe(false);
+    expect((schemas.SetTaskReminderRequest as { required?: string[] }).required).toEqual([
+      'dueLocalDate',
+    ]);
 
     // Worker coordination state must never reach the Owner contract.
     const stateProperties = Object.keys(
@@ -307,6 +310,7 @@ describe('contracts package', () => {
         'overdueDeliveredCount',
         'requiresOwnerAttention',
         'stopReason',
+        'advanceEnabled',
       ]),
     );
 
@@ -333,6 +337,7 @@ describe('contracts package', () => {
       'skipped_not_eligible',
       'failed_permanent',
       'ambiguous',
+      'not_enabled',
     ]);
 
     // Local calendar dates stay canonical text, never instants (D103, D109).

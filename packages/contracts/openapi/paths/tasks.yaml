@@ -361,21 +361,28 @@ paths:
         Sets the canonical organization-local due date and establishes or re-generates the Task
         Reminder Schedule (D102, D104, D105). Requires the reminder `If-Match`, not the Task's.
 
-        Idempotent: re-sending the same effective due date against a live schedule returns the
-        current state unchanged, does **not** open a generation, does not change the ETag, and emits
-        no audit event. A material due-date change opens the next generation and preserves all prior
-        delivery history. Re-setting a date on a stopped schedule opens a new generation, because a
-        stopped schedule is not the same effective schedule (D109 requires explicit Owner re-save to
-        reactivate); that is audited as `reminder.schedule.reactivated`.
+        Idempotent: re-sending the same effective due date *and* the same resolved D178 advance
+        preference against a live schedule returns the current state unchanged, does **not** open a
+        generation, does not change the ETag, and emits no audit event. A same-date preference
+        toggle writes the preference, bumps the reminder ETag, and does not open a generation. A
+        material due-date change opens the next generation, preserves the persisted ON/OFF value
+        unless the request sets it explicitly, and preserves all prior delivery history. Re-setting
+        a date on a stopped schedule opens a new generation, because a stopped schedule is not the
+        same effective schedule (D109 requires explicit Owner re-save to reactivate); that is
+        audited as `reminder.schedule.reactivated`. After due-date removal, re-establishment
+        defaults the advance preference ON unless the request sets it OFF.
 
         **Task eligibility (D107).** A `completed` or `dismissed` Task is rejected with 409: reminders
         stop permanently for a terminal Task, and nothing here reopens one. A `waiting` Task is
         accepted, and its schedule is created or re-generated directly in `suspended_waiting` with no
         claimable occurrence — Waiting suspends reminder scheduling and is the only pause mechanism.
+        Advance-reminder OFF is not Waiting and does not suspend D106 overdue follow-through.
         Resuming when the Task leaves Waiting is lifecycle wiring and is not implemented in A8.3b.
 
         Every occurrence in the response is computed by the reminder domain. The request body accepts
-        exactly `dueLocalDate`; any other property, nested or not, is rejected with 400.
+        `dueLocalDate` and optionally `advanceEnabled`; any other property, nested or not, is
+        rejected with 400. An existing client that sends only `dueLocalDate` keeps D178-compatible
+        default behavior.
 
         All responses are `no-store`.
       parameters:

@@ -167,6 +167,7 @@ export {
   findReminderScheduleByTaskId,
   getReminderScheduleById,
   openNextReminderGeneration,
+  updateReminderAdvancePreference,
   suspendReminderScheduleForWaiting,
   resumeReminderScheduleFromWaiting,
   stopReminderSchedule,
@@ -181,6 +182,7 @@ export {
   listReminderSchedulesRequiringOwnerAttention,
   type CreateReminderScheduleInput,
   type OpenNextReminderGenerationInput,
+  type ReminderAdvanceEstablishmentDisposition,
   type ClaimReminderScheduleInput,
   type ListSchedulesDueForProcessingInput,
   type DueReminderScheduleRow,
@@ -434,6 +436,7 @@ export {
   type OwnerReminderSaveOutcome,
   type OwnerReminderSaveResult,
   type SkippedAdvanceAttemptInput,
+  type AdvancePreferenceDecision,
 } from './transactions/a8b-owner-reminder-transactions.js';
 
 // A8 lifecycle wiring: reminder schedule state reconciled inside the Task status transaction (D107).

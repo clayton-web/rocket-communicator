@@ -511,3 +511,30 @@ describe('A8.3a reminder persistence schema contracts', () => {
     expect(statusBlock).not.toMatch(/\bpaused\b|\bsnoozed\b|\bdelayed\b/);
   });
 });
+
+describe('D178 advance-enabled preference schema', () => {
+  const d178Migration = readFileSync(
+    path.join(root, 'prisma/migrations/20260813180000_d178_advance_enabled/migration.sql'),
+    'utf8',
+  );
+
+  it('adds one boolean on the existing schedule table defaulting to ON', () => {
+    const scheduleBlock = schema.match(
+      /model TaskReminderSchedule \{[\s\S]*?@@map\("task_reminder_schedules"\)/,
+    )?.[0];
+    expect(scheduleBlock).toMatch(/advanceEnabled\s+Boolean\s+@default\(true\)\s+@map\("advance_enabled"\)/);
+    expect(d178Migration).toContain('ADD COLUMN "advance_enabled" BOOLEAN NOT NULL DEFAULT true');
+    expect(d178Migration).not.toMatch(/CREATE TABLE/);
+  });
+
+  it('does not add a planned-occurrence table or a second reminder engine', () => {
+    expect(schema).not.toMatch(/model PlannedReminderOccurrence/);
+    expect(d178Migration).not.toMatch(/planned_occurrence|CREATE TABLE/);
+  });
+
+  it('adds not_enabled as an unarmed advance disposition, not a fake window skip', () => {
+    const enumBlock = schema.match(/enum ReminderAdvanceDisposition \{[\s\S]*?\}/)?.[0];
+    expect(enumBlock).toContain('not_enabled');
+    expect(d178Migration).toContain("ADD VALUE IF NOT EXISTS 'not_enabled'");
+  });
+});

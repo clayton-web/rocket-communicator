@@ -206,6 +206,7 @@ export {
 export {
   hasReminderSchedule,
   decideAdvanceReminder,
+  resolveAdvanceReminderEnabled,
   hasAdvanceOccurrenceElapsed,
   isAdvanceDeliveryWindowOpen,
   selectNextOverdueOccurrence,
@@ -214,6 +215,7 @@ export {
   hasReachedOverdueDeliveryCeiling,
   hasReachedConsecutiveAmbiguousStop,
   AMBIGUITY_SEQUENCE_OUTCOMES,
+  type AdvancePreferenceScheduleSnapshot,
   type AdvanceReminderDisposition,
   type AdvanceReminderEstablishmentInput,
   type NextOverdueOccurrenceInput,

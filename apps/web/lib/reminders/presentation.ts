@@ -100,6 +100,7 @@ const NOT_YET_SCHEDULED_EXPLANATION =
  */
 const ADVANCE_DISPOSITION_TEXT: Record<AdvanceDisposition, string> = {
   scheduled: 'Scheduled',
+  not_enabled: 'Off — the automatic advance reminder is not scheduled',
   delivered: 'Sent',
   skipped_window_elapsed: 'Not sent — the due date was already close when the reminder was set up',
   skipped_waiting_elapsed: 'Not sent — the Task was Waiting when it was due to go out',

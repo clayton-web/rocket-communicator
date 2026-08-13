@@ -41,6 +41,7 @@ const ALL_DISPOSITIONS: readonly AdvanceDisposition[] = [
   'skipped_not_eligible',
   'failed_permanent',
   'ambiguous',
+  'not_enabled',
 ];
 
 const ALL_TASK_STATUSES: readonly TaskStatus[] = [

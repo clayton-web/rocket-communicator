@@ -18,5 +18,7 @@
 
     * `ambiguous` (value: `"ambiguous"`)
 
+    * `not_enabled` (value: `"not_enabled"`)
+
 
 

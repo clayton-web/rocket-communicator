@@ -20,9 +20,9 @@ import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 
 /**
- * What happened to this generation's advance reminder (D105, D107). `scheduled` is the only value that means anything is still pending; every other value is terminal and settled.  The occurrence's own date is reported for every disposition, so a client can always say which morning was involved.  Decided at establishment:  - `scheduled` — the advance reminder is owed and has not yet been processed. - `skipped_window_elapsed` — the day before the due date had already passed when the Owner   chose the date, so no advance reminder was ever scheduled.  Decided by a Task lifecycle transition:  - `skipped_waiting_elapsed` — the advance reminder was validly scheduled and the Task was   Waiting when it came due. Permanently skipped for this generation, never replayed on resume.  Decided by occurrence processing (A8.4a, A8.4b.3). Processing is disabled by default and reaches no real provider unless `ENABLE_REMINDER_DELIVERY` is set, which it is in no environment, so these values cannot occur in the deployed application in this milestone:  - `delivered` — the occurrence reached a provider that accepted it. - `skipped_window_elapsed` — also written here when the worker reached a validly scheduled   advance occurrence after its local calendar day had ended (A8.4b.3). The same fact as the   establishment-time value: the morning went by unsent. Distinct from `skipped_not_eligible`   because nothing was wrong with the Task, and the remedy differs. - `skipped_not_eligible` — a pre-send check found the Task or schedule no longer eligible. - `failed_permanent` — delivery failed in a way that retrying cannot fix, or the retry budget   was exhausted. - `ambiguous` — the transport could not report whether the message was accepted. Treated as   sent and never retried, because a Recipient hearing about the same morning twice is the   worse failure. 
+ * What happened to this generation's advance reminder (D105, D107). `scheduled` is the only value that means anything is still pending; every other value is terminal and settled.  The occurrence's own date is reported for every disposition, so a client can always say which morning was involved.  Decided at establishment:  - `scheduled` — the advance reminder is owed and has not yet been processed. - `not_enabled` — the Owner D178 preference left the existing D105 occurrence unarmed. The   deadline is retained and D106 overdue follow-through is unchanged. This is not a window   skip, not Waiting, and not a stopped schedule. - `skipped_window_elapsed` — the day before the due date had already passed when the Owner   chose the date, so no advance reminder was ever scheduled.  Decided by a Task lifecycle transition:  - `skipped_waiting_elapsed` — the advance reminder was validly scheduled and the Task was   Waiting when it came due. Permanently skipped for this generation, never replayed on resume.  Decided by occurrence processing (A8.4a, A8.4b.3). Processing is disabled by default and reaches no real provider unless `ENABLE_REMINDER_DELIVERY` is set, which it is in no environment, so these values cannot occur in the deployed application in this milestone:  - `delivered` — the occurrence reached a provider that accepted it. - `skipped_window_elapsed` — also written here when the worker reached a validly scheduled   advance occurrence after its local calendar day had ended (A8.4b.3). The same fact as the   establishment-time value: the morning went by unsent. Distinct from `skipped_not_eligible`   because nothing was wrong with the Task, and the remedy differs. - `skipped_not_eligible` — a pre-send check found the Task or schedule no longer eligible. - `failed_permanent` — delivery failed in a way that retrying cannot fix, or the retry budget   was exhausted. - `ambiguous` — the transport could not report whether the message was accepted. Treated as   sent and never retried, because a Recipient hearing about the same morning twice is the   worse failure. 
  *
- * Values: scheduled,skipped_window_elapsed,skipped_waiting_elapsed,delivered,skipped_not_eligible,failed_permanent,ambiguous
+ * Values: scheduled,skipped_window_elapsed,skipped_waiting_elapsed,delivered,skipped_not_eligible,failed_permanent,ambiguous,not_enabled
  */
 
 @JsonClass(generateAdapter = false)
@@ -47,7 +47,10 @@ enum class TaskReminderAdvanceDisposition(val value: kotlin.String) {
     failed_permanent("failed_permanent"),
 
     @Json(name = "ambiguous")
-    ambiguous("ambiguous");
+    ambiguous("ambiguous"),
+
+    @Json(name = "not_enabled")
+    not_enabled("not_enabled");
 
     /**
      * Override [toString()] to avoid using the enum variable name as the value, and instead use

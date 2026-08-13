@@ -109,6 +109,7 @@ export async function PUT(request: Request, context: { params: Promise<{ taskId:
       expectedReminderVersion: ifMatch.expectedVersion,
       requestId: ctx.requestId,
       dueLocalDate: parsed.value.dueLocalDate,
+      advanceEnabled: parsed.value.advanceEnabled,
     });
     return reminderResponse(result.state);
   });

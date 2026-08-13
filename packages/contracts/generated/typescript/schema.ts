@@ -610,21 +610,28 @@ export interface paths {
          * @description Sets the canonical organization-local due date and establishes or re-generates the Task
          *     Reminder Schedule (D102, D104, D105). Requires the reminder `If-Match`, not the Task's.
          *
-         *     Idempotent: re-sending the same effective due date against a live schedule returns the
-         *     current state unchanged, does **not** open a generation, does not change the ETag, and emits
-         *     no audit event. A material due-date change opens the next generation and preserves all prior
-         *     delivery history. Re-setting a date on a stopped schedule opens a new generation, because a
-         *     stopped schedule is not the same effective schedule (D109 requires explicit Owner re-save to
-         *     reactivate); that is audited as `reminder.schedule.reactivated`.
+         *     Idempotent: re-sending the same effective due date *and* the same resolved D178 advance
+         *     preference against a live schedule returns the current state unchanged, does **not** open a
+         *     generation, does not change the ETag, and emits no audit event. A same-date preference
+         *     toggle writes the preference, bumps the reminder ETag, and does not open a generation. A
+         *     material due-date change opens the next generation, preserves the persisted ON/OFF value
+         *     unless the request sets it explicitly, and preserves all prior delivery history. Re-setting
+         *     a date on a stopped schedule opens a new generation, because a stopped schedule is not the
+         *     same effective schedule (D109 requires explicit Owner re-save to reactivate); that is
+         *     audited as `reminder.schedule.reactivated`. After due-date removal, re-establishment
+         *     defaults the advance preference ON unless the request sets it OFF.
          *
          *     **Task eligibility (D107).** A `completed` or `dismissed` Task is rejected with 409: reminders
          *     stop permanently for a terminal Task, and nothing here reopens one. A `waiting` Task is
          *     accepted, and its schedule is created or re-generated directly in `suspended_waiting` with no
          *     claimable occurrence — Waiting suspends reminder scheduling and is the only pause mechanism.
+         *     Advance-reminder OFF is not Waiting and does not suspend D106 overdue follow-through.
          *     Resuming when the Task leaves Waiting is lifecycle wiring and is not implemented in A8.3b.
          *
          *     Every occurrence in the response is computed by the reminder domain. The request body accepts
-         *     exactly `dueLocalDate`; any other property, nested or not, is rejected with 400.
+         *     `dueLocalDate` and optionally `advanceEnabled`; any other property, nested or not, is
+         *     rejected with 400. An existing client that sends only `dueLocalDate` keeps D178-compatible
+         *     default behavior.
          *
          *     All responses are `no-store`.
          *
@@ -1627,14 +1634,26 @@ export interface components {
             nextReminderAt: string;
             reason?: string;
         };
-        /** @description The only Owner-selectable reminder input is the due date. There is no reminder-time field —
-         *     occurrences are fixed at 09:00 organization-local (D103) — no preset interval (D102), no
-         *     recurrence, and no timezone field. Occurrence dates, instants, generation, status, counts,
-         *     and stop reasons are all server-derived and must never be accepted from a client.
+        /** @description Owner-selectable reminder inputs are the due date and, optionally, the D178 Automatic
+         *     Reminder ON/OFF preference for the existing D105 advance occurrence. There is no
+         *     reminder-time field — occurrences are fixed at 09:00 organization-local (D103) — no preset
+         *     interval (D102), no recurrence, and no timezone field. Occurrence dates, instants,
+         *     generation, status, counts, and stop reasons are all server-derived and must never be
+         *     accepted from a client.
+         *
+         *     `advanceEnabled` is optional for backwards compatibility. Omitting it on a new establishment
+         *     or after due-date removal defaults ON. Omitting it on a live schedule preserves the
+         *     persisted ON/OFF value, including across a due-date change. An existing client that PUTs
+         *     only `dueLocalDate` therefore cannot accidentally disable an ON reminder.
          *      */
         SetTaskReminderRequest: {
             /** @description Owner-selected organization-local calendar date. No time component (D103). */
             dueLocalDate: string;
+            /** @description Owner ON/OFF choice for the existing D105 advance reminder (D178). When false, retain
+             *     the deadline and do not arm the advance occurrence; D106 overdue follow-through is
+             *     unchanged. When omitted, D178 defaults apply.
+             *      */
+            advanceEnabled?: boolean;
         };
         /** @description Owner-facing reminder state for one Task (D104, D106, D107). Read-only projection of the
          *     Task Reminder Schedule. Deliberately excludes worker internals — claim leases, worker
@@ -1677,6 +1696,11 @@ export interface components {
             /** @description Whether the schedule needs an Owner decision, for example after the overdue ceiling (D106, D108). */
             requiresOwnerAttention: boolean;
             stopReason?: components["schemas"]["TaskReminderStopReason"] | null;
+            /** @description Owner preference for the existing D105 automatic advance reminder (D178). Independent of
+             *     the deadline, of schedule status, and of Waiting. `true` is ON; `false` is OFF; `null`
+             *     when no schedule exists. Existing schedules and unspecified establishments default ON.
+             *      */
+            advanceEnabled?: boolean | null;
         };
         /**
          * @description Truthful reminder state for a Task (D104, D107). Distinguishes "the Owner never chose a due
@@ -1925,6 +1949,9 @@ export interface components {
          *     Decided at establishment:
          *
          *     - `scheduled` — the advance reminder is owed and has not yet been processed.
+         *     - `not_enabled` — the Owner D178 preference left the existing D105 occurrence unarmed. The
+         *       deadline is retained and D106 overdue follow-through is unchanged. This is not a window
+         *       skip, not Waiting, and not a stopped schedule.
          *     - `skipped_window_elapsed` — the day before the due date had already passed when the Owner
          *       chose the date, so no advance reminder was ever scheduled.
          *
@@ -1951,7 +1978,7 @@ export interface components {
          *
          * @enum {string}
          */
-        TaskReminderAdvanceDisposition: "scheduled" | "skipped_window_elapsed" | "skipped_waiting_elapsed" | "delivered" | "skipped_not_eligible" | "failed_permanent" | "ambiguous";
+        TaskReminderAdvanceDisposition: "scheduled" | "skipped_window_elapsed" | "skipped_waiting_elapsed" | "delivered" | "skipped_not_eligible" | "failed_permanent" | "ambiguous" | "not_enabled";
         /** @description One reminder occurrence. `localDate` is the organization-local calendar day and is
          *     authoritative; `at` is the absolute instant that day's 09:00 organization-local resolves to,
          *     supplied for display and ordering only (D103).

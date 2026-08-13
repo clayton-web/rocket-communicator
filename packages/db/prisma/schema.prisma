@@ -597,15 +597,24 @@ model TaskReminderSchedule {
   /// Separate from `Task.version` because a reminder mutation deliberately does not bump the Task,
   /// so a Task ETag cannot detect that reminder state moved. Incremented by every transition that
   /// changes what an Owner decision was based on — opening a generation, reactivating, suspending,
-  /// resuming, stopping — and deliberately **not** by delivery counting or the attention flag, so a
-  /// worker recording a send cannot invalidate an Owner's in-flight due-date edit. Exposed only
-  /// through the reminder ETag; it is never a request field.
+  /// resuming, stopping, or changing the D178 advance-enablement preference — and deliberately
+  /// **not** by delivery counting or the attention flag, so a worker recording a send cannot
+  /// invalidate an Owner's in-flight due-date edit. Exposed only through the reminder ETag; it is
+  /// never a request field.
   reminderVersion Int @default(1) @map("reminder_version")
+
+  /// Owner preference for the existing D105 advance occurrence (D178). Independent of the deadline,
+  /// of schedule status (Waiting is not this preference), and of `advanceDisposition` (which records
+  /// what happened to the occurrence, not whether the Owner enabled it). Default `true` matches
+  /// current A8 and existing rows: unspecified establishments are ON, and OFF is an explicit act.
+  advanceEnabled Boolean @default(true) @map("advance_enabled")
 
   /// Decided at establishment and never reclassified from the current clock (D105). The one later
   /// change permitted is a Waiting period that spanned the occurrence, which marks it
   /// `skipped_waiting_elapsed` on resume (A8 lifecycle audit H-2). The occurrence itself is always
-  /// stored — even when skipped — so the Owner surface can say which morning was missed.
+  /// stored — even when skipped or not enabled — so the Owner surface can say which morning was
+  /// involved. `not_enabled` means the D178 preference left it unarmed; it is not `scheduled` and
+  /// must not be faked as a window skip, Waiting, or a stopped schedule.
   advanceDisposition         ReminderAdvanceDisposition @map("advance_disposition")
   advanceOccurrenceLocalDate String                     @map("advance_occurrence_local_date") @db.VarChar(10)
   advanceOccurrenceAt        DateTime                   @map("advance_occurrence_at") @db.Timestamptz(3)
@@ -1116,10 +1125,13 @@ enum ReminderScheduleStopReason {
 /// H-2). The two stay distinct so the history can say which happened.
 /// What happened to this generation's advance occurrence.
 ///
-/// `scheduled` is the only non-terminal value: everything else says the occurrence is settled and
-/// must never be sent. A terminal outcome on the advance attempt row and this column are written in
-/// the same transaction (A8.4a), so the schedule and the attempt history cannot disagree about the
-/// same occurrence — the disagreement the A8 lifecycle re-audit found reachable once a worker exists.
+/// `scheduled` is the only claimable value. `not_enabled` means the Owner D178 preference left the
+/// occurrence unarmed — it is not a window skip, not Waiting, and not a stopped schedule. An Owner
+/// may later arm it in the same generation if the window is still open. Every other value says the
+/// occurrence is settled and must never be sent. A terminal outcome on the advance attempt row and
+/// this column are written in the same transaction (A8.4a), so the schedule and the attempt history
+/// cannot disagree about the same occurrence — the disagreement the A8 lifecycle re-audit found
+/// reachable once a worker exists.
 enum ReminderAdvanceDisposition {
   scheduled
   skipped_window_elapsed
@@ -1128,6 +1140,7 @@ enum ReminderAdvanceDisposition {
   skipped_not_eligible
   failed_permanent
   ambiguous
+  not_enabled
 }
 
 /// Which occurrence a delivery attempt belongs to. Mirrors the A8.2 domain

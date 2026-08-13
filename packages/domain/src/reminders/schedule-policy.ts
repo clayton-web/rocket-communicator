@@ -10,8 +10,10 @@
  * The rules implemented here are product law from WORKFLOWS.md §10a:
  *
  * - no due date, no schedule;
- * - exactly one advance reminder, 09:00 local on the day before the due date;
- * - overdue reminders at 09:00 local on days strictly after the due date;
+ * - exactly one advance reminder, 09:00 local on the day before the due date, when the Owner
+ *   preference is ON (D105, D178);
+ * - overdue reminders at 09:00 local on days strictly after the due date (D106), independent of
+ *   that preference;
  * - never a backlog — only the next future occurrence is ever selected;
  * - a different due date is material and opens a new generation; the same date is not;
  * - overdue delivery stops at 14 successful overdue deliveries in a generation.
@@ -54,12 +56,31 @@ export type AdvanceReminderDisposition =
   | ({
       readonly kind: 'skipped';
       readonly reason: 'advance_window_elapsed';
-    } & ReminderOccurrence);
+    } & ReminderOccurrence)
+  | ({ readonly kind: 'not_enabled' } & ReminderOccurrence);
 
 export interface AdvanceReminderEstablishmentInput extends OccurrenceClockOptions {
   readonly dueLocalDate: LocalDate;
   /** The instant the Owner established this schedule generation. */
   readonly establishedAt: UtcInstant;
+  /**
+   * Owner preference for the existing D105 advance occurrence (D178). Omitted or `true` preserves
+   * current D105 behavior. `false` means that occurrence is not armed; overdue is unaffected.
+   */
+  readonly advanceEnabled?: boolean;
+}
+
+/**
+ * The persisted schedule facts D178 needs to resolve an omitted PUT preference (D178).
+ *
+ * Distinct from due date, schedule status, Waiting, and advance disposition. `stopReason` is only
+ * consulted so due-date removal followed by re-establishment defaults ON rather than resurrecting
+ * a previous OFF.
+ */
+export interface AdvancePreferenceScheduleSnapshot {
+  readonly status: 'active' | 'suspended_waiting' | 'stopped';
+  readonly stopReason: string | null;
+  readonly advanceEnabled: boolean;
 }
 
 export interface NextOverdueOccurrenceInput extends OccurrenceClockOptions {
@@ -109,12 +130,46 @@ export function decideAdvanceReminder(
   input: AdvanceReminderEstablishmentInput,
 ): AdvanceReminderDisposition {
   const { occurrence, epochMs } = occurrenceAt(addLocalDays(input.dueLocalDate, -1), input);
+
+  if (input.advanceEnabled === false) {
+    return { kind: 'not_enabled', ...occurrence };
+  }
+
   const establishedAtMs = parseUtcInstant(input.establishedAt).getTime();
 
   if (epochMs > establishedAtMs) {
     return { kind: 'scheduled', ...occurrence };
   }
   return { kind: 'skipped', reason: 'advance_window_elapsed', ...occurrence };
+}
+
+/**
+ * Resolve the D105 advance-enablement preference for an Owner reminder write (D178).
+ *
+ * An explicit boolean always wins. Otherwise:
+ *
+ * - no prior schedule → ON (new establishment without an explicit preference);
+ * - live schedule → preserve the persisted value (a due-date change must not silently re-enable);
+ * - stopped because the due date was removed → ON (re-establishment is a new scheduling act);
+ * - stopped for any other reason → preserve (reactivation must not silently turn OFF back ON).
+ */
+export function resolveAdvanceReminderEnabled(input: {
+  readonly requested: boolean | undefined;
+  readonly priorSchedule: AdvancePreferenceScheduleSnapshot | null;
+}): boolean {
+  if (input.requested !== undefined) {
+    return input.requested;
+  }
+  if (input.priorSchedule === null) {
+    return true;
+  }
+  if (
+    input.priorSchedule.status === 'stopped' &&
+    input.priorSchedule.stopReason === 'due_date_removed'
+  ) {
+    return true;
+  }
+  return input.priorSchedule.advanceEnabled;
 }
 
 /**

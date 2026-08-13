@@ -53,6 +53,7 @@ export function noDueDateState(taskId: string): TaskReminderState {
     overdueDeliveredCount: null,
     requiresOwnerAttention: false,
     stopReason: null,
+    advanceEnabled: null,
   };
 }
 
@@ -99,5 +100,6 @@ export function toTaskReminderState(
     overdueDeliveredCount: schedule.overdueDeliveredCount,
     requiresOwnerAttention: schedule.requiresOwnerAttention,
     stopReason: schedule.stopReason,
+    advanceEnabled: schedule.advanceEnabled,
   };
 }

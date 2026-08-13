@@ -21,9 +21,10 @@ import com.squareup.moshi.JsonClass
 import java.io.Serializable
 
 /**
- * The only Owner-selectable reminder input is the due date. There is no reminder-time field — occurrences are fixed at 09:00 organization-local (D103) — no preset interval (D102), no recurrence, and no timezone field. Occurrence dates, instants, generation, status, counts, and stop reasons are all server-derived and must never be accepted from a client. 
+ * Owner-selectable reminder inputs are the due date and, optionally, the D178 Automatic Reminder ON/OFF preference for the existing D105 advance occurrence. There is no reminder-time field — occurrences are fixed at 09:00 organization-local (D103) — no preset interval (D102), no recurrence, and no timezone field. Occurrence dates, instants, generation, status, counts, and stop reasons are all server-derived and must never be accepted from a client.  `advanceEnabled` is optional for backwards compatibility. Omitting it on a new establishment or after due-date removal defaults ON. Omitting it on a live schedule preserves the persisted ON/OFF value, including across a due-date change. An existing client that PUTs only `dueLocalDate` therefore cannot accidentally disable an ON reminder. 
  *
  * @param dueLocalDate Owner-selected organization-local calendar date. No time component (D103).
+ * @param advanceEnabled Owner ON/OFF choice for the existing D105 advance reminder (D178). When false, retain the deadline and do not arm the advance occurrence; D106 overdue follow-through is unchanged. When omitted, D178 defaults apply. 
  */
 
 
@@ -31,7 +32,11 @@ data class SetTaskReminderRequest (
 
     /* Owner-selected organization-local calendar date. No time component (D103). */
     @Json(name = "dueLocalDate")
-    val dueLocalDate: kotlin.String
+    val dueLocalDate: kotlin.String,
+
+    /* Owner ON/OFF choice for the existing D105 advance reminder (D178). When false, retain the deadline and do not arm the advance occurrence; D106 overdue follow-through is unchanged. When omitted, D178 defaults apply.  */
+    @Json(name = "advanceEnabled")
+    val advanceEnabled: kotlin.Boolean? = null
 
 ) : Serializable {
     companion object {

@@ -38,6 +38,7 @@ import java.io.Serializable
  * @param nextOverdueOccurrence 
  * @param overdueDeliveredCount 
  * @param stopReason 
+ * @param advanceEnabled 
  */
 
 
@@ -77,7 +78,10 @@ data class TaskReminderState (
     val overdueDeliveredCount: kotlin.Int? = null,
 
     @Json(name = "stopReason")
-    val stopReason: TaskReminderStopReason? = null
+    val stopReason: TaskReminderStopReason? = null,
+
+    @Json(name = "advanceEnabled")
+    val advanceEnabled: kotlin.Boolean? = null
 
 ) : Serializable {
     companion object {

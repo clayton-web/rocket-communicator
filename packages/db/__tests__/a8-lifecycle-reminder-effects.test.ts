@@ -91,7 +91,11 @@ describe('A8 lifecycle reminder reconciliation (PGlite)', () => {
 
   let sequence = 0;
 
-  async function seed(options: { status?: TaskStatus; withSchedule?: boolean } = {}) {
+  async function seed(options: {
+    status?: TaskStatus;
+    withSchedule?: boolean;
+    advanceEnabled?: boolean;
+  } = {}) {
     sequence += 1;
     const taskId = `task_lc_${sequence}`;
     const dueLocalDate = parseLocalDate('2026-08-10');
@@ -104,7 +108,8 @@ describe('A8 lifecycle reminder reconciliation (PGlite)', () => {
     await db.prisma.task.update({ where: { id: taskId }, data: { dueLocalDate } });
 
     if (options.withSchedule !== false) {
-      const advance = decideAdvanceReminder({ dueLocalDate, establishedAt: at });
+      const advanceEnabled = options.advanceEnabled ?? true;
+      const advance = decideAdvanceReminder({ dueLocalDate, establishedAt: at, advanceEnabled });
       const nextOverdue = selectNextOverdueOccurrence({ dueLocalDate, now: at });
       await createReminderSchedule(db.prisma, {
         id: `sched_${taskId}`,
@@ -113,7 +118,13 @@ describe('A8 lifecycle reminder reconciliation (PGlite)', () => {
         dueLocalDate,
         schedulingTimeZone: zone,
         establishedAt: at,
-        advanceDisposition: 'scheduled',
+        advanceEnabled,
+        advanceDisposition:
+          advance.kind === 'not_enabled'
+            ? 'not_enabled'
+            : advance.kind === 'skipped'
+              ? 'skipped_window_elapsed'
+              : 'scheduled',
         advanceOccurrence: {
           occurrenceLocalDate: advance.occurrenceLocalDate,
           occurrenceAt: advance.occurrenceAt,
@@ -235,6 +246,21 @@ describe('A8 lifecycle reminder reconciliation (PGlite)', () => {
       // elapsed-time accounting, and nothing due at the resume instant merely because time passed.
       expect(effect?.schedule.nextOverdueOccurrenceLocalDate).toBe('2026-11-21');
       expect(effect?.schedule.overdueDeliveredCount).toBe(0);
+    });
+
+    it('does not re-enable an OFF advance preference on resume (D178)', async () => {
+      const seeded = await seed({ advanceEnabled: false });
+      await suspendReminderScheduleForWaiting(db.prisma, {
+        organizationId: org,
+        scheduleId: seeded.scheduleId,
+        suspendedAt: at,
+      });
+
+      const effect = await reconcile(seeded.taskId, 'open', '2026-08-12T18:00:00.000Z');
+
+      expect(effect?.schedule.advanceEnabled).toBe(false);
+      expect(effect?.schedule.advanceDisposition).toBe('not_enabled');
+      expect(effect?.schedule.nextOverdueOccurrenceLocalDate).toBeTruthy();
     });
 
     it('resumes to in_progress the same way it resumes to open', async () => {

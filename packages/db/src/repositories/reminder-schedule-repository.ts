@@ -56,6 +56,12 @@ export interface ReminderOccurrenceInput {
  */
 export type ReminderScheduleInitialStatus = 'active' | 'suspended_waiting';
 
+/** Establishment-time advance dispositions the Owner API may persist (D105, D178). */
+export type ReminderAdvanceEstablishmentDisposition =
+  | 'scheduled'
+  | 'skipped_window_elapsed'
+  | 'not_enabled';
+
 export interface CreateReminderScheduleInput {
   readonly id: string;
   readonly organizationId: string;
@@ -65,8 +71,13 @@ export interface CreateReminderScheduleInput {
   readonly schedulingTimeZone: string;
   /** The instant the Owner established this schedule — the advance decision's reference point. */
   readonly establishedAt: string;
+  /**
+   * Owner D105 advance preference (D178). Defaults to `true` so callers that predate the field
+   * keep current A8 behavior.
+   */
+  readonly advanceEnabled?: boolean;
   /** `decideAdvanceReminder(...)` output, translated by the caller. */
-  readonly advanceDisposition: 'scheduled' | 'skipped_window_elapsed';
+  readonly advanceDisposition: ReminderAdvanceEstablishmentDisposition;
   readonly advanceOccurrence: ReminderOccurrenceInput;
   /** `selectNextOverdueOccurrence(...)` output. Null only when no overdue reminder is owed. */
   readonly nextOverdueOccurrence: ReminderOccurrenceInput | null;
@@ -93,7 +104,9 @@ export interface OpenNextReminderGenerationInput {
   readonly dueLocalDate: LocalDate;
   readonly schedulingTimeZone: string;
   readonly establishedAt: string;
-  readonly advanceDisposition: 'scheduled' | 'skipped_window_elapsed';
+  /** Owner D105 advance preference (D178). Defaults to `true`. */
+  readonly advanceEnabled?: boolean;
+  readonly advanceDisposition: ReminderAdvanceEstablishmentDisposition;
   readonly advanceOccurrence: ReminderOccurrenceInput;
   readonly nextOverdueOccurrence: ReminderOccurrenceInput | null;
   /** See {@link CreateReminderScheduleInput.status}. Defaults to `active`. */
@@ -197,6 +210,7 @@ export async function createReminderSchedule(
         reminderVersion: 1,
         status: suspension.status,
         suspendedAt: suspension.suspendedAt,
+        advanceEnabled: input.advanceEnabled ?? true,
         advanceDisposition: input.advanceDisposition,
         advanceOccurrenceLocalDate,
         advanceOccurrenceAt: fromIso(input.advanceOccurrence.occurrenceAt)!,
@@ -292,6 +306,7 @@ export async function openNextReminderGeneration(
       stoppedAt: null,
       suspendedAt: suspension.suspendedAt,
       requiresOwnerAttention: false,
+      advanceEnabled: input.advanceEnabled ?? true,
       advanceDisposition: input.advanceDisposition,
       advanceOccurrenceLocalDate,
       advanceOccurrenceAt: fromIso(input.advanceOccurrence.occurrenceAt)!,
@@ -311,6 +326,69 @@ export async function openNextReminderGeneration(
     throw optimisticConcurrency(
       `Reminder schedule ${existing.id} is no longer at generation ${input.expectedGeneration}` +
         `${input.expectedReminderVersion === undefined ? '' : ` and reminder version ${input.expectedReminderVersion}`}.`,
+    );
+  }
+  return requireScheduleById(db, scope.organizationId, existing.id);
+}
+
+/**
+ * Change the D178 advance-enablement preference without opening a generation (D104, D178).
+ *
+ * A same-date ON/OFF toggle is not a material due-date change: it must not reset the overdue
+ * count, must not bump `generation`, and must not rewrite the deadline. The reminder version still
+ * moves, because the Owner's decision changed what a later If-Match is based on.
+ *
+ * Occurrence values arrive already decided by the caller when arming or un-arming. This function
+ * does not derive an advance morning, reclassify a settled disposition, or touch D106 overdue
+ * columns. Disposition and occurrence are omitted when only the boolean changes.
+ */
+export async function updateReminderAdvancePreference(
+  db: Client,
+  input: {
+    readonly organizationId: string;
+    readonly taskId: string;
+    readonly expectedReminderVersion: number;
+    readonly advanceEnabled: boolean;
+    readonly advanceDisposition?: ReminderAdvanceEstablishmentDisposition;
+    readonly advanceOccurrence?: ReminderOccurrenceInput;
+  },
+): Promise<PersistedReminderSchedule> {
+  const scope = await requireTaskScope(db, input.organizationId, input.taskId);
+  const existing = await findReminderScheduleByTaskId(db, scope.organizationId, scope.taskId);
+  if (!existing) {
+    throw notFound(`Task ${input.taskId} has no Reminder Schedule to update.`);
+  }
+
+  const advanceOccurrenceLocalDate = input.advanceOccurrence
+    ? toStorableLocalDate(
+        input.advanceOccurrence.occurrenceLocalDate,
+        'advanceOccurrence.occurrenceLocalDate',
+      )
+    : undefined;
+
+  const updated = await db.taskReminderSchedule.updateMany({
+    where: {
+      id: existing.id,
+      organizationId: scope.organizationId,
+      reminderVersion: input.expectedReminderVersion,
+      status: { in: ['active', 'suspended_waiting'] },
+    },
+    data: {
+      reminderVersion: { increment: 1 },
+      advanceEnabled: input.advanceEnabled,
+      ...(input.advanceDisposition ? { advanceDisposition: input.advanceDisposition } : {}),
+      ...(advanceOccurrenceLocalDate && input.advanceOccurrence
+        ? {
+            advanceOccurrenceLocalDate,
+            advanceOccurrenceAt: fromIso(input.advanceOccurrence.occurrenceAt)!,
+          }
+        : {}),
+    },
+  });
+
+  if (updated.count !== 1) {
+    throw optimisticConcurrency(
+      `Reminder schedule ${existing.id} is no longer at reminder version ${input.expectedReminderVersion}.`,
     );
   }
   return requireScheduleById(db, scope.organizationId, existing.id);

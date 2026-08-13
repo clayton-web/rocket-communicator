@@ -15,6 +15,7 @@
 | **nextOverdueOccurrence** | [**TaskReminderOccurrence**](TaskReminderOccurrence.md) |  |  [optional] |
 | **overdueDeliveredCount** | **kotlin.Int** |  |  [optional] |
 | **stopReason** | [**TaskReminderStopReason**](TaskReminderStopReason.md) |  |  [optional] |
+| **advanceEnabled** | **kotlin.Boolean** |  |  [optional] |
 
 
 

@@ -30,6 +30,7 @@ import {
   findReminderScheduleByTaskId,
   getTaskDueLocalDate,
   listAuditEventsForTask,
+  listDueAdvanceReminderSchedulesGlobally,
   listReminderDeliveryAttemptsForTask,
   suspendReminderScheduleForWaiting,
 } from '@aicaa/db';
@@ -148,6 +149,20 @@ async function establish(taskId: string, dueLocalDate: string, ifMatch?: string)
   const token = ifMatch ?? (await reminderEtag(taskId));
   const response = await setReminder(
     request(taskId, 'PUT', { body: { dueLocalDate }, ifMatch: token }),
+    params(taskId),
+  );
+  return { response, body: await response.json() };
+}
+
+async function establishWithPreference(
+  taskId: string,
+  dueLocalDate: string,
+  advanceEnabled: boolean,
+  ifMatch?: string,
+) {
+  const token = ifMatch ?? (await reminderEtag(taskId));
+  const response = await setReminder(
+    request(taskId, 'PUT', { body: { dueLocalDate, advanceEnabled }, ifMatch: token }),
     params(taskId),
   );
   return { response, body: await response.json() };
@@ -379,6 +394,7 @@ describe('A8.3b Owner reminder routes: route: GET reminder', () => {
       overdueDeliveredCount: null,
       requiresOwnerAttention: false,
       stopReason: null,
+      advanceEnabled: null,
     });
   });
 
@@ -400,6 +416,7 @@ describe('A8.3b Owner reminder routes: route: GET reminder', () => {
     expect(body.overdueDeliveredCount).toBe(0);
     expect(body.requiresOwnerAttention).toBe(false);
     expect(body.stopReason).toBeNull();
+    expect(body.advanceEnabled).toBe(true);
   });
 
   it('reports a stopped schedule with its recorded reason', async () => {
@@ -868,7 +885,7 @@ describe('A8.3b Owner reminder routes: request strictness', () => {
     { etag: 'forged' },
   ];
 
-  it('rejects every property other than dueLocalDate', async () => {
+  it('rejects every property other than dueLocalDate and advanceEnabled', async () => {
     const task = await seedTask();
     const token = await reminderEtag(task.id);
 
@@ -1242,7 +1259,9 @@ describe('A8.3b Owner reminder routes: audit events', () => {
     expect(audits[0]?.outcome).toBe('succeeded');
     expect(audits[0]?.taskStatus).toBe('open');
     expect(audits[0]?.resourceVersion).toBe(1);
-    expect(audits[0]?.note).toBe('dueLocalDate=2026-04-01 generation=1 state=active');
+    expect(audits[0]?.note).toBe(
+      'dueLocalDate=2026-04-01 generation=1 state=active advanceEnabled=true',
+    );
   });
 
   it('records a suspended establishment as suspended', async () => {
@@ -1252,7 +1271,9 @@ describe('A8.3b Owner reminder routes: audit events', () => {
     await establish(task.id, '2026-04-01');
 
     const audits = await reminderAudits(task.id);
-    expect(audits[0]?.note).toBe('dueLocalDate=2026-04-01 generation=1 state=suspended_waiting');
+    expect(audits[0]?.note).toBe(
+      'dueLocalDate=2026-04-01 generation=1 state=suspended_waiting advanceEnabled=true',
+    );
     expect(audits[0]?.taskStatus).toBe('waiting');
   });
 
@@ -1268,7 +1289,7 @@ describe('A8.3b Owner reminder routes: audit events', () => {
       'reminder.schedule.changed',
     ]);
     expect(audits[1]?.note).toBe(
-      'priorDueLocalDate=2026-04-01 dueLocalDate=2026-05-20 priorGeneration=1 generation=2 state=active',
+      'priorDueLocalDate=2026-04-01 dueLocalDate=2026-05-20 priorGeneration=1 generation=2 state=active advanceEnabled=true',
     );
     expect(audits[1]?.resourceVersion).toBe(2);
   });
@@ -1287,7 +1308,7 @@ describe('A8.3b Owner reminder routes: audit events', () => {
       'reminder.schedule.reactivated',
     ]);
     expect(audits[2]?.note).toBe(
-      'priorDueLocalDate=2026-04-01 dueLocalDate=2026-04-01 priorGeneration=1 generation=2 priorStopReason=due_date_removed state=active',
+      'priorDueLocalDate=2026-04-01 dueLocalDate=2026-04-01 priorGeneration=1 generation=2 priorStopReason=due_date_removed state=active advanceEnabled=true',
     );
   });
 
@@ -1535,5 +1556,183 @@ describe('A8 Owner reminder routes: task lifecycle wiring', () => {
     expect(response.status).toBe(200);
     expect(body.state).toBe('active');
     expect(body.generation).toBe(2);
+  });
+});
+
+describe('D178 optional D105 advance preference', () => {
+  it('defaults a new establishment without an explicit preference to ON', async () => {
+    const task = await seedTask();
+    const { body } = await establish(task.id, '2026-04-01');
+
+    expect(body.advanceEnabled).toBe(true);
+    expect(body.advance.disposition).toBe('scheduled');
+    expect(body.dueLocalDate).toBe('2026-04-01');
+    expect(body.nextOverdueOccurrence.localDate).toBe('2026-04-02');
+  });
+
+  it('retains the deadline when the Owner sets OFF and does not arm D105', async () => {
+    const task = await seedTask();
+    const { body } = await establishWithPreference(task.id, '2026-04-01', false);
+
+    expect(body.advanceEnabled).toBe(false);
+    expect(body.dueLocalDate).toBe('2026-04-01');
+    expect(body.state).toBe('active');
+    expect(body.advance.disposition).toBe('not_enabled');
+    expect(body.nextOverdueOccurrence.localDate).toBe('2026-04-02');
+    expect(await getTaskDueLocalDate(db.prisma, org, task.id)).toBe('2026-04-01');
+
+    const due = await listDueAdvanceReminderSchedulesGlobally(db.prisma, {
+      dueAtOrBefore: '2026-04-02T00:00:00.000Z',
+      limit: 10,
+    });
+    expect(due.filter((row) => row.taskId === task.id)).toEqual([]);
+  });
+
+  it('still schedules D106 overdue when advance is OFF', async () => {
+    const task = await seedTask();
+    const { body } = await establishWithPreference(task.id, '2026-04-01', false);
+
+    expect(body.nextOverdueOccurrence).toEqual({
+      localDate: '2026-04-02',
+      at: expect.any(String),
+    });
+    expect(body.state).toBe('active');
+    expect(body.stopReason).toBeNull();
+  });
+
+  it('preserves OFF across a due-date change and does not re-arm D105', async () => {
+    const task = await seedTask();
+    await establishWithPreference(task.id, '2026-04-01', false);
+
+    const { body } = await establish(task.id, '2026-05-20');
+
+    expect(body.generation).toBe(2);
+    expect(body.advanceEnabled).toBe(false);
+    expect(body.advance.disposition).toBe('not_enabled');
+    expect(body.dueLocalDate).toBe('2026-05-20');
+    expect(body.nextOverdueOccurrence.localDate).toBe('2026-05-21');
+  });
+
+  it('preserves ON across a due-date change and recalculates D105', async () => {
+    const task = await seedTask();
+    await establish(task.id, '2026-04-01');
+
+    const { body } = await establish(task.id, '2026-05-20');
+
+    expect(body.generation).toBe(2);
+    expect(body.advanceEnabled).toBe(true);
+    expect(body.advance).toEqual({
+      disposition: 'scheduled',
+      occurrence: { localDate: '2026-05-19', at: expect.any(String) },
+    });
+  });
+
+  it('defaults re-establishment after deadline removal to ON', async () => {
+    const task = await seedTask();
+    await establishWithPreference(task.id, '2026-04-01', false);
+    await remove(task.id);
+
+    const { body } = await establish(task.id, '2026-05-20');
+
+    expect(body.generation).toBe(2);
+    expect(body.advanceEnabled).toBe(true);
+    expect(body.advance.disposition).toBe('scheduled');
+    expect(body.dueLocalDate).toBe('2026-05-20');
+  });
+
+  it('lets an explicit OFF win on the same re-establishment act', async () => {
+    const task = await seedTask();
+    await establish(task.id, '2026-04-01');
+    await remove(task.id);
+
+    const { body } = await establishWithPreference(task.id, '2026-05-20', false);
+
+    expect(body.advanceEnabled).toBe(false);
+    expect(body.advance.disposition).toBe('not_enabled');
+  });
+
+  it('does not turn OFF back ON when Waiting suspends and resumes', async () => {
+    const task = await seedTask();
+    await establishWithPreference(task.id, '2026-04-01', false);
+    const waiting = await toWaiting(task.id, task.etag);
+
+    const suspended = await read(task.id);
+    expect(suspended.body.state).toBe('suspended_waiting');
+    expect(suspended.body.advanceEnabled).toBe(false);
+
+    await toResumed(task.id, waiting);
+    const { body } = await read(task.id);
+
+    expect(body.state).toBe('active');
+    expect(body.advanceEnabled).toBe(false);
+    expect(body.advance.disposition).toBe('not_enabled');
+    expect(body.nextOverdueOccurrence.localDate).toBe('2026-04-02');
+  });
+
+  it('keeps completed lifecycle truthful, including the preference', async () => {
+    const task = await seedTask();
+    await establishWithPreference(task.id, '2026-04-01', false);
+    await toCompleted(task.id, task.etag);
+
+    const { body } = await read(task.id);
+    expect(body.state).toBe('stopped');
+    expect(body.stopReason).toBe('task_completed');
+    expect(body.advanceEnabled).toBe(false);
+    expect(body.dueLocalDate).toBe('2026-04-01');
+  });
+
+  it('exposes the preference on GET and mutates it under the reminder ETag', async () => {
+    const task = await seedTask();
+    await establish(task.id, '2026-04-01');
+    const before = await read(task.id);
+    expect(before.body.advanceEnabled).toBe(true);
+
+    const { response, body } = await establishWithPreference(task.id, '2026-04-01', false);
+    expect(response.status).toBe(200);
+    expect(body.advanceEnabled).toBe(false);
+    expect(body.generation).toBe(1);
+    expect(body.etag).not.toBe(before.body.etag);
+    expect(body.overdueDeliveredCount).toBe(0);
+  });
+
+  it('still produces 412 for a stale reminder ETag when changing the preference', async () => {
+    const task = await seedTask();
+    await establish(task.id, '2026-04-01');
+    const stale = await reminderEtag(task.id);
+    await establishWithPreference(task.id, '2026-04-01', false);
+
+    const { response, body } = await establishWithPreference(
+      task.id,
+      '2026-04-01',
+      true,
+      stale,
+    );
+    expect(response.status).toBe(412);
+    expect(body.error.code).toBe('PRECONDITION_FAILED');
+  });
+
+  it('keeps an old-style PUT of only dueLocalDate backwards compatible', async () => {
+    const task = await seedTask();
+    await establish(task.id, '2026-04-01');
+    const etag = await reminderEtag(task.id);
+
+    const { response, body } = await establish(task.id, '2026-04-01', etag);
+    expect(response.status).toBe(200);
+    expect(body.advanceEnabled).toBe(true);
+    expect(body.generation).toBe(1);
+    expect(body.etag).toBe(etag);
+  });
+
+  it('does not infer the preference from TaskAssignment or D168 evidence', async () => {
+    const task = await seedTask();
+    const { body } = await establishWithPreference(task.id, '2026-04-01', false);
+
+    expect(body.advanceEnabled).toBe(false);
+    const assignments = await db.prisma.taskAssignment.findMany({ where: { taskId: task.id } });
+    expect(assignments).toEqual([]);
+    const evidence = await db.prisma.taskSuggestionResponsibilitySelection.findMany({
+      where: { taskId: task.id },
+    });
+    expect(evidence).toEqual([]);
   });
 });

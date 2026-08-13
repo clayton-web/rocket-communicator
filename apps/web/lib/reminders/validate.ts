@@ -16,10 +16,10 @@ type SetTaskReminderRequest = components['schemas']['SetTaskReminderRequest'];
  *
  * Everything else about a schedule — the generation, the occurrence dates and instants, the advance
  * disposition, the status, the delivered count, the stop reason, the scheduling timezone — is derived
- * from the Task, the organization timezone, and the A8.2 domain (D103, D104, D128). There is nothing
- * a client could usefully add, which is why the allowlist has exactly one entry.
+ * from the Task, the organization timezone, and the A8.2 domain (D103, D104, D128). The D178
+ * advance-enablement preference is the one additional Owner-selectable input.
  */
-const ALLOWED_FIELDS = new Set<string>(['dueLocalDate']);
+const ALLOWED_FIELDS = new Set<string>(['dueLocalDate', 'advanceEnabled']);
 
 const CANONICAL_LOCAL_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -59,5 +59,12 @@ export function parseSetReminderBody(
     return fail('dueLocalDate must be a canonical organization-local date in YYYY-MM-DD form.');
   }
 
-  return { ok: true, value: { dueLocalDate } };
+  if (!Object.prototype.hasOwnProperty.call(body, 'advanceEnabled')) {
+    return { ok: true, value: { dueLocalDate } };
+  }
+  if (typeof body.advanceEnabled !== 'boolean') {
+    return fail('advanceEnabled must be a boolean.');
+  }
+
+  return { ok: true, value: { dueLocalDate, advanceEnabled: body.advanceEnabled } };
 }

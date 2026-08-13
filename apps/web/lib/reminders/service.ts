@@ -69,6 +69,8 @@ export interface OwnerReminderCommand {
 
 export interface SetOwnerReminderCommand extends OwnerReminderCommand {
   readonly dueLocalDate: string;
+  /** Explicit D178 advance preference. Omitted so D178 defaults apply. */
+  readonly advanceEnabled?: boolean;
 }
 
 /**
@@ -168,11 +170,44 @@ interface DerivedSchedule {
  * is the moment the Owner established this generation (D105), and the next overdue occurrence is
  * selected from that same moment, so the two cannot disagree about what "already elapsed" means.
  */
-function deriveSchedule(dueLocalDate: LocalDate, now: string): DerivedSchedule {
+function deriveSchedule(
+  dueLocalDate: LocalDate,
+  now: string,
+  advanceEnabled: boolean,
+): DerivedSchedule {
   const at = now as UtcInstant;
   return {
-    advance: decideAdvanceReminder({ dueLocalDate, establishedAt: at }),
+    advance: decideAdvanceReminder({ dueLocalDate, establishedAt: at, advanceEnabled }),
     nextOverdueOccurrence: selectNextOverdueOccurrence({ dueLocalDate, now: at }),
+  };
+}
+
+function storedAdvanceDisposition(
+  advance: AdvanceReminderDisposition,
+): 'scheduled' | 'skipped_window_elapsed' | 'not_enabled' {
+  if (advance.kind === 'not_enabled') {
+    return 'not_enabled';
+  }
+  return advance.kind === 'skipped' ? 'skipped_window_elapsed' : 'scheduled';
+}
+
+function advancePreferenceDecision(
+  advance: AdvanceReminderDisposition,
+  now: string,
+  suspended: boolean,
+): {
+  readonly disposition: 'scheduled' | 'skipped_window_elapsed' | 'not_enabled';
+  readonly occurrence: { occurrenceLocalDate: LocalDate; occurrenceAt: string };
+  readonly skippedAdvanceAttempt?: {
+    readonly id: string;
+    readonly skipReason: 'advance_window_elapsed';
+    readonly recordedAt: string;
+  };
+} {
+  return {
+    disposition: storedAdvanceDisposition(advance),
+    occurrence: advanceOccurrenceInput(advance),
+    skippedAdvanceAttempt: suspended ? undefined : skippedAdvanceAttempt(advance, now),
   };
 }
 
@@ -312,9 +347,10 @@ export async function setOwnerTaskReminder(
 
     const targetStatus = requireSchedulableTask(task);
     const suspended = targetStatus === 'suspended_waiting';
-    const derived = deriveSchedule(dueLocalDate, command.now);
-    // A suspended generation records no skipped advance: skipping is a delivery outcome for an
-    // occurrence that was owed, and a suspended schedule owes none (D105, D107).
+    const derivedOn = deriveSchedule(dueLocalDate, command.now, true);
+    const derivedOff = deriveSchedule(dueLocalDate, command.now, false);
+    const establishmentEnabled = command.advanceEnabled ?? true;
+    const derived = establishmentEnabled ? derivedOn : derivedOff;
     const skipped = suspended ? undefined : skippedAdvanceAttempt(derived.advance, command.now);
 
     if (!existing) {
@@ -327,8 +363,8 @@ export async function setOwnerTaskReminder(
           dueLocalDate,
           schedulingTimeZone: REMINDER_SCHEDULING_TIME_ZONE,
           establishedAt: command.now,
-          advanceDisposition:
-            derived.advance.kind === 'skipped' ? 'skipped_window_elapsed' : 'scheduled',
+          advanceEnabled: establishmentEnabled,
+          advanceDisposition: storedAdvanceDisposition(derived.advance),
           advanceOccurrence: advanceOccurrenceInput(derived.advance),
           nextOverdueOccurrence: nextOverdueInput(derived),
           status: targetStatus,
@@ -341,13 +377,12 @@ export async function setOwnerTaskReminder(
           action: REMINDER_AUDIT_ACTIONS.established,
           taskId: task.id,
           taskStatus: task.status,
-          // The reminder version the mutation produces, not the Task's. Deterministic because the
-          // event is only written if the same transaction's schedule write succeeded.
           resourceVersion: 1,
           note: reminderAuditNote({
             dueLocalDate,
             generation: 1,
             state: targetStatus,
+            advanceEnabled: establishmentEnabled,
           }),
           now: command.now as UtcInstant,
           requestId: command.requestId,
@@ -369,14 +404,13 @@ export async function setOwnerTaskReminder(
         dueLocalDate,
         schedulingTimeZone: REMINDER_SCHEDULING_TIME_ZONE,
         establishedAt: command.now,
-        advanceDisposition:
-          derived.advance.kind === 'skipped' ? 'skipped_window_elapsed' : 'scheduled',
-        advanceOccurrence: advanceOccurrenceInput(derived.advance),
-        nextOverdueOccurrence: nextOverdueInput(derived),
+        nextOverdueOccurrence: nextOverdueInput(derivedOn),
         status: targetStatus,
         suspendedAt: suspended ? command.now : undefined,
       },
-      skippedAdvanceAttempt: skipped,
+      requestedAdvanceEnabled: command.advanceEnabled,
+      advanceWhenEnabled: advancePreferenceDecision(derivedOn.advance, command.now, suspended),
+      advanceWhenDisabled: advancePreferenceDecision(derivedOff.advance, command.now, suspended),
       audit: (outcome) =>
         buildOwnerAudit({
           id: newEntityId('audit'),
@@ -394,6 +428,7 @@ export async function setOwnerTaskReminder(
             generation: outcome.schedule.generation,
             priorStopReason: outcome.reactivating ? outcome.priorSchedule.stopReason : undefined,
             state: outcome.schedule.status,
+            advanceEnabled: outcome.schedule.advanceEnabled,
           }),
           now: command.now as UtcInstant,
           requestId: command.requestId,
