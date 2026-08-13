@@ -316,7 +316,7 @@ Gmail settings UI and History recovery / `resync_required` operator UX remain de
 
 ### Suggestion processing
 
-**Product-target pointer.** Automatic Gmail suggestion processing below is **current implementation infrastructure**. The intended initial Owner commissioning UX is manual **"Review with Rocket"** after the Owner sees a message in an intake surface ([WORKFLOWS.md](WORKFLOWS.md) §1a; **D156**). Do not mistake this operational section for that target.
+**Product-target pointer.** Automatic Gmail suggestion processing below is **current implementation infrastructure**. The intended initial Owner commissioning UX is manual **"Review with Rocket"** after the Owner sees a message in an intake surface ([WORKFLOWS.md](WORKFLOWS.md) §1a; **D156**). **D179** authorizes **S7** as that implementation; S7 is not begun. Do not mistake this operational section for that target. S7 does **not** authorize setting `INTERPRETATION_AI_ENABLED` in Production or changing any other Production flag.
 
 A **separate** scheduler job, independent of the Gmail poll:
 
