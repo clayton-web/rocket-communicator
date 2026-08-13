@@ -20,6 +20,7 @@ import com.aicommunication.assistant.network.SupabaseAccessTokenProvider
 import com.aicommunication.assistant.tasks.GmailOwnerRepository
 import com.aicommunication.assistant.tasks.PendingHandoffStore
 import com.aicommunication.assistant.tasks.RecipientOwnerRepository
+import com.aicommunication.assistant.tasks.ReminderOwnerRepository
 import io.github.jan.supabase.SupabaseClient
 
 class AicaaApplication : Application() {
@@ -42,6 +43,9 @@ class AicaaApplication : Application() {
         private set
 
     lateinit var taskOwnerRepository: TaskOwnerRepository
+        private set
+
+    lateinit var reminderOwnerRepository: ReminderOwnerRepository
         private set
 
     lateinit var recipientOwnerRepository: RecipientOwnerRepository
@@ -87,6 +91,7 @@ class AicaaApplication : Application() {
             )
         sessionOwnerRepository = SessionOwnerRepository(ownerApiExecutor)
         taskOwnerRepository = TaskOwnerRepository(ownerApiExecutor)
+        reminderOwnerRepository = ReminderOwnerRepository(ownerApiExecutor)
         recipientOwnerRepository = RecipientOwnerRepository(ownerApiExecutor)
         gmailOwnerRepository = GmailOwnerRepository(ownerApiExecutor)
         pendingHandoffStore = PendingHandoffStore(this)

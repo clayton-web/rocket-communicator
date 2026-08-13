@@ -23,6 +23,7 @@ import com.aicommunication.assistant.network.OwnerHttpClientFactory
 import com.aicommunication.assistant.tasks.GmailOwnerRepository
 import com.aicommunication.assistant.tasks.PendingHandoffStore
 import com.aicommunication.assistant.tasks.RecipientOwnerRepository
+import com.aicommunication.assistant.tasks.ReminderOwnerRepository
 import com.aicommunication.assistant.tasks.TaskDetailViewModel
 import com.aicommunication.assistant.tasks.TaskHandoffViewModel
 import com.aicommunication.assistant.tasks.TaskListViewModel
@@ -104,7 +105,12 @@ class AuthenticatedOwnerFlowTest {
                     taskListViewModel =
                     TaskListViewModel(application, taskRepository, onSessionInvalidated = {}),
                     taskDetailViewModel =
-                    TaskDetailViewModel(application, taskRepository, onSessionInvalidated = {}),
+                    TaskDetailViewModel(
+                        application,
+                        taskRepository,
+                        ReminderOwnerRepository(executor),
+                        onSessionInvalidated = {}
+                    ),
                     taskHandoffViewModel =
                     TaskHandoffViewModel(
                         application,
@@ -276,6 +282,21 @@ class AuthenticatedOwnerFlowTest {
                           "value": "Call the roofer"
                         }
                       ]
+                    }
+                    """.trimIndent()
+                )
+        )
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody(
+                    """
+                    {
+                      "taskId": "task-1",
+                      "etag": "\"task-reminder-task-1-v0\"",
+                      "state": "no_due_date",
+                      "requiresOwnerAttention": false,
+                      "dueLocalDate": null
                     }
                     """.trimIndent()
                 )

@@ -21,7 +21,11 @@ data class TaskWire(
     @Json(name = "summaryPoints") val summaryPoints: List<CaptureSummaryPointWire>? = null,
     @Json(name = "assignment") val assignment: AssignmentWire? = null,
     @Json(name = "notes") val notes: List<TaskNoteWire>? = null,
-    @Json(name = "updatedAt") val updatedAt: String? = null
+    @Json(name = "updatedAt") val updatedAt: String? = null,
+    /** Canonical organization-local due calendar date (`YYYY-MM-DD`). Never reconstructed from `dueAt`. */
+    @Json(name = "dueLocalDate") val dueLocalDate: String? = null,
+    /** Read-time `due_soon` / `overdue` from `dueLocalDate`. Independent of assignment. */
+    @Json(name = "derivedUrgency") val derivedUrgency: String? = null
 )
 
 @JsonClass(generateAdapter = false)
@@ -98,7 +102,9 @@ data class OwnerTask(
     val assignmentEmail: String?,
     val deliveryStatus: String?,
     val noteBodies: List<String>,
-    val updatedAt: String?
+    val updatedAt: String?,
+    val dueLocalDate: String? = null,
+    val derivedUrgency: String? = null
 ) {
     val isAssigned: Boolean get() = assignmentEmail != null
     val isTerminal: Boolean get() = status == "completed" || status == "dismissed"
@@ -134,6 +140,14 @@ data class OwnerTask(
             } else {
                 "Owner work (unassigned)"
             }
+
+    val urgencyLabel: String?
+        get() =
+            when (derivedUrgency) {
+                "overdue" -> "Overdue"
+                "due_soon" -> "Due soon"
+                else -> null
+            }
 }
 
 fun TaskWire.toOwnerTask(): OwnerTask = OwnerTask(
@@ -147,5 +161,7 @@ fun TaskWire.toOwnerTask(): OwnerTask = OwnerTask(
     notes
         ?.mapNotNull { it.body?.trim()?.takeIf { body -> body.isNotEmpty() } }
         .orEmpty(),
-    updatedAt = updatedAt
+    updatedAt = updatedAt,
+    dueLocalDate = dueLocalDate,
+    derivedUrgency = derivedUrgency
 )

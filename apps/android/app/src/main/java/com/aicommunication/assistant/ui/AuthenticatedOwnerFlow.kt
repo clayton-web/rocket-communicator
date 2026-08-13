@@ -149,6 +149,9 @@ fun AuthenticatedOwnerFlow(
                     assignReturn = AuthenticatedDestination.TaskDetail.name
                     destination = AuthenticatedDestination.Assign
                 },
+                onSetDueDate = taskDetailViewModel::setDueDate,
+                onClearDueDate = taskDetailViewModel::clearDueDate,
+                onSetAdvanceEnabled = taskDetailViewModel::setAdvanceEnabled,
                 onNoteChanged = taskDetailViewModel::onNoteDraftChanged,
                 onSaveNote = taskDetailViewModel::addNote,
                 modifier = modifier

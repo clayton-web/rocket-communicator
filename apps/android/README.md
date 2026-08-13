@@ -8,12 +8,13 @@ Organize, assign, and follow through on captured work (**D150**) without slowing
 
 - Shell **Tasks** entry → Task list (organizational workspace)
 - Task detail → lifecycle (Start / Waiting / Resume / Complete / Dismiss / Note) with Task `If-Match`
+- Task detail Scheduling section: date-only deadline (view / set / remove) and D178 Automatic Reminder ON/OFF over the existing reminder API and reminder ETag (S6.2). Configures schedule state; does not claim outbound delivery.
 - Assignment is reached from Task detail. Capture no longer opens or assigns a Task, because it creates none (S3.3)
 - Assignment only via `POST /api/v1/tasks/{taskId}/handoff` (D037 / D090); unassigned = Owner work (D094)
 - Recipient pick (+ thin create if empty), Gmail connection gating, D037 confirmation, idempotent retry store
 - Gmail send re-consent: open Owner web Task page in the browser, then manual Retry in-app (no auto-send)
 
-**Not included:** reminder configuration/delivery, notifications, push, reassignment, offline sync, local business DB, A8 operational enablement, A10+.
+**Not included:** reminder delivery, notifications, push, reassignment, offline sync, local business DB, A8 operational enablement, A10+.
 
 ## S3.3 Owner manual capture — shared interpretation (D171)
 

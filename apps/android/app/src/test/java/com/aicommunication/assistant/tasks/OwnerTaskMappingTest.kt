@@ -30,6 +30,9 @@ class OwnerTaskMappingTest {
         assertTrue(task.canAssign)
         assertEquals("Owner work (unassigned)", task.ownershipLabel)
         assertEquals("Order lumber", task.displayTitle)
+        assertEquals(null, task.dueLocalDate)
+        assertEquals(null, task.derivedUrgency)
+        assertEquals(null, task.urgencyLabel)
     }
 
     @Test
@@ -49,5 +52,37 @@ class OwnerTaskMappingTest {
         assertFalse(task.isOwnerWork)
         assertFalse(task.canAssign)
         assertTrue(task.ownershipLabel.contains("a@example.com"))
+    }
+
+    @Test
+    fun dueLocalDateAndUrgency_mapWithoutUsingDueAtOrAssignment() {
+        val task =
+            TaskWire(
+                id = "t1",
+                etag = "e1",
+                status = "open",
+                dueLocalDate = "2026-08-12",
+                derivedUrgency = "overdue"
+            ).toOwnerTask()
+
+        assertEquals("2026-08-12", task.dueLocalDate)
+        assertEquals("overdue", task.derivedUrgency)
+        assertEquals("Overdue", task.urgencyLabel)
+        assertTrue(task.isOwnerWork)
+    }
+
+    @Test
+    fun dueSoonLabel_isIndependentOfAssignment() {
+        val task =
+            TaskWire(
+                id = "t1",
+                etag = "e1",
+                status = "open",
+                dueLocalDate = "2026-08-13",
+                derivedUrgency = "due_soon"
+            ).toOwnerTask()
+
+        assertEquals("Due soon", task.urgencyLabel)
+        assertTrue(task.isOwnerWork)
     }
 }

@@ -57,6 +57,14 @@ class TaskListScreenTest {
         composeRule
             .onNodeWithText("Open · Owner work (unassigned)", substring = true)
             .assertIsDisplayed()
+        composeRule.onNodeWithTag("task_list_due").assertDoesNotExist()
+        composeRule.onNodeWithTag("task_list_urgency").assertDoesNotExist()
+        composeRule.onNodeWithTag("task_detail_due_section").assertDoesNotExist()
+        composeRule.onNodeWithTag("task_detail_scheduling_section").assertDoesNotExist()
+        composeRule.onNodeWithTag("task_detail_advance_toggle").assertDoesNotExist()
+        composeRule.onNodeWithText("Overdue").assertDoesNotExist()
+        composeRule.onNodeWithText("Due soon").assertDoesNotExist()
+        composeRule.onNodeWithText("Automatic Reminder").assertDoesNotExist()
     }
 
     @Test

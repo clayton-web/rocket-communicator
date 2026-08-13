@@ -47,6 +47,7 @@ class MainActivity : ComponentActivity() {
         TaskDetailViewModel.Factory(
             application = app,
             repository = app.taskOwnerRepository,
+            reminderRepository = app.reminderOwnerRepository,
             onSessionInvalidated = authViewModel::notifySessionInvalidated
         )
     }
