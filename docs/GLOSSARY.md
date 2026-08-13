@@ -60,7 +60,7 @@ Persisted grouping/provenance for one interpretation act. Current carrier: `Inte
 
 ### Task
 
-Approved actionable work with status, summary, assignment attribute, optional **due date** (an Owner-selected local calendar date that drives reminders when present — D102), and audit. Never created directly by voice (D038). A6 suggestion approval yields an unassigned Task (D080). Owner/self work remains unassigned (D094) — an operational representation, never evidence that the Owner affirmatively chose to be responsible (see **Responsibility selection**).
+Approved actionable work with status, summary, assignment attribute, optional **due date** (an Owner-selected local calendar date that is the deadline and the D106 overdue input when present — D102; the D105 advance reminder is independently Owner-optional — D178), and audit. Never created directly by voice (D038). A6 suggestion approval yields an unassigned Task (D080). Owner/self work remains unassigned (D094) — an operational representation, never evidence that the Owner affirmatively chose to be responsible (see **Responsibility selection**).
 
 ### Responsibility selection
 
@@ -110,7 +110,7 @@ New work proposed because prior work produced further action (for example after 
 
 ### Return to Owner / Clarification Request
 
-Recipient capability actions that hand work back or ask the Owner for information without creating a standalone Task. These are Event Notification Engine inputs (D099). They do not change reminder cadence, which derives only from the due date (D102–D106), beyond the delivery-eligibility and suspension rules in D107.
+Recipient capability actions that hand work back or ask the Owner for information without creating a standalone Task. These are Event Notification Engine inputs (D099). They do not change reminder cadence, which derives from the due date (D102–D106) and the D178 advance preference, beyond the delivery-eligibility and suspension rules in D107.
 
 ### Task Outcome
 
@@ -122,17 +122,17 @@ Recipient or Owner suspension of actionable work until `waiting_until`. **Waitin
 
 ### Due date
 
-Optional Owner-selected **organization-local calendar date** on a Task. When present it is the **authoritative deterministic scheduling input** for reminders (D102) — this supersedes D098, which treated it as informational only. The Owner selects **no** due time; reminder occurrences are fixed at 09:00 organization-local (D103). AI may recommend a due date; only an explicit Owner selection has effect (D027, D102).
+Optional Owner-selected **organization-local calendar date** on a Task. When present it is the **authoritative Task deadline** and the deterministic scheduling input for D106 overdue follow-through (D102). The D105 automatic advance reminder is independently Owner-optional (D178) and is **not** implied by the mere presence of a due date. The Owner selects **no** due time; reminder occurrences are fixed at 09:00 organization-local (D103). AI may recommend a due date; only an explicit Owner selection has effect (D027, D102).
 
 **`dueAt`** is the existing instant-typed field retained temporarily for contract compatibility. Under D109 the authoritative representation is a local **calendar date**, persisted since A8.3a as `tasks.due_local_date` (D128) and never backfilled from `dueAt`. Task reads additionally expose canonical `dueLocalDate`; current due-date read semantics and derived `due_soon` / `overdue` use that local date, not `dueAt` (D177). `dueAt` is not removed, migrated, or reconstructed.
 
 ### Reminder Schedule
 
-The **Task-scoped** scheduling state derived from a Task's due date: at most one per Task, surviving reassignment, carrying the current **generation**, status, advance-occurrence disposition, next overdue occurrence, per-generation overdue delivered count, and `requiresOwnerAttention` (D104, D109). Supersedes the Assignment-scoped Follow-up Schedule (D096). **Maintained and processable, but never delivered:** Owner reminder APIs, lifecycle wiring, occurrence processing, and the overdue Gmail transport exist; A8 migrations are applied. Delivery and enablement remain controlled separately — with the flag unset no transport is constructed, no cron job invokes the worker, and nothing has been sent.
+The **Task-scoped** scheduling state derived from a Task's due date: at most one per Task, surviving reassignment, carrying the current **generation**, status, advance-occurrence disposition, next overdue occurrence, per-generation overdue delivered count, and `requiresOwnerAttention` (D104, D109). D178 additionally authorizes an Owner preference controlling whether the existing D105 advance occurrence is enabled. Supersedes the Assignment-scoped Follow-up Schedule (D096). **Maintained and processable, but never delivered:** Owner reminder APIs, lifecycle wiring, occurrence processing, and the overdue Gmail transport exist; A8 migrations are applied. Delivery and enablement remain controlled separately — with the flag unset no transport is constructed, no cron job invokes the worker, and nothing has been sent.
 
 ### Reminder occurrence
 
-A single scheduled reminder moment: **09:00 organization-local** on a specific local calendar date, resolved individually to an absolute instant for execution and audit (D103). Either the one **advance** occurrence on the day before the due date (D105) or an **overdue** occurrence on a calendar day after it (D106). The two differ in how much lateness they tolerate. An overdue occurrence stays owed however late a worker reaches it, because the Task is still late. The advance occurrence may be delivered only during its own local calendar day and is recorded as `advance_window_elapsed` afterwards, because its content is that the Task is due tomorrow and that stops being true at midnight (A8.4b.3).
+A single scheduled reminder moment: **09:00 organization-local** on a specific local calendar date, resolved individually to an absolute instant for execution and audit (D103). Either the one **advance** occurrence on the day before the due date when that reminder is enabled (D105, D178) or an **overdue** occurrence on a calendar day after it (D106). The two differ in how much lateness they tolerate. An overdue occurrence stays owed however late a worker reaches it, because the Task is still late. The advance occurrence may be delivered only during its own local calendar day and is recorded as `advance_window_elapsed` afterwards, because its content is that the Task is due tomorrow and that stops being true at midnight (A8.4b.3).
 
 ### Schedule generation
 
@@ -198,11 +198,11 @@ Replaceable integration layer for hosting, scheduling, storage, messaging, or cl
 
 ### Follow-up Engine
 
-**Due-date-driven, Task-scoped** engine that sends **Recipient** reminders derived from the Owner-selected Task due date (D102). This is the **current A8 implementation** of due-date-driven follow-through — one reminder/follow-through mechanism, not an escalation engine, and **not** a product-law bar on Owner-controlled Task reminders (D152). Its delivery paths are Recipient-oriented throughout, so an Owner-responsible Task receives nothing from it today — an open D164 seam. Authoritative engine rules and the seam: [WORKFLOWS.md](WORKFLOWS.md) §10a.
+**Due-date-driven, Task-scoped** engine that sends **Recipient** reminders derived from the Owner-selected Task due date (D102). The D105 advance occurrence is independently Owner-optional (D178); D106 overdue follow-through continues when that preference is OFF. This is the **current A8 implementation** of due-date-driven follow-through — one reminder/follow-through mechanism, not an escalation engine, and **not** a product-law bar on Owner-controlled Task reminders (D152). Its delivery paths are Recipient-oriented throughout, so an Owner-responsible Task receives nothing from it today — an open D164 seam. Authoritative engine rules and the seam: [WORKFLOWS.md](WORKFLOWS.md) §10a.
 
 ### Follow-up Policy
 
-Deterministic rules governing occurrence computation, the advance-reminder skip rule, daily overdue recurrence, the overdue ceiling, eligibility, suspension, and stopping (D102–D107). Owned by the application; never by the LLM. The A8.0 Phase 1 preset / Phase 2 interval policy is retired (D095 superseded in part).
+Deterministic rules governing occurrence computation, the independent D178 advance-enablement preference, the advance-reminder skip rule, daily overdue recurrence, the overdue ceiling, eligibility, suspension, and stopping (D102–D107, D178). Owned by the application; never by the LLM. The A8.0 Phase 1 preset / Phase 2 interval policy is retired (D095 superseded in part).
 
 ### Event Notification Engine
 
