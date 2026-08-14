@@ -5,6 +5,7 @@ import {
   acquireGmailSyncLock,
   getCommunicationAccountByOrganization,
   getCommunicationEventByProviderMessageId,
+  getTemporaryCommunicationExcerptByEventId,
   persistGmailConnectionTransaction,
 } from '@aicaa/db';
 import { createTestDatabase, type TestDatabase } from '@aicaa/db/testing';
@@ -29,11 +30,11 @@ function b64url(text: string): string {
   return Buffer.from(text, 'utf8').toString('base64url');
 }
 
-function ctx(requestId = 'req_sync_engine') {
+function ctx(requestId = 'req_sync_engine', at = now) {
   return {
     owner,
     db: db.prisma,
-    now,
+    now: at,
     requestId,
   };
 }
@@ -72,11 +73,11 @@ function tokenProvider() {
   return vi.fn(async () => 'access_token_memory_only');
 }
 
-function inboxMessage(id: string) {
+function gmailMessage(id: string, overrides: { labelIds?: string[]; body?: string } = {}) {
   return {
     id,
     threadId: `thread_${id}`,
-    labelIds: ['INBOX'],
+    labelIds: overrides.labelIds ?? ['INBOX'],
     snippet: 'hi',
     internalDate: '1721145600000',
     payload: {
@@ -86,9 +87,13 @@ function inboxMessage(id: string) {
         { name: 'To', value: 'owner@example.com' },
         { name: 'Subject', value: 'Hello' },
       ],
-      body: { data: b64url('Hello from Gmail') },
+      body: { data: b64url(overrides.body ?? 'Hello from Gmail') },
     },
   };
+}
+
+function inboxMessage(id: string) {
+  return gmailMessage(id);
 }
 
 let db: TestDatabase;
@@ -468,6 +473,15 @@ describe('A5.4 Gmail sync engine', () => {
     });
     expect(first.run.eventsCreated).toBe(1);
 
+    const event = await getCommunicationEventByProviderMessageId(
+      db.prisma,
+      org,
+      'msg_replay_idempotent',
+    );
+    const afterFirst = await getTemporaryCommunicationExcerptByEventId(db.prisma, org, event!.id);
+    expect(afterFirst?.purgeAt).toBe('2026-07-23T16:00:00.000Z');
+    expect(afterFirst?.purgedAt).toBeNull();
+
     const secondClient: GmailApiClient = {
       getProfile: vi.fn(),
       listHistory: vi.fn(async () => ({
@@ -481,7 +495,8 @@ describe('A5.4 Gmail sync engine', () => {
       })),
       getMessage: vi.fn(async () => inboxMessage('msg_replay_idempotent')),
     };
-    const second = await runOwnerGmailSync(ctx('req_replay_second'), {
+    // Later syncedAt would rewrite purgeAt if re-ingest were still a retention writer.
+    const second = await runOwnerGmailSync(ctx('req_replay_second', '2026-07-18T16:00:00.000Z'), {
       gmailClient: secondClient,
       getAccessToken: tokenProvider(),
     });
@@ -492,6 +507,104 @@ describe('A5.4 Gmail sync engine', () => {
     await expect(
       db.prisma.communicationEvent.count({
         where: { organizationId: org, providerMessageId: 'msg_replay_idempotent' },
+      }),
+    ).resolves.toBe(1);
+
+    const excerpt = await getTemporaryCommunicationExcerptByEventId(db.prisma, org, event!.id);
+    expect(excerpt?.purgeAt).toBe(afterFirst?.purgeAt);
+    expect(excerpt?.purgedAt).toBeNull();
+    expect(excerpt?.content).toBe('Hello from Gmail');
+  });
+
+  it('does not restore a purged excerpt when a message leaves Inbox and later returns', async () => {
+    await db.prisma.communicationAccount.update({
+      where: { id: accountId },
+      data: { historyId: '7000', historyState: 'valid' },
+    });
+
+    const messageId = 'msg_archive_reentry';
+    const ingestClient: GmailApiClient = {
+      getProfile: vi.fn(),
+      listHistory: vi.fn(async () => ({
+        historyId: '7100',
+        history: [
+          {
+            id: '7050',
+            messagesAdded: [{ message: { id: messageId } }],
+          },
+        ],
+      })),
+      getMessage: vi.fn(async () => gmailMessage(messageId)),
+    };
+    const ingested = await runOwnerGmailSync(ctx('req_archive_ingest'), {
+      gmailClient: ingestClient,
+      getAccessToken: tokenProvider(),
+    });
+    expect(ingested.run.eventsCreated).toBe(1);
+
+    const event = await getCommunicationEventByProviderMessageId(db.prisma, org, messageId);
+    const afterIngest = await getTemporaryCommunicationExcerptByEventId(db.prisma, org, event!.id);
+    expect(afterIngest?.content).toBe('Hello from Gmail');
+    expect(afterIngest?.purgedAt).toBeNull();
+    const originalPurgeAt = afterIngest!.purgeAt;
+
+    const archiveClient: GmailApiClient = {
+      getProfile: vi.fn(),
+      listHistory: vi.fn(async () => ({
+        historyId: '7200',
+        history: [
+          {
+            id: '7150',
+            labelsRemoved: [{ message: { id: messageId }, labelIds: ['INBOX'] }],
+          },
+        ],
+      })),
+      getMessage: vi.fn(async () => gmailMessage(messageId, { labelIds: [] })),
+    };
+    const archived = await runOwnerGmailSync(ctx('req_archive_leave'), {
+      gmailClient: archiveClient,
+      getAccessToken: tokenProvider(),
+    });
+    expect(archived.run.eventsUpdated).toBe(1);
+
+    const afterArchive = await getTemporaryCommunicationExcerptByEventId(db.prisma, org, event!.id);
+    expect(afterArchive?.content).toBe('');
+    expect(afterArchive?.byteLength).toBe(0);
+    expect(afterArchive?.purgedAt).toBe(now);
+    expect(afterArchive?.purgeAt).toBe(originalPurgeAt);
+
+    const reentryClient: GmailApiClient = {
+      getProfile: vi.fn(),
+      listHistory: vi.fn(async () => ({
+        historyId: '7300',
+        history: [
+          {
+            id: '7250',
+            labelsAdded: [{ message: { id: messageId }, labelIds: ['INBOX'] }],
+          },
+        ],
+      })),
+      getMessage: vi.fn(async () => gmailMessage(messageId, { body: 'Restored from Inbox again' })),
+    };
+    const reentered = await runOwnerGmailSync(
+      ctx('req_archive_reentry', '2026-07-18T16:00:00.000Z'),
+      {
+        gmailClient: reentryClient,
+        getAccessToken: tokenProvider(),
+      },
+    );
+    expect(reentered.run.outcome).toBe('succeeded');
+    expect(reentered.run.eventsCreated).toBe(0);
+    expect(reentered.run.eventsUpdated).toBe(1);
+
+    const afterReentry = await getTemporaryCommunicationExcerptByEventId(db.prisma, org, event!.id);
+    expect(afterReentry?.content).toBe('');
+    expect(afterReentry?.byteLength).toBe(0);
+    expect(afterReentry?.purgedAt).toBe(now);
+    expect(afterReentry?.purgeAt).toBe(originalPurgeAt);
+    await expect(
+      db.prisma.communicationEvent.count({
+        where: { organizationId: org, providerMessageId: messageId },
       }),
     ).resolves.toBe(1);
   });

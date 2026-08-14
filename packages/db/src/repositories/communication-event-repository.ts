@@ -238,6 +238,24 @@ export async function upsertGoogleMessagesReviewEvent(
   }
 }
 
+/**
+ * Create or refresh a TemporaryCommunicationExcerpt without becoming a retention writer.
+ *
+ * Create writes content, byte length, the initial concrete `purgeAt` (D078 / D181 birth deadline),
+ * and `purgedAt = null`. Existing-row refresh may update content and byte length only, and only
+ * while `purgedAt` is still null. Re-ingest therefore cannot shorten an active D082 hold, refresh
+ * an approved ceiling, clear `purgedAt`, or restore body content after purge. A purged update is a
+ * no-op for excerpt state so the enclosing CommunicationEvent transaction can still succeed.
+ *
+ * `purgeAt` / `purgedAt` on an existing row belong to D082 lifecycle code and the purge primitive,
+ * not to this ingest path. The existing-row write omits those columns entirely rather than
+ * computing `max(existing, incoming)`, which would still refresh a ceiling and can lose a
+ * concurrent D082 update.
+ *
+ * Implemented as `createMany({ skipDuplicates: true })` plus a conditional `updateMany`, not
+ * create-and-catch-P2002: a unique violation inside `$transaction` aborts the PostgreSQL
+ * transaction (25P02), which would fail Gmail history-page commits on purged re-ingest.
+ */
 export async function upsertTemporaryCommunicationExcerpt(
   db: Client,
   input: {
@@ -251,25 +269,39 @@ export async function upsertTemporaryCommunicationExcerpt(
   assertExcerptWithinCap(input.content);
   const byteLength = measureExcerptByteLength(input.content);
 
-  const row = await db.temporaryCommunicationExcerpt.upsert({
-    where: { communicationEventId: input.communicationEventId },
-    create: {
-      id: input.excerptId,
-      organizationId: input.organizationId,
+  await db.temporaryCommunicationExcerpt.createMany({
+    data: [
+      {
+        id: input.excerptId,
+        organizationId: input.organizationId,
+        communicationEventId: input.communicationEventId,
+        content: input.content,
+        byteLength,
+        purgeAt: fromIso(input.purgeAt)!,
+        purgedAt: null,
+      },
+    ],
+    skipDuplicates: true,
+  });
+
+  await db.temporaryCommunicationExcerpt.updateMany({
+    where: {
       communicationEventId: input.communicationEventId,
-      content: input.content,
-      byteLength,
-      purgeAt: fromIso(input.purgeAt)!,
+      organizationId: input.organizationId,
       purgedAt: null,
     },
-    update: {
+    data: {
       content: input.content,
       byteLength,
-      purgeAt: fromIso(input.purgeAt)!,
-      purgedAt: null,
     },
   });
 
+  const row = await db.temporaryCommunicationExcerpt.findUnique({
+    where: { communicationEventId: input.communicationEventId },
+  });
+  if (!row) {
+    throw uniqueViolation('TemporaryCommunicationExcerpt already exists for a different identity.');
+  }
   if (row.organizationId !== input.organizationId) {
     throw organizationMismatch(
       'TemporaryCommunicationExcerpt belongs to a different organization.',
