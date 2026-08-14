@@ -20,6 +20,7 @@ import {
   notFound,
   organizationMismatch,
   persistenceValidation,
+  uniqueViolation,
 } from '../errors/persistence-errors.js';
 import { listGmailExcludedSenderAddresses } from './gmail-sender-exclusion-repository.js';
 
@@ -134,6 +135,107 @@ export async function upsertCommunicationEvent(
   });
 
   return { event: mapCommunicationEvent(row), created: true };
+}
+
+export const GOOGLE_MESSAGES_SOURCE_TYPE = 'google_messages' as const;
+export const GOOGLE_MESSAGES_PROVIDER_MESSAGE_PREFIX = 'gm:' as const;
+
+export function buildGoogleMessagesProviderMessageId(sourceOccurrenceId: string): string {
+  return `${GOOGLE_MESSAGES_PROVIDER_MESSAGE_PREFIX}${sourceOccurrenceId}`;
+}
+
+/**
+ * Create or reuse the canonical CommunicationEvent for an Owner-initiated Google Messages
+ * Review (D181). No CommunicationAccount is created. Gmail-shaped preview fields stay empty so
+ * selected text lives only on TemporaryCommunicationExcerpt.
+ */
+export async function upsertGoogleMessagesReviewEvent(
+  db: Client,
+  input: {
+    organizationId: string;
+    eventId: string;
+    sourceOccurrenceId: string;
+    dedupeKey: string;
+    observedAt: string;
+  },
+): Promise<{ event: CommunicationEvent; created: boolean }> {
+  const providerMessageId = buildGoogleMessagesProviderMessageId(input.sourceOccurrenceId);
+  const existing = await db.communicationEvent.findUnique({
+    where: {
+      organizationId_providerMessageId: {
+        organizationId: input.organizationId,
+        providerMessageId,
+      },
+    },
+  });
+
+  if (existing) {
+    if (existing.organizationId !== input.organizationId) {
+      throw organizationMismatch('CommunicationEvent belongs to a different organization.');
+    }
+    if (existing.sourceType !== GOOGLE_MESSAGES_SOURCE_TYPE) {
+      throw persistenceValidation(
+        'CommunicationEvent source type does not match a Google Messages occurrence.',
+      );
+    }
+    if (existing.accountId != null) {
+      throw persistenceValidation(
+        'Google Messages CommunicationEvent must not reference a CommunicationAccount.',
+      );
+    }
+    return { event: mapCommunicationEvent(existing), created: false };
+  }
+
+  const observedAt = fromIso(input.observedAt);
+  if (!observedAt) {
+    throw persistenceValidation('Google Messages observedAt is invalid.');
+  }
+
+  try {
+    const row = await db.communicationEvent.create({
+      data: {
+        id: input.eventId,
+        organizationId: input.organizationId,
+        accountId: null,
+        sourceType: GOOGLE_MESSAGES_SOURCE_TYPE,
+        providerMessageId,
+        providerThreadId: providerMessageId,
+        dedupeKey: input.dedupeKey,
+        internalDate: observedAt,
+        receivedAt: observedAt,
+        fromAddress: '',
+        toAddresses: asJson([]),
+        subject: null,
+        snippet: null,
+        labelIds: asJson([]),
+        hasAttachments: false,
+        attachmentMetadata: asJson([]),
+        status: 'active',
+        ingestRunId: null,
+        purgeAt: null,
+      },
+    });
+
+    return { event: mapCommunicationEvent(row), created: true };
+  } catch (error) {
+    if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') {
+      throw error;
+    }
+    const raced = await db.communicationEvent.findUnique({
+      where: {
+        organizationId_providerMessageId: {
+          organizationId: input.organizationId,
+          providerMessageId,
+        },
+      },
+    });
+    if (!raced || raced.sourceType !== GOOGLE_MESSAGES_SOURCE_TYPE || raced.accountId != null) {
+      throw uniqueViolation(
+        'Google Messages CommunicationEvent already exists for this occurrence.',
+      );
+    }
+    return { event: mapCommunicationEvent(raced), created: false };
+  }
 }
 
 export async function upsertTemporaryCommunicationExcerpt(
@@ -363,25 +465,11 @@ export async function listEligibleGmailIntakeEvents(
   return { items: page, nextCursor };
 }
 
-/**
- * Replace TemporaryCommunicationExcerpt.purgeAt when the excerpt still exists and is not purged.
- * No-op (returns false) when missing or already purged — never restores content (D082).
+/*
+ * Excerpt retention deadlines are written by `applyD082ExcerptRetention` alone.
+ *
+ * A bare "set this excerpt's purgeAt from this one event" primitive used to live here, and it was
+ * the shape of the D082 defect: it assumed one event backed one suggestion, so a Review excerpt
+ * shared by sibling proposals got whichever sibling transitioned last. Resolving the maximum
+ * entitlement is not optional, so the only writer is the resolver that does it.
  */
-export async function updateExcerptPurgeAtIfPresent(
-  db: Client,
-  organizationId: string,
-  communicationEventId: string,
-  purgeAt: string,
-): Promise<boolean> {
-  const result = await db.temporaryCommunicationExcerpt.updateMany({
-    where: {
-      communicationEventId,
-      organizationId,
-      purgedAt: null,
-    },
-    data: {
-      purgeAt: fromIso(purgeAt)!,
-    },
-  });
-  return result.count === 1;
-}

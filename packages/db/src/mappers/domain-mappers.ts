@@ -4,6 +4,7 @@ import type {
   CapabilityScope,
   CommunicationAccount,
   CommunicationEvent,
+  CommunicationEventSourceType,
   GmailSyncRun,
   ReminderMetadata,
   RetentionMetadata,
@@ -50,6 +51,14 @@ import type {
   TaskSuggestion as PrismaSuggestion,
   TemporaryCommunicationExcerpt as PrismaTemporaryCommunicationExcerpt,
 } from '../generated/client/index.js';
+import { persistenceValidation } from '../errors/persistence-errors.js';
+
+function asCommunicationEventSourceType(value: string): CommunicationEventSourceType {
+  if (value === 'gmail' || value === 'google_messages') {
+    return value;
+  }
+  throw persistenceValidation('CommunicationEvent sourceType is not a supported source.');
+}
 
 export function toIso(value: Date): string {
   return toUtcInstant(value);
@@ -142,6 +151,9 @@ export function mapSuggestion(row: PrismaSuggestion): TaskSuggestion {
     voiceOriginated: row.voiceOriginated,
     sourceCommunicationEventId: row.sourceCommunicationEventId
       ? asCommunicationEventId(row.sourceCommunicationEventId)
+      : null,
+    sourceExcerptId: row.sourceExcerptId
+      ? asTemporaryCommunicationExcerptId(row.sourceExcerptId)
       : null,
     approvedTaskId: row.approvedTaskId ? asTaskId(row.approvedTaskId) : null,
     mergedIntoTaskId: row.mergedIntoTaskId ? asTaskId(row.mergedIntoTaskId) : null,
@@ -281,11 +293,20 @@ export type GmailOAuthCredentialRecord = {
 };
 
 export function mapCommunicationEvent(row: PrismaCommunicationEvent): CommunicationEvent {
+  const sourceType = asCommunicationEventSourceType(row.sourceType);
+  if (sourceType === 'gmail' && row.accountId == null) {
+    throw persistenceValidation('Gmail CommunicationEvent requires an accountId.');
+  }
+  if (sourceType === 'google_messages' && row.accountId != null) {
+    throw persistenceValidation(
+      'Google Messages CommunicationEvent must not reference a CommunicationAccount.',
+    );
+  }
   return {
     id: asCommunicationEventId(row.id),
     organizationId: asOrganizationId(row.organizationId),
-    accountId: asCommunicationAccountId(row.accountId),
-    sourceType: 'gmail',
+    accountId: row.accountId ? asCommunicationAccountId(row.accountId) : null,
+    sourceType,
     providerMessageId: row.providerMessageId,
     providerThreadId: row.providerThreadId,
     dedupeKey: row.dedupeKey,
@@ -415,7 +436,7 @@ export type PersistedInterpretationRun = {
   organizationId: string;
   idempotencyKey: string;
   requestFingerprint: string;
-  sourceKind: 'owner_manual_capture' | 'gmail';
+  sourceKind: 'owner_manual_capture' | 'gmail' | 'google_messages';
   outcome: 'proposals_created' | 'no_proposals';
   modelVersion: string;
   policyVersion: string;

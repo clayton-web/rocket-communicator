@@ -8,6 +8,7 @@ import {
 import {
   asOrganizationId,
   asTaskSuggestionId,
+  asTemporaryCommunicationExcerptId,
   type SourceReference,
   type TaskSuggestion,
 } from '@aicaa/domain';
@@ -25,9 +26,11 @@ import {
 import { interpretationServiceError } from './errors';
 import {
   assertInterpretationResultFitsPersistence,
+  requireGoogleMessagesProvenance,
   validateInterpretationRequest,
   type AuthorizedInterpretationSourceKind,
   type GmailInterpretationProvenance,
+  type GoogleMessagesInterpretationProvenance,
   type InterpretationRequest,
   type ValidatedInterpretationRequest,
 } from './validate';
@@ -35,6 +38,7 @@ import {
 export type {
   AuthorizedInterpretationSourceKind,
   GmailInterpretationProvenance,
+  GoogleMessagesInterpretationProvenance,
   InterpretationRequest,
 };
 
@@ -44,13 +48,27 @@ export interface InterpretationServiceDeps {
 }
 
 /**
+ * Optional result from {@link BeforeNewInterpretation}.
+ *
+ * Messages Review uses this to bind the source event/excerpt identities that were actually
+ * persisted after D161 classified the request as new. Replay and conflict never run the gate,
+ * so they never persist selected text. Gmail's eligibility gate returns void.
+ */
+export type BeforeNewInterpretationResult = {
+  messagesProvenance?: GoogleMessagesInterpretationProvenance;
+};
+
+/**
  * Caller-owned gate that runs only when this request would start a new interpretation.
  *
  * Replay and idempotency-conflict classification already happened against durable
  * `(organizationId, idempotencyKey)` + fingerprint state. The Gmail adapter uses this to require
- * current Inbox eligibility only for a new interpretation, not for an exact D161 replay.
+ * current Inbox eligibility only for a new interpretation, not for an exact D161 replay. The
+ * Messages adapter uses it to persist the CommunicationEvent and TemporaryCommunicationExcerpt
+ * only after that same classification.
  */
-export type BeforeNewInterpretation = () => void | Promise<void>;
+export type BeforeNewInterpretation = () =>
+  void | BeforeNewInterpretationResult | Promise<void | BeforeNewInterpretationResult>;
 
 /**
  * What the committed occurrence itself says, for a caller that needs more than the proposals.
@@ -63,7 +81,7 @@ export type BeforeNewInterpretation = () => void | Promise<void>;
  * committed at some earlier time than the request being served.
  */
 export interface InterpretationOccurrenceSummary {
-  sourceKind: 'owner_manual_capture' | 'gmail';
+  sourceKind: 'owner_manual_capture' | 'gmail' | 'google_messages';
   outcome: 'proposals_created' | 'no_proposals';
   interpretedAt: string;
 }
@@ -176,6 +194,37 @@ function buildGmailSourceReference(input: {
   };
 }
 
+/**
+ * Truthful Google Messages source provenance for an Owner Review-with-Rocket occurrence (D181).
+ *
+ * `sourceType` is `google_messages`. No sender, phone number, or conversation title is copied
+ * onto the source reference. `sourceCommunicationEventId` stays unset: that column is A6
+ * Gmail-origin suggestion linkage and is not the Messages Review path.
+ */
+function buildGoogleMessagesSourceReference(input: {
+  provenance: GoogleMessagesInterpretationProvenance;
+  capturedAt: string;
+}): SourceReference {
+  return {
+    id: input.provenance.communicationEventId,
+    sourceType: 'google_messages',
+    dedupeKey: input.provenance.dedupeKey,
+    capturedAt: input.capturedAt,
+    externalIds: [
+      {
+        provider: 'google_messages',
+        idType: 'occurrence',
+        id: input.provenance.sourceOccurrenceId,
+      },
+    ],
+    excerptRef: {
+      excerptId: input.provenance.excerptId,
+      byteLength: input.provenance.excerptByteLength,
+      contentClassification: 'temporary_communication',
+    },
+  };
+}
+
 function buildSourceReference(input: {
   occurrenceToken: string;
   request: ValidatedInterpretationRequest;
@@ -183,6 +232,12 @@ function buildSourceReference(input: {
   if (input.request.sourceKind === 'gmail') {
     return buildGmailSourceReference({
       provenance: input.request.gmailProvenance!,
+      capturedAt: input.request.capturedAt,
+    });
+  }
+  if (input.request.sourceKind === 'google_messages') {
+    return buildGoogleMessagesSourceReference({
+      provenance: input.request.messagesProvenance!,
       capturedAt: input.request.capturedAt,
     });
   }
@@ -203,6 +258,17 @@ function buildSourceReference(input: {
  * fields are intentionally not persisted (D169): `peopleHints` must not become a Recipient,
  * assignment, or responsibility, and an unresolved `deadlineExpression` must not be promoted into
  * `proposedDueAt`. Neither has a column, and their omission is a decision rather than an oversight.
+ *
+ * ## Two linkages that must not be confused (D082)
+ *
+ * `sourceExcerptId` comes from the source reference this service just built from server-resolved
+ * provenance, never from anything a client sent. It is the proposal's D082 retention entitlement on
+ * the temporary excerpt that is its evidence, and it is present for Gmail Review and Google Messages
+ * Review and absent for manual capture, which stores no excerpt at all.
+ *
+ * `sourceCommunicationEventId` stays null for every source. It is A6 claimed-event processing
+ * linkage, it is unique per event, and an interpretation proposal claiming it would both break A6's
+ * cardinality and misreport which engine produced the proposal. Persistence refuses it independently.
  */
 function buildProposedSuggestion(input: {
   organizationId: string;
@@ -210,6 +276,7 @@ function buildProposedSuggestion(input: {
   sourceReference: SourceReference;
   now: string;
 }): TaskSuggestion {
+  const excerptId = input.sourceReference.excerptRef?.excerptId;
   return {
     id: asTaskSuggestionId(`sug_${randomToken()}`),
     organizationId: asOrganizationId(input.organizationId),
@@ -218,6 +285,7 @@ function buildProposedSuggestion(input: {
     sourceReference: input.sourceReference,
     voiceOriginated: false,
     sourceCommunicationEventId: null,
+    sourceExcerptId: excerptId ? asTemporaryCommunicationExcerptId(excerptId) : null,
     retention: {},
     version: 1,
     createdAt: input.now,
@@ -292,7 +360,8 @@ async function resolveCommittedOccurrence(
  *    with a different fingerprint conflicts before any work.
  * 3. If this would be a new interpretation, run the optional caller gate. Gmail uses this to require
  *    current Inbox eligibility only for a new run — an exact replay does not need the source to
- *    still be Inbox-eligible.
+ *    still be Inbox-eligible. Messages Review uses it to persist the source event/excerpt only
+ *    after D161 has already classified the request as new.
  * 4. Call the provider with no database transaction open. A failed call leaves nothing behind:
  *    there is no InterpretationRun, no TaskSuggestion, and no attempt row to record it.
  * 5. Refuse provider-returned `policyVersion` / `modelVersion` that cannot fit the occurrence
@@ -317,7 +386,7 @@ export async function interpretCapture(input: {
   deps?: InterpretationServiceDeps;
   beforeNewInterpretation?: BeforeNewInterpretation;
 }): Promise<InterpretationServiceResult> {
-  const request: ValidatedInterpretationRequest = validateInterpretationRequest(input.request);
+  let request: ValidatedInterpretationRequest = validateInterpretationRequest(input.request);
   const runtime = await loadDbRuntime();
   const now = input.now ?? new Date().toISOString();
 
@@ -332,6 +401,10 @@ export async function interpretCapture(input: {
       timezone: request.timezone,
       gmailOccurrenceId:
         request.sourceKind === 'gmail' ? request.gmailProvenance?.communicationEventId : undefined,
+      messagesOccurrenceId:
+        request.sourceKind === 'google_messages'
+          ? request.messagesProvenance?.sourceOccurrenceId
+          : undefined,
     }),
   };
 
@@ -341,7 +414,13 @@ export async function interpretCapture(input: {
   }
 
   if (input.beforeNewInterpretation) {
-    await input.beforeNewInterpretation();
+    const gateResult = await input.beforeNewInterpretation();
+    if (request.sourceKind === 'google_messages' && gateResult?.messagesProvenance) {
+      request = {
+        ...request,
+        messagesProvenance: requireGoogleMessagesProvenance(gateResult.messagesProvenance),
+      };
+    }
   }
 
   const provider = input.deps?.provider ?? createInterpretationProvider();

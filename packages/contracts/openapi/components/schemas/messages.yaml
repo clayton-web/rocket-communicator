@@ -1,0 +1,77 @@
+components:
+  schemas:
+    CreateMessagesReviewRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - sourceOccurrenceId
+        - selectedText
+        - observedAt
+      properties:
+        sourceOccurrenceId:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: |
+            Opaque Google Messages source occurrence identity chosen by the Owner. The server
+            owns canonical provenance construction from this value. It is not a phone number,
+            sender name, or conversation title, and it is not a CommunicationEvent id.
+        selectedText:
+          type: string
+          minLength: 1
+          maxLength: 8192
+          description: |
+            Plain text of the explicitly selected eligible one-to-one Google Messages occurrence.
+            Persisted only as TemporaryCommunicationExcerpt at this Review boundary. Not echoed
+            in the response and not written to audit notes.
+        observedAt:
+          type: string
+          format: date-time
+          description: |
+            When the eligible occurrence was observed on the device. An explicit UTC designator
+            or numeric offset is required. The server uses this as interpretation `capturedAt`;
+            clients do not send `capturedAt`, `sourceKind`, or `organizationId`.
+      description: |
+        Owner request to Review one eligible Google Messages occurrence with Rocket (D181).
+        Provenance is fixed server-side as `google_messages`. The organization comes from the
+        authenticated Owner session. Sender, phone number, and conversation title are not
+        accepted.
+    MessagesReviewResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - idempotentReplay
+        - interpretedAt
+        - taskSuggestions
+      properties:
+        idempotentReplay:
+          type: boolean
+          description: |
+            `true` when this response replays a prior committed interpretation for the same
+            organization, Idempotency-Key, and request payload. A replay is answered from canonical
+            state and does not call the interpretation provider again.
+        interpretedAt:
+          type: string
+          format: date-time
+          description: |
+            When the interpretation that produced these proposals committed. On a replay this is the
+            original occurrence's time, not the time of the replayed request.
+        taskSuggestions:
+          type: array
+          maxItems: 10
+          items:
+            $ref: './task-suggestion.yaml#/components/schemas/TaskSuggestion'
+          description: |
+            The 0..N canonical pending proposals this Messages Review produced, using the same
+            `TaskSuggestion` schema the Owner proposal reads return. An empty array is truthful
+            success, not a failure.
+      description: |
+        Result of an Owner Google Messages Review with Rocket (D181).
+
+        Same public interpretation result shape as Gmail Review and manual capture: replay flag,
+        commit time, and canonical proposals. Interpretation provenance is persistence-only and
+        is not published: no `interpretationRunId`, no request fingerprint, no persisted
+        idempotency key, no `modelVersion` or `policyVersion`, and no selected-text echo.
+
+        Creates no canonical Task, no approval, no responsibility selection, and no TaskAssignment.
+        Acceptance remains the Owner's through the existing S5 proposal review path.

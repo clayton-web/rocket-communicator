@@ -4,6 +4,7 @@ import type { InterpretationServiceResult } from './service';
 
 export type ManualCaptureResponseDto = components['schemas']['ManualCaptureResponse'];
 export type GmailReviewResponseDto = components['schemas']['GmailReviewResponse'];
+export type MessagesReviewResponseDto = components['schemas']['MessagesReviewResponse'];
 
 /**
  * Map an interpretation outcome onto the public manual-capture response (S3.2 / D170).
@@ -35,7 +36,25 @@ export function mapManualCaptureResponse(
  * built field by field so occurrence provenance cannot silently become published API. `sourceKind`
  * stays unpublished because this Gmail adapter already fixed it.
  */
-export function mapGmailReviewResponse(result: InterpretationServiceResult): GmailReviewResponseDto {
+export function mapGmailReviewResponse(
+  result: InterpretationServiceResult,
+): GmailReviewResponseDto {
+  return {
+    idempotentReplay: result.outcome === 'replayed',
+    interpretedAt: result.occurrence.interpretedAt,
+    taskSuggestions: result.suggestions.map(mapSuggestionToDto),
+  };
+}
+
+/**
+ * Map an interpretation outcome onto the public Messages Review-with-Rocket response (D181).
+ *
+ * Same public result shape as Gmail Review and manual capture. `sourceKind` stays unpublished
+ * because this Messages adapter already fixed it. Selected message text is never echoed.
+ */
+export function mapMessagesReviewResponse(
+  result: InterpretationServiceResult,
+): MessagesReviewResponseDto {
   return {
     idempotentReplay: result.outcome === 'replayed',
     interpretedAt: result.occurrence.interpretedAt,

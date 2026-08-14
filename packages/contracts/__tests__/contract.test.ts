@@ -704,6 +704,112 @@ describe('contracts package', () => {
     }
   });
 
+  it('contracts the D181 Messages Review adapter without a generic interpretations API', () => {
+    execSync('pnpm bundle', { cwd: root, stdio: 'pipe' });
+    const bundled = parseYaml(readFileSync(path.join(root, 'dist/openapi.bundled.yaml'), 'utf8'));
+    const schemas = (bundled.components?.schemas ?? {}) as Record<string, unknown>;
+    const routes = Object.keys(bundled.paths ?? {});
+
+    expect(routes).toContain('/api/v1/messages/reviews');
+    expect(routes).not.toContain('/api/v1/interpretations');
+    expect(routes.filter((route) => route.includes('interpretation'))).toEqual([]);
+    expect(routes.filter((route) => route.includes('sms'))).toEqual([]);
+
+    const reviewPath = bundled.paths?.['/api/v1/messages/reviews'] as
+      Record<string, unknown> | undefined;
+    expect(Object.keys(reviewPath ?? {}).sort()).toEqual(['post']);
+    const reviewPost = reviewPath!.post as {
+      operationId?: string;
+      parameters?: { $ref?: string }[];
+      responses?: Record<string, unknown>;
+    };
+    expect(reviewPost.operationId).toBe('createMessagesReview');
+    expect((reviewPost.parameters ?? []).map((parameter) => parameter.$ref ?? '').join()).toMatch(
+      /IdempotencyKey/,
+    );
+    expect(Object.keys(reviewPost.responses ?? {}).sort()).toEqual([
+      '200',
+      '400',
+      '401',
+      '409',
+      '415',
+      '428',
+      '500',
+      '503',
+    ]);
+
+    const request = schemas.CreateMessagesReviewRequest as {
+      additionalProperties?: boolean;
+      required?: string[];
+      properties?: Record<string, unknown>;
+    };
+    expect(request.additionalProperties).toBe(false);
+    expect(Object.keys(request.properties ?? {}).sort()).toEqual([
+      'observedAt',
+      'selectedText',
+      'sourceOccurrenceId',
+    ]);
+    expect([...(request.required ?? [])].sort()).toEqual([
+      'observedAt',
+      'selectedText',
+      'sourceOccurrenceId',
+    ]);
+    for (const forbidden of [
+      'sourceKind',
+      'organizationId',
+      'rawInput',
+      'capturedAt',
+      'timezone',
+      'accountId',
+      'communicationEventId',
+      'fromAddress',
+      'sender',
+      'phoneNumber',
+      'conversationTitle',
+    ]) {
+      expect(
+        Object.keys(request.properties ?? {}),
+        `CreateMessagesReviewRequest must not accept ${forbidden}`,
+      ).not.toContain(forbidden);
+    }
+
+    const response = schemas.MessagesReviewResponse as {
+      additionalProperties?: boolean;
+      required?: string[];
+      properties?: Record<string, { items?: { $ref?: string } }>;
+    };
+    expect(response.additionalProperties).toBe(false);
+    expect(Object.keys(response.properties ?? {}).sort()).toEqual([
+      'idempotentReplay',
+      'interpretedAt',
+      'taskSuggestions',
+    ]);
+    expect([...(response.required ?? [])].sort()).toEqual(
+      Object.keys(response.properties ?? {}).sort(),
+    );
+    expect(response.properties?.taskSuggestions?.items?.$ref).toBe(
+      '#/components/schemas/TaskSuggestion',
+    );
+    for (const forbidden of [
+      'interpretationRunId',
+      'requestFingerprint',
+      'idempotencyKey',
+      'modelVersion',
+      'policyVersion',
+      'sourceKind',
+      'rawInput',
+      'excerpt',
+      'selectedText',
+    ]) {
+      expect(
+        Object.keys(response.properties ?? {}),
+        `MessagesReviewResponse must not expose ${forbidden}`,
+      ).not.toContain(forbidden);
+    }
+
+    expect((schemas.SourceType as { enum?: string[] }).enum).toContain('google_messages');
+  });
+
   it('contracts Gmail-specific sender exclusion without a generic communications exclusion API (D180)', () => {
     execSync('pnpm bundle', { cwd: root, stdio: 'pipe' });
     const bundled = parseYaml(readFileSync(path.join(root, 'dist/openapi.bundled.yaml'), 'utf8'));

@@ -18,6 +18,7 @@ docs/ConfirmedFactSummaryPoint.md
 docs/CreateGmailReviewRequest.md
 docs/CreateGmailSenderExclusionRequest.md
 docs/CreateManualCaptureRequest.md
+docs/CreateMessagesReviewRequest.md
 docs/CreateRecipientRequest.md
 docs/CreateTaskRequest.md
 docs/CursorPage.md
@@ -61,6 +62,7 @@ docs/ManualCaptureResponse.md
 docs/MarkCapabilityTaskWaitingRequest.md
 docs/MarkTaskWaitingRequest.md
 docs/MergeTaskSuggestionRequest.md
+docs/MessagesReviewResponse.md
 docs/MissingInformationSummaryPoint.md
 docs/NextActionSummaryPoint.md
 docs/NotificationProcessResponse.md
@@ -131,6 +133,7 @@ src/main/kotlin/com/aicommunication/assistant/contracts/models/ConfirmedFactSumm
 src/main/kotlin/com/aicommunication/assistant/contracts/models/CreateGmailReviewRequest.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/CreateGmailSenderExclusionRequest.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/CreateManualCaptureRequest.kt
+src/main/kotlin/com/aicommunication/assistant/contracts/models/CreateMessagesReviewRequest.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/CreateRecipientRequest.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/CreateTaskRequest.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/CursorPage.kt
@@ -174,6 +177,7 @@ src/main/kotlin/com/aicommunication/assistant/contracts/models/ManualCaptureResp
 src/main/kotlin/com/aicommunication/assistant/contracts/models/MarkCapabilityTaskWaitingRequest.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/MarkTaskWaitingRequest.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/MergeTaskSuggestionRequest.kt
+src/main/kotlin/com/aicommunication/assistant/contracts/models/MessagesReviewResponse.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/MissingInformationSummaryPoint.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/NextActionSummaryPoint.kt
 src/main/kotlin/com/aicommunication/assistant/contracts/models/NotificationProcessResponse.kt

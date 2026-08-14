@@ -1,8 +1,8 @@
 import type { Task, TaskSuggestion } from '@aicaa/domain';
 import type { DbClient } from '../client/create-prisma-client.js';
 import { createAuditEvent, type CreateAuditEventInput } from '../repositories/audit-repository.js';
-import { updateExcerptPurgeAtIfPresent } from '../repositories/communication-event-repository.js';
 import { updateTaskSuggestionWithExpectedVersion } from '../repositories/suggestion-repository.js';
+import { applyD082ExcerptRetentionForSuggestion } from './d082-excerpt-retention.js';
 import { createTask, updateTaskWithExpectedVersion } from '../repositories/task-repository.js';
 import { getRecipientById } from '../repositories/recipient-repository.js';
 import {
@@ -132,15 +132,14 @@ export async function persistApproveTaskSuggestion(input: {
       selectedAt: selection.selectedAt,
     });
 
-    let excerptUpdated = false;
-    if (suggestion.sourceCommunicationEventId) {
-      excerptUpdated = await updateExcerptPurgeAtIfPresent(
-        tx,
-        input.organizationId,
-        suggestion.sourceCommunicationEventId,
-        input.excerptPurgeAt,
-      );
-    }
+    // The approve ceiling is this proposal's entitlement, not the excerpt's deadline: a sibling
+    // proposal of the same Review may still hold a longer one, and D082 keeps the maximum.
+    const excerptUpdated = await applyD082ExcerptRetentionForSuggestion(
+      tx,
+      input.organizationId,
+      suggestion,
+      input.excerptPurgeAt,
+    );
 
     const audit = await createAuditEvent(tx, {
       ...input.audit,
@@ -207,15 +206,12 @@ export async function persistDismissTaskSuggestion(input: {
       input.suggestion,
     );
 
-    let excerptUpdated = false;
-    if (suggestion.sourceCommunicationEventId) {
-      excerptUpdated = await updateExcerptPurgeAtIfPresent(
-        tx,
-        input.organizationId,
-        suggestion.sourceCommunicationEventId,
-        input.excerptPurgeAt,
-      );
-    }
+    const excerptUpdated = await applyD082ExcerptRetentionForSuggestion(
+      tx,
+      input.organizationId,
+      suggestion,
+      input.excerptPurgeAt,
+    );
 
     const audit = await createAuditEvent(tx, {
       ...input.audit,
@@ -268,15 +264,12 @@ export async function persistMergeTaskSuggestion(input: {
       input.task,
     );
 
-    let excerptUpdated = false;
-    if (suggestion.sourceCommunicationEventId) {
-      excerptUpdated = await updateExcerptPurgeAtIfPresent(
-        tx,
-        input.organizationId,
-        suggestion.sourceCommunicationEventId,
-        input.excerptPurgeAt,
-      );
-    }
+    const excerptUpdated = await applyD082ExcerptRetentionForSuggestion(
+      tx,
+      input.organizationId,
+      suggestion,
+      input.excerptPurgeAt,
+    );
 
     const audit = await createAuditEvent(tx, {
       ...input.audit,

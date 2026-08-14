@@ -1248,6 +1248,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messages/reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Review one eligible Google Messages occurrence with Rocket
+         * @description Owner-authenticated Messages-specific adapter into the shared interpretation service
+         *     (D181). Accepts one explicitly selected eligible Google Messages occurrence, creates or
+         *     reuses a canonical CommunicationEvent without a CommunicationAccount, persists selected
+         *     text only on TemporaryCommunicationExcerpt, and interprets with server-fixed
+         *     `sourceKind = google_messages`.
+         *
+         *     This is **not** a generic `/interpretations` endpoint: clients neither send nor choose a
+         *     source kind. Organization scope comes only from the authenticated Owner session (D059).
+         *     Requires `Idempotency-Key` (D094): an exact retry replays the original proposal set from
+         *     committed state with `idempotentReplay: true` and does not call the provider again, while
+         *     the same key reused for a different occurrence or fingerprint responds 409
+         *     IDEMPOTENCY_KEY_CONFLICT.
+         *
+         *     HTTP **200** covers first success, exact replay, and valid zero-proposal success alike.
+         *     This endpoint creates no canonical Task, approves nothing, selects no responsibility, and
+         *     writes no TaskAssignment. Suggestions remain on the existing S5 proposal lifecycle.
+         *     Notification arrival must not call this route.
+         *
+         */
+        post: operations["createMessagesReview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/internal/gmail/poll": {
         parameters: {
             query?: never;
@@ -2503,6 +2540,60 @@ export interface components {
             id: string;
             /** Format: date-time */
             createdAt: string;
+        };
+        /** @description Owner request to Review one eligible Google Messages occurrence with Rocket (D181).
+         *     Provenance is fixed server-side as `google_messages`. The organization comes from the
+         *     authenticated Owner session. Sender, phone number, and conversation title are not
+         *     accepted.
+         *      */
+        CreateMessagesReviewRequest: {
+            /** @description Opaque Google Messages source occurrence identity chosen by the Owner. The server
+             *     owns canonical provenance construction from this value. It is not a phone number,
+             *     sender name, or conversation title, and it is not a CommunicationEvent id.
+             *      */
+            sourceOccurrenceId: string;
+            /** @description Plain text of the explicitly selected eligible one-to-one Google Messages occurrence.
+             *     Persisted only as TemporaryCommunicationExcerpt at this Review boundary. Not echoed
+             *     in the response and not written to audit notes.
+             *      */
+            selectedText: string;
+            /**
+             * Format: date-time
+             * @description When the eligible occurrence was observed on the device. An explicit UTC designator
+             *     or numeric offset is required. The server uses this as interpretation `capturedAt`;
+             *     clients do not send `capturedAt`, `sourceKind`, or `organizationId`.
+             *
+             */
+            observedAt: string;
+        };
+        /** @description Result of an Owner Google Messages Review with Rocket (D181).
+         *
+         *     Same public interpretation result shape as Gmail Review and manual capture: replay flag,
+         *     commit time, and canonical proposals. Interpretation provenance is persistence-only and
+         *     is not published: no `interpretationRunId`, no request fingerprint, no persisted
+         *     idempotency key, no `modelVersion` or `policyVersion`, and no selected-text echo.
+         *
+         *     Creates no canonical Task, no approval, no responsibility selection, and no TaskAssignment.
+         *     Acceptance remains the Owner's through the existing S5 proposal review path.
+         *      */
+        MessagesReviewResponse: {
+            /** @description `true` when this response replays a prior committed interpretation for the same
+             *     organization, Idempotency-Key, and request payload. A replay is answered from canonical
+             *     state and does not call the interpretation provider again.
+             *      */
+            idempotentReplay: boolean;
+            /**
+             * Format: date-time
+             * @description When the interpretation that produced these proposals committed. On a replay this is the
+             *     original occurrence's time, not the time of the replayed request.
+             *
+             */
+            interpretedAt: string;
+            /** @description The 0..N canonical pending proposals this Messages Review produced, using the same
+             *     `TaskSuggestion` schema the Owner proposal reads return. An empty array is truthful
+             *     success, not a failure.
+             *      */
+            taskSuggestions: components["schemas"]["TaskSuggestion"][];
         };
         /** @enum {string} */
         SummaryPointKind: "confirmed_fact" | "request" | "commitment" | "amount" | "deadline" | "risk" | "inference" | "missing_information" | "next_action";
@@ -4793,6 +4884,94 @@ export interface operations {
                 };
             };
             500: components["responses"]["InternalError"];
+        };
+    };
+    createMessagesReview: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Client-generated idempotency key for safe retries of side-effecting Owner mutations (D094).
+                 *     Introduced for A7 handoff; reuse the same key only with an identical request payload for the
+                 *     same operation and resource. Replay of a completed success returns the original success body
+                 *     with `idempotentReplay: true`. Reuse with a conflicting payload returns 409 IDEMPOTENCY_KEY_CONFLICT.
+                 *     Missing header → 428 PRECONDITION_REQUIRED.
+                 *
+                 * @example handoff-01JXYZ-attempt-1
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateMessagesReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Interpretation completed, or an idempotent replay of a prior completed interpretation
+             *     for the same Idempotency-Key and matching payload. `taskSuggestions` may be empty.
+             *      */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessagesReviewResponse"];
+                };
+            };
+            /** @description Validation failure (`VALIDATION_ERROR`): malformed JSON, unsupported body fields, a
+             *     missing or invalid `sourceOccurrenceId`, `selectedText`, or `observedAt`, or a
+             *     malformed or oversized `Idempotency-Key`.
+             *      */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Conflict — the Idempotency-Key was reused for a different request
+             *     (`IDEMPOTENCY_KEY_CONFLICT`); or persistence refused the write for a reason unrelated
+             *     to this occurrence's idempotency (`DOMAIN_CONFLICT`). None replaces committed state.
+             *      */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported media type (`VALIDATION_ERROR`); `Content-Type: application/json` is required.
+             *      */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            428: components["responses"]["PreconditionRequired"];
+            500: components["responses"]["InternalError"];
+            /** @description Retryable interpretation dependency failure (`DEPENDENCY_UNAVAILABLE`), including
+             *     disabled or missing provider configuration, network/timeout/provider 5xx, quota or rate
+             *     limiting, and retryable invalid provider output. Nothing was persisted as an
+             *     interpretation occurrence, so the same Idempotency-Key may be retried with the
+             *     identical payload.
+             *      */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     pollGmailInternalGet: {

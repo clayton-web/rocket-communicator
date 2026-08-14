@@ -80,6 +80,8 @@ export {
   resolveInterpretationOccurrence,
   getCommunicationEventById,
   getTemporaryCommunicationExcerptByEventId,
+  upsertGoogleMessagesReviewEvent,
+  upsertTemporaryCommunicationExcerpt,
   listEligibleGmailIntakeEvents,
   findGmailSenderExclusionByOrgAndAddress,
   persistGmailSenderExclusion,

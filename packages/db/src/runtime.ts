@@ -152,6 +152,10 @@ export {
   getCommunicationEventById,
   getTemporaryCommunicationExcerptByEventId,
   listEligibleGmailIntakeEvents,
+  // D181 Messages Review. The Owner review route writes these only after D161 classifies a
+  // request as new; they must fail at load if the serverless bundle loses the binding.
+  upsertGoogleMessagesReviewEvent,
+  upsertTemporaryCommunicationExcerpt,
 } from './repositories/communication-event-repository.js';
 export { getTaskSuggestionBySourceEventId } from './repositories/suggestion-repository.js';
 export {

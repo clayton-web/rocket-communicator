@@ -68,6 +68,7 @@ export type {
   GmailSyncTrigger,
   GmailSyncOutcome,
   CommunicationEventStatus,
+  CommunicationEventSourceType,
   SuggestionProcessingStatus,
   CommunicationAccount,
   CommunicationEvent,
@@ -162,6 +163,12 @@ export {
   buildCompletionRetention,
   buildDismissalRetention,
 } from './retention/calculators.js';
+
+export {
+  computeExcerptEntitlementPurgeAt,
+  resolveExcerptPurgeAt,
+  type ExcerptEntitlementHolder,
+} from './retention/excerpt-entitlement.js';
 
 export {
   deriveTaskUrgency,

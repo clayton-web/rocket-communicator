@@ -107,6 +107,10 @@ const REQUIRED_EXPORTS = [
   'resolveInterpretationOccurrence',
   'getCommunicationEventById',
   'getTemporaryCommunicationExcerptByEventId',
+  // D181 Messages Review. Reached from the Owner review route after D161 classifies a request
+  // as new, so a missing binding must fail at load rather than at first persist.
+  'upsertGoogleMessagesReviewEvent',
+  'upsertTemporaryCommunicationExcerpt',
   'listEligibleGmailIntakeEvents',
   'findGmailSenderExclusionByOrgAndAddress',
   'persistGmailSenderExclusion',

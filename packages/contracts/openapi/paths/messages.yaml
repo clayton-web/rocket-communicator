@@ -1,0 +1,83 @@
+paths:
+  /api/v1/messages/reviews:
+    post:
+      operationId: createMessagesReview
+      tags: [Messages]
+      summary: Review one eligible Google Messages occurrence with Rocket
+      description: |
+        Owner-authenticated Messages-specific adapter into the shared interpretation service
+        (D181). Accepts one explicitly selected eligible Google Messages occurrence, creates or
+        reuses a canonical CommunicationEvent without a CommunicationAccount, persists selected
+        text only on TemporaryCommunicationExcerpt, and interprets with server-fixed
+        `sourceKind = google_messages`.
+
+        This is **not** a generic `/interpretations` endpoint: clients neither send nor choose a
+        source kind. Organization scope comes only from the authenticated Owner session (D059).
+        Requires `Idempotency-Key` (D094): an exact retry replays the original proposal set from
+        committed state with `idempotentReplay: true` and does not call the provider again, while
+        the same key reused for a different occurrence or fingerprint responds 409
+        IDEMPOTENCY_KEY_CONFLICT.
+
+        HTTP **200** covers first success, exact replay, and valid zero-proposal success alike.
+        This endpoint creates no canonical Task, approves nothing, selects no responsibility, and
+        writes no TaskAssignment. Suggestions remain on the existing S5 proposal lifecycle.
+        Notification arrival must not call this route.
+      parameters:
+        - $ref: '../components/parameters.yaml#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/CreateMessagesReviewRequest'
+      responses:
+        '200':
+          description: |
+            Interpretation completed, or an idempotent replay of a prior completed interpretation
+            for the same Idempotency-Key and matching payload. `taskSuggestions` may be empty.
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/MessagesReviewResponse'
+        '400':
+          description: |
+            Validation failure (`VALIDATION_ERROR`): malformed JSON, unsupported body fields, a
+            missing or invalid `sourceOccurrenceId`, `selectedText`, or `observedAt`, or a
+            malformed or oversized `Idempotency-Key`.
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '../components/responses.yaml#/components/responses/Unauthorized'
+        '409':
+          description: |
+            Conflict — the Idempotency-Key was reused for a different request
+            (`IDEMPOTENCY_KEY_CONFLICT`); or persistence refused the write for a reason unrelated
+            to this occurrence's idempotency (`DOMAIN_CONFLICT`). None replaces committed state.
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        '415':
+          description: |
+            Unsupported media type (`VALIDATION_ERROR`); `Content-Type: application/json` is required.
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        '428':
+          $ref: '../components/responses.yaml#/components/responses/PreconditionRequired'
+        '503':
+          description: |
+            Retryable interpretation dependency failure (`DEPENDENCY_UNAVAILABLE`), including
+            disabled or missing provider configuration, network/timeout/provider 5xx, quota or rate
+            limiting, and retryable invalid provider output. Nothing was persisted as an
+            interpretation occurrence, so the same Idempotency-Key may be retried with the
+            identical payload.
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '../components/responses.yaml#/components/responses/InternalError'

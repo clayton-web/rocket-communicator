@@ -144,6 +144,15 @@ model TaskSuggestion {
   /// Unique when set as preserved A6 0..1 compatibility/legacy behaviour (D163), not
   /// current product cardinality (D161: one interpretation occurrence → 0..N).
   sourceCommunicationEventId String?              @unique @map("source_communication_event_id") @db.VarChar(64)
+  /// Source temporary communication excerpt this proposal holds a D082 retention entitlement on.
+  ///
+  /// The Review linkage, and deliberately not the A6 one above: `sourceCommunicationEventId` is A6
+  /// claimed-event *processing* linkage and stays unique, while a Review excerpt legitimately backs
+  /// 0..N sibling proposals (D161) that each carry their own entitlement. Conflating the two would
+  /// force Review proposals through a 0..1-per-event constraint that is not their cardinality.
+  ///
+  /// Internal persistence only: not on the domain-facing public TaskSuggestion contract.
+  sourceExcerptId            String?              @map("source_excerpt_id") @db.VarChar(64)
   /// Owning interpretation occurrence (D161). Deliberately NOT unique: one occurrence owns 0..N
   /// sibling proposals. Permanently nullable — A6 Gmail and Recipient work-request suggestions have
   /// no interpretation occurrence and stay valid without one.
@@ -159,6 +168,11 @@ model TaskSuggestion {
   mergedIntoTask           Task?               @relation("MergedIntoTask", fields: [mergedIntoTaskId], references: [id], onDelete: SetNull)
   approvedTask             Task?               @relation("ApprovedTask", fields: [approvedTaskId], references: [id], onDelete: Restrict)
   sourceCommunicationEvent CommunicationEvent? @relation(fields: [sourceCommunicationEventId], references: [id], onDelete: Restrict)
+  /// SetNull rather than Restrict: the excerpt already cascades from its CommunicationEvent, so
+  /// Restrict here would make that existing cascade fail instead of protecting anything. Losing the
+  /// linkage row-side is also the honest outcome — with the excerpt gone there is no retention
+  /// entitlement left to express (D024).
+  sourceExcerpt            TemporaryCommunicationExcerpt? @relation(fields: [sourceExcerptId], references: [id], onDelete: SetNull)
   interpretationRun        InterpretationRun?  @relation(fields: [interpretationRunId], references: [id], onDelete: Restrict)
   /// Dormant append-only evidence only (D155). Absence of rows does not mean absence of a proposal.
   revisions                TaskSuggestionRevision[]
@@ -169,6 +183,8 @@ model TaskSuggestion {
   @@index([organizationId, status])
   @@index([organizationId, originTaskId])
   @@index([organizationId, interpretationRunId])
+  /// Sibling-entitlement read: every proposal holding a D082 claim on one excerpt (D082, D161).
+  @@index([organizationId, sourceExcerptId])
   @@map("task_suggestions")
 }
 
@@ -439,11 +455,12 @@ model GmailOAuthCredential {
   @@map("gmail_oauth_credentials")
 }
 
-/// Minimized Gmail communication event (D067–D072, D077). No MIME/HTML archives or attachment bytes.
+/// Minimized communication event (D067–D072, D077, D181). No MIME/HTML archives or attachment bytes.
+/// `accountId` is required for Gmail and null for Google Messages (no synthetic CommunicationAccount).
 model CommunicationEvent {
   id                           String                     @id @db.VarChar(64)
   organizationId               String                     @map("organization_id") @db.VarChar(64)
-  accountId                    String                     @map("account_id") @db.VarChar(64)
+  accountId                    String?                    @map("account_id") @db.VarChar(64)
   sourceType                   String                     @map("source_type") @db.VarChar(32)
   providerMessageId            String                     @map("provider_message_id") @db.VarChar(256)
   providerThreadId             String                     @map("provider_thread_id") @db.VarChar(256)
@@ -471,7 +488,7 @@ model CommunicationEvent {
   createdAt                    DateTime                   @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt                    DateTime                   @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  account     CommunicationAccount           @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  account     CommunicationAccount?          @relation(fields: [accountId], references: [id], onDelete: Restrict)
   excerpt     TemporaryCommunicationExcerpt?
   suggestions TaskSuggestion[]
 
@@ -498,6 +515,9 @@ model TemporaryCommunicationExcerpt {
   updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   event CommunicationEvent @relation(fields: [communicationEventId], references: [id], onDelete: Cascade)
+  /// Proposals holding a D082 retention entitlement on this excerpt (Gmail Review, Messages
+  /// Review). 0..N. A6 proposals reach the excerpt through CommunicationEvent instead.
+  suggestions TaskSuggestion[]
 
   @@index([organizationId, purgeAt])
   @@map("temporary_communication_excerpts")
@@ -1285,6 +1305,7 @@ enum InterpretationRunOutcome {
 enum InterpretationSourceKind {
   owner_manual_capture
   gmail
+  google_messages
 }
 
 /// Who authored a recorded TaskSuggestion revision-evidence row (D155).

@@ -6,11 +6,12 @@ import { interpretationServiceError } from './errors';
  * Interpretation source kinds authorized to produce occurrences through this service.
  *
  * `owner_manual_capture` is the S3.1 / S3.2 Owner capture path (D169, D170). `gmail` is the S7
- * Gmail Review-with-Rocket adapter (D179). The service stays source-neutral beyond these two:
- * an adapter supplies its own kind, captured-at, and provenance rather than growing a second
- * interpretation system. SMS remains unauthorized.
+ * Gmail Review-with-Rocket adapter (D179). `google_messages` is the D181 Messages Review adapter.
+ * The service stays source-neutral beyond these authorized kinds: an adapter supplies its own
+ * kind, captured-at, and provenance rather than growing a second interpretation system.
  */
-export type AuthorizedInterpretationSourceKind = 'owner_manual_capture' | 'gmail';
+export type AuthorizedInterpretationSourceKind =
+  'owner_manual_capture' | 'gmail' | 'google_messages';
 
 /**
  * Gmail occurrence identity required to build truthful Gmail source provenance (D179).
@@ -28,6 +29,22 @@ export interface GmailInterpretationProvenance {
   excerptByteLength: number;
   subject: string | null;
   fromAddress: string;
+  dedupeKey: string;
+}
+
+/**
+ * Google Messages occurrence identity required to build truthful Messages provenance (D181).
+ *
+ * Supplied only by the Messages Review adapter. Event and excerpt identities may be prepared
+ * before D161 classification and bound to durable rows only when this request is a new
+ * interpretation. Not accepted from a client as an interpretation source-kind claim. Contains
+ * no sender, phone number, or conversation title.
+ */
+export interface GoogleMessagesInterpretationProvenance {
+  communicationEventId: string;
+  sourceOccurrenceId: string;
+  excerptId: string;
+  excerptByteLength: number;
   dedupeKey: string;
 }
 
@@ -54,10 +71,14 @@ export interface InterpretationRequest {
   /** Owner/org IANA timezone when known. Mechanical context only. */
   timezone?: string | null;
   /**
-   * Required when `sourceKind` is `gmail`; forbidden for manual capture so Gmail provenance cannot
-   * leak onto a manual occurrence.
+   * Required when `sourceKind` is `gmail`; forbidden for manual capture and Google Messages so
+   * Gmail provenance cannot leak onto another source.
    */
   gmailProvenance?: GmailInterpretationProvenance;
+  /**
+   * Required when `sourceKind` is `google_messages`; forbidden for manual capture and Gmail.
+   */
+  messagesProvenance?: GoogleMessagesInterpretationProvenance;
 }
 
 /**
@@ -94,6 +115,7 @@ const MAX_GMAIL_FROM_ADDRESS = 320;
 const AUTHORIZED_SOURCE_KINDS = new Set<AuthorizedInterpretationSourceKind>([
   'owner_manual_capture',
   'gmail',
+  'google_messages',
 ]);
 
 /**
@@ -115,6 +137,30 @@ const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._~-]+$/;
  */
 const ISO_INSTANT_WITH_ZONE =
   /^\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}(:\d{2}(\.\d+)?)?([Zz]|[+-]\d{2}:\d{2})$/;
+
+export type CanonicalInterpretationInstant =
+  { ok: true; instant: string } | { ok: false; reason: 'format' | 'invalid' };
+
+/**
+ * Shared absolute/zoned instant check used by `capturedAt` and Messages `observedAt`.
+ *
+ * Rejects zone-less local datetimes and date-only values so the same retry cannot canonicalize
+ * to two instants on differently configured hosts. Equivalent zoned encodings of one instant
+ * collapse to one UTC ISO-8601 value.
+ */
+export function canonicalizeInterpretationInstant(value: string): CanonicalInterpretationInstant {
+  if (typeof value !== 'string' || value.length === 0) {
+    return { ok: false, reason: 'format' };
+  }
+  if (!ISO_INSTANT_WITH_ZONE.test(value)) {
+    return { ok: false, reason: 'format' };
+  }
+  const parsed = Date.parse(value);
+  if (Number.isNaN(parsed)) {
+    return { ok: false, reason: 'invalid' };
+  }
+  return { ok: true, instant: new Date(parsed).toISOString() };
+}
 
 function validationError(field: string, message: string): never {
   throw interpretationServiceError('VALIDATION_ERROR', message, [{ field, message }]);
@@ -166,17 +212,16 @@ function requireCapturedAt(value: string): string {
   if (typeof value !== 'string' || value.length === 0) {
     validationError('capturedAt', 'capturedAt is required.');
   }
-  if (!ISO_INSTANT_WITH_ZONE.test(value)) {
+  const canonical = canonicalizeInterpretationInstant(value);
+  if (!canonical.ok) {
     validationError(
       'capturedAt',
-      'capturedAt must be an ISO-8601 timestamp with an explicit UTC offset.',
+      canonical.reason === 'invalid'
+        ? 'capturedAt must be a valid timestamp.'
+        : 'capturedAt must be an ISO-8601 timestamp with an explicit UTC offset.',
     );
   }
-  const parsed = Date.parse(value);
-  if (Number.isNaN(parsed)) {
-    validationError('capturedAt', 'capturedAt must be a valid timestamp.');
-  }
-  return new Date(parsed).toISOString();
+  return canonical.instant;
 }
 
 /**
@@ -248,6 +293,52 @@ function requireGmailProvenance(
   };
 }
 
+const MAX_MESSAGES_EVENT_ID = 64;
+const MAX_MESSAGES_OCCURRENCE_ID = 128;
+const MAX_MESSAGES_EXCERPT_ID = 64;
+const MAX_MESSAGES_DEDUPE_KEY = 128;
+
+export function requireGoogleMessagesProvenance(
+  provenance: GoogleMessagesInterpretationProvenance | undefined,
+): GoogleMessagesInterpretationProvenance {
+  if (provenance == null) {
+    validationError(
+      'messagesProvenance',
+      'messagesProvenance is required for a Google Messages interpretation.',
+    );
+  }
+  const excerptByteLength = provenance.excerptByteLength;
+  if (!Number.isInteger(excerptByteLength) || excerptByteLength < 0) {
+    validationError(
+      'messagesProvenance.excerptByteLength',
+      'messagesProvenance.excerptByteLength must be a non-negative integer.',
+    );
+  }
+  return {
+    communicationEventId: requireBoundedIdentifier(
+      provenance.communicationEventId,
+      'messagesProvenance.communicationEventId',
+      MAX_MESSAGES_EVENT_ID,
+    ),
+    sourceOccurrenceId: requireBoundedIdentifier(
+      provenance.sourceOccurrenceId,
+      'messagesProvenance.sourceOccurrenceId',
+      MAX_MESSAGES_OCCURRENCE_ID,
+    ),
+    excerptId: requireBoundedIdentifier(
+      provenance.excerptId,
+      'messagesProvenance.excerptId',
+      MAX_MESSAGES_EXCERPT_ID,
+    ),
+    excerptByteLength,
+    dedupeKey: requireBoundedIdentifier(
+      provenance.dedupeKey,
+      'messagesProvenance.dedupeKey',
+      MAX_MESSAGES_DEDUPE_KEY,
+    ),
+  };
+}
+
 /**
  * Validate one interpretation request at the application-service boundary (D169 S3.1, D179 S7).
  *
@@ -264,8 +355,30 @@ export function validateInterpretationRequest(
       'gmailProvenance is not valid for a manual capture interpretation.',
     );
   }
+  if (sourceKind === 'owner_manual_capture' && request.messagesProvenance != null) {
+    validationError(
+      'messagesProvenance',
+      'messagesProvenance is not valid for a manual capture interpretation.',
+    );
+  }
+  if (sourceKind === 'gmail' && request.messagesProvenance != null) {
+    validationError(
+      'messagesProvenance',
+      'messagesProvenance is not valid for a Gmail interpretation.',
+    );
+  }
+  if (sourceKind === 'google_messages' && request.gmailProvenance != null) {
+    validationError(
+      'gmailProvenance',
+      'gmailProvenance is not valid for a Google Messages interpretation.',
+    );
+  }
   const gmailProvenance =
     sourceKind === 'gmail' ? requireGmailProvenance(request.gmailProvenance) : undefined;
+  const messagesProvenance =
+    sourceKind === 'google_messages'
+      ? requireGoogleMessagesProvenance(request.messagesProvenance)
+      : undefined;
 
   return {
     ...request,
@@ -280,6 +393,7 @@ export function validateInterpretationRequest(
     capturedAt: requireCapturedAt(request.capturedAt),
     timezone: request.timezone ?? null,
     gmailProvenance,
+    messagesProvenance,
   };
 }
 

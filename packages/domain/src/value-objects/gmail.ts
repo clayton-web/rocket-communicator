@@ -128,11 +128,18 @@ export interface AttachmentMetadataItem {
   sizeBytes?: number;
 }
 
+/** Durable CommunicationEvent source discriminator. Gmail remains the A5/A6 source. */
+export type CommunicationEventSourceType = 'gmail' | 'google_messages';
+
 export interface CommunicationEvent {
   id: CommunicationEventId;
   organizationId: OrganizationId;
-  accountId: CommunicationAccountId;
-  sourceType: 'gmail';
+  /**
+   * Required for Gmail. Null for Google Messages — D181 forbids a synthetic
+   * CommunicationAccount for that source.
+   */
+  accountId: CommunicationAccountId | null;
+  sourceType: CommunicationEventSourceType;
   providerMessageId: string;
   providerThreadId: string;
   dedupeKey: string;

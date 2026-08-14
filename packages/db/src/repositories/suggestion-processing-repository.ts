@@ -31,6 +31,7 @@ export interface ClaimSuggestionProcessingBatchInput {
  * Claim a bounded batch of eligible CommunicationEvents for suggestion processing (D081).
  *
  * Eligible when:
+ * - `sourceType` is `gmail` (A6 remains Gmail-only; D163 / D181)
  * - status is `unprocessed`, or `failed_retryable` with attempts < maxAttempts
  * - claim is absent or expired
  * - event lifecycle status is `active`
@@ -60,6 +61,8 @@ export async function claimSuggestionProcessingBatch(
 
   const eligibilityWhere = {
     status: 'active' as const,
+    // A6 is Gmail-only (D163 / D181). Google Messages Review events must never be claimed.
+    sourceType: 'gmail' as const,
     ...(input.organizationId ? { organizationId: input.organizationId } : {}),
     AND: [
       {

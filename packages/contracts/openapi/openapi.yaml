@@ -57,6 +57,12 @@ tags:
       persistence, intake filtering, new-Review refusal, and a bounded Android Exclude Sender
       control. S7 is not complete. This is not a generic communication browser and not a generic
       `/interpretations` API.
+  - name: Messages
+    description: |
+      Owner-initiated Google Messages Review with Rocket (D181). Messages-specific adapter into
+      the shared interpretation service. Not a generic `/interpretations` API, not A5-style SMS
+      polling, not A6, and not a combined Gmail + Messages inbox. Android Review invocation is
+      a later slice.
   - name: OwnerNotifications
     description: |
       Owner Event Notification Engine (A8.5; D133–D136). Event-driven and Owner-audience, separate
@@ -159,6 +165,8 @@ paths:
     $ref: './paths/gmail.yaml#/paths/~1api~1v1~1gmail~1sender-exclusions'
   /api/v1/gmail/sender-exclusions/{exclusionId}:
     $ref: './paths/gmail.yaml#/paths/~1api~1v1~1gmail~1sender-exclusions~1{exclusionId}'
+  /api/v1/messages/reviews:
+    $ref: './paths/messages.yaml#/paths/~1api~1v1~1messages~1reviews'
   /api/v1/internal/gmail/poll:
     $ref: './paths/gmail.yaml#/paths/~1api~1v1~1internal~1gmail~1poll'
 components:
@@ -337,6 +345,10 @@ components:
       $ref: './components/schemas/gmail.yaml#/components/schemas/CreateGmailSenderExclusionRequest'
     GmailSenderExclusion:
       $ref: './components/schemas/gmail.yaml#/components/schemas/GmailSenderExclusion'
+    CreateMessagesReviewRequest:
+      $ref: './components/schemas/messages.yaml#/components/schemas/CreateMessagesReviewRequest'
+    MessagesReviewResponse:
+      $ref: './components/schemas/messages.yaml#/components/schemas/MessagesReviewResponse'
   securitySchemes:
     bearerAuth:
       $ref: './components/security.yaml#/components/securitySchemes/bearerAuth'

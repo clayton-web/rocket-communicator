@@ -21,12 +21,15 @@ import type {
 import { interpretCapture } from '@/lib/interpretation/service';
 import { computeInterpretationRequestFingerprint } from '@/lib/interpretation/fingerprint';
 import { clearDbTestRuntime, installDbTestRuntime } from './helpers/db-test-runtime';
+import { seedGmailAccount, seedGmailEventWithExcerpt } from './helpers/seed-review-excerpt';
 import type { TaskSummaryPoint } from '@aicaa/domain';
 
 const org = 'org_s7_service';
 const now = '2026-08-13T18:00:00.000Z';
 const capturedAt = '2026-08-13T17:00:00.000Z';
+const ingestPurgeAt = '2026-08-20T17:00:00.000Z';
 const rawInput = 'Please send the revised quote and book the survey.';
+const accountId = 'acct_s7_service';
 
 const gmailProvenance: GmailInterpretationProvenance = {
   communicationEventId: 'evt_s7_service',
@@ -98,6 +101,12 @@ let db: TestDatabase;
 describe('S7 Gmail shared interpretation source', () => {
   beforeAll(async () => {
     db = await createTestDatabase();
+    await seedGmailAccount(db.prisma, {
+      organizationId: org,
+      accountId,
+      emailAddress: 'owner@acme.example',
+      connectedAt: capturedAt,
+    });
   });
 
   afterAll(async () => {
@@ -108,6 +117,20 @@ describe('S7 Gmail shared interpretation source', () => {
     installDbTestRuntime(db.prisma);
     await db.prisma.taskSuggestion.deleteMany();
     await db.prisma.interpretationRun.deleteMany();
+    // The excerpt is a real row because `sourceExcerptId` is a real foreign key (D082): a Review
+    // proposal cannot claim provenance for an excerpt that does not exist.
+    await seedGmailEventWithExcerpt(db.prisma, {
+      organizationId: org,
+      accountId,
+      eventId: gmailProvenance.communicationEventId,
+      providerMessageId: gmailProvenance.providerMessageId,
+      excerptId: gmailProvenance.excerptId,
+      content: rawInput,
+      purgeAt: ingestPurgeAt,
+      internalDate: capturedAt,
+      fromAddress: gmailProvenance.fromAddress,
+      subject: gmailProvenance.subject ?? undefined,
+    });
   });
 
   afterEach(() => {
@@ -130,6 +153,8 @@ describe('S7 Gmail shared interpretation source', () => {
     expect(result.suggestions).toHaveLength(2);
     for (const suggestion of result.suggestions) {
       expect(suggestion.sourceCommunicationEventId).toBeNull();
+      // The Review retention linkage, taken from server-resolved provenance rather than A6's column.
+      expect(suggestion.sourceExcerptId).toBe(gmailProvenance.excerptId);
       expect(suggestion.sourceReference).toMatchObject({
         id: 'evt_s7_service',
         sourceType: 'gmail',

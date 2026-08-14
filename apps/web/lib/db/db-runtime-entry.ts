@@ -126,6 +126,8 @@ export type TracedRuntimeModule = {
   resolveInterpretationOccurrence: typeof TracedRuntimeBindings.resolveInterpretationOccurrence;
   getCommunicationEventById: typeof TracedRuntimeBindings.getCommunicationEventById;
   getTemporaryCommunicationExcerptByEventId: typeof TracedRuntimeBindings.getTemporaryCommunicationExcerptByEventId;
+  upsertGoogleMessagesReviewEvent: typeof TracedRuntimeBindings.upsertGoogleMessagesReviewEvent;
+  upsertTemporaryCommunicationExcerpt: typeof TracedRuntimeBindings.upsertTemporaryCommunicationExcerpt;
   listEligibleGmailIntakeEvents: typeof TracedRuntimeBindings.listEligibleGmailIntakeEvents;
   findGmailSenderExclusionByOrgAndAddress: typeof TracedRuntimeBindings.findGmailSenderExclusionByOrgAndAddress;
   persistGmailSenderExclusion: typeof TracedRuntimeBindings.persistGmailSenderExclusion;
@@ -254,6 +256,8 @@ export async function loadTracedRuntimeModule(): Promise<TracedRuntimeModule> {
     getCommunicationEventById: tracedRuntime.getCommunicationEventById,
     getTemporaryCommunicationExcerptByEventId:
       tracedRuntime.getTemporaryCommunicationExcerptByEventId,
+    upsertGoogleMessagesReviewEvent: tracedRuntime.upsertGoogleMessagesReviewEvent,
+    upsertTemporaryCommunicationExcerpt: tracedRuntime.upsertTemporaryCommunicationExcerpt,
     listEligibleGmailIntakeEvents: tracedRuntime.listEligibleGmailIntakeEvents,
     findGmailSenderExclusionByOrgAndAddress: tracedRuntime.findGmailSenderExclusionByOrgAndAddress,
     persistGmailSenderExclusion: tracedRuntime.persistGmailSenderExclusion,
