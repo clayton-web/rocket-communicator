@@ -54,6 +54,7 @@ class AuthScreensTest {
                     signingOut = false,
                     onCapture = {},
                     onGmail = {},
+                    onMessages = {},
                     onTasks = {},
                     onSignOut = {}
                 )
@@ -64,9 +65,11 @@ class AuthScreensTest {
         composeRule.onNodeWithText("Signed in as Ada Owner").assertIsDisplayed()
         composeRule.onNodeWithTag("capture_entry_button").assertIsDisplayed()
         composeRule.onNodeWithTag("gmail_entry_button").assertIsDisplayed()
+        composeRule.onNodeWithTag("messages_entry_button").assertIsDisplayed()
         composeRule.onNodeWithTag("tasks_entry_button").assertIsDisplayed()
         composeRule.onNodeWithText("Capture").assertIsDisplayed()
         composeRule.onNodeWithText("Gmail").assertIsDisplayed()
+        composeRule.onNodeWithText("Messages").assertIsDisplayed()
         composeRule.onNodeWithText("Tasks").assertIsDisplayed()
         composeRule.onNodeWithText("Sign out").assertIsDisplayed()
     }

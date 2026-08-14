@@ -15,6 +15,7 @@ import com.aicommunication.assistant.capture.CaptureUiState
 import com.aicommunication.assistant.capture.ProposalOrigin
 import com.aicommunication.assistant.capture.TaskCaptureViewModel
 import com.aicommunication.assistant.contracts.models.Session
+import com.aicommunication.assistant.messages.MessagesIntakeViewModel
 import com.aicommunication.assistant.network.ApiConfig
 import com.aicommunication.assistant.tasks.GmailIntakeViewModel
 import com.aicommunication.assistant.tasks.TaskDetailViewModel
@@ -25,6 +26,7 @@ private enum class AuthenticatedDestination {
     Shell,
     Capture,
     GmailIntake,
+    MessagesIntake,
     TaskList,
     TaskDetail,
     Assign
@@ -37,6 +39,7 @@ fun AuthenticatedOwnerFlow(
     onSignOut: () -> Unit,
     apiConfig: ApiConfig,
     captureViewModel: TaskCaptureViewModel,
+    messagesIntakeViewModel: MessagesIntakeViewModel,
     gmailIntakeViewModel: GmailIntakeViewModel,
     taskListViewModel: TaskListViewModel,
     taskDetailViewModel: TaskDetailViewModel,
@@ -58,6 +61,7 @@ fun AuthenticatedOwnerFlow(
 
     val captureState by captureViewModel.uiState.collectAsState()
     val openApprovedTaskId by captureViewModel.openApprovedTaskId.collectAsState()
+    val messagesIntakeState by messagesIntakeViewModel.uiState.collectAsState()
     val gmailIntakeState by gmailIntakeViewModel.uiState.collectAsState()
     val openGmailReviewResult by gmailIntakeViewModel.openReviewResult.collectAsState()
     val listState by taskListViewModel.uiState.collectAsState()
@@ -85,6 +89,7 @@ fun AuthenticatedOwnerFlow(
             // Surfaces an unresolved capture after process death; never resends it.
             AuthenticatedDestination.Capture -> captureViewModel.restorePending()
             AuthenticatedDestination.GmailIntake -> gmailIntakeViewModel.load()
+            AuthenticatedDestination.MessagesIntake -> messagesIntakeViewModel.refreshAccess()
             AuthenticatedDestination.TaskList -> taskListViewModel.load()
             AuthenticatedDestination.TaskDetail ->
                 activeTaskId?.let { taskDetailViewModel.load(it) }
@@ -104,6 +109,7 @@ fun AuthenticatedOwnerFlow(
                     destination = AuthenticatedDestination.Capture
                 },
                 onGmail = { destination = AuthenticatedDestination.GmailIntake },
+                onMessages = { destination = AuthenticatedDestination.MessagesIntake },
                 onTasks = { destination = AuthenticatedDestination.TaskList },
                 onSignOut = onSignOut,
                 modifier = modifier
@@ -154,6 +160,17 @@ fun AuthenticatedOwnerFlow(
                 onOpenDismiss = captureViewModel::openDismiss,
                 onCancelDismiss = captureViewModel::cancelDismiss,
                 onConfirmDismiss = captureViewModel::confirmDismiss,
+                modifier = modifier
+            )
+        AuthenticatedDestination.MessagesIntake ->
+            MessagesIntakeScreen(
+                state = messagesIntakeState,
+                onBack = { destination = AuthenticatedDestination.Shell },
+                onOpenNotificationAccess = {
+                    context.startActivity(messagesIntakeViewModel.accessSettingsIntent())
+                },
+                onRefreshAccess = messagesIntakeViewModel::refreshAccess,
+                onSelect = messagesIntakeViewModel::select,
                 modifier = modifier
             )
         AuthenticatedDestination.GmailIntake ->

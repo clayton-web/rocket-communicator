@@ -11,6 +11,8 @@ import com.aicommunication.assistant.capture.ManualCaptureUseCase
 import com.aicommunication.assistant.capture.PendingCaptureStore
 import com.aicommunication.assistant.capture.ProposalOwnerRepository
 import com.aicommunication.assistant.capture.TaskOwnerRepository
+import com.aicommunication.assistant.messages.MessagesLocalReviewStore
+import com.aicommunication.assistant.messages.MessagesNotificationShapeProbe
 import com.aicommunication.assistant.network.AndroidConnectivityMonitor
 import com.aicommunication.assistant.network.ApiConfig
 import com.aicommunication.assistant.network.OwnerApiExecutor
@@ -73,6 +75,12 @@ class AicaaApplication : Application() {
     lateinit var manualCaptureUseCase: ManualCaptureUseCase
         private set
 
+    lateinit var messagesReviewStore: MessagesLocalReviewStore
+        private set
+
+    lateinit var messagesShapeProbe: MessagesNotificationShapeProbe
+        private set
+
     override fun onCreate() {
         super.onCreate()
         authConfig = AuthConfig.fromBuildConfig()
@@ -103,6 +111,8 @@ class AicaaApplication : Application() {
                 repository = ManualCaptureRepository(ownerApiExecutor),
                 pendingStore = pendingCaptureStore
             )
+        messagesReviewStore = MessagesLocalReviewStore()
+        messagesShapeProbe = MessagesNotificationShapeProbe(enabled = BuildConfig.DEBUG)
 
         val sessionClient =
             if (authConfig.isConfigured) {

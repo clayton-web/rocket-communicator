@@ -42,12 +42,12 @@ Applies to an **existing** Owner-owned Task (typically an **unassigned** Task fr
 
 Recipient email from Owner-managed Recipient records only (D087)—not hard-coded and not an env default. Proposed-Recipient hint resolution is **not** in the current handoff request schema and remains deferred.
 
-## 3. Google Messages → interpretation → proposals _(authorized — D181; law: D160; not implemented)_
+## 3. Google Messages → interpretation → proposals _(authorized — D181; law: D160; device-local intake implemented; Review not implemented)_
 
 **Initial model is manual and Owner-initiated** (D160). Continuous automatic SMS monitoring, and automatic backend analysis of incoming Messages content, are **not** the initial model. **D181** is the implementation authorization for that direction. Notification arrival must not by itself cause server upload, shared interpretation, TaskSuggestion creation, Task creation, durable server-side communication persistence, or automatic backend analysis.
 
-1. Owner enables Messages notification access on the device (D043 enablement remains operative; Rocket is not the default SMS app and must not request `READ_SMS`, `RECEIVE_SMS`, or `SEND_SMS`).
-2. Rocket shows recent eligible one-to-one plain-text Google Messages notification items on a **device-local** recent-review surface (bounded/recent; not a historical archive; Google Messages packages allowlisted; fail closed when unsafe).
+1. Owner enables Messages notification access on the device (D043 enablement remains operative; Rocket is not the default SMS app and must not request `READ_SMS`, `RECEIVE_SMS`, or `SEND_SMS`). **Implemented** as device-local Notification Listener access for allowlisted Google Messages only.
+2. Rocket shows recent eligible one-to-one plain-text Google Messages notification items on a **device-local** recent-review surface (bounded/recent; not a historical archive; Google Messages packages allowlisted; fail closed when unsafe). **Implemented** as an in-memory bounded recent list plus a separate Owner Messages surface. Review with Rocket is not offered on this surface yet.
 3. Owner selects an eligible item.
 4. Owner explicitly chooses **"Review with Rocket"**.
 5. Android sends the selected occurrence to the Owner-authenticated Messages-specific Review route. The server creates/reuses canonical `CommunicationEvent`, persists selected text under existing `TemporaryCommunicationExcerpt` retention law, and runs **shared interpretation** only then (D157, D181), producing **zero, one, or several** proposals. `CommunicationEvent.accountId` may be null; no synthetic Google Messages `CommunicationAccount`. A6 must not process these events.

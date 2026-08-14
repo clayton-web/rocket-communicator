@@ -9,6 +9,7 @@
     <string name="authenticated_shell_subtitle">Capture first. Organize and assign when you are ready.</string>
     <string name="capture_entry">Capture</string>
     <string name="gmail_entry">Gmail</string>
+    <string name="messages_entry">Messages</string>
     <string name="tasks_entry">Tasks</string>
     <string name="capture_title">Capture</string>
     <string name="capture_subtitle">What needs to get done? Use the keyboard mic to dictate.</string>
@@ -177,4 +178,23 @@
     <string name="gmail_exclude_error_validation">That sender could not be excluded.</string>
     <string name="gmail_exclude_error_not_found">That Gmail message is no longer available.</string>
     <string name="gmail_exclude_error_session">Your session ended. Sign in again to exclude a sender.</string>
+    <string name="messages_listener_label">Rocket Google Messages</string>
+    <string name="messages_intake_title">Messages</string>
+    <string name="messages_intake_subtitle">Recent Google Messages on this device. Review with Rocket is not available yet.</string>
+    <string name="messages_intake_checking_access">Checking notification access…</string>
+    <string name="messages_intake_access_body">Rocket needs notification access to see Google Messages on this device. Rocket does not become your SMS app and does not read your message history.</string>
+    <string name="messages_intake_open_access">Open notification access settings</string>
+    <string name="messages_intake_empty">No recent Google Messages are ready to review.</string>
+    <string name="messages_intake_filtered">Some recent Messages could not be reviewed: %1$s.</string>
+    <string name="messages_intake_listener_error">Rocket could not read a Google Messages notification.</string>
+    <string name="messages_intake_back">Back</string>
+    <string name="messages_intake_debug_title">Notification shape (debug)</string>
+    <string name="messages_intake_debug_body">Field presence only. Message text and phone numbers are not shown.</string>
+    <string name="messages_reason_empty_text">empty text</string>
+    <string name="messages_reason_media_only">media-only</string>
+    <string name="messages_reason_group">group or unclear conversation</string>
+    <string name="messages_reason_summary">summary notification</string>
+    <string name="messages_reason_unsupported">unsupported notification</string>
+    <string name="messages_reason_missing_sender">missing sender</string>
+    <string name="messages_reason_sensitive">verification or financial alert</string>
 </resources>

@@ -16,6 +16,10 @@ import com.aicommunication.assistant.capture.TaskCaptureViewModel
 import com.aicommunication.assistant.capture.TaskOwnerRepository
 import com.aicommunication.assistant.contracts.models.AuthenticatedRole
 import com.aicommunication.assistant.contracts.models.Session
+import com.aicommunication.assistant.messages.FakeMessagesNotificationAccess
+import com.aicommunication.assistant.messages.MessagesIntakeViewModel
+import com.aicommunication.assistant.messages.MessagesLocalReviewStore
+import com.aicommunication.assistant.messages.MessagesNotificationShapeProbe
 import com.aicommunication.assistant.network.AccessTokenProvider
 import com.aicommunication.assistant.network.ApiConfig
 import com.aicommunication.assistant.network.FixedConnectivityMonitor
@@ -33,6 +37,7 @@ import com.aicommunication.assistant.ui.theme.AicaaFoundationTheme
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -104,6 +109,7 @@ class AuthenticatedOwnerFlowTest {
                     onSignOut = {},
                     apiConfig = ApiConfig(server.url("/").toString().trimEnd('/')),
                     captureViewModel = captureViewModel,
+                    messagesIntakeViewModel = messagesViewModel(),
                     gmailIntakeViewModel =
                     GmailIntakeViewModel(
                         application,
@@ -196,6 +202,7 @@ class AuthenticatedOwnerFlowTest {
                     onSignOut = {},
                     apiConfig = ApiConfig(server.url("/").toString().trimEnd('/')),
                     captureViewModel = captureViewModel,
+                    messagesIntakeViewModel = messagesViewModel(),
                     gmailIntakeViewModel =
                     GmailIntakeViewModel(
                         application,
@@ -243,6 +250,83 @@ class AuthenticatedOwnerFlowTest {
         composeRule.onNodeWithTag("capture_accept_button").assertIsDisplayed()
         composeRule.onNodeWithText("You reviewed: Quote revision").assertIsDisplayed()
     }
+
+    @Test
+    fun messagesEntry_opensLocalMessagesSurfaceWithoutNetwork() {
+        val executor = executor()
+        val captureViewModel =
+            TaskCaptureViewModel(
+                application = application,
+                manualCapture =
+                ManualCaptureUseCase(
+                    repository = ManualCaptureRepository(executor),
+                    pendingStore =
+                    PendingCaptureStore.forTests(
+                        application.getSharedPreferences("flow-messages", 0)
+                    )
+                ),
+                proposalRepository = ProposalOwnerRepository(executor),
+                recipientRepository = RecipientOwnerRepository(executor),
+                onSessionInvalidated = {}
+            )
+        val taskRepository = TaskOwnerRepository(executor)
+
+        composeRule.setContent {
+            AicaaFoundationTheme {
+                AuthenticatedOwnerFlow(
+                    session =
+                    Session(
+                        ownerId = "owner-1",
+                        organizationId = "org-1",
+                        role = AuthenticatedRole.owner,
+                        displayName = "Ada Owner"
+                    ),
+                    signingOut = false,
+                    onSignOut = {},
+                    apiConfig = ApiConfig(server.url("/").toString().trimEnd('/')),
+                    captureViewModel = captureViewModel,
+                    messagesIntakeViewModel = messagesViewModel(),
+                    gmailIntakeViewModel =
+                    GmailIntakeViewModel(
+                        application,
+                        GmailOwnerRepository(executor),
+                        onSessionInvalidated = {}
+                    ),
+                    taskListViewModel =
+                    TaskListViewModel(application, taskRepository, onSessionInvalidated = {}),
+                    taskDetailViewModel =
+                    TaskDetailViewModel(
+                        application,
+                        taskRepository,
+                        ReminderOwnerRepository(executor),
+                        onSessionInvalidated = {}
+                    ),
+                    taskHandoffViewModel =
+                    TaskHandoffViewModel(
+                        application,
+                        taskRepository,
+                        RecipientOwnerRepository(executor),
+                        GmailOwnerRepository(executor),
+                        PendingHandoffStore(application),
+                        onSessionInvalidated = {}
+                    )
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("messages_entry_button").performClick()
+        composeRule.onNodeWithTag("messages_intake_screen").assertIsDisplayed()
+        composeRule.onNodeWithTag("messages_intake_access_needed").assertIsDisplayed()
+        composeRule.onNodeWithText("Review with Rocket").assertDoesNotExist()
+        assertEquals(0, server.requestCount)
+    }
+
+    private fun messagesViewModel() = MessagesIntakeViewModel(
+        application = application,
+        store = MessagesLocalReviewStore(),
+        access = FakeMessagesNotificationAccess(enabled = false),
+        shapeProbe = MessagesNotificationShapeProbe(enabled = false)
+    )
 
     private fun executor() = OwnerApiExecutor(
         apiConfig = ApiConfig(server.url("/").toString().trimEnd('/')),

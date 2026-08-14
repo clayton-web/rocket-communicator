@@ -15,6 +15,7 @@ import com.aicommunication.assistant.R
 import com.aicommunication.assistant.auth.AuthUiState
 import com.aicommunication.assistant.auth.OwnerAuthViewModel
 import com.aicommunication.assistant.capture.TaskCaptureViewModel
+import com.aicommunication.assistant.messages.MessagesIntakeViewModel
 import com.aicommunication.assistant.network.ApiConfig
 import com.aicommunication.assistant.tasks.GmailIntakeViewModel
 import com.aicommunication.assistant.tasks.TaskDetailViewModel
@@ -27,6 +28,7 @@ import com.aicommunication.assistant.ui.theme.AicaaColors
 fun OwnerAppRoot(
     authViewModel: OwnerAuthViewModel,
     captureViewModel: TaskCaptureViewModel,
+    messagesIntakeViewModel: MessagesIntakeViewModel,
     gmailIntakeViewModel: GmailIntakeViewModel,
     taskListViewModel: TaskListViewModel,
     taskDetailViewModel: TaskDetailViewModel,
@@ -63,6 +65,7 @@ fun OwnerAppRoot(
                     onSignOut = authViewModel::signOut,
                     apiConfig = apiConfig,
                     captureViewModel = captureViewModel,
+                    messagesIntakeViewModel = messagesIntakeViewModel,
                     gmailIntakeViewModel = gmailIntakeViewModel,
                     taskListViewModel = taskListViewModel,
                     taskDetailViewModel = taskDetailViewModel,

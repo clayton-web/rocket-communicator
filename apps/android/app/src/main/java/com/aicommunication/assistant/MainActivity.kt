@@ -10,6 +10,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import com.aicommunication.assistant.auth.OwnerAuthViewModel
 import com.aicommunication.assistant.capture.TaskCaptureViewModel
+import com.aicommunication.assistant.messages.AndroidMessagesNotificationAccess
+import com.aicommunication.assistant.messages.MessagesIntakeViewModel
 import com.aicommunication.assistant.tasks.GmailIntakeViewModel
 import com.aicommunication.assistant.tasks.TaskDetailViewModel
 import com.aicommunication.assistant.tasks.TaskHandoffViewModel
@@ -31,6 +33,16 @@ class MainActivity : ComponentActivity() {
             proposalRepository = app.proposalOwnerRepository,
             recipientRepository = app.recipientOwnerRepository,
             onSessionInvalidated = authViewModel::notifySessionInvalidated
+        )
+    }
+
+    private val messagesIntakeViewModel: MessagesIntakeViewModel by viewModels {
+        val app = application as AicaaApplication
+        MessagesIntakeViewModel.Factory(
+            application = app,
+            store = app.messagesReviewStore,
+            access = AndroidMessagesNotificationAccess(app),
+            shapeProbe = app.messagesShapeProbe
         )
     }
 
@@ -88,6 +100,7 @@ class MainActivity : ComponentActivity() {
                 OwnerAppRoot(
                     authViewModel = authViewModel,
                     captureViewModel = captureViewModel,
+                    messagesIntakeViewModel = messagesIntakeViewModel,
                     gmailIntakeViewModel = gmailIntakeViewModel,
                     taskListViewModel = taskListViewModel,
                     taskDetailViewModel = taskDetailViewModel,
