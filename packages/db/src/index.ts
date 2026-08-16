@@ -314,6 +314,10 @@ export {
   getCommunicationEventById,
   getCommunicationEventByProviderMessageId,
   upsertCommunicationEvent,
+  upsertGoogleMessagesReviewEvent,
+  buildGoogleMessagesProviderMessageId,
+  GOOGLE_MESSAGES_SOURCE_TYPE,
+  GOOGLE_MESSAGES_PROVIDER_MESSAGE_PREFIX,
   upsertTemporaryCommunicationExcerpt,
   purgeTemporaryCommunicationExcerpt,
   getTemporaryCommunicationExcerptByEventId,
@@ -373,6 +377,17 @@ export {
   persistDismissTaskSuggestion,
   persistMergeTaskSuggestion,
 } from './transactions/a6-owner-suggestion-transactions.js';
+// The single source-neutral D082 excerpt retention writer (D082, D020, D024, D161). A6 reaches its
+// excerpt through CommunicationEvent, Gmail Review and Messages Review through the explicit excerpt
+// linkage, and both resolve the maximum still-valid entitlement across sibling proposals.
+export {
+  applyD082ExcerptRetention,
+  applyD082ExcerptRetentionForSuggestion,
+  excerptRetentionTargetFor,
+  type ExcerptRetentionLinkage,
+  type ExcerptRetentionTarget,
+  type TransitionEntitlement,
+} from './transactions/d082-excerpt-retention.js';
 // S3.1 shared interpretation persistence (D169). Backend only: no route, worker, or cron reaches
 // these, and the AI call stays outside the transaction they open.
 export {

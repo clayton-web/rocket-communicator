@@ -57,6 +57,7 @@ export async function createTaskSuggestion(
         originTaskId: originTaskId ?? null,
         interpretationRunId: interpretationRunId ?? null,
         sourceCommunicationEventId: suggestion.sourceCommunicationEventId ?? null,
+        sourceExcerptId: suggestion.sourceExcerptId ?? null,
         approvedTaskId: suggestion.approvedTaskId ?? null,
         mergedIntoTaskId: suggestion.mergedIntoTaskId ?? null,
         retention: asJson(suggestion.retention),
@@ -227,6 +228,10 @@ function decodeSuggestionListCursor(raw: string | null | undefined): SuggestionL
  * `interpretationRunId` is deliberately absent from the written data: ownership by an
  * interpretation occurrence (D161) is established at creation and is not re-stated by Owner edits,
  * so a snapshot write cannot silently detach a proposal from its occurrence.
+ *
+ * `sourceExcerptId` is absent for the same reason and one stronger one: it is a retention
+ * entitlement (D082). A snapshot write able to clear it would let an ordinary Owner edit drop the
+ * proposal's claim on its excerpt, shortening a hold that the proposal still needs.
  */
 export async function updateTaskSuggestionWithExpectedVersion(
   db: Client,

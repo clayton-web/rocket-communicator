@@ -8,6 +8,7 @@ import {
 import {
   asOrganizationId,
   asTaskSuggestionId,
+  asTemporaryCommunicationExcerptId,
   type SourceReference,
   type TaskSuggestion,
 } from '@aicaa/domain';
@@ -25,18 +26,46 @@ import {
 import { interpretationServiceError } from './errors';
 import {
   assertInterpretationResultFitsPersistence,
+  requireGoogleMessagesProvenance,
   validateInterpretationRequest,
   type AuthorizedInterpretationSourceKind,
+  type GoogleMessagesInterpretationProvenance,
   type InterpretationRequest,
   type ValidatedInterpretationRequest,
 } from './validate';
 
-export type { AuthorizedInterpretationSourceKind, InterpretationRequest };
+export type {
+  AuthorizedInterpretationSourceKind,
+  GoogleMessagesInterpretationProvenance,
+  InterpretationRequest,
+};
 
 export interface InterpretationServiceDeps {
   /** Injected provider for tests. Production composition is default closed (D169). */
   provider?: InterpretationProvider;
 }
+
+/**
+ * Optional result from {@link BeforeNewInterpretation}.
+ *
+ * Messages Review uses this to bind the source event/excerpt identities that were actually
+ * persisted after D161 classified the request as new. Replay and conflict never run the gate,
+ * so they never persist selected text.
+ */
+export type BeforeNewInterpretationResult = {
+  messagesProvenance?: GoogleMessagesInterpretationProvenance;
+};
+
+/**
+ * Caller-owned gate that runs only when this request would start a new interpretation.
+ *
+ * Replay and idempotency-conflict classification already happened against durable
+ * `(organizationId, idempotencyKey)` + fingerprint state. The Messages adapter uses it to
+ * persist the CommunicationEvent and TemporaryCommunicationExcerpt only after that same
+ * classification.
+ */
+export type BeforeNewInterpretation = () =>
+  void | BeforeNewInterpretationResult | Promise<void | BeforeNewInterpretationResult>;
 
 /**
  * What the committed occurrence itself says, for a caller that needs more than the proposals.
@@ -49,7 +78,7 @@ export interface InterpretationServiceDeps {
  * committed at some earlier time than the request being served.
  */
 export interface InterpretationOccurrenceSummary {
-  sourceKind: 'owner_manual_capture' | 'gmail';
+  sourceKind: 'owner_manual_capture' | 'gmail' | 'google_messages';
   outcome: 'proposals_created' | 'no_proposals';
   interpretedAt: string;
 }
@@ -111,6 +140,56 @@ function buildManualCaptureSourceReference(input: {
 }
 
 /**
+ * Truthful Google Messages source provenance for an Owner Review-with-Rocket occurrence (D181).
+ *
+ * `sourceType` is `google_messages`. No sender, phone number, or conversation title is copied
+ * onto the source reference. `sourceCommunicationEventId` stays unset: that column is A6
+ * Gmail-origin suggestion linkage and is not the Messages Review path.
+ */
+function buildGoogleMessagesSourceReference(input: {
+  provenance: GoogleMessagesInterpretationProvenance;
+  capturedAt: string;
+}): SourceReference {
+  return {
+    id: input.provenance.communicationEventId,
+    sourceType: 'google_messages',
+    dedupeKey: input.provenance.dedupeKey,
+    capturedAt: input.capturedAt,
+    externalIds: [
+      {
+        provider: 'google_messages',
+        idType: 'occurrence',
+        id: input.provenance.sourceOccurrenceId,
+      },
+    ],
+    excerptRef: {
+      excerptId: input.provenance.excerptId,
+      byteLength: input.provenance.excerptByteLength,
+      contentClassification: 'temporary_communication',
+    },
+  };
+}
+
+function buildSourceReference(input: {
+  occurrenceToken: string;
+  request: ValidatedInterpretationRequest;
+}): SourceReference {
+  if (input.request.sourceKind === 'google_messages') {
+    return buildGoogleMessagesSourceReference({
+      provenance: input.request.messagesProvenance!,
+      capturedAt: input.request.capturedAt,
+    });
+  }
+  return buildManualCaptureSourceReference({
+    occurrenceToken: input.occurrenceToken,
+    organizationId: input.request.organizationId,
+    sourceKind: input.request.sourceKind,
+    idempotencyKey: input.request.idempotencyKey,
+    capturedAt: input.request.capturedAt,
+  });
+}
+
+/**
  * Map one validated `ProposedTask` onto the canonical TaskSuggestion model.
  *
  * `summaryPoints` are the canonical proposal content and carry over unchanged, including any
@@ -118,6 +197,17 @@ function buildManualCaptureSourceReference(input: {
  * fields are intentionally not persisted (D169): `peopleHints` must not become a Recipient,
  * assignment, or responsibility, and an unresolved `deadlineExpression` must not be promoted into
  * `proposedDueAt`. Neither has a column, and their omission is a decision rather than an oversight.
+ *
+ * ## Two linkages that must not be confused (D082)
+ *
+ * `sourceExcerptId` comes from the source reference this service just built from server-resolved
+ * provenance, never from anything a client sent. It is the proposal's D082 retention entitlement on
+ * the temporary excerpt that is its evidence, and it is present for Google Messages Review and
+ * absent for manual capture, which stores no excerpt at all.
+ *
+ * `sourceCommunicationEventId` stays null for every source. It is A6 claimed-event processing
+ * linkage, it is unique per event, and an interpretation proposal claiming it would both break A6's
+ * cardinality and misreport which engine produced the proposal. Persistence refuses it independently.
  */
 function buildProposedSuggestion(input: {
   organizationId: string;
@@ -125,6 +215,7 @@ function buildProposedSuggestion(input: {
   sourceReference: SourceReference;
   now: string;
 }): TaskSuggestion {
+  const excerptId = input.sourceReference.excerptRef?.excerptId;
   return {
     id: asTaskSuggestionId(`sug_${randomToken()}`),
     organizationId: asOrganizationId(input.organizationId),
@@ -133,6 +224,7 @@ function buildProposedSuggestion(input: {
     sourceReference: input.sourceReference,
     voiceOriginated: false,
     sourceCommunicationEventId: null,
+    sourceExcerptId: excerptId ? asTemporaryCommunicationExcerptId(excerptId) : null,
     retention: {},
     version: 1,
     createdAt: input.now,
@@ -205,12 +297,14 @@ async function resolveCommittedOccurrence(
  * 2. Resolve organization-scoped idempotency **before** interpreting. An exact replay is answered
  *    from committed canonical state, so the provider is not called a second time, and a reused key
  *    with a different fingerprint conflicts before any work.
- * 3. Call the provider with no database transaction open. A failed call leaves nothing behind:
+ * 3. If this would be a new interpretation, run the optional caller gate. Messages Review uses it
+ *    to persist the source event/excerpt only after D161 has already classified the request as new.
+ * 4. Call the provider with no database transaction open. A failed call leaves nothing behind:
  *    there is no InterpretationRun, no TaskSuggestion, and no attempt row to record it.
- * 4. Refuse provider-returned `policyVersion` / `modelVersion` that cannot fit the occurrence
+ * 5. Refuse provider-returned `policyVersion` / `modelVersion` that cannot fit the occurrence
  *    columns. Oversized provenance is invalid interpreted output, not a raw database length error,
  *    and it is never truncated.
- * 5. Persist the occurrence and its 0..N proposals in one transaction. `tasks: []` is truthful
+ * 6. Persist the occurrence and its 0..N proposals in one transaction. `tasks: []` is truthful
  *    success recorded as `no_proposals`, not a failure and not a manufactured placeholder.
  *
  * Everything the fingerprint covers is supplied by the caller, including `capturedAt`. The service
@@ -227,8 +321,9 @@ export async function interpretCapture(input: {
   request: InterpretationRequest;
   now?: string;
   deps?: InterpretationServiceDeps;
+  beforeNewInterpretation?: BeforeNewInterpretation;
 }): Promise<InterpretationServiceResult> {
-  const request: ValidatedInterpretationRequest = validateInterpretationRequest(input.request);
+  let request: ValidatedInterpretationRequest = validateInterpretationRequest(input.request);
   const runtime = await loadDbRuntime();
   const now = input.now ?? new Date().toISOString();
 
@@ -241,12 +336,26 @@ export async function interpretCapture(input: {
       rawInput: request.rawInput,
       capturedAt: request.capturedAt,
       timezone: request.timezone,
+      messagesOccurrenceId:
+        request.sourceKind === 'google_messages'
+          ? request.messagesProvenance?.sourceOccurrenceId
+          : undefined,
     }),
   };
 
   const resolved = await resolveCommittedOccurrence(runtime, input.db, idempotency);
   if (resolved.kind === 'replay') {
     return toServiceResult('replayed', resolved.occurrence);
+  }
+
+  if (input.beforeNewInterpretation) {
+    const gateResult = await input.beforeNewInterpretation();
+    if (request.sourceKind === 'google_messages' && gateResult?.messagesProvenance) {
+      request = {
+        ...request,
+        messagesProvenance: requireGoogleMessagesProvenance(gateResult.messagesProvenance),
+      };
+    }
   }
 
   const provider = input.deps?.provider ?? createInterpretationProvider();
@@ -260,12 +369,9 @@ export async function interpretCapture(input: {
   // One generated token, two namespaced identities: the occurrence row and the source reference its
   // sibling proposals share.
   const occurrenceToken = randomToken();
-  const sourceReference = buildManualCaptureSourceReference({
+  const sourceReference = buildSourceReference({
     occurrenceToken,
-    organizationId: request.organizationId,
-    sourceKind: request.sourceKind,
-    idempotencyKey: request.idempotencyKey,
-    capturedAt: request.capturedAt,
+    request,
   });
   const suggestions = interpretation.tasks.map((proposal) =>
     buildProposedSuggestion({

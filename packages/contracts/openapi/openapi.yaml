@@ -39,6 +39,12 @@ tags:
       shared interpretation service and returns the canonical TaskSuggestions it proposed. Source
       kind is fixed server-side; raw input is never persisted, echoed, or logged. Creates no Task,
       approval, responsibility, or assignment. Gmail and SMS capture are not implemented.
+  - name: Messages
+    description: |
+      Owner-initiated Google Messages Review with Rocket (D181). Messages-specific adapter into
+      the shared interpretation service. Not a generic `/interpretations` API, not A5-style SMS
+      polling, not A6, and not a combined Gmail + Messages inbox. Android Review invocation is a
+      separate already-shipped client.
   - name: Capabilities
     description: |
       Recipient capability-token routes (separate from Owner session APIs).
@@ -83,6 +89,8 @@ paths:
     $ref: './paths/task-suggestions.yaml#/paths/~1api~1v1~1internal~1suggestions~1process'
   /api/v1/manual-captures:
     $ref: './paths/manual-captures.yaml#/paths/~1api~1v1~1manual-captures'
+  /api/v1/messages/reviews:
+    $ref: './paths/messages.yaml#/paths/~1api~1v1~1messages~1reviews'
   /api/v1/recipients:
     $ref: './paths/recipients.yaml#/paths/~1api~1v1~1recipients'
   /api/v1/recipients/{recipientId}:
@@ -213,6 +221,10 @@ components:
       $ref: './components/schemas/manual-capture.yaml#/components/schemas/CreateManualCaptureRequest'
     ManualCaptureResponse:
       $ref: './components/schemas/manual-capture.yaml#/components/schemas/ManualCaptureResponse'
+    CreateMessagesReviewRequest:
+      $ref: './components/schemas/messages.yaml#/components/schemas/CreateMessagesReviewRequest'
+    MessagesReviewResponse:
+      $ref: './components/schemas/messages.yaml#/components/schemas/MessagesReviewResponse'
     Task:
       $ref: './components/schemas/task.yaml#/components/schemas/Task'
     TaskStatus:

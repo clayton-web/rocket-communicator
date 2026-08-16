@@ -9,7 +9,7 @@ import {
 import type { OwnerNotificationEventTypeValue } from '../mappers/owner-notification-mappers.js';
 import { revokeCapabilityRecord } from '../repositories/capability-repository.js';
 import { createTaskSuggestion } from '../repositories/suggestion-repository.js';
-import { updateExcerptPurgeAtIfPresent } from '../repositories/communication-event-repository.js';
+import { applyD082ExcerptRetentionForSuggestion } from './d082-excerpt-retention.js';
 import {
   appendTaskNote,
   applyTaskUpdateWithExpectedVersion,
@@ -27,7 +27,11 @@ type Client = DbClient | DbTransaction;
 
 /**
  * D082 automatic terminal retention path:
- * Task → TaskSuggestion.approvedTaskId → sourceCommunicationEventId → TemporaryCommunicationExcerpt
+ * Task → TaskSuggestion.approvedTaskId → its source excerpt → TemporaryCommunicationExcerpt
+ *
+ * The approving proposal reaches its excerpt through whichever linkage its source populated — A6's
+ * CommunicationEvent, or the explicit Review excerpt linkage — and the shared resolver then keeps
+ * the maximum entitlement across any sibling proposals of the same excerpt.
  *
  * Applies only when the persisted Task status is completed or dismissed.
  * Missing / purged excerpts do not fail the Task transition.
@@ -46,19 +50,18 @@ export async function applyApprovedSuggestionTerminalExcerptRetention(
       organizationId,
       approvedTaskId: task.id,
       status: 'approved',
-      sourceCommunicationEventId: { not: null },
     },
-    select: { sourceCommunicationEventId: true },
+    select: { id: true, sourceCommunicationEventId: true, sourceExcerptId: true },
   });
 
-  if (!suggestion?.sourceCommunicationEventId) {
+  if (!suggestion) {
     return false;
   }
 
-  return updateExcerptPurgeAtIfPresent(
+  return applyD082ExcerptRetentionForSuggestion(
     db,
     organizationId,
-    suggestion.sourceCommunicationEventId,
+    suggestion,
     computeExcerptPurgeAt(task.updatedAt),
   );
 }

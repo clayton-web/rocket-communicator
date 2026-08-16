@@ -60,6 +60,8 @@ export async function claimSuggestionProcessingBatch(
 
   const eligibilityWhere = {
     status: 'active' as const,
+    // A6 is Gmail-only (D163 / D181). Google Messages Review events must never be claimed.
+    sourceType: 'gmail' as const,
     ...(input.organizationId ? { organizationId: input.organizationId } : {}),
     AND: [
       {

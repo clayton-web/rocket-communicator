@@ -2,10 +2,8 @@ import { randomBytes } from 'node:crypto';
 import type { CommunicationEvent, TaskSuggestion } from '@aicaa/domain';
 import type { DbClient } from '../client/create-prisma-client.js';
 import { createAuditEvent, type CreateAuditEventInput } from '../repositories/audit-repository.js';
-import {
-  getCommunicationEventById,
-  updateExcerptPurgeAtIfPresent,
-} from '../repositories/communication-event-repository.js';
+import { getCommunicationEventById } from '../repositories/communication-event-repository.js';
+import { applyD082ExcerptRetentionForSuggestion } from './d082-excerpt-retention.js';
 import {
   createTaskSuggestion,
   getTaskSuggestionBySourceEventId,
@@ -108,10 +106,13 @@ export async function persistSuggestionFromClaimedEvent(input: {
       proposedRecipientId: suggestion.proposedRecipientId ?? null,
     });
 
-    const excerptUpdated = await updateExcerptPurgeAtIfPresent(
+    // A6's unique event linkage means this suggestion is the excerpt's only entitlement holder, so
+    // the shared resolver returns the caller's own ceiling unchanged. Routing through it anyway is
+    // what keeps one retention implementation rather than a Gmail one and a Review one.
+    const excerptUpdated = await applyD082ExcerptRetentionForSuggestion(
       tx,
       input.organizationId,
-      input.eventId,
+      suggestion,
       input.excerptPurgeAt,
     );
 

@@ -3,16 +3,35 @@ import { AiProviderError } from '@aicaa/ai';
 import { interpretationServiceError } from './errors';
 
 /**
- * The only interpretation source kind authorized to produce occurrences today (D169). The service
- * itself is source-neutral: a later authorized Gmail or SMS adapter supplies its own kind and
- * captured-at and reuses everything below rather than growing a second interpretation system.
+ * The interpretation source kinds authorized to produce occurrences through this service.
+ *
+ * `owner_manual_capture` is the S3.1 / S3.2 Owner capture path (D169, D170). `google_messages`
+ * is the D181 Messages Review adapter. The service stays source-neutral beyond these authorized
+ * kinds: an adapter supplies its own kind, captured-at, and provenance rather than growing a
+ * second interpretation system.
  */
-export type AuthorizedInterpretationSourceKind = 'owner_manual_capture';
+export type AuthorizedInterpretationSourceKind = 'owner_manual_capture' | 'google_messages';
+
+/**
+ * Google Messages occurrence identity required to build truthful Messages provenance (D181).
+ *
+ * Supplied only by the Messages Review adapter. Event and excerpt identities may be prepared
+ * before D161 classification and bound to durable rows only when this request is a new
+ * interpretation. Not accepted from a client as an interpretation source-kind claim. Contains
+ * no sender, phone number, or conversation title.
+ */
+export interface GoogleMessagesInterpretationProvenance {
+  communicationEventId: string;
+  sourceOccurrenceId: string;
+  excerptId: string;
+  excerptByteLength: number;
+  dedupeKey: string;
+}
 
 export interface InterpretationRequest {
   organizationId: string;
   sourceKind: AuthorizedInterpretationSourceKind;
-  /** Owner capture text. Interpreted transiently and never persisted (D169). */
+  /** Source text. Interpreted transiently and never persisted as raw input by this service. */
   rawInput: string;
   /** Organization-scoped idempotency key supplied by the caller. */
   idempotencyKey: string;
@@ -29,6 +48,10 @@ export interface InterpretationRequest {
   capturedAt: string;
   /** Owner/org IANA timezone when known. Mechanical context only. */
   timezone?: string | null;
+  /**
+   * Required when `sourceKind` is `google_messages`; forbidden for manual capture.
+   */
+  messagesProvenance?: GoogleMessagesInterpretationProvenance;
 }
 
 /**
@@ -53,6 +76,11 @@ const IDEMPOTENCY_KEY_MAX = 128;
 /** `InterpretationRun.model_version` / `policy_version` persistence ceiling. */
 export const MAX_INTERPRETATION_VERSION_LENGTH = 64;
 
+const AUTHORIZED_SOURCE_KINDS = new Set<AuthorizedInterpretationSourceKind>([
+  'owner_manual_capture',
+  'google_messages',
+]);
+
 /**
  * Same key shape the contracted `Idempotency-Key` header is parsed against (A7.7 / D094): 8–128
  * characters from the safe URL-token alphabet. It is restated rather than imported because that
@@ -72,6 +100,30 @@ const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._~-]+$/;
  */
 const ISO_INSTANT_WITH_ZONE =
   /^\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}(:\d{2}(\.\d+)?)?([Zz]|[+-]\d{2}:\d{2})$/;
+
+export type CanonicalInterpretationInstant =
+  { ok: true; instant: string } | { ok: false; reason: 'format' | 'invalid' };
+
+/**
+ * Shared absolute/zoned instant check used by `capturedAt` and Messages `observedAt`.
+ *
+ * Rejects zone-less local datetimes and date-only values so the same retry cannot canonicalize
+ * to two instants on differently configured hosts. Equivalent zoned encodings of one instant
+ * collapse to one UTC ISO-8601 value.
+ */
+export function canonicalizeInterpretationInstant(value: string): CanonicalInterpretationInstant {
+  if (typeof value !== 'string' || value.length === 0) {
+    return { ok: false, reason: 'format' };
+  }
+  if (!ISO_INSTANT_WITH_ZONE.test(value)) {
+    return { ok: false, reason: 'format' };
+  }
+  const parsed = Date.parse(value);
+  if (Number.isNaN(parsed)) {
+    return { ok: false, reason: 'invalid' };
+  }
+  return { ok: true, instant: new Date(parsed).toISOString() };
+}
 
 function validationError(field: string, message: string): never {
   throw interpretationServiceError('VALIDATION_ERROR', message, [{ field, message }]);
@@ -123,21 +175,73 @@ function requireCapturedAt(value: string): string {
   if (typeof value !== 'string' || value.length === 0) {
     validationError('capturedAt', 'capturedAt is required.');
   }
-  if (!ISO_INSTANT_WITH_ZONE.test(value)) {
+  const canonical = canonicalizeInterpretationInstant(value);
+  if (!canonical.ok) {
     validationError(
       'capturedAt',
-      'capturedAt must be an ISO-8601 timestamp with an explicit UTC offset.',
+      canonical.reason === 'invalid'
+        ? 'capturedAt must be a valid timestamp.'
+        : 'capturedAt must be an ISO-8601 timestamp with an explicit UTC offset.',
     );
   }
-  const parsed = Date.parse(value);
-  if (Number.isNaN(parsed)) {
-    validationError('capturedAt', 'capturedAt must be a valid timestamp.');
+  return canonical.instant;
+}
+
+function requireAuthorizedSourceKind(value: string): AuthorizedInterpretationSourceKind {
+  if (!AUTHORIZED_SOURCE_KINDS.has(value as AuthorizedInterpretationSourceKind)) {
+    validationError('sourceKind', 'sourceKind is not an authorized interpretation source.');
   }
-  return new Date(parsed).toISOString();
+  return value as AuthorizedInterpretationSourceKind;
+}
+
+const MAX_MESSAGES_EVENT_ID = 64;
+const MAX_MESSAGES_OCCURRENCE_ID = 128;
+const MAX_MESSAGES_EXCERPT_ID = 64;
+const MAX_MESSAGES_DEDUPE_KEY = 128;
+
+export function requireGoogleMessagesProvenance(
+  provenance: GoogleMessagesInterpretationProvenance | undefined,
+): GoogleMessagesInterpretationProvenance {
+  if (provenance == null) {
+    validationError(
+      'messagesProvenance',
+      'messagesProvenance is required for a Google Messages interpretation.',
+    );
+  }
+  const excerptByteLength = provenance.excerptByteLength;
+  if (!Number.isInteger(excerptByteLength) || excerptByteLength < 0) {
+    validationError(
+      'messagesProvenance.excerptByteLength',
+      'messagesProvenance.excerptByteLength must be a non-negative integer.',
+    );
+  }
+  return {
+    communicationEventId: requireBoundedIdentifier(
+      provenance.communicationEventId,
+      'messagesProvenance.communicationEventId',
+      MAX_MESSAGES_EVENT_ID,
+    ),
+    sourceOccurrenceId: requireBoundedIdentifier(
+      provenance.sourceOccurrenceId,
+      'messagesProvenance.sourceOccurrenceId',
+      MAX_MESSAGES_OCCURRENCE_ID,
+    ),
+    excerptId: requireBoundedIdentifier(
+      provenance.excerptId,
+      'messagesProvenance.excerptId',
+      MAX_MESSAGES_EXCERPT_ID,
+    ),
+    excerptByteLength,
+    dedupeKey: requireBoundedIdentifier(
+      provenance.dedupeKey,
+      'messagesProvenance.dedupeKey',
+      MAX_MESSAGES_DEDUPE_KEY,
+    ),
+  };
 }
 
 /**
- * Validate one interpretation request at the application-service boundary (D169 S3.1).
+ * Validate one interpretation request at the application-service boundary (D169 S3.1, D181).
  *
  * Runs before the idempotency read, before the provider call, and before any transaction, so an
  * unusable request costs no interpretation and leaves no state.
@@ -145,6 +249,18 @@ function requireCapturedAt(value: string): string {
 export function validateInterpretationRequest(
   request: InterpretationRequest,
 ): ValidatedInterpretationRequest {
+  const sourceKind = requireAuthorizedSourceKind(request.sourceKind);
+  if (sourceKind === 'owner_manual_capture' && request.messagesProvenance != null) {
+    validationError(
+      'messagesProvenance',
+      'messagesProvenance is not valid for a manual capture interpretation.',
+    );
+  }
+  const messagesProvenance =
+    sourceKind === 'google_messages'
+      ? requireGoogleMessagesProvenance(request.messagesProvenance)
+      : undefined;
+
   return {
     ...request,
     organizationId: requireBoundedIdentifier(
@@ -152,10 +268,12 @@ export function validateInterpretationRequest(
       'organizationId',
       MAX_ORGANIZATION_ID,
     ),
+    sourceKind,
     requestId: requireBoundedIdentifier(request.requestId, 'requestId', MAX_REQUEST_ID),
     idempotencyKey: requireIdempotencyKey(request.idempotencyKey),
     capturedAt: requireCapturedAt(request.capturedAt),
     timezone: request.timezone ?? null,
+    messagesProvenance,
   };
 }
 

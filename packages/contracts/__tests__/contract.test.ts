@@ -548,6 +548,23 @@ describe('contracts package', () => {
     }
   });
 
+  it('contracts the D181 Messages Review path and schemas without Gmail Review surfaces', () => {
+    execSync('pnpm bundle', { cwd: root, stdio: 'pipe' });
+    const bundled = parseYaml(readFileSync(path.join(root, 'dist/openapi.bundled.yaml'), 'utf8'));
+    const schemas = (bundled.components?.schemas ?? {}) as Record<string, unknown>;
+    const routes = Object.keys(bundled.paths ?? {});
+
+    expect(routes).toContain('/api/v1/messages/reviews');
+    expect(schemas.CreateMessagesReviewRequest).toBeDefined();
+    expect(schemas.MessagesReviewResponse).toBeDefined();
+    expect(routes).not.toContain('/api/v1/gmail/reviews');
+    expect(routes).not.toContain('/api/v1/gmail/intake');
+    expect(routes.filter((route) => route.includes('sender-exclusion'))).toEqual([]);
+    expect(schemas.CreateGmailReviewRequest).toBeUndefined();
+    expect(schemas.GmailReviewResponse).toBeUndefined();
+    expect(schemas.GmailSenderExclusion).toBeUndefined();
+  });
+
   it('has no stale generated Kotlin artifacts outside the generator manifest', () => {
     execSync('node scripts/cleanup-kotlin-orphans.mjs --check', { cwd: root, stdio: 'pipe' });
     const kotlinDocs = path.join(root, 'generated/kotlin/docs');

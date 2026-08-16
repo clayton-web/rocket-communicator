@@ -11,7 +11,7 @@ type Client = DbClient | DbTransaction;
 export type InterpretationRunOutcomeValue = 'proposals_created' | 'no_proposals';
 
 /** Which kind of source an occurrence interpreted (D161 provenance, not authorization). */
-export type InterpretationSourceKindValue = 'owner_manual_capture' | 'gmail';
+export type InterpretationSourceKindValue = 'owner_manual_capture' | 'gmail' | 'google_messages';
 
 export type CreateInterpretationRunInput = {
   id: string;

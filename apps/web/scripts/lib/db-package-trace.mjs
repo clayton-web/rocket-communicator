@@ -88,6 +88,8 @@ export const REQUIRED_RUNTIME_EXPORTS = [
   'persistClaimReleasedWithoutOutcome',
   'getCommunicationEventById',
   'getTemporaryCommunicationExcerptByEventId',
+  'upsertGoogleMessagesReviewEvent',
+  'upsertTemporaryCommunicationExcerpt',
   'getTaskSuggestionBySourceEventId',
   'getCommunicationAccountByOrganization',
   'getCommunicationAccountById',

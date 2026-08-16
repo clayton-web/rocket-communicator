@@ -3,6 +3,7 @@ import type {
   OrganizationId,
   TaskId,
   TaskSuggestionId,
+  TemporaryCommunicationExcerptId,
 } from '../types/ids.js';
 import type { UtcInstant } from '../types/timestamps.js';
 import type { RetentionMetadata } from '../value-objects/metadata.js';
@@ -26,6 +27,14 @@ export interface TaskSuggestion {
    * At most one suggestion per CommunicationEvent when non-null.
    */
   sourceCommunicationEventId?: CommunicationEventId | null;
+  /**
+   * Temporary communication excerpt this proposal holds a D082 retention entitlement on.
+   *
+   * The Owner Review linkage — Google Messages Review uses it — and not the A6 one above:
+   * 0..N sibling proposals of one Review may share an excerpt, and each carries its own
+   * entitlement (D082, D161). Null for A6 Gmail, manual capture, and work-request suggestions.
+   */
+  sourceExcerptId?: TemporaryCommunicationExcerptId | null;
   /**
    * Task created by Owner approve of this suggestion (D080/D082).
    * Used for durable Task → excerpt terminal retention lookup.

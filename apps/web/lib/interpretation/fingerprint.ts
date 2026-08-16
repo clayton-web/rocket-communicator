@@ -7,6 +7,12 @@ export interface InterpretationFingerprintInputs {
   rawInput: string;
   capturedAt: string | null;
   timezone: string | null;
+  /**
+   * Opaque Google Messages source occurrence identity. Present only for
+   * `sourceKind = google_messages`. Must stay absent for manual capture so those
+   * fingerprints do not change (D181).
+   */
+  messagesOccurrenceId?: string;
 }
 
 /**
@@ -20,13 +26,18 @@ export interface InterpretationFingerprintInputs {
  * than the interpretation service and its provider call.
  */
 export function canonicalizeInterpretationRequest(inputs: InterpretationFingerprintInputs): string {
-  return [
+  const lines = [
     `capturedAt=${JSON.stringify(inputs.capturedAt)}`,
     `organizationId=${JSON.stringify(inputs.organizationId)}`,
     `rawInput=${JSON.stringify(inputs.rawInput)}`,
     `sourceKind=${JSON.stringify(inputs.sourceKind)}`,
     `timezone=${JSON.stringify(inputs.timezone)}`,
-  ].join('\n');
+  ];
+  // Appended only for Google Messages so the manual-capture canonical form stays byte-identical.
+  if (inputs.sourceKind === 'google_messages' && inputs.messagesOccurrenceId) {
+    lines.push(`messagesOccurrenceId=${JSON.stringify(inputs.messagesOccurrenceId)}`);
+  }
+  return lines.join('\n');
 }
 
 /**
@@ -65,6 +76,25 @@ export function computeManualCaptureSourceDedupeDigest(inputs: {
     `idempotencyKey=${JSON.stringify(inputs.idempotencyKey)}`,
     `organizationId=${JSON.stringify(inputs.organizationId)}`,
     `sourceKind=${JSON.stringify(inputs.sourceKind)}`,
+  ].join('\n');
+  return createHash('sha256').update(canonical, 'utf8').digest('hex');
+}
+
+/**
+ * Deterministic, bounded dedupe digest for a Google Messages CommunicationEvent (D181).
+ *
+ * The opaque source occurrence identity may exceed `CommunicationEvent.dedupeKey`'s 128-character
+ * ceiling once namespaced, so the persisted key is a one-way digest. Organization and source kind
+ * participate because the same device notification key in two organizations is two occurrences.
+ */
+export function computeGoogleMessagesSourceDedupeDigest(inputs: {
+  organizationId: string;
+  sourceOccurrenceId: string;
+}): string {
+  const canonical = [
+    `organizationId=${JSON.stringify(inputs.organizationId)}`,
+    `sourceKind=${JSON.stringify('google_messages')}`,
+    `sourceOccurrenceId=${JSON.stringify(inputs.sourceOccurrenceId)}`,
   ].join('\n');
   return createHash('sha256').update(canonical, 'utf8').digest('hex');
 }

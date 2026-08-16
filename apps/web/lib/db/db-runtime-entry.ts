@@ -126,6 +126,8 @@ export type TracedRuntimeModule = {
   resolveInterpretationOccurrence: typeof TracedRuntimeBindings.resolveInterpretationOccurrence;
   getCommunicationEventById: typeof TracedRuntimeBindings.getCommunicationEventById;
   getTemporaryCommunicationExcerptByEventId: typeof TracedRuntimeBindings.getTemporaryCommunicationExcerptByEventId;
+  upsertGoogleMessagesReviewEvent: typeof TracedRuntimeBindings.upsertGoogleMessagesReviewEvent;
+  upsertTemporaryCommunicationExcerpt: typeof TracedRuntimeBindings.upsertTemporaryCommunicationExcerpt;
   getTaskSuggestionBySourceEventId: typeof TracedRuntimeBindings.getTaskSuggestionBySourceEventId;
   getCommunicationAccountByOrganization: typeof TracedRuntimeBindings.getCommunicationAccountByOrganization;
   getCommunicationAccountById: typeof TracedRuntimeBindings.getCommunicationAccountById;
@@ -250,6 +252,8 @@ export async function loadTracedRuntimeModule(): Promise<TracedRuntimeModule> {
     getCommunicationEventById: tracedRuntime.getCommunicationEventById,
     getTemporaryCommunicationExcerptByEventId:
       tracedRuntime.getTemporaryCommunicationExcerptByEventId,
+    upsertGoogleMessagesReviewEvent: tracedRuntime.upsertGoogleMessagesReviewEvent,
+    upsertTemporaryCommunicationExcerpt: tracedRuntime.upsertTemporaryCommunicationExcerpt,
     getTaskSuggestionBySourceEventId: tracedRuntime.getTaskSuggestionBySourceEventId,
     getCommunicationAccountByOrganization: tracedRuntime.getCommunicationAccountByOrganization,
     getCommunicationAccountById: tracedRuntime.getCommunicationAccountById,

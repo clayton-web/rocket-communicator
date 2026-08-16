@@ -107,6 +107,8 @@ const REQUIRED_EXPORTS = [
   'resolveInterpretationOccurrence',
   'getCommunicationEventById',
   'getTemporaryCommunicationExcerptByEventId',
+  'upsertGoogleMessagesReviewEvent',
+  'upsertTemporaryCommunicationExcerpt',
   'getTaskSuggestionBySourceEventId',
   'getCommunicationAccountByOrganization',
   'getCommunicationAccountById',

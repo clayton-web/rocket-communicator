@@ -20,6 +20,7 @@ import {
   notFound,
   organizationMismatch,
   persistenceValidation,
+  uniqueViolation,
 } from '../errors/persistence-errors.js';
 
 type Client = DbClient | DbTransaction;
@@ -133,6 +134,108 @@ export async function upsertCommunicationEvent(
   });
 
   return { event: mapCommunicationEvent(row), created: true };
+}
+
+
+export const GOOGLE_MESSAGES_SOURCE_TYPE = 'google_messages' as const;
+export const GOOGLE_MESSAGES_PROVIDER_MESSAGE_PREFIX = 'gm:' as const;
+
+export function buildGoogleMessagesProviderMessageId(sourceOccurrenceId: string): string {
+  return `${GOOGLE_MESSAGES_PROVIDER_MESSAGE_PREFIX}${sourceOccurrenceId}`;
+}
+
+/**
+ * Create or reuse the canonical CommunicationEvent for an Owner-initiated Google Messages
+ * Review (D181). No CommunicationAccount is created. Gmail-shaped preview fields stay empty so
+ * selected text lives only on TemporaryCommunicationExcerpt.
+ */
+export async function upsertGoogleMessagesReviewEvent(
+  db: Client,
+  input: {
+    organizationId: string;
+    eventId: string;
+    sourceOccurrenceId: string;
+    dedupeKey: string;
+    observedAt: string;
+  },
+): Promise<{ event: CommunicationEvent; created: boolean }> {
+  const providerMessageId = buildGoogleMessagesProviderMessageId(input.sourceOccurrenceId);
+  const existing = await db.communicationEvent.findUnique({
+    where: {
+      organizationId_providerMessageId: {
+        organizationId: input.organizationId,
+        providerMessageId,
+      },
+    },
+  });
+
+  if (existing) {
+    if (existing.organizationId !== input.organizationId) {
+      throw organizationMismatch('CommunicationEvent belongs to a different organization.');
+    }
+    if (existing.sourceType !== GOOGLE_MESSAGES_SOURCE_TYPE) {
+      throw persistenceValidation(
+        'CommunicationEvent source type does not match a Google Messages occurrence.',
+      );
+    }
+    if (existing.accountId != null) {
+      throw persistenceValidation(
+        'Google Messages CommunicationEvent must not reference a CommunicationAccount.',
+      );
+    }
+    return { event: mapCommunicationEvent(existing), created: false };
+  }
+
+  const observedAt = fromIso(input.observedAt);
+  if (!observedAt) {
+    throw persistenceValidation('Google Messages observedAt is invalid.');
+  }
+
+  try {
+    const row = await db.communicationEvent.create({
+      data: {
+        id: input.eventId,
+        organizationId: input.organizationId,
+        accountId: null,
+        sourceType: GOOGLE_MESSAGES_SOURCE_TYPE,
+        providerMessageId,
+        providerThreadId: providerMessageId,
+        dedupeKey: input.dedupeKey,
+        internalDate: observedAt,
+        receivedAt: observedAt,
+        fromAddress: '',
+        toAddresses: asJson([]),
+        subject: null,
+        snippet: null,
+        labelIds: asJson([]),
+        hasAttachments: false,
+        attachmentMetadata: asJson([]),
+        status: 'active',
+        ingestRunId: null,
+        purgeAt: null,
+      },
+    });
+
+    return { event: mapCommunicationEvent(row), created: true };
+  } catch (error) {
+    if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') {
+      throw error;
+    }
+    const raced = await db.communicationEvent.findUnique({
+      where: {
+        organizationId_providerMessageId: {
+          organizationId: input.organizationId,
+          providerMessageId,
+        },
+      },
+    });
+    if (!raced || raced.sourceType !== GOOGLE_MESSAGES_SOURCE_TYPE || raced.accountId != null) {
+      throw uniqueViolation(
+        'Google Messages CommunicationEvent already exists for this occurrence.',
+      );
+    }
+    return { event: mapCommunicationEvent(raced), created: false };
+  }
 }
 
 export async function upsertTemporaryCommunicationExcerpt(
