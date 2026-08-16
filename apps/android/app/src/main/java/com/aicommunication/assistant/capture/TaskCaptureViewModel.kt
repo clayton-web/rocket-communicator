@@ -411,6 +411,14 @@ class TaskCaptureViewModel(
                         rawInput = operation.rawInput,
                         errorMessage = string(R.string.capture_error_dependency)
                     )
+            // The capture is kept and stays replayable, but the copy does not pretend another
+            // identical attempt will land: nothing is listening at the contracted route.
+            ManualCaptureOutcome.ROUTE_UNAVAILABLE ->
+                _uiState.value =
+                    CaptureUiState.Recovery(
+                        rawInput = operation.rawInput,
+                        errorMessage = string(R.string.capture_error_route_unavailable)
+                    )
             ManualCaptureOutcome.UNAUTHORIZED -> {
                 // The capture survives session recovery; the same tuple retries after sign-in.
                 _uiState.value =

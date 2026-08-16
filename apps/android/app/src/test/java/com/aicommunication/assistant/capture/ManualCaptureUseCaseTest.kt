@@ -9,7 +9,9 @@ import com.aicommunication.assistant.network.FixedConnectivityMonitor
 import com.aicommunication.assistant.network.OwnerApiExecutor
 import com.aicommunication.assistant.network.OwnerApiResult
 import com.aicommunication.assistant.network.OwnerHttpClientFactory
+import com.aicommunication.assistant.network.SafeHttpLogger
 import com.aicommunication.assistant.network.ownerApiMoshi
+import com.squareup.moshi.Types
 import java.time.Instant
 import java.time.ZoneId
 import kotlinx.coroutines.test.runTest
@@ -31,10 +33,12 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
 /**
- * Frozen retry identity and pending lifecycle for Owner manual capture (S3.3, D171).
+ * Frozen retry identity, request contract, and pending lifecycle for Owner manual capture
+ * (S3.3, D171).
  *
- * The foundation is deliberately unreachable from the capture UI in this slice; these tests drive
- * it directly.
+ * These tests drive the data layer directly, against a real HTTP server, so the capture request is
+ * asserted as it goes over the wire rather than as the client believes it to be. Every fixture uses
+ * synthetic capture text: no assertion may print Owner content.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [31], application = Application::class)
@@ -44,6 +48,8 @@ class ManualCaptureUseCaseTest {
     private lateinit var useCase: ManualCaptureUseCase
 
     private val requestAdapter = ownerApiMoshi().adapter(ManualCaptureRequestWire::class.java)
+
+    private val recorded = mutableListOf<CaptureSubmissionDiagnostic>()
 
     @Before
     fun setUp() {
@@ -55,6 +61,7 @@ class ManualCaptureUseCaseTest {
                     .getSharedPreferences(PendingCaptureStore.FILE_NAME, Context.MODE_PRIVATE)
             )
         pendingStore.clear()
+        recorded.clear()
         useCase = useCase(FixedConnectivityMonitor(validated = true))
     }
 
@@ -77,7 +84,8 @@ class ManualCaptureUseCaseTest {
                 connectivity = connectivity
             )
         ),
-        pendingStore = pendingStore
+        pendingStore = pendingStore,
+        diagnostics = { recorded += it }
     )
 
     private fun successBody(replay: Boolean = false, suggestionId: String? = null): String {
@@ -120,6 +128,27 @@ class ManualCaptureUseCaseTest {
 
     private fun RecordedRequest.tuple(): ManualCaptureRequestWire =
         requireNotNull(requestAdapter.fromJson(body.readUtf8()))
+
+    /**
+     * A deployment that does not carry the capture route answers from the host's catch-all, so the
+     * response is an HTML page rather than Rocket's `ErrorResponse` envelope.
+     */
+    private fun hostNotFound(): MockResponse = MockResponse()
+        .setResponseCode(404)
+        .setHeader("Content-Type", "text/html; charset=utf-8")
+        .setBody("<!DOCTYPE html><html><body>404</body></html>")
+
+    private fun bodyKeys(json: String): Set<String> {
+        val adapter =
+            ownerApiMoshi().adapter<Map<String, Any?>>(
+                Types.newParameterizedType(
+                    Map::class.java,
+                    String::class.java,
+                    Any::class.java
+                )
+            )
+        return requireNotNull(adapter.fromJson(json)).keys
+    }
 
     @Test
     fun beginCaptureFreezesTheTupleAndPersistsItBeforeAnyRequest() {
@@ -313,6 +342,154 @@ class ManualCaptureUseCaseTest {
         pendingStore.write(expired)
 
         assertNull(useCase.pendingCapture())
+    }
+
+    @Test
+    fun submitUsesTheContractedMethodPathAuthAndBodySchema() = runTest {
+        server.enqueue(MockResponse().setResponseCode(200).setBody(successBody()))
+        val operation = requireNotNull(useCase.beginCapture("Call the roofer about the leak"))
+
+        useCase.submit(operation)
+
+        val sent = server.takeRequest()
+        assertEquals("POST", sent.method)
+        assertEquals("/api/v1/manual-captures", sent.path)
+        assertEquals("Bearer access-token", sent.getHeader("Authorization"))
+        assertEquals("application/json", sent.getHeader("Accept"))
+        assertTrue(
+            requireNotNull(sent.getHeader("Content-Type")).startsWith("application/json")
+        )
+        assertNotNull(sent.getHeader("Idempotency-Key"))
+        // Body is exactly the contracted tuple: no organization, no source kind, no client-chosen
+        // provenance, and nothing else the route would reject.
+        val keys = bodyKeys(sent.body.readUtf8())
+        assertEquals(setOf("rawInput", "capturedAt", "timezone"), keys)
+    }
+
+    @Test
+    fun aMissingCaptureRouteIsARouteFailureThatStillKeepsTheCapture() = runTest {
+        // What a deployment without the capture route actually returns: the host's own 404 page,
+        // with no ErrorResponse envelope in it.
+        server.enqueue(hostNotFound())
+        val operation = requireNotNull(useCase.beginCapture("Call the roofer about the leak"))
+
+        val result = useCase.submit(operation)
+
+        assertEquals(404, (result as OwnerApiResult.HttpError).httpStatus)
+        assertEquals(ManualCaptureOutcome.ROUTE_UNAVAILABLE, ManualCaptureOutcome.classify(result))
+        // The Owner's capture must outlive a contract mismatch, unchanged and still replayable.
+        assertEquals(operation, useCase.pendingCapture())
+    }
+
+    @Test
+    fun aMethodMismatchIsTheSameRouteFailure() = runTest {
+        server.enqueue(MockResponse().setResponseCode(405))
+        val operation = requireNotNull(useCase.beginCapture("Call the roofer about the leak"))
+
+        val result = useCase.submit(operation)
+
+        assertEquals(ManualCaptureOutcome.ROUTE_UNAVAILABLE, ManualCaptureOutcome.classify(result))
+        assertEquals(operation, useCase.pendingCapture())
+    }
+
+    @Test
+    fun aRouteFailureIsNotClassifiedAsAValidationOrConflictFailure() = runTest {
+        server.enqueue(hostNotFound())
+        val operation = requireNotNull(useCase.beginCapture("Call the roofer about the leak"))
+
+        val outcome = ManualCaptureOutcome.classify(useCase.submit(operation))
+
+        assertFalse(outcome == ManualCaptureOutcome.VALIDATION_FAILURE)
+        assertFalse(outcome == ManualCaptureOutcome.IDEMPOTENCY_CONFLICT)
+        assertFalse(outcome == ManualCaptureOutcome.UNEXPECTED)
+        assertTrue(outcome.preservesPending)
+    }
+
+    @Test
+    fun retryingAfterARouteFailureResendsTheSameLogicalCapture() = runTest {
+        server.enqueue(hostNotFound())
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(successBody(suggestionId = "s1"))
+        )
+        val operation = requireNotNull(useCase.beginCapture("Call the roofer about the leak"))
+
+        useCase.submit(operation)
+        // Exactly what Retry does: replay the stored tuple rather than mint a new identity.
+        val retried = requireNotNull(useCase.pendingCapture())
+        useCase.submit(retried)
+
+        val first = server.takeRequest()
+        val second = server.takeRequest()
+        assertEquals(first.getHeader("Idempotency-Key"), second.getHeader("Idempotency-Key"))
+        assertEquals(operation.idempotencyKey, second.getHeader("Idempotency-Key"))
+        val firstTuple = first.tuple()
+        val secondTuple = second.tuple()
+        assertEquals(firstTuple.capturedAt, secondTuple.capturedAt)
+        assertEquals(firstTuple.timezone, secondTuple.timezone)
+        // Compared without assertEquals so a failure never prints the capture text.
+        assertTrue("rawInput must be resent verbatim", operation.rawInput == secondTuple.rawInput)
+    }
+
+    @Test
+    fun aServerFailureKeepsTheCaptureRecoverableRatherThanCallingItARouteFailure() = runTest {
+        for (status in listOf(429, 500, 502, 504)) {
+            pendingStore.clear()
+            server.enqueue(MockResponse().setResponseCode(status))
+            val operation = requireNotNull(useCase.beginCapture("Call the roofer about the leak"))
+
+            val outcome = ManualCaptureOutcome.classify(useCase.submit(operation))
+
+            assertEquals("status $status", ManualCaptureOutcome.UNEXPECTED, outcome)
+            assertEquals("status $status", operation, useCase.pendingCapture())
+        }
+    }
+
+    @Test
+    fun aRefusedSessionIsNeverReadAsAMissingRoute() = runTest {
+        enqueueError(403, "FORBIDDEN")
+        val operation = requireNotNull(useCase.beginCapture("Call the roofer about the leak"))
+
+        val outcome = ManualCaptureOutcome.classify(useCase.submit(operation))
+
+        assertFalse(outcome == ManualCaptureOutcome.ROUTE_UNAVAILABLE)
+        assertEquals(operation, useCase.pendingCapture())
+    }
+
+    @Test
+    fun aRouteFailureIsDiagnosableWithoutLoggingTheCapture() = runTest {
+        server.enqueue(hostNotFound())
+        val operation = requireNotNull(useCase.beginCapture("Call the roofer about the leak"))
+
+        useCase.submit(operation)
+
+        val record = recorded.single()
+        assertEquals("POST", record.method)
+        assertEquals("/api/v1/manual-captures", record.path)
+        assertEquals("localhost", record.apiHost)
+        assertEquals(404, record.httpStatus)
+        // The discriminator this defect needed: nothing Rocket wrote produced this response.
+        assertFalse(record.rocketErrorEnvelope)
+        assertEquals(ManualCaptureOutcome.ROUTE_UNAVAILABLE, record.outcome)
+
+        val line = record.debugLine()
+        assertFalse(line.contains("roofer"))
+        assertFalse(line.contains(operation.rawInput))
+        assertFalse(line.contains(operation.idempotencyKey))
+        assertFalse(SafeHttpLogger.containsCredentialLeak(line))
+    }
+
+    @Test
+    fun aRocketRejectionIsDiagnosableAsARocketAnswer() = runTest {
+        enqueueError(400, "VALIDATION_ERROR")
+        val operation = requireNotNull(useCase.beginCapture("Call the roofer about the leak"))
+
+        useCase.submit(operation)
+
+        val record = recorded.single()
+        assertEquals(400, record.httpStatus)
+        assertTrue(record.rocketErrorEnvelope)
+        assertEquals("VALIDATION_ERROR", record.serverErrorCode)
+        assertEquals("req-1", record.requestId)
     }
 
     @Test

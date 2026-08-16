@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.lifecycle.viewModelScope
+import com.aicommunication.assistant.R
 import com.aicommunication.assistant.network.AccessTokenProvider
 import com.aicommunication.assistant.network.ApiConfig
 import com.aicommunication.assistant.network.FixedConnectivityMonitor
@@ -322,6 +323,98 @@ class TaskCaptureViewModelTest {
         assertEquals("Call the roofer", state.rawInput)
         assertTrue(state.errorMessage!!.isNotBlank())
         assertNotNull(pendingStore.read())
+    }
+
+    @Test
+    fun missingCaptureRoute_keepsTheCaptureVisibleAndSaysRetryingWillNotHelp() = runTest {
+        // Reproduces the observed device failure: the deployment that answered has no capture
+        // route, so its catch-all replies 404 with no Rocket error envelope.
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(404)
+                .setHeader("Content-Type", "text/html; charset=utf-8")
+                .setBody("<!DOCTYPE html><html><body>404</body></html>")
+        )
+        val vm = viewModel()
+        vm.onDraftChanged("Call the roofer about the leak")
+
+        vm.save()
+        vm.awaitSettled()
+
+        val state = vm.uiState.value as CaptureUiState.Recovery
+        assertEquals("Call the roofer about the leak", state.rawInput)
+        // The Owner sees why, not a bare status line, and the capture is still there.
+        assertEquals(
+            application.getString(R.string.capture_error_route_unavailable),
+            state.errorMessage
+        )
+        assertFalse(state.connectivityIssue)
+        assertNotNull(pendingStore.read())
+    }
+
+    @Test
+    fun missingCaptureRoute_retriesTheSameLogicalCaptureAndCreatesNoSecondOne() = runTest {
+        server.enqueue(MockResponse().setResponseCode(404))
+        enqueueSuccess(proposalJson("s1", "Call the roofer about the leak"))
+        val vm = viewModel()
+        vm.onDraftChanged("Call the roofer about the leak")
+        vm.save()
+        vm.awaitSettled()
+        val frozen = requireNotNull(pendingStore.read())
+
+        vm.retry()
+        vm.awaitSettled()
+
+        assertEquals(2, server.requestCount)
+        val first = server.takeRequest()
+        val second = server.takeRequest()
+        assertEquals(first.getHeader("Idempotency-Key"), second.getHeader("Idempotency-Key"))
+        assertEquals(frozen.idempotencyKey, second.getHeader("Idempotency-Key"))
+        val replayed = requireNotNull(requestAdapter.fromJson(second.body.readUtf8()))
+        assertEquals(frozen.capturedAt, replayed.capturedAt)
+        // Compared without assertEquals so a failure never prints the capture text.
+        assertTrue("rawInput must be replayed verbatim", frozen.rawInput == replayed.rawInput)
+        assertTrue(vm.uiState.value is CaptureUiState.Proposals)
+    }
+
+    @Test
+    fun missingCaptureRoute_neverAutoRetriesTheMissingRoute() = runTest {
+        server.enqueue(MockResponse().setResponseCode(404))
+        val vm = viewModel()
+        vm.onDraftChanged("Call the roofer")
+
+        vm.save()
+        vm.awaitSettled()
+
+        assertNotNull(server.takeRequest(200, TimeUnit.MILLISECONDS))
+        assertNull(server.takeRequest(300, TimeUnit.MILLISECONDS))
+        assertTrue(vm.uiState.value is CaptureUiState.Recovery)
+    }
+
+    @Test
+    fun missingCaptureRoute_editingTheTextStartsANewCaptureAsTheCopyPromises() = runTest {
+        server.enqueue(MockResponse().setResponseCode(404))
+        val vm = viewModel()
+        vm.onDraftChanged("Call the roofer")
+        vm.save()
+        vm.awaitSettled()
+        val failed = requireNotNull(pendingStore.read())
+
+        vm.onDraftChanged("Call the roofer about the leak instead")
+
+        // The old identity must never carry changed text back to the server.
+        assertTrue(vm.uiState.value is CaptureUiState.Editing)
+        assertNull(pendingStore.read())
+
+        enqueueSuccess(proposalJson("s1", "Call the roofer about the leak instead"))
+        vm.save()
+        vm.awaitSettled()
+
+        assertEquals(2, server.requestCount)
+        server.takeRequest()
+        val fresh = server.takeRequest()
+        assertEquals("/api/v1/manual-captures", fresh.path)
+        assertNotEquals(failed.idempotencyKey, fresh.getHeader("Idempotency-Key"))
     }
 
     @Test

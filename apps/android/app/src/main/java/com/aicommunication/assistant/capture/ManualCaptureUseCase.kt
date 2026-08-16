@@ -8,13 +8,15 @@ import java.time.ZoneId
 /**
  * Manual capture submission and durable-retry foundation (S3.3, D171).
  *
- * Not reachable from the Owner UI in this slice: the capture screen still uses the legacy
- * direct-create path. This layer owns the frozen retry identity so a later presentation slice can
- * offer Retry / Discard without reasoning about idempotency itself.
+ * This layer owns the frozen retry identity so presentation can offer Retry / Discard without
+ * reasoning about idempotency itself, and it is the only place capture touches the network — the
+ * capture screen no longer uses the legacy direct-create path.
  */
 class ManualCaptureUseCase(
     private val repository: ManualCaptureRepository,
-    private val pendingStore: PendingCaptureStore
+    private val pendingStore: PendingCaptureStore,
+    private val diagnostics: CaptureSubmissionDiagnosticSink =
+        CaptureSubmissionDiagnosticSink.Disabled
 ) {
     /** Still-valid pending capture to resume after ambiguous failure or process death. */
     fun pendingCapture(): PendingCaptureOperation? = pendingStore.read()
@@ -69,6 +71,13 @@ class ManualCaptureUseCase(
                 )
             )
         val outcome = ManualCaptureOutcome.classify(result)
+        diagnostics.record(
+            CaptureSubmissionDiagnostic.from(
+                result = result,
+                apiHost = repository.apiHostLabel,
+                outcome = outcome
+            )
+        )
         if (!outcome.preservesPending && outcome != ManualCaptureOutcome.SUCCESS) {
             pendingStore.clear()
         }
@@ -87,6 +96,17 @@ enum class ManualCaptureOutcome(val preservesPending: Boolean) {
     DEPENDENCY_UNAVAILABLE(true),
     UNAUTHORIZED(true),
     CONNECTIVITY(true),
+
+    /**
+     * The capture route was not reachable at the contracted method and path in the deployment that
+     * answered. Kept separate from [UNEXPECTED] because repeating an identical request against a
+     * route that is not there cannot repair it, so honest copy has to say the capture is waiting on
+     * Rocket rather than invite the Owner to keep retrying a transient-looking failure.
+     *
+     * Still preserves the pending capture: the Owner's text must outlive the mismatch, and the
+     * frozen tuple is exactly what makes a later retry the same logical capture.
+     */
+    ROUTE_UNAVAILABLE(true),
     UNEXPECTED(true);
 
     companion object {
@@ -103,6 +123,17 @@ enum class ManualCaptureOutcome(val preservesPending: Boolean) {
          * Only the statuses the route documents as rejecting the request outright are terminal;
          * anything else falls through to [UNEXPECTED] and keeps the tuple, because an unmodelled
          * response cannot rule out a committed interpretation.
+         *
+         * 404 and 405 are the exception that is still not terminal. The documented capture error
+         * contract is 400, 401, 409, 415, 428, 503, and 500 — it contains no 404 and no 405 — so
+         * either status means the contracted method and path found no handler in the deployment
+         * that answered, and no interpretation can have been committed. That is a contract or
+         * deployment mismatch rather than something wrong with the capture, so it gets its own
+         * [ROUTE_UNAVAILABLE] classification and still keeps the tuple replayable.
+         *
+         * 422 is deliberately not mapped here. Rocket's contract does not use it, so treating one
+         * as a validation rejection would invent a rule the server never agreed to; it stays
+         * [UNEXPECTED] with the capture preserved.
          */
         private fun classifyHttp(error: OwnerApiResult.HttpError): ManualCaptureOutcome = when {
             error.code == ErrorCode.DEPENDENCY_UNAVAILABLE -> DEPENDENCY_UNAVAILABLE
@@ -111,6 +142,8 @@ enum class ManualCaptureOutcome(val preservesPending: Boolean) {
             error.httpStatus == 400 -> VALIDATION_FAILURE
             error.httpStatus == 415 -> VALIDATION_FAILURE
             error.httpStatus == 428 -> VALIDATION_FAILURE
+            error.httpStatus == 404 -> ROUTE_UNAVAILABLE
+            error.httpStatus == 405 -> ROUTE_UNAVAILABLE
             else -> UNEXPECTED
         }
     }

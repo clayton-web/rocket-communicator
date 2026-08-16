@@ -32,6 +32,7 @@
     <string name="capture_error_validation">That capture could not be accepted. Check the text and try again.</string>
     <string name="capture_error_conflict">Rocket could not confirm that capture. Save it again to send a fresh one.</string>
     <string name="capture_error_dependency">Rocket could not read that capture right now. Try again.</string>
+    <string name="capture_error_route_unavailable">Rocket cannot capture yet. Your capture is saved here, but retrying will keep failing until Rocket is updated.</string>
     <string name="capture_error_session">Your session ended. Sign in again to capture.</string>
     <string name="capture_accept">Accept</string>
     <string name="capture_accept_me">Me / Owner</string>

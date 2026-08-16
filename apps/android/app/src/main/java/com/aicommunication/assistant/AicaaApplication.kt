@@ -1,10 +1,12 @@
 package com.aicommunication.assistant
 
 import android.app.Application
+import android.util.Log
 import com.aicommunication.assistant.auth.AuthConfig
 import com.aicommunication.assistant.auth.OwnerAuthRepository
 import com.aicommunication.assistant.auth.OwnerSessionClient
 import com.aicommunication.assistant.auth.SupabaseFactory
+import com.aicommunication.assistant.capture.CaptureSubmissionDiagnosticSink
 import com.aicommunication.assistant.capture.CaptureTaskUseCase
 import com.aicommunication.assistant.capture.ManualCaptureRepository
 import com.aicommunication.assistant.capture.ManualCaptureUseCase
@@ -109,7 +111,8 @@ class AicaaApplication : Application() {
         manualCaptureUseCase =
             ManualCaptureUseCase(
                 repository = ManualCaptureRepository(ownerApiExecutor),
-                pendingStore = pendingCaptureStore
+                pendingStore = pendingCaptureStore,
+                diagnostics = captureSubmissionDiagnostics()
             )
         messagesReviewStore = MessagesLocalReviewStore()
         messagesShapeProbe = MessagesNotificationShapeProbe(enabled = BuildConfig.DEBUG)
@@ -126,5 +129,23 @@ class AicaaApplication : Application() {
                 supabase = supabaseClient,
                 sessionClient = sessionClient
             )
+    }
+
+    /**
+     * Debug builds only, matching [MessagesNotificationShapeProbe]. Release builds record nothing,
+     * so no capture submission detail is emitted in Production. The record itself is a field
+     * allowlist that cannot carry capture text or credentials.
+     */
+    private fun captureSubmissionDiagnostics(): CaptureSubmissionDiagnosticSink =
+        if (BuildConfig.DEBUG) {
+            CaptureSubmissionDiagnosticSink { diagnostic ->
+                Log.d(CAPTURE_DIAGNOSTIC_TAG, diagnostic.debugLine())
+            }
+        } else {
+            CaptureSubmissionDiagnosticSink.Disabled
+        }
+
+    private companion object {
+        const val CAPTURE_DIAGNOSTIC_TAG = "OwnerCapture"
     }
 }

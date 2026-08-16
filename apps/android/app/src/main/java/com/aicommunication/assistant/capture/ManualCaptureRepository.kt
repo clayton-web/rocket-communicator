@@ -18,12 +18,16 @@ class ManualCaptureRepository(
 ) : OwnerApiRepository(executor) {
     private val requestAdapter = ownerApiMoshi().adapter(ManualCaptureRequestWire::class.java)
 
+    /** Which deployment capture is submitted to; host only, for privacy-safe diagnostics. */
+    val apiHostLabel: String
+        get() = executor.apiHostLabel
+
     suspend fun createManualCapture(
         idempotencyKey: String,
         request: ManualCaptureRequestWire
     ): OwnerApiResult<ManualCaptureResponseWire> = send(
-        method = OwnerApiRequest.Method.POST,
-        path = "/api/v1/manual-captures",
+        method = METHOD,
+        path = PATH,
         clazz = ManualCaptureResponseWire::class.java,
         jsonBody = requestAdapter.toJson(request),
         headers =
@@ -34,6 +38,15 @@ class ManualCaptureRepository(
     )
 
     companion object {
+        /**
+         * The canonical Owner manual-capture contract (D170, D171). Named constants so the
+         * classification and diagnostics below describe the request that was actually sent
+         * instead of restating the contract from memory.
+         */
+        val METHOD = OwnerApiRequest.Method.POST
+
+        const val PATH = "/api/v1/manual-captures"
+
         /** Capture-specific namespace; satisfies the contracted Idempotency-Key format. */
         fun newIdempotencyKey(): String = "capture-${UUID.randomUUID()}"
     }

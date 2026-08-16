@@ -23,6 +23,10 @@ class OwnerApiExecutor(
     private val connectivity: ConnectivityMonitor,
     private val moshi: Moshi = ownerApiMoshi()
 ) {
+    /** Which deployment this executor talks to, safe to include in diagnostics. */
+    val apiHostLabel: String
+        get() = apiConfig.hostLabel
+
     suspend fun <T> execute(request: OwnerApiRequest, valueType: Type): OwnerApiResult<T> =
         withContext(Dispatchers.IO) {
             executeInternal(request, valueType, allowRefreshRetry = true)
