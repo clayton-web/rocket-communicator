@@ -1,5 +1,5 @@
 import type { TaskSuggestion } from '@aicaa/domain';
-import { computeWorkflowSafetyCeilingPurgeAt } from '@aicaa/domain';
+import { computeWorkflowSafetyCeilingPurgeAt } from '../../../domain/dist/index.js';
 import type { DbClient, DbTransaction } from '../client/create-prisma-client.js';
 import {
   createInterpretationRun,

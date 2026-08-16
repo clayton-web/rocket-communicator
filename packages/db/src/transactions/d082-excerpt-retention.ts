@@ -1,7 +1,7 @@
 import {
   resolveExcerptPurgeAt,
   type ExcerptEntitlementHolder,
-} from '@aicaa/domain';
+} from '../../../domain/dist/index.js';
 import type { DbClient, DbTransaction } from '../client/create-prisma-client.js';
 import { fromIso, toIso } from '../mappers/domain-mappers.js';
 
