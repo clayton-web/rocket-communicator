@@ -118,7 +118,7 @@ class TaskCaptureViewModel(
     fun captureAnother() {
         if (proposalsBusy()) return
         val current = _uiState.value as? CaptureUiState.Proposals
-        if (current?.origin == ProposalOrigin.GmailReview) return
+        if (current?.origin?.returnsToSourceSurface == true) return
         resetToEditing()
     }
 
@@ -347,6 +347,19 @@ class TaskCaptureViewModel(
                 capturedText = sourceText,
                 proposals = proposals,
                 origin = ProposalOrigin.GmailReview
+            )
+    }
+
+    /**
+     * Hydrates the existing S5 proposal-review surface from a Messages Review result. Does not
+     * touch [PendingCaptureStore]: that store remains capture-retry infrastructure only.
+     */
+    fun presentMessagesReview(sourceText: String, proposals: List<TaskSuggestionWire>) {
+        _uiState.value =
+            CaptureUiState.Proposals(
+                capturedText = sourceText,
+                proposals = proposals,
+                origin = ProposalOrigin.MessagesReview
             )
     }
 

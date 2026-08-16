@@ -15,6 +15,7 @@ import com.aicommunication.assistant.capture.ProposalOwnerRepository
 import com.aicommunication.assistant.capture.TaskOwnerRepository
 import com.aicommunication.assistant.messages.MessagesLocalReviewStore
 import com.aicommunication.assistant.messages.MessagesNotificationShapeProbe
+import com.aicommunication.assistant.messages.MessagesOwnerRepository
 import com.aicommunication.assistant.network.AndroidConnectivityMonitor
 import com.aicommunication.assistant.network.ApiConfig
 import com.aicommunication.assistant.network.OwnerApiExecutor
@@ -56,6 +57,9 @@ class AicaaApplication : Application() {
         private set
 
     lateinit var gmailOwnerRepository: GmailOwnerRepository
+        private set
+
+    lateinit var messagesOwnerRepository: MessagesOwnerRepository
         private set
 
     lateinit var pendingHandoffStore: PendingHandoffStore
@@ -104,6 +108,7 @@ class AicaaApplication : Application() {
         reminderOwnerRepository = ReminderOwnerRepository(ownerApiExecutor)
         recipientOwnerRepository = RecipientOwnerRepository(ownerApiExecutor)
         gmailOwnerRepository = GmailOwnerRepository(ownerApiExecutor)
+        messagesOwnerRepository = MessagesOwnerRepository(ownerApiExecutor)
         pendingHandoffStore = PendingHandoffStore(this)
         captureTaskUseCase = CaptureTaskUseCase(taskOwnerRepository)
         pendingCaptureStore = PendingCaptureStore(this)

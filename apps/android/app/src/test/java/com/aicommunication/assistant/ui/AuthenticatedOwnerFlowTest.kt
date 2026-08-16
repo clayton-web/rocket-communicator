@@ -17,9 +17,12 @@ import com.aicommunication.assistant.capture.TaskOwnerRepository
 import com.aicommunication.assistant.contracts.models.AuthenticatedRole
 import com.aicommunication.assistant.contracts.models.Session
 import com.aicommunication.assistant.messages.FakeMessagesNotificationAccess
+import com.aicommunication.assistant.messages.MessagesEligibility
 import com.aicommunication.assistant.messages.MessagesIntakeViewModel
 import com.aicommunication.assistant.messages.MessagesLocalReviewStore
 import com.aicommunication.assistant.messages.MessagesNotificationShapeProbe
+import com.aicommunication.assistant.messages.MessagesOwnerRepository
+import com.aicommunication.assistant.messages.observation
 import com.aicommunication.assistant.network.AccessTokenProvider
 import com.aicommunication.assistant.network.ApiConfig
 import com.aicommunication.assistant.network.FixedConnectivityMonitor
@@ -321,11 +324,108 @@ class AuthenticatedOwnerFlowTest {
         assertEquals(0, server.requestCount)
     }
 
-    private fun messagesViewModel() = MessagesIntakeViewModel(
+    @Test
+    fun messagesReviewRoutesSuggestionsOntoExistingProposalSurface() {
+        enqueueMessagesReviewSuccess()
+        val store = MessagesLocalReviewStore(clock = { 1_700_000_100_000L })
+        val eligible = observation()
+        store.record(eligible, MessagesEligibility.classify(eligible))
+
+        val executor = executor()
+        val captureViewModel =
+            TaskCaptureViewModel(
+                application = application,
+                manualCapture =
+                ManualCaptureUseCase(
+                    repository = ManualCaptureRepository(executor),
+                    pendingStore =
+                    PendingCaptureStore.forTests(
+                        application.getSharedPreferences("flow-messages-review", 0)
+                    )
+                ),
+                proposalRepository = ProposalOwnerRepository(executor),
+                recipientRepository = RecipientOwnerRepository(executor),
+                onSessionInvalidated = {}
+            )
+        val taskRepository = TaskOwnerRepository(executor)
+
+        composeRule.setContent {
+            AicaaFoundationTheme {
+                AuthenticatedOwnerFlow(
+                    session =
+                    Session(
+                        ownerId = "owner-1",
+                        organizationId = "org-1",
+                        role = AuthenticatedRole.owner,
+                        displayName = "Ada Owner"
+                    ),
+                    signingOut = false,
+                    onSignOut = {},
+                    apiConfig = ApiConfig(server.url("/").toString().trimEnd('/')),
+                    captureViewModel = captureViewModel,
+                    messagesIntakeViewModel = messagesViewModel(store = store, enabled = true),
+                    gmailIntakeViewModel =
+                    GmailIntakeViewModel(
+                        application,
+                        GmailOwnerRepository(executor),
+                        onSessionInvalidated = {}
+                    ),
+                    taskListViewModel =
+                    TaskListViewModel(application, taskRepository, onSessionInvalidated = {}),
+                    taskDetailViewModel =
+                    TaskDetailViewModel(
+                        application,
+                        taskRepository,
+                        ReminderOwnerRepository(executor),
+                        onSessionInvalidated = {}
+                    ),
+                    taskHandoffViewModel =
+                    TaskHandoffViewModel(
+                        application,
+                        taskRepository,
+                        RecipientOwnerRepository(executor),
+                        GmailOwnerRepository(executor),
+                        PendingHandoffStore(application),
+                        onSessionInvalidated = {}
+                    )
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("messages_entry_button").performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule
+                .onAllNodesWithTag("messages_intake_item_${eligible.notificationKey}")
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
+        composeRule.onNodeWithTag("messages_intake_item_${eligible.notificationKey}").performClick()
+        composeRule.onNodeWithTag("messages_review_button").performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule
+                .onAllNodesWithTag("capture_result")
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
+        composeRule.onNodeWithTag("capture_result").assertIsDisplayed()
+        composeRule.onNodeWithTag("capture_accept_button").assertIsDisplayed()
+        composeRule.onNodeWithText("You reviewed: Can you call me tomorrow").assertIsDisplayed()
+        composeRule.onNodeWithTag("messages_review_another_button").assertIsDisplayed()
+        composeRule.onNodeWithTag("gmail_review_another_button").assertDoesNotExist()
+        assertEquals(1, server.requestCount)
+        assertEquals("/api/v1/messages/reviews", server.takeRequest().path)
+    }
+
+    private fun messagesViewModel(
+        store: MessagesLocalReviewStore = MessagesLocalReviewStore(),
+        enabled: Boolean = false
+    ) = MessagesIntakeViewModel(
         application = application,
-        store = MessagesLocalReviewStore(),
-        access = FakeMessagesNotificationAccess(enabled = false),
-        shapeProbe = MessagesNotificationShapeProbe(enabled = false)
+        store = store,
+        access = FakeMessagesNotificationAccess(enabled = enabled),
+        shapeProbe = MessagesNotificationShapeProbe(enabled = false),
+        repository = MessagesOwnerRepository(executor()),
+        onSessionInvalidated = {}
     )
 
     private fun executor() = OwnerApiExecutor(
@@ -485,6 +585,39 @@ class AuthenticatedOwnerFlowTest {
                               "label": "Request",
                               "order": 0,
                               "value": "Send the revised quote"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                    """.trimIndent()
+                )
+        )
+    }
+
+    private fun enqueueMessagesReviewSuccess() {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody(
+                    """
+                    {
+                      "idempotentReplay": false,
+                      "interpretedAt": "2026-08-13T18:00:00.000Z",
+                      "taskSuggestions": [
+                        {
+                          "id": "s1",
+                          "status": "pending",
+                          "version": 1,
+                          "etag": "etag-s1",
+                          "createdAt": "2026-08-13T18:00:00.000Z",
+                          "summaryPoints": [
+                            {
+                              "id": "sp-s1",
+                              "kind": "request",
+                              "label": "Request",
+                              "order": 0,
+                              "value": "Call Ada tomorrow"
                             }
                           ]
                         }

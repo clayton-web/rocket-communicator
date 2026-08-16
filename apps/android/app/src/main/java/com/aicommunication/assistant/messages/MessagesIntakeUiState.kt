@@ -10,6 +10,16 @@ sealed class MessagesIntakeUiState {
         val filtered: List<MessagesFilteredItem>,
         val listenerError: Boolean,
         val shapes: List<MessagesNotificationShape>,
-        val selectedId: String? = null
-    ) : MessagesIntakeUiState()
+        val selectedId: String? = null,
+        val reviewing: Boolean = false,
+        val reviewError: String? = null,
+        val reviewConnectivityIssue: Boolean = false,
+        val canRetryReview: Boolean = false
+    ) : MessagesIntakeUiState() {
+        val canReview: Boolean
+            get() =
+                selectedId != null &&
+                    !reviewing &&
+                    eligible.any { it.id == selectedId }
+    }
 }

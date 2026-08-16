@@ -16,6 +16,20 @@ Organize, assign, and follow through on captured work (**D150**) without slowing
 
 **Not included:** reminder delivery, notifications, push, reassignment, offline sync, local business DB, A8 operational enablement, A10+.
 
+## D181 Google Messages Review with Rocket
+
+Owner-initiated interpretation of an eligible one-to-one plain-text Google Messages notification:
+
+- Shell **Messages** entry → device-local recent list (Notification Listener; no `READ_SMS`)
+- Notification arrival stays on-device. No upload, interpretation, or TaskSuggestion until the Owner taps **Review with Rocket**
+- Review POSTs `sourceOccurrenceId`, `selectedText`, and `observedAt` with `Idempotency-Key` to `POST /api/v1/messages/reviews`
+- Resulting 0..N proposals use the existing S5 proposal review surface (Accept / Edit / Dismiss). Review creates no Task
+- Groups, media-only MMS, attachments, and historical conversations remain unsupported
+- Exclude Number is not implemented
+- In-flight retry identity is in-memory only (same as Gmail Review). The local list is not a durable Messages archive
+
+Debug builds only (`BuildConfig.DEBUG`) may show a **Notification shape (debug)** section on the Messages screen after a Google Messages notification is observed. It reports extra-key presence plus derived `StatusBarNotification.key` structure: segment count, whether the package segment matches the observed package, tag presence/class/length bucket, and exact-match booleans against already-extracted sender/title/body. It does not show, log, persist, or upload the raw key, tag, sender, phone number, title, or message body. Later Galaxy S24+ verification should inspect only these derived fields after one ordinary one-to-one plain-text SMS, before allowing Review. The occurrence identifier is not yet marked safe to transmit.
+
 ## S3.3 Owner manual capture — shared interpretation (D171)
 
 Capture asks Rocket to interpret; it creates no Task. AI proposes, the Owner decides later.

@@ -28,7 +28,7 @@ object MessagesNotificationIntake {
         if (!GoogleMessagesPackages.isAllowed(observation.packageName)) {
             return
         }
-        probe.record(MessagesNotificationShape.from(observation))
+        probe.record(observation)
         store.record(observation, MessagesEligibility.classify(observation))
     }
 }

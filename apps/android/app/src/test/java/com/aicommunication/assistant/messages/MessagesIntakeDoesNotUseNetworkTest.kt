@@ -6,7 +6,6 @@ import com.aicommunication.assistant.network.ApiConfig
 import com.aicommunication.assistant.network.FixedConnectivityMonitor
 import com.aicommunication.assistant.network.OwnerApiExecutor
 import com.aicommunication.assistant.network.OwnerHttpClientFactory
-import com.aicommunication.assistant.tasks.GmailOwnerRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -16,7 +15,6 @@ import kotlinx.coroutines.test.setMain
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -45,7 +43,7 @@ class MessagesIntakeDoesNotUseNetworkTest {
     }
 
     @Test
-    fun intakeAndViewModel_doNotInvokeExistingNetworkOrReviewRepositories() = runTest {
+    fun notificationArrivalAndSelect_doNotCallTheServer() = runTest {
         val executor =
             OwnerApiExecutor(
                 apiConfig = ApiConfig(server.url("/").toString().trimEnd('/')),
@@ -57,7 +55,6 @@ class MessagesIntakeDoesNotUseNetworkTest {
                 },
                 connectivity = FixedConnectivityMonitor(validated = true)
             )
-        val unusedGmail = GmailOwnerRepository(executor)
         val store = MessagesLocalReviewStore(clock = { 1_700_000_100_000L })
         val probe = MessagesNotificationShapeProbe(enabled = true)
         MessagesNotificationIntake.handle(observation(), store, probe)
@@ -66,18 +63,14 @@ class MessagesIntakeDoesNotUseNetworkTest {
                 application = RuntimeEnvironment.getApplication(),
                 store = store,
                 access = FakeMessagesNotificationAccess(enabled = true),
-                shapeProbe = probe
+                shapeProbe = probe,
+                repository = MessagesOwnerRepository(executor),
+                onSessionInvalidated = {}
             )
         vm.refreshAccess()
         vm.select(store.snapshot.value.eligible.single().id)
 
         assertEquals(0, server.requestCount)
-        unusedGmail.hashCode()
-        val ctor = MessagesIntakeViewModel::class.java.constructors.single()
-        val types = ctor.parameterTypes.map { it.name }
-        assertFalse(types.any { it.contains("OwnerApi") })
-        assertFalse(types.any { it.contains("Gmail") })
-        assertFalse(types.any { it.contains("ManualCapture") })
-        assertFalse(types.any { it.contains("Proposal") })
+        assertEquals(null, vm.openReviewResult.value)
     }
 }

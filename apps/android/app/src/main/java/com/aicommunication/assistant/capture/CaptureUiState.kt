@@ -30,8 +30,8 @@ sealed class CaptureUiState {
      * A committed interpretation. [proposals] may be empty, which is truthful success rather than
      * failure. [capturedText] is kept so the Owner can rephrase a capture Rocket could not use.
      *
-     * [origin] distinguishes manual capture from Gmail Review so footer copy can return to the
-     * right surface without a second proposal-review UI.
+     * [origin] distinguishes manual capture from Gmail / Messages Review so footer copy can
+     * return to the right surface without a second proposal-review UI.
      *
      * At most one of [accept], [edit], or [dismiss] is open at a time. Responsibility starts
      * unselected. Edit drafts live only in this in-memory state.
@@ -53,8 +53,12 @@ sealed class CaptureUiState {
 /** Which Owner action produced the proposals currently on the shared S5 review surface. */
 enum class ProposalOrigin {
     ManualCapture,
-    GmailReview
+    GmailReview,
+    MessagesReview
 }
+
+val ProposalOrigin.returnsToSourceSurface: Boolean
+    get() = this != ProposalOrigin.ManualCapture
 
 /**
  * Inline Accept interaction for one proposal (S5.2). [selectedResponsibility] is null until the

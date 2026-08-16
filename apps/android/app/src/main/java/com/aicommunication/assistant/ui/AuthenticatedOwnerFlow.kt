@@ -12,8 +12,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import com.aicommunication.assistant.capture.CaptureUiState
-import com.aicommunication.assistant.capture.ProposalOrigin
 import com.aicommunication.assistant.capture.TaskCaptureViewModel
+import com.aicommunication.assistant.capture.returnsToSourceSurface
 import com.aicommunication.assistant.contracts.models.Session
 import com.aicommunication.assistant.messages.MessagesIntakeViewModel
 import com.aicommunication.assistant.network.ApiConfig
@@ -64,6 +64,7 @@ fun AuthenticatedOwnerFlow(
     val messagesIntakeState by messagesIntakeViewModel.uiState.collectAsState()
     val gmailIntakeState by gmailIntakeViewModel.uiState.collectAsState()
     val openGmailReviewResult by gmailIntakeViewModel.openReviewResult.collectAsState()
+    val openMessagesReviewResult by messagesIntakeViewModel.openReviewResult.collectAsState()
     val listState by taskListViewModel.uiState.collectAsState()
     val detailState by taskDetailViewModel.uiState.collectAsState()
     val handoffState by taskHandoffViewModel.uiState.collectAsState()
@@ -82,6 +83,14 @@ fun AuthenticatedOwnerFlow(
         captureReturn = AuthenticatedDestination.GmailIntake.name
         destination = AuthenticatedDestination.Capture
         gmailIntakeViewModel.consumeReviewResult()
+    }
+
+    LaunchedEffect(openMessagesReviewResult) {
+        val result = openMessagesReviewResult ?: return@LaunchedEffect
+        captureViewModel.presentMessagesReview(result.sourceText, result.proposals)
+        captureReturn = AuthenticatedDestination.MessagesIntake.name
+        destination = AuthenticatedDestination.Capture
+        messagesIntakeViewModel.consumeReviewResult()
     }
 
     LaunchedEffect(destination, activeTaskId) {
@@ -126,11 +135,11 @@ fun AuthenticatedOwnerFlow(
                 onRephrase = captureViewModel::rephrase,
                 onCaptureAnother = {
                     val origin = (captureState as? CaptureUiState.Proposals)?.origin
-                    if (origin == ProposalOrigin.GmailReview) {
+                    if (origin?.returnsToSourceSurface == true) {
                         captureViewModel.onLeaveCapture()
                         destination =
                             runCatching { AuthenticatedDestination.valueOf(captureReturn) }
-                                .getOrDefault(AuthenticatedDestination.GmailIntake)
+                                .getOrDefault(AuthenticatedDestination.Shell)
                     } else {
                         captureViewModel.captureAnother()
                     }
@@ -139,9 +148,9 @@ fun AuthenticatedOwnerFlow(
                     val origin = (captureState as? CaptureUiState.Proposals)?.origin
                     captureViewModel.onLeaveCapture()
                     destination =
-                        if (origin == ProposalOrigin.GmailReview) {
+                        if (origin?.returnsToSourceSurface == true) {
                             runCatching { AuthenticatedDestination.valueOf(captureReturn) }
-                                .getOrDefault(AuthenticatedDestination.GmailIntake)
+                                .getOrDefault(AuthenticatedDestination.Shell)
                         } else {
                             AuthenticatedDestination.Shell
                         }
@@ -171,6 +180,7 @@ fun AuthenticatedOwnerFlow(
                 },
                 onRefreshAccess = messagesIntakeViewModel::refreshAccess,
                 onSelect = messagesIntakeViewModel::select,
+                onReview = messagesIntakeViewModel::reviewWithRocket,
                 modifier = modifier
             )
         AuthenticatedDestination.GmailIntake ->

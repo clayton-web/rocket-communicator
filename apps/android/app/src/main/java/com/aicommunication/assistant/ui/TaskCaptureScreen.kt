@@ -46,6 +46,7 @@ import com.aicommunication.assistant.capture.deriveProposalTitle
 import com.aicommunication.assistant.capture.hasEditableWording
 import com.aicommunication.assistant.capture.isAcceptable
 import com.aicommunication.assistant.capture.orderedSummaryPoints
+import com.aicommunication.assistant.capture.returnsToSourceSurface
 import com.aicommunication.assistant.capture.summaryPointDetail
 import com.aicommunication.assistant.tasks.RecipientWire
 import com.aicommunication.assistant.ui.theme.AicaaCircularProgressIndicator
@@ -264,7 +265,7 @@ private fun CaptureProposalsPane(
     modifier: Modifier = Modifier
 ) {
     val empty = state.proposals.isEmpty()
-    val gmail = state.origin == ProposalOrigin.GmailReview
+    val fromReview = state.origin.returnsToSourceSurface
     val interactionBusy = state.interactionBusy
     CapturePane(
         modifier = modifier,
@@ -281,15 +282,23 @@ private fun CaptureProposalsPane(
         Text(
             text =
             if (empty) {
-                if (gmail) {
-                    stringResource(R.string.gmail_review_result_empty_body)
-                } else {
-                    stringResource(R.string.capture_result_empty_body)
+                when (state.origin) {
+                    ProposalOrigin.GmailReview ->
+                        stringResource(R.string.gmail_review_result_empty_body)
+                    ProposalOrigin.MessagesReview ->
+                        stringResource(R.string.messages_review_result_empty_body)
+                    ProposalOrigin.ManualCapture ->
+                        stringResource(R.string.capture_result_empty_body)
                 }
-            } else if (gmail) {
-                stringResource(R.string.gmail_review_result_body)
             } else {
-                stringResource(R.string.capture_result_body)
+                when (state.origin) {
+                    ProposalOrigin.GmailReview ->
+                        stringResource(R.string.gmail_review_result_body)
+                    ProposalOrigin.MessagesReview ->
+                        stringResource(R.string.messages_review_result_body)
+                    ProposalOrigin.ManualCapture ->
+                        stringResource(R.string.capture_result_body)
+                }
             },
             style = AicaaTextStyles.body,
             color = AicaaColors.muted,
@@ -298,7 +307,7 @@ private fun CaptureProposalsPane(
         )
         Text(
             text =
-            if (gmail) {
+            if (fromReview) {
                 stringResource(R.string.gmail_review_result_source, state.capturedText)
             } else {
                 stringResource(R.string.capture_result_source, state.capturedText)
@@ -315,7 +324,7 @@ private fun CaptureProposalsPane(
                 modifier = Modifier.testTag("capture_proposal_notice")
             )
         }
-        if (empty && !gmail) {
+        if (empty && !fromReview) {
             Spacer(modifier = Modifier.weight(1f))
             AicaaTextButton(
                 onClick = onRephrase,
@@ -363,11 +372,17 @@ private fun CaptureProposalsPane(
             modifier =
             Modifier
                 .fillMaxWidth()
-                .testTag(if (gmail) "gmail_review_another_button" else "capture_another_button")
+                .testTag(
+                    when (state.origin) {
+                        ProposalOrigin.GmailReview -> "gmail_review_another_button"
+                        ProposalOrigin.MessagesReview -> "messages_review_another_button"
+                        ProposalOrigin.ManualCapture -> "capture_another_button"
+                    }
+                )
         ) {
             Text(
                 text =
-                if (gmail) {
+                if (fromReview) {
                     stringResource(R.string.gmail_review_another)
                 } else {
                     stringResource(R.string.capture_another)

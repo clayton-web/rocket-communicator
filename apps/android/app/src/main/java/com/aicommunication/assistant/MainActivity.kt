@@ -42,7 +42,9 @@ class MainActivity : ComponentActivity() {
             application = app,
             store = app.messagesReviewStore,
             access = AndroidMessagesNotificationAccess(app),
-            shapeProbe = app.messagesShapeProbe
+            shapeProbe = app.messagesShapeProbe,
+            repository = app.messagesOwnerRepository,
+            onSessionInvalidated = authViewModel::notifySessionInvalidated
         )
     }
 

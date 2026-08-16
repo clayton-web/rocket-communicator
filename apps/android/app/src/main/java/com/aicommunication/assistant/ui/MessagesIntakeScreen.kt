@@ -49,6 +49,7 @@ fun MessagesIntakeScreen(
     onOpenNotificationAccess: () -> Unit,
     onRefreshAccess: () -> Unit,
     onSelect: (String) -> Unit,
+    onReview: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -115,7 +116,11 @@ fun MessagesIntakeScreen(
                 }
             }
             is MessagesIntakeUiState.Ready ->
-                ReadyMessagesContent(state = state, onSelect = onSelect)
+                ReadyMessagesContent(
+                    state = state,
+                    onSelect = onSelect,
+                    onReview = onReview
+                )
         }
 
         AicaaTextButton(onClick = onBack, modifier = Modifier.testTag("messages_intake_back")) {
@@ -127,7 +132,8 @@ fun MessagesIntakeScreen(
 @Composable
 private fun ColumnScope.ReadyMessagesContent(
     state: MessagesIntakeUiState.Ready,
-    onSelect: (String) -> Unit
+    onSelect: (String) -> Unit,
+    onReview: () -> Unit
 ) {
     if (state.listenerError) {
         Text(
@@ -154,10 +160,39 @@ private fun ColumnScope.ReadyMessagesContent(
                 MessagesIntakeRow(
                     item = item,
                     selected = item.id == state.selectedId,
+                    enabled = !state.reviewing,
                     onClick = { onSelect(item.id) }
                 )
                 HorizontalDivider()
             }
+        }
+    }
+    if (state.reviewError != null) {
+        Text(
+            text = state.reviewError,
+            color = AicaaColors.destructive,
+            modifier = Modifier.testTag("messages_review_error")
+        )
+    }
+    if (state.eligible.isNotEmpty() || state.canRetryReview) {
+        AicaaFilledButton(
+            onClick = onReview,
+            enabled = state.canReview || state.canRetryReview,
+            modifier =
+            Modifier
+                .fillMaxWidth()
+                .testTag("messages_review_button")
+        ) {
+            Text(
+                text =
+                if (state.reviewing) {
+                    stringResource(R.string.messages_reviewing)
+                } else if (state.canRetryReview) {
+                    stringResource(R.string.retry)
+                } else {
+                    stringResource(R.string.messages_review_action)
+                }
+            )
         }
     }
     if (state.filtered.isNotEmpty()) {
@@ -173,12 +208,17 @@ private fun ColumnScope.ReadyMessagesContent(
 }
 
 @Composable
-private fun MessagesIntakeRow(item: MessagesReviewItem, selected: Boolean, onClick: () -> Unit) {
+private fun MessagesIntakeRow(
+    item: MessagesReviewItem,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
     Column(
         modifier =
         Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .clickable(enabled = enabled, onClick = onClick)
             .padding(vertical = 12.dp)
             .testTag("messages_intake_item_${item.id}"),
         verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -227,7 +267,7 @@ private fun DebugShapeSection(shapes: List<MessagesNotificationShape>) {
         )
         shapes.forEachIndexed { index, shape ->
             Text(
-                text = shapeDebugLine(shape),
+                text = shape.debugLine(),
                 fontSize = 13.sp,
                 color = AicaaColors.muted,
                 modifier = Modifier.testTag("messages_intake_debug_shape_$index")
@@ -268,28 +308,4 @@ private fun reasonLabel(reason: MessagesIneligibilityReason): String {
                 R.string.messages_reason_unsupported
         }
     return stringResource(resId)
-}
-
-private fun shapeDebugLine(shape: MessagesNotificationShape): String {
-    val group =
-        when (shape.isGroupConversation) {
-            true -> "true"
-            false -> "false"
-            null -> "absent"
-        }
-    val styleGroup =
-        when (shape.messagingStyleIsGroup) {
-            true -> "true"
-            false -> "false"
-            null -> "absent"
-        }
-    return "keys=${shape.extraKeys.joinToString(",")} " +
-        "title=${shape.hasTitle} text=${shape.hasText} bigText=${shape.hasBigText} " +
-        "people=${shape.hasPeople}/${shape.peopleCount} " +
-        "groupExtra=$group groupSummary=${shape.isGroupSummary} " +
-        "messaging=${shape.messagingStylePresent} messagingGroup=$styleGroup " +
-        "senders=${shape.messagingStyleSenderCount} " +
-        "picture=${shape.hasPicture} media=${shape.hasMediaSession} " +
-        "nonTextMime=${shape.hasNonTextMessageMime} " +
-        "template=${shape.template ?: "absent"} category=${shape.category ?: "absent"}"
 }

@@ -117,6 +117,27 @@ class TaskCaptureScreenTest {
     }
 
     @Test
+    fun messagesZeroProposals_showsTruthfulResultWithoutRephrase() {
+        setScreen(
+            CaptureUiState.Proposals(
+                capturedText = "Can you call me tomorrow",
+                proposals = emptyList(),
+                origin = ProposalOrigin.MessagesReview
+            )
+        )
+
+        composeRule.onNodeWithTag("capture_result").assertIsDisplayed()
+        composeRule
+            .onNodeWithText("Rocket didn't find anything actionable in this message.")
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("You reviewed: Can you call me tomorrow").assertIsDisplayed()
+        composeRule.onAllNodesWithTag("capture_proposal_card").assertCountEquals(0)
+        composeRule.onNodeWithTag("capture_rephrase_button").assertDoesNotExist()
+        composeRule.onNodeWithTag("messages_review_another_button").assertIsDisplayed()
+        composeRule.onNodeWithTag("gmail_review_another_button").assertDoesNotExist()
+    }
+
+    @Test
     fun oneProposal_showsASingleReadOnlyCardWithSummaryContent() {
         setScreen(
             CaptureUiState.Proposals(
