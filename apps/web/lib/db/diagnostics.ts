@@ -16,11 +16,19 @@ export type DatabaseRuntimeFailureCategory =
   | 'DATABASE_QUERY_FAILED'
   | 'UNKNOWN_DATABASE_ERROR';
 
+/**
+ * Closed P2028 discriminator derived from official Prisma 6.19.3 transaction
+ * signatures. The raw Prisma message is never copied onto the payload.
+ */
+export type PrismaTransactionErrorKind =
+  'timeout' | 'max_wait' | 'already_committed' | 'already_rolled_back' | 'not_found' | 'other';
+
 export interface DatabaseRuntimeFailureLogPayload {
   event: typeof DATABASE_RUNTIME_FAILURE_EVENT;
   category: DatabaseRuntimeFailureCategory;
   prismaErrorClass?: string;
   prismaErrorCode?: string;
+  prismaTransactionErrorKind?: PrismaTransactionErrorKind;
   nodeErrorCode?: string;
   clientVersion?: string;
   routePathname?: string;
@@ -47,6 +55,22 @@ const PERSISTENCE_ERROR_NAME = 'PersistenceError';
 const PERSISTENCE_DATABASE_LOG_CODES = new Set(['TRANSACTION_FAILED', 'UNIQUE_VIOLATION']);
 
 const MAX_CAUSE_DEPTH = 12;
+
+const PRISMA_TRANSACTION_API_ERROR_CODE = 'P2028' as const;
+
+/**
+ * Official Prisma 6.19.3 interactive-transaction signatures
+ * (`prisma-engines` TransactionError / ClosedTransaction). Used only for
+ * in-memory matching. Never logged, serialized, or returned.
+ */
+const P2028_MAX_WAIT_SIGNATURE = 'Unable to start a transaction in the given time.';
+const P2028_EXPIRED_OPERATION_SIGNATURE = 'cannot be executed on an expired transaction';
+const P2028_EXPIRED_TIMEOUT_REPORT_SIGNATURE = 'The timeout for this transaction was';
+const P2028_EXPIRED_ELAPSED_REPORT_SIGNATURE = 'ms passed since the start of the transaction';
+const P2028_COMMITTED_SIGNATURE = 'cannot be executed on a committed transaction';
+const P2028_ROLLED_BACK_SIGNATURE = 'cannot be executed on a transaction that was rolled back';
+const P2028_NOT_FOUND_SIGNATURE =
+  "Transaction not found. Transaction ID is invalid, refers to an old closed transaction Prisma doesn't have information about anymore";
 
 export const ENABLE_DB_RUNTIME_DIAGNOSTICS_ENV = 'ENABLE_DB_RUNTIME_DIAGNOSTICS' as const;
 
@@ -359,6 +383,57 @@ function prismaErrorCode(error: unknown): string | undefined {
   return undefined;
 }
 
+function classifyRecognizedP2028Kind(message: string | undefined): PrismaTransactionErrorKind {
+  if (!message) {
+    return 'other';
+  }
+
+  if (
+    message.includes(P2028_EXPIRED_OPERATION_SIGNATURE) &&
+    message.includes(P2028_EXPIRED_TIMEOUT_REPORT_SIGNATURE) &&
+    message.includes(P2028_EXPIRED_ELAPSED_REPORT_SIGNATURE)
+  ) {
+    return 'timeout';
+  }
+  if (message.includes(P2028_MAX_WAIT_SIGNATURE)) {
+    return 'max_wait';
+  }
+  if (message.includes(P2028_COMMITTED_SIGNATURE)) {
+    return 'already_committed';
+  }
+  if (message.includes(P2028_ROLLED_BACK_SIGNATURE)) {
+    return 'already_rolled_back';
+  }
+  if (message.includes(P2028_NOT_FOUND_SIGNATURE)) {
+    return 'not_found';
+  }
+  return 'other';
+}
+
+/**
+ * Derive a closed P2028 subtype from official Prisma 6.19.3 signatures.
+ * Reads the exception message only to match allowlisted phrases; never returns
+ * the message or any extracted substring. Omitted for non-P2028 errors.
+ */
+function prismaTransactionErrorKind(error: unknown): PrismaTransactionErrorKind | undefined {
+  try {
+    if (!isPrismaKnownRequestError(error)) {
+      return undefined;
+    }
+    if (safeReadString(error, 'code') !== PRISMA_TRANSACTION_API_ERROR_CODE) {
+      return undefined;
+    }
+  } catch {
+    return undefined;
+  }
+
+  try {
+    return classifyRecognizedP2028Kind(safeReadString(error, 'message'));
+  } catch {
+    return 'other';
+  }
+}
+
 function clientVersion(error: unknown): string | undefined {
   return safeReadString(error, 'clientVersion');
 }
@@ -383,6 +458,7 @@ export function buildDatabaseRuntimeFailureLogPayload(
       category: classifyDatabaseRuntimeFailure(error),
       prismaErrorClass: prismaErrorClassName(error),
       prismaErrorCode: prismaErrorCode(error),
+      prismaTransactionErrorKind: prismaTransactionErrorKind(error),
       nodeErrorCode: nodeErrorCodeFromCause(error),
       clientVersion: clientVersion(error),
       routePathname: context.routePathname ? toSafeRouteTemplate(context.routePathname) : undefined,

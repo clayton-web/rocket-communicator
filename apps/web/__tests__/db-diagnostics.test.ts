@@ -186,6 +186,7 @@ describe('database runtime diagnostics', () => {
       category: 'DATABASE_URL_MISSING',
       prismaErrorClass: 'Error',
       prismaErrorCode: undefined,
+      prismaTransactionErrorKind: undefined,
       nodeErrorCode: undefined,
       clientVersion: undefined,
       routePathname: '/api/v1/tasks',
@@ -481,5 +482,176 @@ describe('fail-safe database runtime diagnostics', () => {
     expect(shouldLogDatabaseRuntimeFailure(error)).toBe(true);
     expect(logDatabaseRuntimeFailure(error)).toBeDefined();
     assertSafeSerializedLog(String(consoleErrorSpy.mock.calls[0]?.[0]));
+  });
+});
+
+describe('Prisma P2028 transaction subtype diagnostics', () => {
+  const originalEnv = { ...process.env };
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+
+  const LEAKY_POSTGRES_URL = 'postgresql://owner:super_secret_db_password@db.example.com:5432/app';
+  const LEAKY_SQL = 'SELECT * FROM "InboxMessage" WHERE tokenHash = \'rt_secret\'';
+  const LEAKY_TOKEN = 'ya29.leaky_access_token';
+  const LEAKY_GMAIL_BODY = 'Hello from Gmail secret inbox';
+  const LEAKY_SECRET = 'super_secret_value';
+  const LEAKY_FRAGMENTS = [
+    LEAKY_POSTGRES_URL,
+    LEAKY_SQL,
+    LEAKY_TOKEN,
+    LEAKY_GMAIL_BODY,
+    LEAKY_SECRET,
+    'super_secret_db_password',
+    'InboxMessage',
+    'tokenHash',
+    'rt_secret',
+    'ya29',
+  ];
+
+  // Representative Prisma 6.19.3 P2028 shapes from prisma-engines
+  // TransactionError / ClosedTransaction. Variable operation names and
+  // durations are present only to exercise the classifier; they must never
+  // appear in emitted diagnostics.
+  const P2028_TIMEOUT_MESSAGE =
+    'Transaction API error: Transaction already closed: A query cannot be executed on an expired transaction. The timeout for this transaction was 5000 ms, however 6123 ms passed since the start of the transaction. Consider increasing the interactive transaction timeout or doing less work in the transaction.';
+  const P2028_MAX_WAIT_MESSAGE =
+    'Transaction API error: Unable to start a transaction in the given time.';
+  const P2028_COMMITTED_MESSAGE =
+    'Transaction API error: Transaction already closed: A commit cannot be executed on a committed transaction.';
+  const P2028_ROLLED_BACK_MESSAGE =
+    'Transaction API error: Transaction already closed: A rollback cannot be executed on a transaction that was rolled back.';
+  const P2028_NOT_FOUND_MESSAGE =
+    "Transaction API error: Transaction not found. Transaction ID is invalid, refers to an old closed transaction Prisma doesn't have information about anymore, or was obtained before disconnecting.";
+  const P2028_UNKNOWN_MESSAGE =
+    'Transaction API error: Attempted to start a transaction inside of a transaction.';
+  const P2028_LEAKY_UNKNOWN_MESSAGE = [
+    'Transaction API error: unrecognized interactive transaction failure.',
+    LEAKY_POSTGRES_URL,
+    LEAKY_SQL,
+    `token=${LEAKY_TOKEN}`,
+    `gmail body: ${LEAKY_GMAIL_BODY}`,
+    LEAKY_SECRET,
+  ].join(' ');
+
+  beforeEach(() => {
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    process.env = { ...originalEnv };
+    process.env.DATABASE_URL = 'postgresql://USER:PASSWORD@HOST:5432/DATABASE';
+    process.env[ENABLE_DB_RUNTIME_DIAGNOSTICS_ENV] = 'true';
+  });
+
+  afterEach(() => {
+    consoleErrorSpy.mockRestore();
+    process.env = { ...originalEnv };
+    vi.clearAllMocks();
+  });
+
+  function knownRequestError(code: string, message: string) {
+    return new Prisma.PrismaClientKnownRequestError(message, {
+      code,
+      clientVersion: '6.19.3',
+    });
+  }
+
+  function emittedDiagnosticJson(): Record<string, unknown> {
+    expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+    const serialized = String(consoleErrorSpy.mock.calls[0]?.[0]);
+    assertSafeSerializedLog(serialized);
+    expect(serialized).not.toContain('"message"');
+    expect(serialized).not.toContain('"stack"');
+    for (const fragment of LEAKY_FRAGMENTS) {
+      expect(serialized).not.toContain(fragment);
+    }
+    return JSON.parse(serialized) as Record<string, unknown>;
+  }
+
+  function expectP2028Kind(error: Prisma.PrismaClientKnownRequestError, kind: string) {
+    expect(classifyDatabaseRuntimeFailure(error)).toBe('DATABASE_QUERY_FAILED');
+    const payload = logDatabaseRuntimeFailure(error, { requestId: 'req_p2028_kind' });
+    expect(payload?.category).toBe('DATABASE_QUERY_FAILED');
+    expect(payload?.prismaErrorClass).toBe('PrismaClientKnownRequestError');
+    expect(payload?.prismaErrorCode).toBe('P2028');
+    expect(payload?.prismaTransactionErrorKind).toBe(kind);
+    expect(payload).not.toHaveProperty('message');
+    expect(payload).not.toHaveProperty('stack');
+
+    const parsed = emittedDiagnosticJson();
+    expect(parsed.event).toBe('database_runtime_failure');
+    expect(parsed.prismaErrorCode).toBe('P2028');
+    expect(parsed.prismaTransactionErrorKind).toBe(kind);
+    expect(parsed).not.toHaveProperty('message');
+    expect(parsed).not.toHaveProperty('stack');
+    expect(JSON.stringify(parsed)).not.toContain(error.message);
+  }
+
+  it('maps an expired interactive transaction to timeout', () => {
+    expectP2028Kind(knownRequestError('P2028', P2028_TIMEOUT_MESSAGE), 'timeout');
+    const serialized = String(consoleErrorSpy.mock.calls[0]?.[0]);
+    expect(serialized).not.toContain('5000');
+    expect(serialized).not.toContain('6123');
+    expect(serialized).not.toContain('cannot be executed');
+  });
+
+  it('maps an acquisition maxWait failure to max_wait', () => {
+    expectP2028Kind(knownRequestError('P2028', P2028_MAX_WAIT_MESSAGE), 'max_wait');
+    expect(String(consoleErrorSpy.mock.calls[0]?.[0])).not.toContain(
+      'Unable to start a transaction',
+    );
+  });
+
+  it('maps a committed-transaction variant to already_committed', () => {
+    expectP2028Kind(knownRequestError('P2028', P2028_COMMITTED_MESSAGE), 'already_committed');
+    expect(String(consoleErrorSpy.mock.calls[0]?.[0])).not.toContain('committed transaction');
+  });
+
+  it('maps a rolled-back-transaction variant to already_rolled_back', () => {
+    expectP2028Kind(knownRequestError('P2028', P2028_ROLLED_BACK_MESSAGE), 'already_rolled_back');
+    expect(String(consoleErrorSpy.mock.calls[0]?.[0])).not.toContain('rolled back');
+  });
+
+  it('maps a transaction-not-found variant to not_found', () => {
+    expectP2028Kind(knownRequestError('P2028', P2028_NOT_FOUND_MESSAGE), 'not_found');
+    expect(String(consoleErrorSpy.mock.calls[0]?.[0])).not.toContain('Transaction not found');
+  });
+
+  it('maps an unrecognized P2028 message to other', () => {
+    expectP2028Kind(knownRequestError('P2028', P2028_UNKNOWN_MESSAGE), 'other');
+    expect(String(consoleErrorSpy.mock.calls[0]?.[0])).not.toContain('inside of a transaction');
+  });
+
+  it('does not attach a transaction subtype for non-P2028 Prisma errors', () => {
+    const error = knownRequestError(
+      'P2034',
+      'Transaction failed due to a write conflict or a deadlock. Please retry your transaction',
+    );
+    const payload = logDatabaseRuntimeFailure(error, { requestId: 'req_p2034' });
+    expect(payload?.prismaErrorCode).toBe('P2034');
+    expect(payload?.prismaTransactionErrorKind).toBeUndefined();
+    const parsed = emittedDiagnosticJson();
+    expect(parsed.prismaErrorCode).toBe('P2034');
+    expect(parsed).not.toHaveProperty('prismaTransactionErrorKind');
+  });
+
+  it('emits nothing for P2028 when diagnostics are OFF', () => {
+    delete process.env[ENABLE_DB_RUNTIME_DIAGNOSTICS_ENV];
+    const error = knownRequestError('P2028', P2028_TIMEOUT_MESSAGE);
+    expect(isDatabaseRuntimeDiagnosticsEnabled()).toBe(false);
+    expect(logDatabaseRuntimeFailure(error)).toBeUndefined();
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+  });
+
+  it('never emits the raw Prisma message or leaky content from an unknown P2028', () => {
+    const error = knownRequestError('P2028', P2028_LEAKY_UNKNOWN_MESSAGE);
+    expectP2028Kind(error, 'other');
+
+    const serialized = String(consoleErrorSpy.mock.calls[0]?.[0]);
+    expect(serialized).not.toMatch(/postgresql:\/\//i);
+    expect(serialized).not.toMatch(/postgres:\/\//i);
+    expect(serialized).not.toContain('SELECT ');
+    expect(serialized).not.toContain('InboxMessage');
+    expect(serialized).not.toContain('ya29');
+    expect(serialized).not.toContain(LEAKY_GMAIL_BODY);
+    expect(serialized).not.toContain(LEAKY_SECRET);
+    expect(serialized).not.toContain('super_secret_db_password');
+    expect(serialized).not.toContain('unrecognized interactive transaction failure');
   });
 });
