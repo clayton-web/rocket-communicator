@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { asOrganizationId, asOwnerId, GMAIL_READONLY_SCOPE, ownerActor } from '@aicaa/domain';
 import {
   acquireGmailSyncLock,
@@ -10,10 +10,16 @@ import {
 } from '@aicaa/db';
 import * as aicaaDb from '@aicaa/db/runtime';
 import { createTestDatabase, type TestDatabase } from '@aicaa/db/testing';
+import { ENABLE_DB_RUNTIME_DIAGNOSTICS_ENV } from '@/lib/db/diagnostics';
 import { setDbRuntimeForTests } from '@/lib/db/runtime-db';
 import { setDbForTests } from '@/lib/db/server';
 import { clearDbTestRuntime, installDbTestRuntime } from './helpers/db-test-runtime';
-import { CIPHERTEXT_PURPOSE, encryptToken } from '@/lib/gmail/token-encryption';
+import { GmailConfigError } from '@/lib/gmail/config';
+import {
+  CIPHERTEXT_PURPOSE,
+  encryptToken,
+  TokenEncryptionError,
+} from '@/lib/gmail/token-encryption';
 import {
   MAX_HISTORY_PAGES_PER_RUN,
   runGmailAccountSync,
@@ -1370,6 +1376,175 @@ describe('A5.4 Gmail sync engine', () => {
         errorCode: 'transaction_failure',
         messageId,
         ...snapshot,
+      });
+    });
+
+    describe('safe Prisma runtime diagnostics at the sync failure boundary', () => {
+      const originalFlag = process.env[ENABLE_DB_RUNTIME_DIAGNOSTICS_ENV];
+      const originalDatabaseUrl = process.env.DATABASE_URL;
+      const leakyPrismaMessage = [
+        'Transaction API error P2028: expired transaction.',
+        sensitiveSql,
+        'token=ya29.access',
+        'gmail body: Hello from Gmail secret inbox',
+        'super_secret_value',
+      ].join(' ');
+      let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+
+      beforeEach(() => {
+        consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+        delete process.env[ENABLE_DB_RUNTIME_DIAGNOSTICS_ENV];
+        process.env.DATABASE_URL = 'postgresql://USER:PASSWORD@HOST:5432/DATABASE';
+      });
+
+      afterEach(() => {
+        consoleErrorSpy.mockRestore();
+        if (originalFlag === undefined) {
+          delete process.env[ENABLE_DB_RUNTIME_DIAGNOSTICS_ENV];
+        } else {
+          process.env[ENABLE_DB_RUNTIME_DIAGNOSTICS_ENV] = originalFlag;
+        }
+        if (originalDatabaseUrl === undefined) {
+          delete process.env.DATABASE_URL;
+        } else {
+          process.env.DATABASE_URL = originalDatabaseUrl;
+        }
+      });
+
+      function emittedDiagnosticLines(): string[] {
+        return consoleErrorSpy.mock.calls
+          .map((call) => String(call[0]))
+          .filter((line) => line.includes('database_runtime_failure'));
+      }
+
+      it('keeps Prisma classification and stays silent when diagnostics are OFF', async () => {
+        await seedIncrementalCursor();
+        installHistoryPersistOverride(async () => {
+          throw prismaShapedError('P2028', leakyPrismaMessage);
+        });
+
+        const result = await runGmailAccountSync(cronSyncContext('req_p2028_diag_off'), {
+          gmailClient: incrementalClient('msg_p2028_diag_off'),
+          getAccessToken: tokenProvider(),
+        });
+
+        expect(result.status).toBe('completed');
+        if (result.status !== 'completed') {
+          return;
+        }
+        expect(result.run.errorCode).toBe('database_failure');
+        expect(result.run.outcome).toBe('retryable_failure');
+        expect(result.run.retryable).toBe(true);
+        expect(emittedDiagnosticLines()).toEqual([]);
+      });
+
+      it('emits a redacted Prisma P-code when diagnostics are ON without changing retryability', async () => {
+        process.env[ENABLE_DB_RUNTIME_DIAGNOSTICS_ENV] = 'true';
+        await seedIncrementalCursor();
+        const prismaError = prismaShapedError('P2028', leakyPrismaMessage);
+        Object.assign(prismaError, { clientVersion: '6.19.3' });
+        installHistoryPersistOverride(async () => {
+          throw prismaError;
+        });
+
+        const result = await runGmailAccountSync(cronSyncContext('req_p2028_diag_on'), {
+          gmailClient: incrementalClient('msg_p2028_diag_on'),
+          getAccessToken: tokenProvider(),
+        });
+
+        expect(result.status).toBe('completed');
+        if (result.status !== 'completed') {
+          return;
+        }
+        expect(result.run.errorCode).toBe('database_failure');
+        expect(result.run.errorCode).not.toBe('P2028');
+        expect(result.run.outcome).toBe('retryable_failure');
+        expect(result.run.retryable).toBe(true);
+
+        const lines = emittedDiagnosticLines();
+        expect(lines).toHaveLength(1);
+        const payload = JSON.parse(lines[0]!) as {
+          event: string;
+          prismaErrorClass?: string;
+          prismaErrorCode?: string;
+          clientVersion?: string;
+          requestId?: string;
+          message?: string;
+          stack?: string;
+        };
+        expect(payload.event).toBe('database_runtime_failure');
+        expect(payload.prismaErrorClass).toBe('PrismaClientKnownRequestError');
+        expect(payload.prismaErrorCode).toBe('P2028');
+        expect(payload.clientVersion).toBe('6.19.3');
+        expect(payload.requestId).toBe('req_p2028_diag_on');
+        expect(payload).not.toHaveProperty('message');
+        expect(payload).not.toHaveProperty('stack');
+        expect(lines[0]).not.toMatch(
+          /postgres:\/\/|postgresql:\/\/|SELECT |ya29|Hello from Gmail|super_secret_value|rt_secret|PASSWORD/i,
+        );
+      });
+
+      it('does not emit diagnostics for persistence_validation, GmailSyncError, GmailConfigError, or token encryption errors', async () => {
+        process.env[ENABLE_DB_RUNTIME_DIAGNOSTICS_ENV] = 'true';
+        await seedIncrementalCursor();
+
+        const cases: Array<{
+          requestId: string;
+          throwError: Error;
+          errorCode: 'persistence_validation' | 'malformed_message' | 'configuration_error';
+          retryable: boolean;
+        }> = [
+          {
+            requestId: 'req_diag_validation',
+            throwError: persistenceShapedError(
+              'OPTIMISTIC_CONCURRENCY',
+              `cursor generation changed; ${leakyPrismaMessage}`,
+            ),
+            errorCode: 'persistence_validation',
+            retryable: true,
+          },
+          {
+            requestId: 'req_diag_malformed',
+            throwError: new GmailSyncError('malformed_message'),
+            errorCode: 'malformed_message',
+            retryable: false,
+          },
+          {
+            requestId: 'req_diag_config',
+            throwError: new GmailConfigError('GOOGLE_GMAIL_CLIENT_SECRET is required.'),
+            errorCode: 'configuration_error',
+            retryable: false,
+          },
+          {
+            requestId: 'req_diag_token',
+            throwError: new TokenEncryptionError('Token cryptographic operation failed.'),
+            errorCode: 'configuration_error',
+            retryable: false,
+          },
+        ];
+
+        for (const testCase of cases) {
+          consoleErrorSpy.mockClear();
+          installHistoryPersistOverride(async () => {
+            throw testCase.throwError;
+          });
+
+          const result = await runGmailAccountSync(cronSyncContext(testCase.requestId), {
+            gmailClient: incrementalClient(`msg_${testCase.requestId}`),
+            getAccessToken: tokenProvider(),
+          });
+
+          expect(result.status).toBe('completed');
+          if (result.status !== 'completed') {
+            return;
+          }
+          expect(result.run.errorCode).toBe(testCase.errorCode);
+          expect(result.run.retryable).toBe(testCase.retryable);
+          expect(result.run.outcome).toBe(
+            testCase.retryable ? 'retryable_failure' : 'permanent_failure',
+          );
+          expect(emittedDiagnosticLines()).toEqual([]);
+        }
       });
     });
   });

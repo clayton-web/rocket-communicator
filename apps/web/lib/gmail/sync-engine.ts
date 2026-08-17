@@ -15,6 +15,7 @@ import {
   type ParsedGmailMessageFixture,
 } from '@aicaa/domain';
 import type { CreateAuditEventInput, DbClient } from '@aicaa/db';
+import { logDatabaseRuntimeFailure } from '@/lib/db/diagnostics';
 import { loadDbRuntime } from '@/lib/db/runtime-db';
 import {
   isOwnerEventCaptureEnabled,
@@ -450,6 +451,7 @@ export async function runGmailAccountSync(
       throw error;
     }
 
+    logDatabaseRuntimeFailure(error, { requestId: ctx.requestId });
     const syncError = toSyncError(error);
     if (syncError.code === 'invalid_history' && runCreated) {
       const marked = await persistChannelUnavailable(ctx, runtime, {
