@@ -11,12 +11,13 @@ import type { OwnerGmailContext } from './service';
 
 export type { OwnerGmailSyncResult };
 
-/** Owner-triggered manual Gmail sync (initial cursor or incremental History). */
+/** Owner-triggered manual Gmail sync (initial cursor, incremental History, or explicit reseed). */
 export async function syncOwnerGmail(
   ctx: OwnerGmailContext,
   deps?: GmailSyncEngineDeps,
+  options?: { confirmHistoryCursorReseed?: boolean },
 ): Promise<{ run: GmailSyncRunDto; connection: ReturnType<typeof mapConnectionToDto> }> {
-  const result = await runOwnerGmailSync(ctx, deps);
+  const result = await runOwnerGmailSync(ctx, deps, options);
   return {
     run: mapSyncRunToDto(result.run),
     connection: result.connection,

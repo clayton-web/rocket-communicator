@@ -820,6 +820,230 @@ describe('A5.4 Gmail sync engine', () => {
     expect(account?.historyId).toBe('2000');
   });
 
+  it('leaves resync_required blocked without explicit reseed confirmation', async () => {
+    await db.prisma.communicationAccount.update({
+      where: { id: accountId },
+      data: { historyId: '8800', historyState: 'resync_required', status: 'resync_required' },
+    });
+
+    const gmailClient: GmailApiClient = {
+      getProfile: vi.fn(),
+      listHistory: vi.fn(),
+      getMessage: vi.fn(),
+    };
+
+    const result = await runOwnerGmailSync(ctx('req_resync_blocked'), {
+      gmailClient,
+      getAccessToken: tokenProvider(),
+    });
+
+    expect(result.run.outcome).toBe('resync_required');
+    expect(result.run.errorCode).toBe('resync_required');
+    expect(result.run.historyIdBefore).toBe('8800');
+    expect(result.run.historyIdAfter).toBe('8800');
+    expect(gmailClient.getProfile).not.toHaveBeenCalled();
+    expect(gmailClient.listHistory).not.toHaveBeenCalled();
+    expect(gmailClient.getMessage).not.toHaveBeenCalled();
+
+    const account = await getCommunicationAccountByOrganization(db.prisma, org);
+    expect(account?.status).toBe('resync_required');
+    expect(account?.historyState).toBe('resync_required');
+    expect(account?.historyId).toBe('8800');
+    expect(result.run.eventsCreated).toBe(0);
+    await expect(
+      db.prisma.auditEvent.count({
+        where: {
+          organizationId: org,
+          action: 'gmail_history_cursor_reseeded',
+          requestId: 'req_resync_blocked',
+        },
+      }),
+    ).resolves.toBe(0);
+  });
+
+  it('reseeds the history cursor when the Owner explicitly confirms the continuity gap', async () => {
+    await db.prisma.communicationAccount.update({
+      where: { id: accountId },
+      data: { historyId: '8800', historyState: 'resync_required', status: 'resync_required' },
+    });
+
+    const gmailClient: GmailApiClient = {
+      getProfile: vi.fn(async () => ({ historyId: '9900' })),
+      listHistory: vi.fn(),
+      getMessage: vi.fn(),
+    };
+    const eventsBefore = await db.prisma.communicationEvent.count({
+      where: { organizationId: org },
+    });
+    const excerptsBefore = await db.prisma.temporaryCommunicationExcerpt.count({
+      where: { organizationId: org },
+    });
+
+    const result = await runOwnerGmailSync(
+      ctx('req_reseed_ok'),
+      { gmailClient, getAccessToken: tokenProvider() },
+      { confirmHistoryCursorReseed: true },
+    );
+
+    expect(result.run.trigger).toBe('manual');
+    expect(result.run.outcome).toBe('succeeded');
+    expect(result.run.historyIdBefore).toBe('8800');
+    expect(result.run.historyIdAfter).toBe('9900');
+    expect(result.run.eventsCreated).toBe(0);
+    expect(result.run.messagesExamined).toBe(0);
+    expect(result.connection.status).toBe('connected');
+    expect(result.connection.historyState).toBe('valid');
+    expect(gmailClient.getProfile).toHaveBeenCalledTimes(1);
+    expect(gmailClient.listHistory).not.toHaveBeenCalled();
+    expect(gmailClient.getMessage).not.toHaveBeenCalled();
+
+    const account = await getCommunicationAccountByOrganization(db.prisma, org);
+    expect(account?.status).toBe('connected');
+    expect(account?.historyState).toBe('valid');
+    expect(account?.historyId).toBe('9900');
+    await expect(
+      db.prisma.communicationEvent.count({ where: { organizationId: org } }),
+    ).resolves.toBe(eventsBefore);
+    await expect(
+      db.prisma.temporaryCommunicationExcerpt.count({ where: { organizationId: org } }),
+    ).resolves.toBe(excerptsBefore);
+
+    const audit = await db.prisma.auditEvent.findFirst({
+      where: {
+        organizationId: org,
+        action: 'gmail_history_cursor_reseeded',
+        requestId: 'req_reseed_ok',
+      },
+    });
+    expect(audit?.outcome).toBe('succeeded');
+    expect(audit?.note).toBe('history cursor reseeded; continuity gap acknowledged');
+    expect(audit?.gmailSyncRunId).toBe(result.run.id);
+    expect(audit?.ownerId).toBe(owner.ownerId);
+  });
+
+  it('refuses explicit reseed when historyState is not resync_required', async () => {
+    await db.prisma.communicationAccount.update({
+      where: { id: accountId },
+      data: { historyId: '1000', historyState: 'valid', status: 'connected' },
+    });
+
+    const gmailClient: GmailApiClient = {
+      getProfile: vi.fn(),
+      listHistory: vi.fn(),
+      getMessage: vi.fn(),
+    };
+
+    await expect(
+      runOwnerGmailSync(
+        ctx('req_reseed_wrong_state'),
+        { gmailClient, getAccessToken: tokenProvider() },
+        { confirmHistoryCursorReseed: true },
+      ),
+    ).rejects.toMatchObject({ code: 'conflict' });
+
+    expect(gmailClient.getProfile).not.toHaveBeenCalled();
+    const account = await getCommunicationAccountByOrganization(db.prisma, org);
+    expect(account?.historyId).toBe('1000');
+    expect(account?.historyState).toBe('valid');
+    await expect(
+      db.prisma.auditEvent.count({
+        where: {
+          organizationId: org,
+          action: 'gmail_history_cursor_reseeded',
+          requestId: 'req_reseed_wrong_state',
+        },
+      }),
+    ).resolves.toBe(0);
+  });
+
+  it('leaves resync_required and the stale cursor when getProfile fails during reseed', async () => {
+    await db.prisma.communicationAccount.update({
+      where: { id: accountId },
+      data: { historyId: '8800', historyState: 'resync_required', status: 'resync_required' },
+    });
+
+    const gmailClient: GmailApiClient = {
+      getProfile: vi.fn(async () => {
+        throw new GmailSyncError('network_failure');
+      }),
+      listHistory: vi.fn(),
+      getMessage: vi.fn(),
+    };
+
+    const result = await runOwnerGmailSync(
+      ctx('req_reseed_profile_fail'),
+      { gmailClient, getAccessToken: tokenProvider() },
+      { confirmHistoryCursorReseed: true },
+    );
+
+    expect(result.run.outcome).toBe('retryable_failure');
+    expect(result.run.errorCode).toBe('network_failure');
+    expect(result.run.retryable).toBe(true);
+    expect(gmailClient.getProfile).toHaveBeenCalledTimes(1);
+
+    const account = await getCommunicationAccountByOrganization(db.prisma, org);
+    expect(account?.status).toBe('resync_required');
+    expect(account?.historyState).toBe('resync_required');
+    expect(account?.historyId).toBe('8800');
+    await expect(
+      db.prisma.auditEvent.count({
+        where: {
+          organizationId: org,
+          action: 'gmail_history_cursor_reseeded',
+          requestId: 'req_reseed_profile_fail',
+        },
+      }),
+    ).resolves.toBe(0);
+  });
+
+  it('starts later incremental sync from the reseeded cursor, not the abandoned one', async () => {
+    await db.prisma.communicationAccount.update({
+      where: { id: accountId },
+      data: { historyId: '8800', historyState: 'resync_required', status: 'resync_required' },
+    });
+
+    const reseedClient: GmailApiClient = {
+      getProfile: vi.fn(async () => ({ historyId: '9900' })),
+      listHistory: vi.fn(),
+      getMessage: vi.fn(),
+    };
+    const reseeded = await runOwnerGmailSync(
+      ctx('req_reseed_then_inc'),
+      { gmailClient: reseedClient, getAccessToken: tokenProvider() },
+      { confirmHistoryCursorReseed: true },
+    );
+    expect(reseeded.run.historyIdAfter).toBe('9900');
+
+    const incrementalClient: GmailApiClient = {
+      getProfile: vi.fn(),
+      listHistory: vi.fn(async () => ({
+        historyId: '9950',
+        history: [
+          {
+            id: '9925',
+            messagesAdded: [{ message: { id: 'msg_after_reseed' } }],
+          },
+        ],
+      })),
+      getMessage: vi.fn(async () => inboxMessage('msg_after_reseed')),
+    };
+    const incremental = await runOwnerGmailSync(ctx('req_after_reseed'), {
+      gmailClient: incrementalClient,
+      getAccessToken: tokenProvider(),
+    });
+
+    expect(incremental.run.outcome).toBe('succeeded');
+    expect(incremental.run.eventsCreated).toBe(1);
+    expect(incrementalClient.listHistory).toHaveBeenCalledWith({
+      accessToken: 'access_token_memory_only',
+      startHistoryId: '9900',
+      pageToken: undefined,
+    });
+    expect(incrementalClient.getProfile).not.toHaveBeenCalled();
+    const account = await getCommunicationAccountByOrganization(db.prisma, org);
+    expect(account?.historyId).toBe('9950');
+  });
+
   it('exits early for needs_reauth accounts without calling Gmail', async () => {
     await db.prisma.communicationAccount.update({
       where: { id: accountId },

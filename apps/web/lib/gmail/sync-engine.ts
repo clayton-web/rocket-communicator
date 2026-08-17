@@ -74,7 +74,15 @@ export interface GmailAccountSyncContext {
    * Cron path sets allowInitial=false. Owner path sets allowInitial=true.
    */
   allowInitial: boolean;
+  /**
+   * Owner-only explicit confirmation to abandon an unusable history interval and reseed
+   * from users.getProfile. Cron/poll and OAuth reconnect must never set this.
+   */
+  confirmHistoryCursorReseed?: boolean;
 }
+
+/** Exact confirmation token required to reseed a resync_required history cursor. */
+export const GMAIL_HISTORY_CURSOR_RESEED_CONFIRMATION = 'acknowledged_continuity_gap' as const;
 
 export type GmailAccountSyncResult =
   | { status: 'completed'; run: GmailSyncRun; connection: GmailConnectionDto }
@@ -94,9 +102,11 @@ function ownerAudit(input: {
   organizationId: string;
   ownerId: string;
   communicationAccountId?: string;
+  gmailSyncRunId?: string;
   now: string;
   requestId?: string;
   outcome?: 'succeeded' | 'failed';
+  note?: string;
 }): CreateAuditEventInput {
   return {
     id: newId('audit'),
@@ -104,8 +114,10 @@ function ownerAudit(input: {
     actorKind: 'owner',
     ownerId: input.ownerId,
     communicationAccountId: input.communicationAccountId,
+    gmailSyncRunId: input.gmailSyncRunId,
     action: input.action,
     outcome: input.outcome ?? 'succeeded',
+    note: input.note,
     requestId: input.requestId,
     recordedAt: input.now,
   };
@@ -283,13 +295,24 @@ export async function runGmailAccountSync(
       ...(await finishEarly(ctx, runtime, account, runId, 'needs_reauth', 'needs_reauth')),
     };
   }
-  if (account.status === 'resync_required' || account.historyState === 'resync_required') {
+
+  const wantsReseed = ctx.actor.kind === 'owner' && ctx.confirmHistoryCursorReseed === true;
+  if (wantsReseed) {
+    if (account.historyState !== 'resync_required') {
+      throw new GmailRequestError(
+        'conflict',
+        'Gmail history cursor reseed is only allowed when historyState is resync_required.',
+      );
+    }
+    if (account.status !== 'connected' && account.status !== 'resync_required') {
+      throw new GmailRequestError('conflict', 'Gmail account is not ready to synchronize.');
+    }
+  } else if (account.status === 'resync_required' || account.historyState === 'resync_required') {
     return {
       status: 'completed',
       ...(await finishEarly(ctx, runtime, account, runId, 'resync_required', 'resync_required')),
     };
-  }
-  if (account.status !== 'connected') {
+  } else if (account.status !== 'connected') {
     throw new GmailRequestError('conflict', 'Gmail account is not ready to synchronize.');
   }
 
@@ -400,7 +423,16 @@ export async function runGmailAccountSync(
     }
 
     if (!completed && accessToken) {
-      if (isInitial) {
+      if (wantsReseed) {
+        completed = await runHistoryCursorReseed(
+          ctx,
+          runtime,
+          gmailClient,
+          accessToken,
+          account,
+          runId,
+        );
+      } else if (isInitial) {
         completed = await runInitialCursor(ctx, runtime, gmailClient, accessToken, account, runId);
       } else {
         completed = await runIncrementalHistory(
@@ -493,6 +525,7 @@ export async function runGmailAccountSync(
 export async function runOwnerGmailSync(
   ctx: OwnerGmailContext,
   deps: GmailSyncEngineDeps = {},
+  options: { confirmHistoryCursorReseed?: boolean } = {},
 ): Promise<OwnerGmailSyncResult> {
   const runtime = await loadDbRuntime();
   const orgId = ctx.owner.organizationId;
@@ -503,7 +536,8 @@ export async function runOwnerGmailSync(
   }
 
   const isInitial = needsInitialCursor(account);
-  const trigger: GmailSyncTrigger = isInitial ? 'initial' : 'manual';
+  const trigger: GmailSyncTrigger =
+    options.confirmHistoryCursorReseed === true ? 'manual' : isInitial ? 'initial' : 'manual';
 
   const result = await runGmailAccountSync(
     {
@@ -515,6 +549,7 @@ export async function runOwnerGmailSync(
       now: ctx.now,
       requestId: ctx.requestId,
       allowInitial: true,
+      confirmHistoryCursorReseed: options.confirmHistoryCursorReseed === true,
     },
     deps,
   );
@@ -633,6 +668,66 @@ async function runInitialCursor(
         communicationAccountId: account.id,
         now: ctx.now,
         requestId: ctx.requestId,
+      }),
+    );
+  }
+
+  return { run, connection: mapConnectionToDto(page.account) };
+}
+
+/**
+ * Owner-triggered no-backfill cursor reseed after resync_required.
+ * Records the stale cursor as historyIdBefore and the current profile historyId as
+ * historyIdAfter. The abandoned interval is a continuity gap, not a full resync.
+ */
+async function runHistoryCursorReseed(
+  ctx: GmailAccountSyncContext,
+  runtime: DbRuntime,
+  gmailClient: GmailApiClient,
+  accessToken: string,
+  account: CommunicationAccount,
+  runId: string,
+): Promise<OwnerGmailSyncResult> {
+  const profile = await gmailClient.getProfile(accessToken);
+  const historyIdAfter = String(profile.historyId);
+
+  const page = await runtime.persistGmailHistoryPageTransaction({
+    db: ctx.db,
+    organizationId: ctx.organizationId,
+    accountId: account.id,
+    historyIdBefore: account.historyId,
+    historyIdAfter,
+    ingestRunId: runId,
+    syncedAt: ctx.now,
+    messages: [],
+  });
+
+  const run = await runtime.finishGmailSyncRun(ctx.db, {
+    organizationId: ctx.organizationId,
+    runId,
+    outcome: 'succeeded',
+    finishedAt: ctx.now,
+    historyIdAfter,
+    messagesExamined: 0,
+    eventsCreated: 0,
+    eventsUpdated: 0,
+    messagesSkipped: 0,
+    retryable: false,
+    errorCode: null,
+  });
+
+  if (ctx.actor.kind === 'owner') {
+    await runtime.createAuditEvent(
+      ctx.db,
+      ownerAudit({
+        action: 'gmail_history_cursor_reseeded',
+        organizationId: ctx.organizationId,
+        ownerId: ctx.actor.ownerId,
+        communicationAccountId: account.id,
+        gmailSyncRunId: runId,
+        now: ctx.now,
+        requestId: ctx.requestId,
+        note: 'history cursor reseeded; continuity gap acknowledged',
       }),
     );
   }

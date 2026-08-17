@@ -30,6 +30,7 @@ vi.mock('google-auth-library', () => ({
 import { getAuthenticatedOwner } from '@/lib/auth/require-owner';
 import { POST as postSync } from '@/app/api/v1/gmail/sync/route';
 import { GET as getSyncRuns } from '@/app/api/v1/gmail/sync-runs/route';
+import { GMAIL_HISTORY_CURSOR_RESEED_CONFIRMATION } from '@/lib/gmail/sync-engine';
 
 const org = 'org_test_123';
 const owner = ownerActor(asOwnerId('owner_gmail_routes'), asOrganizationId(org));
@@ -197,6 +198,104 @@ describe('A5.4 Gmail sync HTTP routes', () => {
       const body = await res.json();
       expect(body.error.code).toBe('DOMAIN_CONFLICT');
       assertSafeDto(body);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('does not reseed resync_required without explicit confirmation', async () => {
+      await db.prisma.communicationAccount.update({
+        where: { id: accountId },
+        data: { historyId: '8800', historyState: 'resync_required', status: 'resync_required' },
+      });
+
+      const res = await postSync(
+        new Request('http://localhost/api/v1/gmail/sync', { method: 'POST' }),
+      );
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.run.outcome).toBe('resync_required');
+      expect(body.connection.status).toBe('resync_required');
+      expect(body.connection.historyState).toBe('resync_required');
+      assertSafeDto(body);
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      const account = await getCommunicationAccountByOrganization(db.prisma, org);
+      expect(account?.historyId).toBe('8800');
+      expect(account?.historyState).toBe('resync_required');
+    });
+
+    it('reseeds after explicit Owner confirmation and hides cursor ids', async () => {
+      await db.prisma.communicationAccount.update({
+        where: { id: accountId },
+        data: { historyId: '8800', historyState: 'resync_required', status: 'resync_required' },
+      });
+      fetchMock.mockResolvedValue(
+        jsonResponse(200, {
+          emailAddress: 'owner@example.com',
+          historyId: '9900',
+        }),
+      );
+
+      const res = await postSync(
+        jsonRequest('http://localhost/api/v1/gmail/sync', 'POST', {
+          confirmHistoryCursorReseed: GMAIL_HISTORY_CURSOR_RESEED_CONFIRMATION,
+        }),
+      );
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.run.outcome).toBe('succeeded');
+      expect(body.run.trigger).toBe('manual');
+      expect(body.run.eventsCreated).toBe(0);
+      expect(body.connection.status).toBe('connected');
+      expect(body.connection.historyState).toBe('valid');
+      expect(body.run).not.toHaveProperty('historyIdBefore');
+      expect(body.run).not.toHaveProperty('historyIdAfter');
+      assertSafeDto(body);
+      expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/profile');
+
+      const account = await getCommunicationAccountByOrganization(db.prisma, org);
+      expect(account?.historyId).toBe('9900');
+      expect(account?.historyState).toBe('valid');
+      expect(account?.status).toBe('connected');
+    });
+
+    it('rejects explicit reseed when the account is not resync_required', async () => {
+      await db.prisma.communicationAccount.update({
+        where: { id: accountId },
+        data: { historyId: '1000', historyState: 'valid', status: 'connected' },
+      });
+
+      const res = await postSync(
+        jsonRequest('http://localhost/api/v1/gmail/sync', 'POST', {
+          confirmHistoryCursorReseed: GMAIL_HISTORY_CURSOR_RESEED_CONFIRMATION,
+        }),
+      );
+      expect(res.status).toBe(409);
+      const body = await res.json();
+      expect(body.error.code).toBe('DOMAIN_CONFLICT');
+      assertSafeDto(body);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('rejects a boolean true confirmation as accidental', async () => {
+      const res = await postSync(
+        jsonRequest('http://localhost/api/v1/gmail/sync', 'POST', {
+          confirmHistoryCursorReseed: true,
+        }),
+      );
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error.code).toBe('VALIDATION_ERROR');
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('rejects another organization', async () => {
+      authOwner(ownerActor(asOwnerId('owner_other_org'), asOrganizationId('org_other_sync')));
+      const res = await postSync(
+        jsonRequest('http://localhost/api/v1/gmail/sync', 'POST', {
+          confirmHistoryCursorReseed: GMAIL_HISTORY_CURSOR_RESEED_CONFIRMATION,
+        }),
+      );
+      expect(res.status).toBe(404);
       expect(fetchMock).not.toHaveBeenCalled();
     });
   });
