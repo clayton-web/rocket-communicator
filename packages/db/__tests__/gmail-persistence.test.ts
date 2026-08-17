@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
+  DomainError,
   GMAIL_READONLY_SCOPE,
+  MAX_GMAIL_EXCERPT_BYTES,
   asCommunicationAccountId,
   asCommunicationEventId,
   asGmailSyncRunId,
@@ -408,5 +410,119 @@ describe('A5 Gmail persistence repositories (PGlite)', () => {
     const orgBRuns = await listRecentGmailSyncRuns(db.prisma, orgB, 10);
     expect(orgBRuns.every((run) => run.organizationId === orgB)).toBe(true);
     expect(orgBRuns.some((run) => run.organizationId === orgA)).toBe(false);
+  });
+
+  it('persists an eligible multi-message page atomically and retries duplicate provider IDs', async () => {
+    const orgC = 'org_gmail_c';
+    await createOrUpdatePendingCommunicationAccount(db.prisma, {
+      organizationId: orgC,
+      accountId: 'acct_c1',
+      emailAddress: 'owner@c.example',
+      externalAccountId: 'google-sub-c-page',
+    });
+    await persistConnectedCommunicationAccount(db.prisma, {
+      organizationId: orgC,
+      accountId: 'acct_c1',
+      emailAddress: 'owner@c.example',
+      externalAccountId: 'google-sub-c-page',
+      connectedAt: now,
+      historyId: 'hist_c0',
+    });
+
+    const first = await persistGmailHistoryPageTransaction({
+      db: db.prisma,
+      organizationId: orgC,
+      accountId: 'acct_c1',
+      historyIdBefore: 'hist_c0',
+      historyIdAfter: 'hist_c1',
+      ingestRunId: 'run_c_multi',
+      syncedAt: later,
+      messages: [
+        inboxMessage({
+          eventId: asCommunicationEventId('evt_c1'),
+          providerMessageId: 'msg_c1',
+          excerptId: asTemporaryCommunicationExcerptId('ex_c1'),
+          excerptContent: 'first excerpt',
+          excerptPurgeAt: purgeAt,
+        }),
+        inboxMessage({
+          eventId: asCommunicationEventId('evt_c2'),
+          providerMessageId: 'msg_c2',
+          excerptId: asTemporaryCommunicationExcerptId('ex_c2'),
+          excerptContent: 'second excerpt',
+          excerptPurgeAt: purgeAt,
+        }),
+        inboxMessage({
+          eventId: asCommunicationEventId('evt_c1_dup'),
+          providerMessageId: 'msg_c1',
+          subject: 'Hello again',
+          excerptId: asTemporaryCommunicationExcerptId('ex_c1_dup'),
+          excerptContent: 'duplicate-id excerpt',
+          excerptPurgeAt: purgeAt,
+        }),
+      ],
+    });
+
+    expect(first.eventsCreated).toBe(2);
+    expect(first.eventsUpdated).toBe(1);
+    expect(first.account.historyId).toBe('hist_c1');
+    expect(await db.prisma.communicationEvent.count({ where: { organizationId: orgC } })).toBe(2);
+    const updated = await getCommunicationEventByProviderMessageId(db.prisma, orgC, 'msg_c1');
+    expect(updated?.subject).toBe('Hello again');
+    expect(updated?.id).toBe('evt_c1');
+    const excerpt = await getTemporaryCommunicationExcerptByEventId(db.prisma, orgC, 'evt_c1');
+    expect(excerpt?.content).toBe('duplicate-id excerpt');
+    expect(excerpt?.purgedAt).toBeNull();
+    expect(await getCommunicationEventByProviderMessageId(db.prisma, orgA, 'msg_c1')).toBeNull();
+  });
+
+  it('does not advance the cursor when later page persistence fails', async () => {
+    const orgD = 'org_gmail_d';
+    await createOrUpdatePendingCommunicationAccount(db.prisma, {
+      organizationId: orgD,
+      accountId: 'acct_d1',
+      emailAddress: 'owner@d.example',
+      externalAccountId: 'google-sub-d-page',
+    });
+    await persistConnectedCommunicationAccount(db.prisma, {
+      organizationId: orgD,
+      accountId: 'acct_d1',
+      emailAddress: 'owner@d.example',
+      externalAccountId: 'google-sub-d-page',
+      connectedAt: now,
+      historyId: 'hist_d0',
+    });
+
+    await expect(
+      persistGmailHistoryPageTransaction({
+        db: db.prisma,
+        organizationId: orgD,
+        accountId: 'acct_d1',
+        historyIdBefore: 'hist_d0',
+        historyIdAfter: 'hist_d_fail',
+        ingestRunId: 'run_d_fail',
+        syncedAt: later,
+        messages: [
+          inboxMessage({
+            eventId: asCommunicationEventId('evt_d_ok'),
+            providerMessageId: 'msg_d_ok',
+          }),
+          inboxMessage({
+            eventId: asCommunicationEventId('evt_d_fail'),
+            providerMessageId: 'msg_d_fail',
+            excerptId: asTemporaryCommunicationExcerptId('ex_d_fail'),
+            excerptContent: 'x'.repeat(MAX_GMAIL_EXCERPT_BYTES + 1),
+            excerptPurgeAt: purgeAt,
+          }),
+        ],
+      }),
+    ).rejects.toBeInstanceOf(DomainError);
+
+    const after = await getCommunicationAccountByOrganization(db.prisma, orgD);
+    expect(after?.historyId).toBe('hist_d0');
+    expect(await getCommunicationEventByProviderMessageId(db.prisma, orgD, 'msg_d_ok')).toBeNull();
+    expect(
+      await getCommunicationEventByProviderMessageId(db.prisma, orgD, 'msg_d_fail'),
+    ).toBeNull();
   });
 });

@@ -60,6 +60,42 @@ export async function getCommunicationEventByProviderMessageId(
   return row ? mapCommunicationEvent(row) : null;
 }
 
+export async function listCommunicationEventsByProviderMessageIds(
+  db: Client,
+  organizationId: string,
+  providerMessageIds: string[],
+): Promise<CommunicationEvent[]> {
+  const uniqueIds = [...new Set(providerMessageIds)];
+  if (uniqueIds.length === 0) {
+    return [];
+  }
+  const rows = await db.communicationEvent.findMany({
+    where: {
+      organizationId,
+      providerMessageId: { in: uniqueIds },
+    },
+  });
+  return rows.map(mapCommunicationEvent);
+}
+
+export async function listTemporaryCommunicationExcerptsByEventIds(
+  db: Client,
+  organizationId: string,
+  communicationEventIds: string[],
+): Promise<TemporaryCommunicationExcerpt[]> {
+  const uniqueIds = [...new Set(communicationEventIds)];
+  if (uniqueIds.length === 0) {
+    return [];
+  }
+  const rows = await db.temporaryCommunicationExcerpt.findMany({
+    where: {
+      organizationId,
+      communicationEventId: { in: uniqueIds },
+    },
+  });
+  return rows.map(mapTemporaryCommunicationExcerpt);
+}
+
 export async function upsertCommunicationEvent(
   db: Client,
   input: {
@@ -67,6 +103,12 @@ export async function upsertCommunicationEvent(
     accountId: string;
     ingestRunId?: string | null;
     message: ParsedGmailMessageFixture;
+    /**
+     * When provided, skip the per-call event lookup.
+     * `null` means the caller already established that no row exists.
+     * Create still relies on the unique constraint if a concurrent insert wins.
+     */
+    existingEvent?: CommunicationEvent | null;
   },
 ): Promise<{ event: CommunicationEvent; created: boolean }> {
   const dedupeKey = buildGmailDedupeKey(input.message.providerMessageId);
@@ -75,14 +117,14 @@ export async function upsertCommunicationEvent(
   const attachmentMetadata = input.message.attachmentMetadata ?? [];
   const receivedAt = input.message.receivedAt ?? input.message.internalDate;
 
-  const existing = await db.communicationEvent.findUnique({
-    where: {
-      organizationId_providerMessageId: {
-        organizationId: input.organizationId,
-        providerMessageId: input.message.providerMessageId,
-      },
-    },
-  });
+  const existing =
+    input.existingEvent !== undefined
+      ? input.existingEvent
+      : await getCommunicationEventByProviderMessageId(
+          db,
+          input.organizationId,
+          input.message.providerMessageId,
+        );
 
   if (existing) {
     if (existing.organizationId !== input.organizationId) {

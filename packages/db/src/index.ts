@@ -315,6 +315,8 @@ export {
 export {
   getCommunicationEventById,
   getCommunicationEventByProviderMessageId,
+  listCommunicationEventsByProviderMessageIds,
+  listTemporaryCommunicationExcerptsByEventIds,
   upsertCommunicationEvent,
   upsertGoogleMessagesReviewEvent,
   buildGoogleMessagesProviderMessageId,
