@@ -8,10 +8,17 @@ import {
   getTemporaryCommunicationExcerptByEventId,
   persistGmailConnectionTransaction,
 } from '@aicaa/db';
+import * as aicaaDb from '@aicaa/db/runtime';
 import { createTestDatabase, type TestDatabase } from '@aicaa/db/testing';
+import { setDbRuntimeForTests } from '@/lib/db/runtime-db';
+import { setDbForTests } from '@/lib/db/server';
 import { clearDbTestRuntime, installDbTestRuntime } from './helpers/db-test-runtime';
 import { CIPHERTEXT_PURPOSE, encryptToken } from '@/lib/gmail/token-encryption';
-import { MAX_HISTORY_PAGES_PER_RUN, runOwnerGmailSync } from '@/lib/gmail/sync-engine';
+import {
+  MAX_HISTORY_PAGES_PER_RUN,
+  runGmailAccountSync,
+  runOwnerGmailSync,
+} from '@/lib/gmail/sync-engine';
 import { GmailSyncError } from '@/lib/gmail/sync-errors';
 import type { GmailApiClient } from '@/lib/gmail/gmail-api-client';
 
@@ -94,6 +101,43 @@ function gmailMessage(id: string, overrides: { labelIds?: string[]; body?: strin
 
 function inboxMessage(id: string) {
   return gmailMessage(id);
+}
+
+function persistenceShapedError(code: string, message: string): Error {
+  const error = new Error(message);
+  error.name = 'PersistenceError';
+  Object.assign(error, { code });
+  return error;
+}
+
+function prismaShapedError(code: string, message: string): Error {
+  const error = new Error(message);
+  error.name = 'PrismaClientKnownRequestError';
+  Object.assign(error, { code });
+  return error;
+}
+
+function installHistoryPersistOverride(
+  persist: typeof aicaaDb.persistGmailHistoryPageTransaction,
+): void {
+  setDbRuntimeForTests({
+    ...aicaaDb,
+    persistGmailHistoryPageTransaction: persist,
+  });
+  setDbForTests(db.prisma);
+}
+
+function cronSyncContext(requestId: string) {
+  return {
+    db: db.prisma,
+    organizationId: org,
+    accountId,
+    trigger: 'cron' as const,
+    actor: { kind: 'system' as const, systemId: 'gmail_poll' },
+    now,
+    requestId,
+    allowInitial: false,
+  };
 }
 
 let db: TestDatabase;
@@ -1127,5 +1171,206 @@ describe('A5.4 Gmail sync engine', () => {
     const firstResult = await first;
     expect(firstResult.run.outcome).toBe('succeeded');
     expect(firstResult.run.trigger).toBe('initial');
+  });
+
+  describe('persistence diagnostic taxonomy', () => {
+    const cursorBefore = '5000';
+    const sensitiveSql =
+      'SELECT history_id FROM communication_accounts WHERE id = $1; postgres://owner:rt_secret@db/app';
+
+    async function seedIncrementalCursor() {
+      await db.prisma.communicationAccount.update({
+        where: { id: accountId },
+        data: { historyId: cursorBefore, historyState: 'valid', status: 'connected' },
+      });
+    }
+
+    function incrementalClient(messageId: string): GmailApiClient {
+      return {
+        getProfile: vi.fn(),
+        listHistory: vi.fn(async () => ({
+          historyId: '5100',
+          history: [{ id: '5050', messagesAdded: [{ message: { id: messageId } }] }],
+        })),
+        getMessage: vi.fn(async () => inboxMessage(messageId)),
+      };
+    }
+
+    async function snapshotPersistence() {
+      return {
+        eventsBefore: await db.prisma.communicationEvent.count({
+          where: { organizationId: org },
+        }),
+        excerptsBefore: await db.prisma.temporaryCommunicationExcerpt.count({
+          where: { organizationId: org },
+        }),
+      };
+    }
+
+    async function expectFailedDiagnosticRun(input: {
+      requestId: string;
+      errorCode: 'persistence_validation' | 'database_failure' | 'transaction_failure';
+      messageId: string;
+      eventsBefore: number;
+      excerptsBefore: number;
+    }) {
+      const account = await getCommunicationAccountByOrganization(db.prisma, org);
+      expect(account?.historyId).toBe(cursorBefore);
+      expect(account?.historyState).toBe('valid');
+      expect(account?.status).toBe('connected');
+      expect(account?.syncLockUntil).toBeNull();
+      expect(account?.lastErrorCode).toBeNull();
+      const locked = await db.prisma.communicationAccount.findUnique({ where: { id: accountId } });
+      expect(locked?.syncLockUntil).toBeNull();
+      expect(locked?.syncLockOwner).toBeNull();
+
+      expect(
+        await db.prisma.communicationEvent.count({
+          where: { organizationId: org, providerMessageId: input.messageId },
+        }),
+      ).toBe(0);
+      expect(await db.prisma.communicationEvent.count({ where: { organizationId: org } })).toBe(
+        input.eventsBefore,
+      );
+      expect(
+        await db.prisma.temporaryCommunicationExcerpt.count({
+          where: { organizationId: org },
+        }),
+      ).toBe(input.excerptsBefore);
+
+      const run = await db.prisma.gmailSyncRun.findFirst({
+        where: { organizationId: org, requestId: input.requestId },
+      });
+      expect(run?.trigger).toBe('cron');
+      expect(run?.outcome).toBe('retryable_failure');
+      expect(run?.retryable).toBe(true);
+      expect(run?.errorCode).toBe(input.errorCode);
+      expect(run?.historyIdBefore).toBe(cursorBefore);
+      expect(run?.historyIdAfter).toBeNull();
+      expect(run?.messagesExamined).toBe(0);
+      expect(run?.eventsCreated).toBe(0);
+      expect(run?.eventsUpdated).toBe(0);
+      expect(JSON.stringify(run)).not.toMatch(/SELECT |postgres:\/\/|rt_secret|ya29/i);
+    }
+
+    it('persists persistence_validation when D075 cursor compare-and-set refuses the page', async () => {
+      await seedIncrementalCursor();
+      installHistoryPersistOverride(async (input) =>
+        aicaaDb.persistGmailHistoryPageTransaction({
+          ...input,
+          historyIdBefore: 'mismatched_cursor',
+        }),
+      );
+
+      const messageId = 'msg_d075_diag';
+      const snapshot = await snapshotPersistence();
+      const result = await runGmailAccountSync(cronSyncContext('req_d075_diag'), {
+        gmailClient: incrementalClient(messageId),
+        getAccessToken: tokenProvider(),
+      });
+
+      expect(result.status).toBe('completed');
+      if (result.status !== 'completed') {
+        return;
+      }
+      expect(result.run.errorCode).toBe('persistence_validation');
+      expect(result.run.outcome).toBe('retryable_failure');
+      expect(result.run.retryable).toBe(true);
+      expect(result.connection.status).toBe('connected');
+      await expectFailedDiagnosticRun({
+        requestId: 'req_d075_diag',
+        errorCode: 'persistence_validation',
+        messageId,
+        ...snapshot,
+      });
+    });
+
+    it('persists persistence_validation for optimistic-concurrency abort without writing events', async () => {
+      await seedIncrementalCursor();
+      installHistoryPersistOverride(async () => {
+        throw persistenceShapedError(
+          'OPTIMISTIC_CONCURRENCY',
+          `cursor generation changed; ${sensitiveSql}`,
+        );
+      });
+
+      const messageId = 'msg_occ_diag';
+      const snapshot = await snapshotPersistence();
+      const result = await runGmailAccountSync(cronSyncContext('req_occ_diag'), {
+        gmailClient: incrementalClient(messageId),
+        getAccessToken: tokenProvider(),
+      });
+
+      expect(result.status).toBe('completed');
+      if (result.status !== 'completed') {
+        return;
+      }
+      expect(result.run.errorCode).toBe('persistence_validation');
+      await expectFailedDiagnosticRun({
+        requestId: 'req_occ_diag',
+        errorCode: 'persistence_validation',
+        messageId,
+        ...snapshot,
+      });
+    });
+
+    it('persists database_failure for Prisma known-request errors without storing the P-code or SQL', async () => {
+      await seedIncrementalCursor();
+      installHistoryPersistOverride(async () => {
+        throw prismaShapedError(
+          'P2028',
+          `Transaction API error P2028: expired transaction. ${sensitiveSql} token=ya29.access`,
+        );
+      });
+
+      const messageId = 'msg_p2028_diag';
+      const snapshot = await snapshotPersistence();
+      const result = await runGmailAccountSync(cronSyncContext('req_p2028_diag'), {
+        gmailClient: incrementalClient(messageId),
+        getAccessToken: tokenProvider(),
+      });
+
+      expect(result.status).toBe('completed');
+      if (result.status !== 'completed') {
+        return;
+      }
+      expect(result.run.errorCode).toBe('database_failure');
+      expect(result.run.errorCode).not.toBe('P2028');
+      await expectFailedDiagnosticRun({
+        requestId: 'req_p2028_diag',
+        errorCode: 'database_failure',
+        messageId,
+        ...snapshot,
+      });
+    });
+
+    it('persists transaction_failure for TRANSACTION_FAILED without storing SQL', async () => {
+      await seedIncrementalCursor();
+      installHistoryPersistOverride(async () => {
+        throw persistenceShapedError(
+          'TRANSACTION_FAILED',
+          `interactive transaction failed: ${sensitiveSql}`,
+        );
+      });
+
+      const messageId = 'msg_tx_diag';
+      const snapshot = await snapshotPersistence();
+      const result = await runGmailAccountSync(cronSyncContext('req_tx_diag'), {
+        gmailClient: incrementalClient(messageId),
+        getAccessToken: tokenProvider(),
+      });
+
+      expect(result.status).toBe('completed');
+      if (result.status !== 'completed') {
+        return;
+      }
+      expect(result.run.errorCode).toBe('transaction_failure');
+      await expectFailedDiagnosticRun({
+        requestId: 'req_tx_diag',
+        errorCode: 'transaction_failure',
+        messageId,
+        ...snapshot,
+      });
+    });
   });
 });

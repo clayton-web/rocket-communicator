@@ -12,6 +12,8 @@ export type GmailSyncErrorCode =
   | 'invalid_history'
   | 'malformed_message'
   | 'database_failure'
+  | 'persistence_validation'
+  | 'transaction_failure'
   | 'lock_conflict'
   | 'configuration_error'
   | 'unknown';
@@ -24,6 +26,8 @@ const DEFAULT_RETRYABLE: Record<GmailSyncErrorCode, boolean> = {
   invalid_history: false,
   malformed_message: false,
   database_failure: true,
+  persistence_validation: true,
+  transaction_failure: true,
   lock_conflict: true,
   configuration_error: false,
   unknown: false,
@@ -37,10 +41,53 @@ const SAFE_MESSAGES: Record<GmailSyncErrorCode, string> = {
   invalid_history: 'Gmail history cursor is invalid.',
   malformed_message: 'Gmail message payload was malformed.',
   database_failure: 'Gmail sync persistence failed.',
+  persistence_validation: 'Gmail sync persistence was refused.',
+  transaction_failure: 'Gmail sync transaction failed.',
   lock_conflict: 'A Gmail sync is already in progress.',
   configuration_error: 'Gmail is not configured.',
   unknown: 'Gmail sync failed.',
 };
+
+/** D075/D076 cursor compare-and-set and other persistence state refusals. */
+const PERSISTENCE_VALIDATION_CODES = new Set(['VALIDATION', 'OPTIMISTIC_CONCURRENCY']);
+
+/** Application-level transaction wrapper failure. Distinct from Prisma P####. */
+const PERSISTENCE_TRANSACTION_CODES = new Set(['TRANSACTION_FAILED']);
+
+/** Residual PersistenceError codes that remain a database-class failure. */
+const PERSISTENCE_DATABASE_RESIDUAL_CODES = new Set([
+  'NOT_FOUND',
+  'ORGANIZATION_MISMATCH',
+  'UNIQUE_VIOLATION',
+]);
+
+const PRISMA_KNOWN_REQUEST_CODE = /^P\d{4}$/;
+
+/**
+ * Map persistence/Prisma failures onto distinct, non-sensitive Gmail sync codes.
+ *
+ * Never copies exception messages, SQL, connection strings, Prisma meta, or
+ * Gmail content into the returned error. Callers persist only `error.code`.
+ */
+export function classifyGmailPersistenceFailure(error: unknown): GmailSyncError | null {
+  if (error === null || typeof error !== 'object' || !('code' in error)) {
+    return null;
+  }
+  const code = (error as { code?: unknown }).code;
+  if (typeof code !== 'string') {
+    return null;
+  }
+  if (PERSISTENCE_VALIDATION_CODES.has(code)) {
+    return new GmailSyncError('persistence_validation');
+  }
+  if (PERSISTENCE_TRANSACTION_CODES.has(code)) {
+    return new GmailSyncError('transaction_failure');
+  }
+  if (PERSISTENCE_DATABASE_RESIDUAL_CODES.has(code) || PRISMA_KNOWN_REQUEST_CODE.test(code)) {
+    return new GmailSyncError('database_failure');
+  }
+  return null;
+}
 
 export class GmailSyncError extends Error {
   readonly code: GmailSyncErrorCode;

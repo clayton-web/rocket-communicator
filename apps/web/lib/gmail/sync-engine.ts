@@ -32,7 +32,7 @@ import { getGmailAccessToken, type GmailAccessTokenProvider } from './access-tok
 import { normalizeGmailMessage } from './normalize';
 import { mapConnectionToDto, type GmailConnectionDto } from './connection-dto';
 import { CIPHERTEXT_PURPOSE, decryptToken } from './token-encryption';
-import { isGmailSyncError, GmailSyncError } from './sync-errors';
+import { classifyGmailPersistenceFailure, isGmailSyncError, GmailSyncError } from './sync-errors';
 import type { OwnerGmailContext } from './service';
 
 /**
@@ -926,27 +926,9 @@ function toSyncError(error: unknown): GmailSyncError {
   ) {
     return new GmailSyncError('configuration_error', 'Gmail credential decryption failed.');
   }
-  if (
-    error &&
-    typeof error === 'object' &&
-    'code' in error &&
-    typeof (error as { code?: unknown }).code === 'string'
-  ) {
-    const code = (error as { code: string }).code;
-    if (
-      code === 'VALIDATION' ||
-      code === 'NOT_FOUND' ||
-      code === 'ORGANIZATION_MISMATCH' ||
-      code === 'UNIQUE_VIOLATION' ||
-      code === 'OPTIMISTIC_CONCURRENCY' ||
-      code === 'TRANSACTION_FAILED'
-    ) {
-      return new GmailSyncError('database_failure');
-    }
-    // Prisma known-request codes (e.g. P2022 missing column) must not collapse to `unknown`.
-    if (/^P\d{4}$/.test(code)) {
-      return new GmailSyncError('database_failure');
-    }
+  const persistenceFailure = classifyGmailPersistenceFailure(error);
+  if (persistenceFailure) {
+    return persistenceFailure;
   }
   return new GmailSyncError('unknown');
 }
