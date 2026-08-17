@@ -3,6 +3,10 @@ import { readJsonBody, requireJsonContentType, requireObjectBody } from '@/lib/h
 import { runOwnerGmailRoute } from '@/lib/gmail/route-context';
 import { parseCreateGmailSenderExclusionBody } from '@/lib/gmail/validate-exclusion-body';
 import { excludeGmailSenderFromEvent } from '@/lib/gmail/sender-exclusion-service';
+import {
+  gmailReviewUnavailableResponse,
+  isGmailReviewEnabled,
+} from '@/lib/gmail/review-release-config';
 
 export const runtime = 'nodejs';
 
@@ -16,6 +20,9 @@ const NO_STORE = { 'Cache-Control': 'no-store' } as const;
  * senders return the existing row. Does not change A5 ingestion or A6 processing.
  */
 export async function POST(request: Request) {
+  if (!isGmailReviewEnabled()) {
+    return gmailReviewUnavailableResponse();
+  }
   return runOwnerGmailRoute(request, async (ctx) => {
     const contentType = requireJsonContentType(request);
     if (!contentType.ok) {

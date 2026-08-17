@@ -1132,6 +1132,10 @@ export interface paths {
          *     eligible occurrences from an excluded sender are omitted, and later eligible occurrences
          *     from that sender are likewise omitted. A5 ingestion is unchanged.
          *
+         *     The route may return HTTP 404 while the Gmail Review release gate (`ENABLE_GMAIL_REVIEW`)
+         *     is disabled. That 404 means this application surface is unavailable; it is not a
+         *     product-level "missing Gmail item".
+         *
          */
         get: operations["listGmailIntake"];
         put?: never;
@@ -1180,6 +1184,10 @@ export interface paths {
          *     This endpoint creates no canonical Task, approves nothing, selects no responsibility, and
          *     writes no TaskAssignment. Suggestions remain on the existing S5 proposal lifecycle.
          *
+         *     The route may return HTTP 404 while the Gmail Review release gate (`ENABLE_GMAIL_REVIEW`)
+         *     is disabled. That 404 means this application surface is unavailable; it is not only a
+         *     missing Gmail occurrence.
+         *
          */
         post: operations["createGmailReview"];
         delete?: never;
@@ -1217,6 +1225,10 @@ export interface paths {
          *     list. The public response does not echo the excluded address; the canonical exclusion
          *     record remains the durable store.
          *
+         *     The route may return HTTP 404 while the Gmail Review release gate (`ENABLE_GMAIL_REVIEW`)
+         *     is disabled. That 404 means this application surface is unavailable; it is not only a
+         *     missing Gmail occurrence.
+         *
          */
         post: operations["createGmailSenderExclusion"];
         delete?: never;
@@ -1240,6 +1252,10 @@ export interface paths {
          * @description Removes one organization-scoped Gmail sender exclusion (D180 / S7). After removal, Gmail
          *     occurrences from that sender that still satisfy ordinary S7 eligibility reappear on
          *     intake and may be newly reviewed. This is not a sender-management list or an allow list.
+         *
+         *     The route may return HTTP 404 while the Gmail Review release gate (`ENABLE_GMAIL_REVIEW`)
+         *     is disabled. That 404 means this application surface is unavailable; it is not only a
+         *     missing exclusion.
          *
          */
         delete: operations["deleteGmailSenderExclusion"];
@@ -4683,6 +4699,17 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+            /** @description The Gmail Review application surface is unavailable (`NOT_FOUND`), including while
+             *     the Gmail Review release gate is disabled.
+             *      */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             500: components["responses"]["InternalError"];
         };
     };
@@ -4734,8 +4761,9 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
-            /** @description The referenced Gmail occurrence was not found for this Owner organization
-             *     (`NOT_FOUND`). Other-organization ids are indistinguishable from missing.
+            /** @description The Gmail Review application surface is unavailable while the Gmail Review release
+             *     gate is disabled, or the referenced Gmail occurrence was not found for this Owner
+             *     organization (`NOT_FOUND`). Other-organization ids are indistinguishable from missing.
              *      */
             404: {
                 headers: {
@@ -4825,8 +4853,9 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
-            /** @description The referenced Gmail occurrence was not found for this Owner organization
-             *     (`NOT_FOUND`). Other-organization ids are indistinguishable from missing.
+            /** @description The Gmail Review application surface is unavailable while the Gmail Review release
+             *     gate is disabled, or the referenced Gmail occurrence was not found for this Owner
+             *     organization (`NOT_FOUND`). Other-organization ids are indistinguishable from missing.
              *      */
             404: {
                 headers: {
@@ -4872,8 +4901,9 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
-            /** @description The exclusion was not found for this Owner organization (`NOT_FOUND`).
-             *     Other-organization ids are indistinguishable from missing.
+            /** @description The Gmail Review application surface is unavailable while the Gmail Review release
+             *     gate is disabled, or the exclusion was not found for this Owner organization
+             *     (`NOT_FOUND`). Other-organization ids are indistinguishable from missing.
              *      */
             404: {
                 headers: {

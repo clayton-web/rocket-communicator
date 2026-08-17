@@ -23,6 +23,7 @@ import { createTestDatabase, type TestDatabase } from '@aicaa/db/testing';
 import { clearDbTestRuntime, installDbTestRuntime } from './helpers/db-test-runtime';
 import { getAuthenticatedOwner } from '@/lib/auth/require-owner';
 import { GET as listGmailIntake } from '@/app/api/v1/gmail/intake/route';
+import { ENABLE_GMAIL_REVIEW_ENV } from '@/lib/gmail/review-release-config';
 
 vi.mock('@/lib/auth/require-owner', () => ({
   getAuthenticatedOwner: vi.fn(),
@@ -111,6 +112,8 @@ function authOwner(actor = owner) {
 }
 
 describe('S7 GET /api/v1/gmail/intake', () => {
+  const originalGmailReviewFlag = process.env[ENABLE_GMAIL_REVIEW_ENV];
+
   beforeAll(async () => {
     db = await createTestDatabase();
     await seedAccount(ORG, 'acct_s7_intake');
@@ -120,9 +123,15 @@ describe('S7 GET /api/v1/gmail/intake', () => {
   afterAll(async () => {
     clearDbTestRuntime();
     await db.close();
+    if (originalGmailReviewFlag === undefined) {
+      delete process.env[ENABLE_GMAIL_REVIEW_ENV];
+    } else {
+      process.env[ENABLE_GMAIL_REVIEW_ENV] = originalGmailReviewFlag;
+    }
   });
 
   beforeEach(async () => {
+    process.env[ENABLE_GMAIL_REVIEW_ENV] = 'true';
     installDbTestRuntime(db.prisma);
     vi.mocked(getAuthenticatedOwner).mockReset();
     authOwner();

@@ -591,7 +591,15 @@ describe('contracts package', () => {
     expect((intakeGet.parameters ?? []).map((parameter) => parameter.$ref ?? '').join()).toMatch(
       /Limit/,
     );
-    expect(Object.keys(intakeGet.responses ?? {}).sort()).toEqual(['200', '400', '401', '500']);
+    expect(Object.keys(intakeGet.responses ?? {}).sort()).toEqual([
+      '200',
+      '400',
+      '401',
+      '404',
+      '500',
+    ]);
+    const intake404 = intakeGet.responses?.['404'] as { description?: string } | undefined;
+    expect(intake404?.description).toMatch(/release\s+gate/i);
 
     const item = schemas.GmailIntakeItem as {
       additionalProperties?: boolean;
@@ -647,6 +655,8 @@ describe('contracts package', () => {
       '500',
       '503',
     ]);
+    const review404 = reviewPost.responses?.['404'] as { description?: string } | undefined;
+    expect(review404?.description).toMatch(/release\s+gate/i);
 
     const request = schemas.CreateGmailReviewRequest as {
       additionalProperties?: boolean;
@@ -840,6 +850,8 @@ describe('contracts package', () => {
       '415',
       '500',
     ]);
+    const create404 = createPost.responses?.['404'] as { description?: string } | undefined;
+    expect(create404?.description).toMatch(/release\s+gate/i);
 
     const request = schemas.CreateGmailSenderExclusionRequest as {
       additionalProperties?: boolean;
@@ -881,8 +893,12 @@ describe('contracts package', () => {
     const deletePath = bundled.paths?.['/api/v1/gmail/sender-exclusions/{exclusionId}'] as
       Record<string, unknown> | undefined;
     expect(Object.keys(deletePath ?? {}).sort()).toEqual(['delete']);
-    const deleteOp = deletePath!.delete as { operationId?: string };
+    const deleteOp = deletePath!.delete as {
+      operationId?: string;
+      responses?: Record<string, { description?: string }>;
+    };
     expect(deleteOp.operationId).toBe('deleteGmailSenderExclusion');
+    expect(deleteOp.responses?.['404']?.description).toMatch(/release\s+gate/i);
   });
 
   it('has no stale generated Kotlin artifacts outside the generator manifest', () => {

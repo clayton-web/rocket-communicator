@@ -16,6 +16,10 @@ import {
   resolveGmailReviewSource,
 } from '@/lib/gmail/intake-service';
 import { isGmailSenderExcludedForNewInterpretation } from '@/lib/gmail/sender-exclusion-service';
+import {
+  gmailReviewUnavailableResponse,
+  isGmailReviewEnabled,
+} from '@/lib/gmail/review-release-config';
 
 export const runtime = 'nodejs';
 
@@ -46,6 +50,9 @@ const GMAIL_SOURCE_KIND = 'gmail' as const;
  * created, nothing is approved, no responsibility is chosen, and no assignment is written.
  */
 export async function POST(request: Request) {
+  if (!isGmailReviewEnabled()) {
+    return gmailReviewUnavailableResponse();
+  }
   return runOwnerInterpretationRoute(request, async (ctx) => {
     const contentType = requireJsonContentType(request);
     if (!contentType.ok) {

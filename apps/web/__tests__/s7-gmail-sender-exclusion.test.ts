@@ -50,6 +50,7 @@ import { POST as createGmailReview } from '@/app/api/v1/gmail/reviews/route';
 import { POST as createGmailSenderExclusion } from '@/app/api/v1/gmail/sender-exclusions/route';
 import { DELETE as deleteGmailSenderExclusion } from '@/app/api/v1/gmail/sender-exclusions/[exclusionId]/route';
 import { UNPARSEABLE_GMAIL_FROM_SENTINEL } from '@/lib/gmail/normalize';
+import { ENABLE_GMAIL_REVIEW_ENV } from '@/lib/gmail/review-release-config';
 
 const ORG = 'org_s7_exclude';
 const OTHER_ORG = 'org_s7_exclude_other';
@@ -214,6 +215,8 @@ async function expectError(response: Response, status: number, code: string): Pr
 }
 
 describe('S7 Gmail sender exclusion (D180)', () => {
+  const originalGmailReviewFlag = process.env[ENABLE_GMAIL_REVIEW_ENV];
+
   beforeAll(async () => {
     db = await createTestDatabase();
     await seedAccount(ORG, 'acct_s7_exclude');
@@ -222,9 +225,15 @@ describe('S7 Gmail sender exclusion (D180)', () => {
 
   afterAll(async () => {
     await db.close();
+    if (originalGmailReviewFlag === undefined) {
+      delete process.env[ENABLE_GMAIL_REVIEW_ENV];
+    } else {
+      process.env[ENABLE_GMAIL_REVIEW_ENV] = originalGmailReviewFlag;
+    }
   });
 
   beforeEach(() => {
+    process.env[ENABLE_GMAIL_REVIEW_ENV] = 'true';
     installDbTestRuntime(db.prisma);
     authOwner();
     providerState.current = null;

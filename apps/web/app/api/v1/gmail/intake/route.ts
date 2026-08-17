@@ -3,6 +3,10 @@ import { parseLimitQuery } from '@/lib/http/request';
 import { runOwnerGmailRoute } from '@/lib/gmail/route-context';
 import { mapGmailIntakeItem } from '@/lib/gmail/intake-dto';
 import { listOwnerGmailIntake } from '@/lib/gmail/intake-service';
+import {
+  gmailReviewUnavailableResponse,
+  isGmailReviewEnabled,
+} from '@/lib/gmail/review-release-config';
 
 export const runtime = 'nodejs';
 
@@ -16,6 +20,9 @@ const NO_STORE = { 'Cache-Control': 'no-store' } as const;
  * with a live temporary excerpt is returned, and excerpt bodies are not exposed.
  */
 export async function GET(request: Request) {
+  if (!isGmailReviewEnabled()) {
+    return gmailReviewUnavailableResponse();
+  }
   return runOwnerGmailRoute(request, async (ctx) => {
     const url = new URL(request.url);
     const limitParsed = parseLimitQuery(url.searchParams.get('limit'));
