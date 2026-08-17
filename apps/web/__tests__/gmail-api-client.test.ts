@@ -88,6 +88,14 @@ describe('A5.4 Gmail API client', () => {
     expect(ids).toEqual(['msg_a', 'msg_b', 'msg_c', 'msg_e']);
   });
 
+  it('getMessage maps 404 to malformed_message', async () => {
+    fetchMock.mockResolvedValue(new Response('not found', { status: 404 }));
+
+    await expect(getMessage({ accessToken: 't', messageId: 'msg_gone' })).rejects.toMatchObject({
+      code: 'malformed_message',
+    });
+  });
+
   it('getMessage uses format=full and never calls the attachments endpoint', async () => {
     fetchMock.mockResolvedValue(
       jsonResponse(200, {

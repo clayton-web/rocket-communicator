@@ -684,10 +684,10 @@ async function runIncrementalHistory(
 
     const fixtures: ParsedGmailMessageFixture[] = [];
     for (const messageId of messageIds) {
-      const raw = await gmailClient.getMessage({ accessToken, messageId });
-      fetchedMessageIds.add(messageId);
-      messagesExamined += 1;
       try {
+        const raw = await gmailClient.getMessage({ accessToken, messageId });
+        fetchedMessageIds.add(messageId);
+        messagesExamined += 1;
         const normalized = normalizeGmailMessage(raw);
 
         // D136 self-ingestion protection, at the earliest point where the answer is knowable

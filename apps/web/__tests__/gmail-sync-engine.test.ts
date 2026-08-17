@@ -199,6 +199,190 @@ describe('A5.4 Gmail sync engine', () => {
     expect(excerpt?.purgeAt.toISOString()).toBe('2026-07-23T16:00:00.000Z');
   });
 
+  it('skips a 404/malformed fetch and still commits the remaining page', async () => {
+    await db.prisma.communicationAccount.update({
+      where: { id: accountId },
+      data: { historyId: '8000', historyState: 'valid' },
+    });
+
+    const gmailClient: GmailApiClient = {
+      getProfile: vi.fn(),
+      listHistory: vi.fn(async () => ({
+        historyId: '8100',
+        history: [
+          {
+            id: '8050',
+            messagesAdded: [
+              { message: { id: 'msg_ok_before' } },
+              { message: { id: 'msg_deleted_404' } },
+              { message: { id: 'msg_ok_after' } },
+            ],
+          },
+        ],
+      })),
+      getMessage: vi.fn(async ({ messageId }) => {
+        if (messageId === 'msg_deleted_404') {
+          // users.messages.get 404 is classified as malformed_message by the API client.
+          throw new GmailSyncError('malformed_message');
+        }
+        return inboxMessage(messageId);
+      }),
+    };
+
+    const result = await runOwnerGmailSync(ctx('req_malformed_fetch'), {
+      gmailClient,
+      getAccessToken: tokenProvider(),
+    });
+
+    expect(result.run.outcome).toBe('succeeded');
+    expect(result.run.outcome).not.toBe('permanent_failure');
+    expect(result.run.errorCode).toBeNull();
+    expect(result.run.eventsCreated).toBe(2);
+    expect(result.run.messagesSkipped).toBe(1);
+    expect(result.run.messagesExamined).toBe(2);
+    expect(gmailClient.getMessage).toHaveBeenCalledTimes(3);
+
+    const account = await getCommunicationAccountByOrganization(db.prisma, org);
+    expect(account?.historyId).toBe('8100');
+    expect(account?.historyState).toBe('valid');
+    expect(result.run.historyIdAfter).toBe('8100');
+
+    await expect(
+      getCommunicationEventByProviderMessageId(db.prisma, org, 'msg_deleted_404'),
+    ).resolves.toBeNull();
+    const before = await getCommunicationEventByProviderMessageId(db.prisma, org, 'msg_ok_before');
+    const after = await getCommunicationEventByProviderMessageId(db.prisma, org, 'msg_ok_after');
+    expect(before?.subject).toBe('Hello');
+    expect(after?.subject).toBe('Hello');
+
+    await expect(
+      db.prisma.temporaryCommunicationExcerpt.count({
+        where: { organizationId: org, communicationEventId: before!.id },
+      }),
+    ).resolves.toBe(1);
+    await expect(
+      db.prisma.temporaryCommunicationExcerpt.count({
+        where: { organizationId: org, communicationEventId: after!.id },
+      }),
+    ).resolves.toBe(1);
+    await expect(
+      db.prisma.communicationEvent.count({
+        where: { organizationId: org, providerMessageId: 'msg_deleted_404' },
+      }),
+    ).resolves.toBe(0);
+  });
+
+  it('skips a fetched message that fails normalization with malformed_message', async () => {
+    await db.prisma.communicationAccount.update({
+      where: { id: accountId },
+      data: { historyId: '8200', historyState: 'valid' },
+    });
+
+    const gmailClient: GmailApiClient = {
+      getProfile: vi.fn(),
+      listHistory: vi.fn(async () => ({
+        historyId: '8300',
+        history: [
+          {
+            id: '8250',
+            messagesAdded: [
+              { message: { id: 'msg_norm_ok' } },
+              { message: { id: 'msg_norm_malformed' } },
+            ],
+          },
+        ],
+      })),
+      getMessage: vi.fn(async ({ messageId }) => {
+        if (messageId === 'msg_norm_malformed') {
+          const raw = inboxMessage(messageId);
+          delete (raw as { internalDate?: string }).internalDate;
+          return raw;
+        }
+        return inboxMessage(messageId);
+      }),
+    };
+
+    const result = await runOwnerGmailSync(ctx('req_malformed_normalize'), {
+      gmailClient,
+      getAccessToken: tokenProvider(),
+    });
+
+    expect(result.run.outcome).toBe('succeeded');
+    expect(result.run.eventsCreated).toBe(1);
+    expect(result.run.messagesSkipped).toBe(1);
+    expect(result.run.messagesExamined).toBe(2);
+    expect(result.run.historyIdAfter).toBe('8300');
+
+    const account = await getCommunicationAccountByOrganization(db.prisma, org);
+    expect(account?.historyId).toBe('8300');
+    await expect(
+      getCommunicationEventByProviderMessageId(db.prisma, org, 'msg_norm_malformed'),
+    ).resolves.toBeNull();
+    await expect(
+      getCommunicationEventByProviderMessageId(db.prisma, org, 'msg_norm_ok'),
+    ).resolves.toMatchObject({ subject: 'Hello' });
+  });
+
+  it('does not skip a non-malformed getMessage failure', async () => {
+    await db.prisma.communicationAccount.update({
+      where: { id: accountId },
+      data: { historyId: '8400', historyState: 'valid' },
+    });
+
+    const gmailClient: GmailApiClient = {
+      getProfile: vi.fn(),
+      listHistory: vi.fn(async () => ({
+        historyId: '8500',
+        history: [
+          {
+            id: '8450',
+            messagesAdded: [
+              { message: { id: 'msg_before_rate_limit' } },
+              { message: { id: 'msg_rate_limited' } },
+              { message: { id: 'msg_after_rate_limit' } },
+            ],
+          },
+        ],
+      })),
+      getMessage: vi.fn(async ({ messageId }) => {
+        if (messageId === 'msg_rate_limited') {
+          throw new GmailSyncError('rate_limited');
+        }
+        return inboxMessage(messageId);
+      }),
+    };
+
+    const result = await runOwnerGmailSync(ctx('req_rate_limited_fetch'), {
+      gmailClient,
+      getAccessToken: tokenProvider(),
+    });
+
+    expect(result.run.outcome).toBe('retryable_failure');
+    expect(result.run.retryable).toBe(true);
+    expect(result.run.errorCode).toBe('rate_limited');
+    expect(result.run.messagesSkipped).toBe(0);
+    expect(result.run.eventsCreated).toBe(0);
+    expect(gmailClient.getMessage).toHaveBeenCalledTimes(2);
+    expect(gmailClient.getMessage).not.toHaveBeenCalledWith({
+      accessToken: 'access_token_memory_only',
+      messageId: 'msg_after_rate_limit',
+    });
+
+    const account = await getCommunicationAccountByOrganization(db.prisma, org);
+    expect(account?.historyId).toBe('8400');
+    expect(account?.historyState).toBe('valid');
+    await expect(
+      db.prisma.communicationEvent.count({
+        where: {
+          organizationId: org,
+          providerMessageId: {
+            in: ['msg_before_rate_limit', 'msg_rate_limited', 'msg_after_rate_limit'],
+          },
+        },
+      }),
+    ).resolves.toBe(0);
+  });
+
   it('processes multiple history pages and commits the final cursor', async () => {
     await db.prisma.communicationAccount.update({
       where: { id: accountId },
