@@ -1477,11 +1477,159 @@ describe('A5.4 Gmail sync engine', () => {
         expect(payload.prismaErrorCode).toBe('P2028');
         expect(payload.clientVersion).toBe('6.19.3');
         expect(payload.requestId).toBe('req_p2028_diag_on');
+        expect(payload).not.toHaveProperty('prismaTransactionDurationMs');
         expect(payload).not.toHaveProperty('message');
         expect(payload).not.toHaveProperty('stack');
         expect(lines[0]).not.toMatch(
           /postgres:\/\/|postgresql:\/\/|SELECT |ya29|Hello from Gmail|super_secret_value|rt_secret|PASSWORD/i,
         );
+      });
+
+      const p2028NotFoundMessage = [
+        "Transaction API error: Transaction not found. Transaction ID is invalid, refers to an old closed transaction Prisma doesn't have information about anymore",
+        leakyPrismaMessage,
+      ].join(' ');
+      const p2028TimeoutMessage = [
+        'Transaction API error: Transaction already closed: A query cannot be executed on an expired transaction. The timeout for this transaction was 5000 ms, however 6123 ms passed since the start of the transaction.',
+        leakyPrismaMessage,
+      ].join(' ');
+
+      function failingTransactionDb(
+        input: { db: unknown },
+        run: () => Promise<never>,
+      ): typeof input.db {
+        return { $transaction: run } as typeof input.db;
+      }
+
+      it('emits prismaTransactionDurationMs for a delayed interactive $transaction rejection', async () => {
+        process.env[ENABLE_DB_RUNTIME_DIAGNOSTICS_ENV] = 'true';
+        await seedIncrementalCursor();
+        const prismaError = prismaShapedError('P2028', p2028NotFoundMessage);
+        Object.assign(prismaError, { clientVersion: '6.19.3' });
+        const delayMs = 40;
+        installHistoryPersistOverride(async (input) =>
+          aicaaDb.persistGmailHistoryPageTransaction({
+            ...input,
+            db: failingTransactionDb(input, async () => {
+              await new Promise((resolve) => setTimeout(resolve, delayMs));
+              throw prismaError;
+            }),
+          }),
+        );
+
+        const result = await runGmailAccountSync(cronSyncContext('req_p2028_duration'), {
+          gmailClient: incrementalClient('msg_p2028_duration'),
+          getAccessToken: tokenProvider(),
+        });
+
+        expect(result.status).toBe('completed');
+        if (result.status !== 'completed') {
+          return;
+        }
+        expect(result.run.errorCode).toBe('database_failure');
+        expect(result.run.outcome).toBe('retryable_failure');
+        expect(result.run.retryable).toBe(true);
+        expect((prismaError as { code?: string }).code).toBe('P2028');
+
+        const lines = emittedDiagnosticLines();
+        expect(lines).toHaveLength(1);
+        const payload = JSON.parse(lines[0]!) as {
+          prismaErrorCode?: string;
+          prismaTransactionErrorKind?: string;
+          prismaTransactionDurationMs?: number;
+          message?: string;
+        };
+        expect(payload.prismaErrorCode).toBe('P2028');
+        expect(payload.prismaTransactionErrorKind).toBe('not_found');
+        expect(Number.isInteger(payload.prismaTransactionDurationMs)).toBe(true);
+        expect(payload.prismaTransactionDurationMs).toBeGreaterThanOrEqual(delayMs - 15);
+        expect(payload.prismaTransactionDurationMs).toBeLessThan(400);
+        expect(payload).not.toHaveProperty('message');
+        expect(lines[0]).not.toMatch(
+          /postgres:\/\/|postgresql:\/\/|SELECT |ya29|Hello from Gmail|super_secret_value|rt_secret|PASSWORD/i,
+        );
+      });
+
+      it('does not attribute Gmail fetch time to prismaTransactionDurationMs', async () => {
+        process.env[ENABLE_DB_RUNTIME_DIAGNOSTICS_ENV] = 'true';
+        await seedIncrementalCursor();
+        const prismaError = prismaShapedError('P2028', p2028TimeoutMessage);
+        Object.assign(prismaError, { clientVersion: '6.19.3' });
+        const gmailDelayMs = 80;
+        installHistoryPersistOverride(async (input) =>
+          aicaaDb.persistGmailHistoryPageTransaction({
+            ...input,
+            db: failingTransactionDb(input, async () => {
+              throw prismaError;
+            }),
+          }),
+        );
+        const gmailClient = incrementalClient('msg_p2028_gmail_delay');
+        gmailClient.listHistory = vi.fn(async () => {
+          await new Promise((resolve) => setTimeout(resolve, gmailDelayMs));
+          return {
+            historyId: '5100',
+            history: [
+              { id: '5050', messagesAdded: [{ message: { id: 'msg_p2028_gmail_delay' } }] },
+            ],
+          };
+        });
+        gmailClient.getMessage = vi.fn(async () => {
+          await new Promise((resolve) => setTimeout(resolve, gmailDelayMs));
+          return inboxMessage('msg_p2028_gmail_delay');
+        });
+
+        const result = await runGmailAccountSync(cronSyncContext('req_p2028_gmail_delay'), {
+          gmailClient,
+          getAccessToken: tokenProvider(),
+        });
+
+        expect(result.status).toBe('completed');
+        if (result.status !== 'completed') {
+          return;
+        }
+        expect(result.run.errorCode).toBe('database_failure');
+        expect(result.run.retryable).toBe(true);
+
+        const lines = emittedDiagnosticLines();
+        expect(lines).toHaveLength(1);
+        const payload = JSON.parse(lines[0]!) as {
+          prismaTransactionErrorKind?: string;
+          prismaTransactionDurationMs?: number;
+        };
+        expect(payload.prismaTransactionErrorKind).toBe('timeout');
+        expect(Number.isInteger(payload.prismaTransactionDurationMs)).toBe(true);
+        expect(payload.prismaTransactionDurationMs).toBeGreaterThanOrEqual(0);
+        expect(payload.prismaTransactionDurationMs).toBeLessThan(gmailDelayMs);
+        expect(lines[0]).not.toMatch(
+          /postgres:\/\/|postgresql:\/\/|SELECT |ya29|Hello from Gmail|super_secret_value|rt_secret|PASSWORD|5000|6123/i,
+        );
+      });
+
+      it('stays silent when diagnostics are OFF even if a transaction duration was measured', async () => {
+        await seedIncrementalCursor();
+        const prismaError = prismaShapedError('P2028', p2028NotFoundMessage);
+        installHistoryPersistOverride(async (input) =>
+          aicaaDb.persistGmailHistoryPageTransaction({
+            ...input,
+            db: failingTransactionDb(input, async () => {
+              throw prismaError;
+            }),
+          }),
+        );
+
+        const result = await runGmailAccountSync(cronSyncContext('req_p2028_duration_off'), {
+          gmailClient: incrementalClient('msg_p2028_duration_off'),
+          getAccessToken: tokenProvider(),
+        });
+
+        expect(result.status).toBe('completed');
+        if (result.status !== 'completed') {
+          return;
+        }
+        expect(result.run.errorCode).toBe('database_failure');
+        expect(result.run.retryable).toBe(true);
+        expect(emittedDiagnosticLines()).toEqual([]);
       });
 
       it('does not emit diagnostics for persistence_validation, GmailSyncError, GmailConfigError, or token encryption errors', async () => {

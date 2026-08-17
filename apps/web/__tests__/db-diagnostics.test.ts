@@ -187,6 +187,7 @@ describe('database runtime diagnostics', () => {
       prismaErrorClass: 'Error',
       prismaErrorCode: undefined,
       prismaTransactionErrorKind: undefined,
+      prismaTransactionDurationMs: undefined,
       nodeErrorCode: undefined,
       clientVersion: undefined,
       routePathname: '/api/v1/tasks',
@@ -571,6 +572,7 @@ describe('Prisma P2028 transaction subtype diagnostics', () => {
     expect(payload?.prismaErrorClass).toBe('PrismaClientKnownRequestError');
     expect(payload?.prismaErrorCode).toBe('P2028');
     expect(payload?.prismaTransactionErrorKind).toBe(kind);
+    expect(payload?.prismaTransactionDurationMs).toBeUndefined();
     expect(payload).not.toHaveProperty('message');
     expect(payload).not.toHaveProperty('stack');
 
@@ -578,6 +580,7 @@ describe('Prisma P2028 transaction subtype diagnostics', () => {
     expect(parsed.event).toBe('database_runtime_failure');
     expect(parsed.prismaErrorCode).toBe('P2028');
     expect(parsed.prismaTransactionErrorKind).toBe(kind);
+    expect(parsed).not.toHaveProperty('prismaTransactionDurationMs');
     expect(parsed).not.toHaveProperty('message');
     expect(parsed).not.toHaveProperty('stack');
     expect(JSON.stringify(parsed)).not.toContain(error.message);
@@ -653,5 +656,134 @@ describe('Prisma P2028 transaction subtype diagnostics', () => {
     expect(serialized).not.toContain(LEAKY_SECRET);
     expect(serialized).not.toContain('super_secret_db_password');
     expect(serialized).not.toContain('unrecognized interactive transaction failure');
+  });
+});
+
+describe('prismaTransactionDurationMs diagnostic', () => {
+  const originalEnv = { ...process.env };
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+
+  const P2028_NOT_FOUND_MESSAGE =
+    "Transaction API error: Transaction not found. Transaction ID is invalid, refers to an old closed transaction Prisma doesn't have information about anymore, or was obtained before disconnecting.";
+  const P2028_TIMEOUT_MESSAGE =
+    'Transaction API error: Transaction already closed: A query cannot be executed on an expired transaction. The timeout for this transaction was 5000 ms, however 6123 ms passed since the start of the transaction. Consider increasing the interactive transaction timeout or doing less work in the transaction.';
+  const LEAKY_MESSAGE = [
+    P2028_NOT_FOUND_MESSAGE,
+    'postgresql://owner:super_secret_db_password@db.example.com:5432/app',
+    'SELECT * FROM "InboxMessage" WHERE tokenHash = \'rt_secret\'',
+    'ya29.leaky_access_token',
+    'Hello from Gmail secret inbox',
+  ].join(' ');
+
+  beforeEach(() => {
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    process.env = { ...originalEnv };
+    process.env.DATABASE_URL = 'postgresql://USER:PASSWORD@HOST:5432/DATABASE';
+    process.env[ENABLE_DB_RUNTIME_DIAGNOSTICS_ENV] = 'true';
+  });
+
+  afterEach(() => {
+    consoleErrorSpy.mockRestore();
+    process.env = { ...originalEnv };
+  });
+
+  function knownRequestError(code: string, message: string) {
+    return new Prisma.PrismaClientKnownRequestError(message, {
+      code,
+      clientVersion: '6.19.3',
+    });
+  }
+
+  function attachDuration(error: object, durationMs: number): void {
+    Object.defineProperty(error, 'prismaTransactionDurationMs', {
+      value: durationMs,
+      enumerable: false,
+      writable: false,
+      configurable: true,
+    });
+  }
+
+  it('emits an integer duration when the failing transaction measured one', () => {
+    const error = knownRequestError('P2028', P2028_NOT_FOUND_MESSAGE);
+    attachDuration(error, 5123.6);
+
+    const payload = logDatabaseRuntimeFailure(error, { requestId: 'req_tx_duration' });
+    expect(payload?.prismaErrorCode).toBe('P2028');
+    expect(payload?.prismaTransactionErrorKind).toBe('not_found');
+    expect(payload?.prismaTransactionDurationMs).toBe(5124);
+    expect(Number.isInteger(payload?.prismaTransactionDurationMs)).toBe(true);
+
+    const parsed = JSON.parse(String(consoleErrorSpy.mock.calls[0]?.[0])) as Record<
+      string,
+      unknown
+    >;
+    expect(parsed.prismaTransactionDurationMs).toBe(5124);
+    expect(parsed).not.toHaveProperty('message');
+    expect(String(consoleErrorSpy.mock.calls[0]?.[0])).not.toContain(error.message);
+  });
+
+  it('keeps P2028 not_found and timeout classification when duration is present', () => {
+    const notFound = knownRequestError('P2028', P2028_NOT_FOUND_MESSAGE);
+    attachDuration(notFound, 5001);
+    expect(logDatabaseRuntimeFailure(notFound)?.prismaTransactionErrorKind).toBe('not_found');
+    expect(logDatabaseRuntimeFailure(notFound)?.prismaErrorCode).toBe('P2028');
+
+    const timeout = knownRequestError('P2028', P2028_TIMEOUT_MESSAGE);
+    attachDuration(timeout, 6123);
+    expect(logDatabaseRuntimeFailure(timeout)?.prismaTransactionErrorKind).toBe('timeout');
+    expect(logDatabaseRuntimeFailure(timeout)?.prismaErrorCode).toBe('P2028');
+  });
+
+  it('omits the field rather than fabricating 0 when duration is unavailable', () => {
+    const error = knownRequestError('P2028', P2028_NOT_FOUND_MESSAGE);
+    const payload = logDatabaseRuntimeFailure(error, { requestId: 'req_tx_duration_missing' });
+    expect(payload?.prismaTransactionDurationMs).toBeUndefined();
+    const parsed = JSON.parse(String(consoleErrorSpy.mock.calls[0]?.[0])) as Record<
+      string,
+      unknown
+    >;
+    expect(parsed).not.toHaveProperty('prismaTransactionDurationMs');
+  });
+
+  it('ignores non-integer-safe context values instead of inventing a duration', () => {
+    const error = knownRequestError('P2028', P2028_NOT_FOUND_MESSAGE);
+    for (const invalid of [-1, Number.NaN, Number.POSITIVE_INFINITY, '40', null] as const) {
+      consoleErrorSpy.mockClear();
+      const payload = logDatabaseRuntimeFailure(error, {
+        requestId: 'req_tx_duration_invalid',
+        prismaTransactionDurationMs: invalid as unknown as number,
+      });
+      expect(payload?.prismaTransactionDurationMs).toBeUndefined();
+      const parsed = JSON.parse(String(consoleErrorSpy.mock.calls[0]?.[0])) as Record<
+        string,
+        unknown
+      >;
+      expect(parsed).not.toHaveProperty('prismaTransactionDurationMs');
+    }
+  });
+
+  it('emits nothing when diagnostics are OFF even if a duration was measured', () => {
+    delete process.env[ENABLE_DB_RUNTIME_DIAGNOSTICS_ENV];
+    const error = knownRequestError('P2028', LEAKY_MESSAGE);
+    attachDuration(error, 5000);
+    expect(logDatabaseRuntimeFailure(error, { prismaTransactionDurationMs: 5000 })).toBeUndefined();
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+  });
+
+  it('never emits raw exception text, SQL, or Gmail content with the duration', () => {
+    const error = knownRequestError('P2028', LEAKY_MESSAGE);
+    attachDuration(error, 4875);
+    const payload = logDatabaseRuntimeFailure(error, { requestId: 'req_tx_duration_privacy' });
+    expect(payload?.prismaTransactionDurationMs).toBe(4875);
+    const serialized = String(consoleErrorSpy.mock.calls[0]?.[0]);
+    expect(serialized).not.toContain('"message"');
+    expect(serialized).not.toContain('"stack"');
+    expect(serialized).not.toMatch(/postgresql:\/\//i);
+    expect(serialized).not.toContain('SELECT ');
+    expect(serialized).not.toContain('InboxMessage');
+    expect(serialized).not.toContain('ya29');
+    expect(serialized).not.toContain('Hello from Gmail secret inbox');
+    expect(serialized).not.toContain('super_secret_db_password');
+    expect(serialized).not.toContain(error.message);
   });
 });

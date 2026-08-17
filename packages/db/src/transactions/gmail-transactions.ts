@@ -25,6 +25,7 @@ import {
   type OwnerNotificationSystemCapture,
 } from '../repositories/owner-notification-repository.js';
 import { organizationMismatch, persistenceValidation } from '../errors/persistence-errors.js';
+import { attachPrismaTransactionDurationMs } from './prisma-transaction-duration.js';
 
 export type PersistGmailHistoryPageResult = {
   account: CommunicationAccount;
@@ -50,37 +51,68 @@ export async function persistGmailHistoryPageTransaction(input: {
   messages: ParsedGmailMessageFixture[];
   defaultExcerptPurgeAt?: string;
 }): Promise<PersistGmailHistoryPageResult> {
-  return input.db.$transaction(async (tx) => {
-    const account = await tx.communicationAccount.findFirst({
-      where: { id: input.accountId, organizationId: input.organizationId },
-    });
-    if (!account) {
-      throw persistenceValidation('CommunicationAccount not found for history page commit.');
-    }
-    if (account.historyId !== input.historyIdBefore) {
-      throw persistenceValidation(
-        'historyIdBefore does not match persisted cursor; refusing silent advance (D075/D076).',
-      );
-    }
-
-    let eventsCreated = 0;
-    let eventsUpdated = 0;
-    let messagesSkipped = 0;
-    const events: CommunicationEvent[] = [];
-
-    for (const message of input.messages) {
-      const inboxEligible = isGmailInboxEligible(message.labelIds);
-      if (!inboxEligible) {
-        // Do not create a durable event for an ineligible message. If Gmail truth says a
-        // previously-ingested message left Inbox, retain its durable identity, update its
-        // current labels/metadata, and promptly purge any TemporaryCommunicationExcerpt.
-        const existing = await getCommunicationEventByProviderMessageId(
-          tx,
-          input.organizationId,
-          message.providerMessageId,
+  const transactionStartedAt = performance.now();
+  try {
+    return await input.db.$transaction(async (tx) => {
+      const account = await tx.communicationAccount.findFirst({
+        where: { id: input.accountId, organizationId: input.organizationId },
+      });
+      if (!account) {
+        throw persistenceValidation('CommunicationAccount not found for history page commit.');
+      }
+      if (account.historyId !== input.historyIdBefore) {
+        throw persistenceValidation(
+          'historyIdBefore does not match persisted cursor; refusing silent advance (D075/D076).',
         );
-        if (!existing) {
-          messagesSkipped += 1;
+      }
+
+      let eventsCreated = 0;
+      let eventsUpdated = 0;
+      let messagesSkipped = 0;
+      const events: CommunicationEvent[] = [];
+
+      for (const message of input.messages) {
+        const inboxEligible = isGmailInboxEligible(message.labelIds);
+        if (!inboxEligible) {
+          // Do not create a durable event for an ineligible message. If Gmail truth says a
+          // previously-ingested message left Inbox, retain its durable identity, update its
+          // current labels/metadata, and promptly purge any TemporaryCommunicationExcerpt.
+          const existing = await getCommunicationEventByProviderMessageId(
+            tx,
+            input.organizationId,
+            message.providerMessageId,
+          );
+          if (!existing) {
+            messagesSkipped += 1;
+            continue;
+          }
+
+          const { event, created } = await upsertCommunicationEvent(tx, {
+            organizationId: input.organizationId,
+            accountId: input.accountId,
+            ingestRunId: input.ingestRunId,
+            message: { ...message, eventId: existing.id },
+          });
+          if (created) {
+            eventsCreated += 1;
+          } else {
+            eventsUpdated += 1;
+          }
+          events.push(event);
+
+          const excerpt = await getTemporaryCommunicationExcerptByEventId(
+            tx,
+            input.organizationId,
+            event.id,
+          );
+          if (excerpt && excerpt.purgedAt == null) {
+            await purgeTemporaryCommunicationExcerpt(
+              tx,
+              input.organizationId,
+              event.id,
+              input.syncedAt,
+            );
+          }
           continue;
         }
 
@@ -88,7 +120,7 @@ export async function persistGmailHistoryPageTransaction(input: {
           organizationId: input.organizationId,
           accountId: input.accountId,
           ingestRunId: input.ingestRunId,
-          message: { ...message, eventId: existing.id },
+          message,
         });
         if (created) {
           eventsCreated += 1;
@@ -97,75 +129,50 @@ export async function persistGmailHistoryPageTransaction(input: {
         }
         events.push(event);
 
-        const excerpt = await getTemporaryCommunicationExcerptByEventId(
-          tx,
-          input.organizationId,
-          event.id,
-        );
-        if (excerpt && excerpt.purgedAt == null) {
-          await purgeTemporaryCommunicationExcerpt(
-            tx,
-            input.organizationId,
-            event.id,
-            input.syncedAt,
-          );
+        if (message.excerptContent && message.excerptId && message.excerptPurgeAt) {
+          await upsertTemporaryCommunicationExcerpt(tx, {
+            organizationId: input.organizationId,
+            communicationEventId: event.id,
+            excerptId: message.excerptId,
+            content: message.excerptContent,
+            purgeAt: message.excerptPurgeAt,
+          });
+        } else if (message.excerptContent && message.excerptId && input.defaultExcerptPurgeAt) {
+          await upsertTemporaryCommunicationExcerpt(tx, {
+            organizationId: input.organizationId,
+            communicationEventId: event.id,
+            excerptId: message.excerptId,
+            content: message.excerptContent,
+            purgeAt: input.defaultExcerptPurgeAt,
+          });
         }
-        continue;
       }
 
-      const { event, created } = await upsertCommunicationEvent(tx, {
-        organizationId: input.organizationId,
-        accountId: input.accountId,
-        ingestRunId: input.ingestRunId,
-        message,
+      const updated = await tx.communicationAccount.update({
+        where: { id: input.accountId },
+        data: {
+          historyId: input.historyIdAfter,
+          historyState: 'valid',
+          lastSyncAt: fromIso(input.syncedAt)!,
+          lastSuccessAt: fromIso(input.syncedAt)!,
+          lastErrorCode: null,
+          lastErrorAt: null,
+          status: account.status === 'resync_required' ? 'connected' : account.status,
+        },
       });
-      if (created) {
-        eventsCreated += 1;
-      } else {
-        eventsUpdated += 1;
-      }
-      events.push(event);
 
-      if (message.excerptContent && message.excerptId && message.excerptPurgeAt) {
-        await upsertTemporaryCommunicationExcerpt(tx, {
-          organizationId: input.organizationId,
-          communicationEventId: event.id,
-          excerptId: message.excerptId,
-          content: message.excerptContent,
-          purgeAt: message.excerptPurgeAt,
-        });
-      } else if (message.excerptContent && message.excerptId && input.defaultExcerptPurgeAt) {
-        await upsertTemporaryCommunicationExcerpt(tx, {
-          organizationId: input.organizationId,
-          communicationEventId: event.id,
-          excerptId: message.excerptId,
-          content: message.excerptContent,
-          purgeAt: input.defaultExcerptPurgeAt,
-        });
-      }
-    }
-
-    const updated = await tx.communicationAccount.update({
-      where: { id: input.accountId },
-      data: {
-        historyId: input.historyIdAfter,
-        historyState: 'valid',
-        lastSyncAt: fromIso(input.syncedAt)!,
-        lastSuccessAt: fromIso(input.syncedAt)!,
-        lastErrorCode: null,
-        lastErrorAt: null,
-        status: account.status === 'resync_required' ? 'connected' : account.status,
-      },
+      return {
+        account: mapCommunicationAccount(updated),
+        eventsCreated,
+        eventsUpdated,
+        messagesSkipped,
+        events,
+      };
     });
-
-    return {
-      account: mapCommunicationAccount(updated),
-      eventsCreated,
-      eventsUpdated,
-      messagesSkipped,
-      events,
-    };
-  });
+  } catch (error) {
+    attachPrismaTransactionDurationMs(error, performance.now() - transactionStartedAt);
+    throw error;
+  }
 }
 
 export type PersistGmailConnectionResult = {

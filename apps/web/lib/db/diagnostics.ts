@@ -29,6 +29,7 @@ export interface DatabaseRuntimeFailureLogPayload {
   prismaErrorClass?: string;
   prismaErrorCode?: string;
   prismaTransactionErrorKind?: PrismaTransactionErrorKind;
+  prismaTransactionDurationMs?: number;
   nodeErrorCode?: string;
   clientVersion?: string;
   routePathname?: string;
@@ -41,6 +42,7 @@ export interface DatabaseRuntimeFailureLogPayload {
 export interface DatabaseRuntimeFailureContext {
   routePathname?: string;
   requestId?: string;
+  prismaTransactionDurationMs?: number;
 }
 
 const DATABASE_URL_REQUIRED_MESSAGE = 'DATABASE_URL is required to create the Prisma client.';
@@ -438,6 +440,27 @@ function clientVersion(error: unknown): string | undefined {
   return safeReadString(error, 'clientVersion');
 }
 
+function sanitizePrismaTransactionDurationMs(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    return undefined;
+  }
+  return Math.round(value);
+}
+
+/**
+ * Integer wall-clock ms for the failing interactive `$transaction` when a
+ * caller measured it. Never inferred from request timestamps or error text.
+ */
+function prismaTransactionDurationMs(
+  error: unknown,
+  context: DatabaseRuntimeFailureContext,
+): number | undefined {
+  return (
+    sanitizePrismaTransactionDurationMs(safeReadProperty(error, 'prismaTransactionDurationMs')) ??
+    sanitizePrismaTransactionDurationMs(context.prismaTransactionDurationMs)
+  );
+}
+
 function deploymentRuntimeMarker(): string | undefined {
   if (process.env.VERCEL === '1') {
     return 'vercel';
@@ -459,6 +482,7 @@ export function buildDatabaseRuntimeFailureLogPayload(
       prismaErrorClass: prismaErrorClassName(error),
       prismaErrorCode: prismaErrorCode(error),
       prismaTransactionErrorKind: prismaTransactionErrorKind(error),
+      prismaTransactionDurationMs: prismaTransactionDurationMs(error, context),
       nodeErrorCode: nodeErrorCodeFromCause(error),
       clientVersion: clientVersion(error),
       routePathname: context.routePathname ? toSafeRouteTemplate(context.routePathname) : undefined,
