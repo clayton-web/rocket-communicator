@@ -85,7 +85,7 @@ Gates for D102–D110 and D128–D136. These record expected behaviour and requi
 - [ ] Overdue ceiling stops at **14 successful overdue deliveries per generation**; failures, skips, claims, and advance occurrences are excluded from the count (D106)
 - [ ] A material due-date change opens a new generation, preserves all prior history, resets only the per-generation count, and discloses the restart; a same-value save does neither (D104)
 - [ ] Historical due-date data did **not** auto-activate reminders; Owner opt-in or re-save is required (D109)
-- [ ] **No production enablement** before both the Event Notification Engine and the minimum Owner schedule-status UI are operational (D108)
+- [ ] **No production enablement** before the applicable gate is satisfied. For the bounded pre-OAW **Recipient** advance/overdue slice (D182): `/attention` operational, reminder protections intact, real-PostgreSQL concurrency suites passing, and Owner-event flags left absent. For everything else — Owner-audience delivery and the A8 closure claim — the original D108 bar stands: both the Event Notification Engine and the minimum Owner schedule-status UI operational (D108, D182)
 
 ### Worker and delivery safety
 

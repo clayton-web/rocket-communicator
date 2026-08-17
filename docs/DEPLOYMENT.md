@@ -258,32 +258,32 @@ The accurate description of the operation is: _one ordered `prisma migrate deplo
 
 **Production/main reconciliation completed.** Production is again on `main`. The isolated D181 release is a **rollback artifact only**, not the live baseline. D181 hotfix behavior is already represented on `main`. Future feature work should normally branch from / land on `main` rather than reconstructing Production from the old S3 base.
 
-| Property                         | Value                                                                                                                 |
-| -------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| Public host                      | `rocket-communicator-web.vercel.app`                                                                                  |
-| Live deployment                  | `dpl_91EfAwBWSEHBuRBmvvwif8gv6VRz`                                                                                    |
-| Live source SHA                  | `b86d4370296f9991a24a825f5676ce2315473c25`                                                                            |
-| Live git ref                     | `main`                                                                                                                |
-| Immediate rollback deployment    | `dpl_5eJDvAbGQtj4U2jgrZpXnkj6x7PC`                                                                                    |
-| Immediate rollback SHA           | `69e848435084519f67239d6877a94e9143094c45`                                                                            |
-| Immediate rollback ref           | `release/d181-messages-on-d1d1632` (rollback artifact only; do not treat as the live baseline)                        |
-| Schema                           | **22 applied / 0 unfinished / 0 rolled back.** Confirm with Q2 below                                                  |
-| `INTERPRETATION_AI_ENABLED`      | Present / operationally enabled. Manual Capture and Messages Review use it                                            |
-| `ENABLE_GMAIL_REVIEW`            | Absent / OFF. S7 routes answer controlled `404`. **Do not set without separate authorization**                        |
-| `ENABLE_OWNER_EVENT_CAPTURE`     | Absent / OFF. **Do not enable without separate authorization**                                                        |
-| `ENABLE_OWNER_EVENT_DELIVERY`    | Absent / OFF. **Do not enable without separate authorization**                                                        |
-| `ENABLE_REMINDER_DELIVERY`       | Absent / OFF. **Do not enable without separate authorization.** S6 scheduling metadata may exist; delivery is not active |
-| Gmail A5                         | Connected and live (connection, OAuth, sync, poll)                                                                    |
-| Gmail S7                         | Implemented in `main`, **release-gated OFF**, not Production-activated                                                |
-| Manual Capture                   | Live                                                                                                                  |
-| Messages Review                  | **CLOSED / PRODUCTION-PROVEN**                                                                                        |
-| Messages Exclude Number          | **Not implemented**                                                                                                   |
-| Scheduler jobs                   | External, at cron-job.org. Gmail-poll and suggestion-processing present; **no** reminder job; **no** notification job |
-| Owner authentication             | Cookie and Bearer both live                                                                                           |
+| Property                      | Value                                                                                                                                                                                                        |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Public host                   | `rocket-communicator-web.vercel.app`                                                                                                                                                                         |
+| Live deployment               | `dpl_91EfAwBWSEHBuRBmvvwif8gv6VRz`                                                                                                                                                                           |
+| Live source SHA               | `b86d4370296f9991a24a825f5676ce2315473c25`                                                                                                                                                                   |
+| Live git ref                  | `main`                                                                                                                                                                                                       |
+| Immediate rollback deployment | `dpl_5eJDvAbGQtj4U2jgrZpXnkj6x7PC`                                                                                                                                                                           |
+| Immediate rollback SHA        | `69e848435084519f67239d6877a94e9143094c45`                                                                                                                                                                   |
+| Immediate rollback ref        | `release/d181-messages-on-d1d1632` (rollback artifact only; do not treat as the live baseline)                                                                                                               |
+| Schema                        | **22 applied / 0 unfinished / 0 rolled back.** Confirm with Q2 below                                                                                                                                         |
+| `INTERPRETATION_AI_ENABLED`   | Present / operationally enabled. Manual Capture and Messages Review use it                                                                                                                                   |
+| `ENABLE_GMAIL_REVIEW`         | Absent / OFF. S7 routes answer controlled `404`. **Do not set without separate authorization**                                                                                                               |
+| `ENABLE_OWNER_EVENT_CAPTURE`  | Absent / OFF. **Do not enable without separate authorization**                                                                                                                                               |
+| `ENABLE_OWNER_EVENT_DELIVERY` | Absent / OFF. **Do not enable without separate authorization**                                                                                                                                               |
+| `ENABLE_REMINDER_DELIVERY`    | Absent / OFF. **Do not enable without separate authorization.** D182 authorizes the bounded pre-OAW Recipient scope but not the act of enabling it. S6 scheduling metadata may exist; delivery is not active |
+| Gmail A5                      | Connected and live (connection, OAuth, sync, poll)                                                                                                                                                           |
+| Gmail S7                      | Implemented in `main`, **release-gated OFF**, not Production-activated                                                                                                                                       |
+| Manual Capture                | Live                                                                                                                                                                                                         |
+| Messages Review               | **CLOSED / PRODUCTION-PROVEN**                                                                                                                                                                               |
+| Messages Exclude Number       | **Not implemented**                                                                                                                                                                                          |
+| Scheduler jobs                | External, at cron-job.org. Gmail-poll and suggestion-processing present; **no** reminder job; **no** notification job                                                                                        |
+| Owner authentication          | Cookie and Bearer both live                                                                                                                                                                                  |
 
 **A8 delivery remains the designated safe harbour:** the reminder and Owner-notification engines are deployed against the full migration set, both capture/delivery flags are absent, no scheduler invokes either worker, and nothing sends.
 
-**Near-term deployment constraints.** Do not set `ENABLE_GMAIL_REVIEW`. Do not enable reminder delivery. Do not enable Owner event capture or delivery. No migration is currently pending. The immediate rollback target is the prior D181 deployment above. `main` is now the normal Production baseline.
+**Near-term deployment constraints.** Do not set `ENABLE_GMAIL_REVIEW`. Do not enable reminder delivery — D182 fixes the scope and narrows the gate, but the enablement act itself, and creating the reminder scheduler job, each still require their own authorization. Do not enable Owner event capture or delivery. No migration is currently pending. The immediate rollback target is the prior D181 deployment above. `main` is now the normal Production baseline.
 
 **Nothing about this state creates time pressure to enable anything.** Confirm the live alias in the Vercel dashboard if the recorded identity and the public host disagree.
 
@@ -382,13 +382,17 @@ With the flag unset the route builds no transport, so **no access resolver exist
 
 **Two properties of the send path to know before enabling it.** Gmail authorization is resolved **once per invocation, before any schedule is claimed**: if the connection is missing, revoked, or unrefreshable, the invocation claims nothing, writes nothing, calls no provider, and reports `transportAuthorized: false` — the fault is visible without being charged to a Task. And a reminder email **contains no link** (D130): it directs the Recipient to the original assignment email, and if that email's capability is unusable the occurrence is skipped as `no_actionable_capability` with no provider call.
 
-> **Production reminder delivery must not be enabled until both the Event Notification Engine and the minimum Owner schedule-status UI are operational (D108).**
+> **The D108 gate is narrowed by D182 for one bounded scope: the pre-OAW Recipient advance/overdue reminder slice.** Outside that scope, production reminder delivery still must not be enabled until both the Event Notification Engine and the minimum Owner schedule-status UI are operational (D108).
 
-Before enablement the Event Notification Engine must be able to notify the Owner about at least: the overdue reminder ceiling being reached; a permanent delivery failure; no active assignment where Owner action is required; and a schedule entering `requiresOwnerAttention`. **A Task-page status alone is not sufficient** — the Owner must not have to inspect Tasks continually to discover that an automation stopped.
+Under the original D108 gate, the Event Notification Engine had to be able to notify the Owner about at least: the overdue reminder ceiling being reached; a permanent delivery failure; no active assignment where Owner action is required; and a schedule entering `requiresOwnerAttention`. **A Task-page status alone was never sufficient** — the Owner must not have to inspect Tasks continually to discover that an automation stopped.
 
-Additional pre-enablement conditions: historical due-date data must not auto-activate reminders, and the first production observation must confirm no pre-existing Task fired one (D109); delivery must be observed at **09:00 organization-local**, not UTC (D103); and no capability token or URL may appear in reminder logs, telemetry, audit, or metadata (D109).
+**What D182 requires instead, for the bounded slice only.** Recipient advance and overdue delivery may be enabled with **`ENABLE_OWNER_EVENT_CAPTURE` and `ENABLE_OWNER_EVENT_DELIVERY` both absent**, provided **`/attention` is operational** — the attention list plus the Task reminder panel — and the reminder safety, ambiguity, claiming, retry, and delivery-state protections are intact. That preserves D108's actual concern: the Owner still discovers a stopped automation cross-Task without inspecting Tasks one by one. The Event Notification Engine is not abandoned; it still gates **Owner-audience notification** and the **A8 closure claim**, and enabling either Owner-event flag remains separately unauthorized.
 
-**Scheduler adapter — endpoint exists, job does not.** `POST /api/v1/internal/reminders/process` uses the existing `CRON_SECRET` bearer family and suits an approximately five-minute external wake-up. **No job has been created for it, and none may be created before the gate above is satisfied.** The five-minute cadence is a wake-up interval, not a reminder interval: persisted occurrence instants are the scheduling authority, each invocation asks which have arrived, a missed invocation is recovered by a later one, and overlapping invocations are safe because occurrence identity is unique in the database.
+Additional pre-enablement conditions, all unchanged: historical due-date data must not auto-activate reminders, and the first production observation must confirm no pre-existing Task fired one (D109); delivery must be observed at **09:00 organization-local**, not UTC (D103); and no capability token or URL may appear in reminder logs, telemetry, audit, or metadata (D109).
+
+**Verification precondition added by D182.** Before the flag is set, the reminder occurrence-concurrency suites that are skipped without a real PostgreSQL engine (`reminder-worker-concurrency.pg`, `owner-reminder-concurrency.pg`, `reminder-advance-waiting-skip.pg`, `a8-4a-occurrence-concurrency.pg`) must be run against a real engine and pass, so claim, duplicate-prevention, and settlement behaviour is **proven under real contention rather than reasoned**. PGlite is a single in-process connection and cannot contend two sessions on one row.
+
+**Scheduler adapter — endpoint exists, job does not.** `POST /api/v1/internal/reminders/process` uses the existing `CRON_SECRET` bearer family and suits an approximately five-minute external wake-up. **No job has been created for it**, and none may be created until the narrowed gate above is satisfied and the enablement slice is separately authorized. The five-minute cadence is a wake-up interval, not a reminder interval: persisted occurrence instants are the scheduling authority, each invocation asks which have arrived, a missed invocation is recovered by a later one, and overlapping invocations are safe because occurrence identity is unique in the database.
 
 **Organization timezone** is the sole scheduling authority and is `America/Vancouver` (D034, D103). It is a documented product constant with **no** environment variable, configuration record, or database column. If configuration for it is ever introduced, document it _when it exists_ — do not treat any variable name as configured in advance.
 
@@ -417,13 +421,14 @@ The endpoint has two independently gated phases: a **capture** phase observing c
 
 Enablement is staged by flag, and each stage needs its own authorization. **Every stage presupposes that the code is deployed against the full migration set.**
 
-| Stage                     | Capture | Delivery | Reminder | Scheduler jobs     | Safe rollback target                       |
-| ------------------------- | ------- | -------- | -------- | ------------------ | ------------------------------------------ |
-| **F0** All flags off      | absent  | absent   | absent   | as found           | **Yes — the designated safe harbour**      |
-| **F1** Capture only       | `true`  | absent   | absent   | as found           | Yes                                        |
-| **F2** Delivery rehearsal | absent  | `true`   | absent   | as found           | No — exists only for a zero-send rehearsal |
-| **F3** Capture + delivery | `true`  | `true`   | absent   | + notification job | Yes                                        |
-| **F4** All three          | `true`  | `true`   | `true`   | + reminder job     | Yes                                        |
+| Stage                       | Capture | Delivery | Reminder | Scheduler jobs     | Safe rollback target                       |
+| --------------------------- | ------- | -------- | -------- | ------------------ | ------------------------------------------ |
+| **F0** All flags off        | absent  | absent   | absent   | as found           | **Yes — the designated safe harbour**      |
+| **F1** Capture only         | `true`  | absent   | absent   | as found           | Yes                                        |
+| **F2** Delivery rehearsal   | absent  | `true`   | absent   | as found           | No — exists only for a zero-send rehearsal |
+| **F3** Capture + delivery   | `true`  | `true`   | absent   | + notification job | Yes                                        |
+| **F4** All three            | `true`  | `true`   | `true`   | + reminder job     | Yes                                        |
+| **R1** Reminder only (D182) | absent  | absent   | `true`   | + reminder job     | Yes — return to F0                         |
 
 **Environment-variable changes affect only deployments created after the change.** A running deployment holds the values it was built and bound with; editing a variable in the dashboard does nothing until something redeploys. Correspondingly, **rollback restores the target deployment together with its original environment variables** — it does not re-bind current values onto an old build, so rolling back to a deployment built with a flag set **restores that flag**.
 
@@ -436,7 +441,9 @@ Rules that follow:
 - **Rollback does not unsend an email.**
 - **A flag set on a production-target deployment that does not hold the public custom domain changes nothing.** The alias assignment is the step that makes an enablement real.
 
-**Two thresholds are deliberately not crossed in one slice:** the first enablement that can send mail on Rocket's own initiative, and the first that can send mail to somebody who is not the Owner.
+**R1 is the bounded pre-OAW Recipient reminder stage authorized by D182.** It is not a step on the F0–F4 ladder and does not sit between F3 and F4: it is a separate branch off F0 that turns on **only** `ENABLE_REMINDER_DELIVERY`, leaving both Owner-event flags absent. Reaching R1 does not authorize F1, F2, F3, or F4, and F4 continues to require all three flags. Containment from R1 is a return to F0 — unset the variable, redeploy, and **pause the reminder job**, since rollback never stops an external scheduler.
+
+**Two thresholds were deliberately not crossed in one slice:** the first enablement that can send mail on Rocket's own initiative, and the first that can send mail to somebody who is not the Owner. **R1 crosses both at once, and D182 accepts that deliberately.** The Owner's grounds: the Recipient reminder path is the narrower and better-tested of the two send capabilities; `/attention` makes failure discoverable without any Owner-audience mail; and the alternative would mean enabling an Owner-notification send path this scope does not need purely to satisfy a staging convention. The restraint still governs every other stage — nothing here licenses combining Owner-event capture and delivery in one step.
 
 ## Verification gate classification
 

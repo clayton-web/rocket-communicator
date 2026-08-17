@@ -109,7 +109,9 @@ Authoritative A8 product rules (D095–D101). Do not duplicate this specificatio
 
 **Delivery here is Recipient-oriented, and that leaves an open seam (D164).** Read the rest of §10a as **implemented current behaviour**. Delivery requires a Follow-up eligible **active external assignment** (D107); an occurrence reaching a Task without one is skipped with reason `no_active_assignment`, the local calendar day is not consumed, and — once per generation — the `reminder.no_active_assignment` Owner event is produced (D133, §10b). That does **not** yet satisfy D164 for an Owner-responsible Task, and no Owner-audience reminder delivery exists. Closing the seam is future engineering work that must **evolve this Task-scoped reminder domain** ([ARCHITECTURE.md](ARCHITECTURE.md) § Reminder and notification architecture); until an authorized slice changes the code, the enum, the event type, and the copy below stay truthful as written.
 
-**D177 / D178 / S6 do not close this seam.** S6 authorizes canonical due-date and urgency display and Android Task-detail date and Automatic Reminder ON/OFF controls on the existing single D105/D106 reminder model only. It does not change `no_active_assignment`, pre-send guards, occurrence settlement, `requiresOwnerAttention` producers, the overdue ceiling, or reminder delivery. If A8 processing is later enabled without further changes, unassigned or Owner-responsible active schedules can generate repeated `no_active_assignment` skips; that is a later enablement issue, not S6 scope.
+**D177 / D178 / S6 do not close this seam.** S6 authorizes canonical due-date and urgency display and Android Task-detail date and Automatic Reminder ON/OFF controls on the existing single D105/D106 reminder model only. It does not change `no_active_assignment`, pre-send guards, occurrence settlement, `requiresOwnerAttention` producers, the overdue ceiling, or reminder delivery.
+
+**D182 does not close it either, and settles what happens at enablement.** The bounded pre-OAW Recipient slice keeps this seam open deliberately: unassigned and Owner-responsible active schedules will produce repeated `no_active_assignment` skips once processing is enabled, and that behaviour is **accepted as correct for the slice** rather than treated as a defect. Those Tasks require no Owner-audience email reminder. Closing the seam remains post-OAW work.
 
 #### Due date (D102, D103) — current A8 Follow-up Engine
 
@@ -218,7 +220,7 @@ Reminder state is **not** a route-level side effect. Every authoritative Task st
 
 #### Attribution, audience, and history (D107, D109)
 
-1. **Audience:** reminders go to the **Recipient** only, via the Owner's connected Gmail (same outbound family as A7). Owner notifications belong to §10b — never CC or escalation (D099).
+1. **Audience:** reminders go to the **Recipient** only, via the Owner's connected Gmail (same outbound family as A7). Owner notifications belong to §10b — never CC or escalation (D099). **D182 locks this as the pre-OAW delivery audience:** advance and overdue reminders go to the **active Recipient** over the existing A8 Gmail transport, Me-responsible and unassigned Tasks require **no** Owner-audience email reminder, and **Owner-audience reminder delivery remains post-OAW**. No Owner reminder transport is authorized.
 2. **Attribution:** automated reminder sends use a **`system`** actor. Owner scheduling changes (setting, changing, or removing the due date) use the **`owner`** actor. An automated send must **never** be attributed to the Owner as though sent manually.
 3. **History:** every processed occurrence leaves a durable privacy-safe record with its outcome (`sent` / `failed` / `skipped`), truthful skip and failure reason, and generation identity (D100, D109). Reminder history is **superseded, never deleted or silently rewritten**.
 4. **Secrets:** no capability token or capability URL may appear in reminder metadata, audit, logs, or telemetry (D109).
@@ -227,9 +229,13 @@ Reminder state is **not** a route-level side effect. Every authoritative Task st
 
 The application owns the engine: it claims eligible schedules, **rechecks Task, assignment, and schedule state immediately before delivery**, validates the **generation**, and records idempotent attempts whose identity is **server-derived and enforced by a database constraint**. An External Scheduler invokes an authenticated processing endpoint and owns no policy. Duplicate or overlapping scheduler invocations must not produce duplicate delivery.
 
-#### Production-enablement gate (D108)
+#### Production-enablement gate (D108, narrowed by D182)
 
-Scheduler and delivery code **may** merge behind a **disabled** production feature flag before the Event Notification Engine is finished. **Production reminder delivery must not be enabled until both the Event Notification Engine and the minimum Owner schedule-status UI are operational.** A Task-page status alone is not sufficient: the Owner must not have to inspect Tasks continually to discover that an automation stopped.
+Scheduler and delivery code **may** merge behind a **disabled** production feature flag before the Event Notification Engine is finished. D108's original gate held that **production reminder delivery must not be enabled until both the Event Notification Engine and the minimum Owner schedule-status UI are operational**, because a Task-page status alone is not sufficient: the Owner must not have to inspect Tasks continually to discover that an automation stopped.
+
+**D182 narrows that gate for one bounded scope.** For the **pre-OAW Recipient advance/overdue reminder slice**, delivery may be enabled **without** Owner-event capture or Owner-event delivery, provided the existing **`/attention`** Owner-facing reminder failure/status surface is operational and the reminder safety, ambiguity, claiming, retry, and delivery-state protections remain intact. `/attention` plus the Task reminder panel is what satisfies the minimum Owner schedule-status UI requirement here, and it preserves D108's actual concern: the Owner still learns that an automation stopped without inspecting Tasks one by one.
+
+The narrowing is scope-limited, not a repeal. The Event Notification Engine is neither deleted nor abandoned; D108 continues to bind **Owner-audience notification** and the **A8 closure gate**, and no A8 closure may be claimed on the strength of D182. Owner-event capture and Owner-event delivery remain **post-OAW**.
 
 #### What this engine is not
 
@@ -317,13 +323,15 @@ Two independent exact-string `true` flags, **both unset everywhere**: `ENABLE_OW
 | off     | on       | Delivery only. No expiry scan, and no new `capability.expired` intent                                  |
 | on      | on       | Expiry observation, then the delivery batch within the remaining budget                                |
 
-A near-miss value disables its own flag and does not affect the other. `ENABLE_REMINDER_DELIVERY` is a third, unrelated flag that this endpoint does not read. Since A8.5c a real Gmail adapter exists behind the delivery flag, which changes what _would_ happen if it were set and authorizes nothing. Completing A8.5 authorizes no production delivery: D108 requires both this engine **and** the minimum Owner schedule-status UI.
+A near-miss value disables its own flag and does not affect the other. `ENABLE_REMINDER_DELIVERY` is a third, unrelated flag that this endpoint does not read. Since A8.5c a real Gmail adapter exists behind the delivery flag, which changes what _would_ happen if it were set and authorizes nothing. Completing A8.5 authorizes no production Owner-event delivery of its own.
+
+**The dependency runs one way only, and only for Owner-audience delivery.** D182 narrowed D108 so the pre-OAW Recipient reminder slice may be enabled **without** either flag above; it did **not** authorize enabling either of them. Owner-event capture and Owner-event delivery remain post-OAW and separately authorized.
 
 **Channel (D099):** A8 delivers approved Owner Event Notifications by **email via the Owner’s connected Gmail account** (event taxonomy above). Keep this engine separate from Recipient reminders — no CC, no escalation. **FCM/push remains deferred (D017)** and is an A9 concern.
 
 **Retired A8 models:** escalating reminder stages, Owner CC ladders, and any escalation ladder remain retired. **Note:** due-date-anchored Recipient overdue reminders are **restored** under D102 and D106; only the escalation-style overdue models remain prohibited (D099 superseded in part).
 
-**Separate deliverable:** the Event Notification Engine remains its own A8 deliverable and is a **production-enablement dependency** for reminder delivery (D108). It is not part of the reminder scheduler slice.
+**Separate deliverable:** the Event Notification Engine remains its own A8 deliverable. It was a production-enablement dependency for reminder delivery under D108; **D182 narrowed that dependency** so it no longer blocks the bounded pre-OAW Recipient advance/overdue slice, while it continues to gate **Owner-audience notification** and the **A8 closure claim**. It is not part of the reminder scheduler slice.
 
 ## 11. Voice completion + Next-action Suggestion _(planned — A12)_
 
@@ -398,6 +406,6 @@ No separate resume control while Waiting; no resend control. Repair for a stoppe
 
 **Task page — failed/suppressed Owner notifications.** Recent intents that ended `suppressed`, `failed_permanent`, `ambiguous`, or `requires_owner_attention` — not an inbox (no resend, ack, dismiss, or mark-as-read; ≤50 items; leave after 30 days). Badges: **Not sent** vs **Delivery unknown** (must not be flattened). Reminder stops belong in the first section, not here; `reminder.no_active_assignment` appears only here.
 
-D108's minimum Owner UI is the attention list plus the Task reminder panel. Nothing here changes §10a. With A8 flags unset and no cron jobs, both sections are empty in every current environment.
+D108's minimum Owner UI is the attention list plus the Task reminder panel. **D182 makes that pairing the operational precondition for the bounded pre-OAW Recipient reminder slice:** it is what satisfies the Owner-facing reminder failure/status requirement in the absence of Owner-event delivery, so it must be operational before `ENABLE_REMINDER_DELIVERY` is set. Nothing here changes §10a. With A8 flags unset and no cron jobs, both sections are empty in every current environment.
 
 Owner dates and timestamps render in the organization timezone (`America/Vancouver`, D034), never silently the browser's (D117). Presentation only: §10a and **D103** remain the sole authority for reminder occurrence arithmetic.

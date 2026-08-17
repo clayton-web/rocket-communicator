@@ -162,7 +162,7 @@ The bound on daily overdue reminders: **14 successfully delivered overdue remind
 
 ### requiresOwnerAttention
 
-Reminder Schedule state meaning automated follow-through has stopped or been suspended and the Owner must act — for example the overdue ceiling was reached, delivery failed permanently, or there is no active external assignment. It must be surfaced by an Owner notification, not only by a Task page (D106, D108).
+Reminder Schedule state meaning automated follow-through has stopped or been suspended and the Owner must act — for example the overdue ceiling was reached, delivery failed permanently, or there is no active external assignment. It must be surfaced cross-Task, not only by a Task page (D106, D108). Under D108 that surfacing meant an Owner notification; **D182 narrows this for the bounded pre-OAW Recipient reminder scope**, where the `/attention` list plus the Task reminder panel satisfies the requirement without Owner-event delivery. Owner notification remains required for Owner-audience delivery and the A8 closure claim.
 
 ---
 
