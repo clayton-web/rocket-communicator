@@ -256,20 +256,36 @@ The accurate description of the operation is: _one ordered `prisma migrate deplo
 
 ## Current production state
 
-**Everything is deployed and every A8 feature is inert.** This is the designated safe harbour, and that is structural rather than merely observed: the code is deployed against the full migration set, and all three A8 flags are absent, so capture writes nothing, the notification worker opens no database connection, and reminder delivery constructs no transport.
+**Production/main reconciliation completed.** Production is again on `main`. The isolated D181 release is a **rollback artifact only**, not the live baseline. D181 hotfix behavior is already represented on `main`. Future feature work should normally branch from / land on `main` rather than reconstructing Production from the old S3 base.
 
-| Property                      | Value                                                                                                                 |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| Schema                        | **All migrations applied.** Confirm with Q2 below                                                                     |
-| `ENABLE_OWNER_EVENT_CAPTURE`  | Absent                                                                                                                |
-| `ENABLE_OWNER_EVENT_DELIVERY` | Absent                                                                                                                |
-| `ENABLE_REMINDER_DELIVERY`    | Absent                                                                                                                |
-| `ENABLE_GMAIL_REVIEW`         | Absent                                                                                                                |
-| Gmail                         | Connected                                                                                                             |
-| Scheduler jobs                | External, at cron-job.org. Gmail-poll and suggestion-processing present; **no** reminder job; **no** notification job |
-| Owner authentication          | Cookie and Bearer both live                                                                                           |
+| Property                         | Value                                                                                                                 |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Public host                      | `rocket-communicator-web.vercel.app`                                                                                  |
+| Live deployment                  | `dpl_91EfAwBWSEHBuRBmvvwif8gv6VRz`                                                                                    |
+| Live source SHA                  | `b86d4370296f9991a24a825f5676ce2315473c25`                                                                            |
+| Live git ref                     | `main`                                                                                                                |
+| Immediate rollback deployment    | `dpl_5eJDvAbGQtj4U2jgrZpXnkj6x7PC`                                                                                    |
+| Immediate rollback SHA           | `69e848435084519f67239d6877a94e9143094c45`                                                                            |
+| Immediate rollback ref           | `release/d181-messages-on-d1d1632` (rollback artifact only; do not treat as the live baseline)                        |
+| Schema                           | **22 applied / 0 unfinished / 0 rolled back.** Confirm with Q2 below                                                  |
+| `INTERPRETATION_AI_ENABLED`      | Present / operationally enabled. Manual Capture and Messages Review use it                                            |
+| `ENABLE_GMAIL_REVIEW`            | Absent / OFF. S7 routes answer controlled `404`. **Do not set without separate authorization**                        |
+| `ENABLE_OWNER_EVENT_CAPTURE`     | Absent / OFF. **Do not enable without separate authorization**                                                        |
+| `ENABLE_OWNER_EVENT_DELIVERY`    | Absent / OFF. **Do not enable without separate authorization**                                                        |
+| `ENABLE_REMINDER_DELIVERY`       | Absent / OFF. **Do not enable without separate authorization.** S6 scheduling metadata may exist; delivery is not active |
+| Gmail A5                         | Connected and live (connection, OAuth, sync, poll)                                                                    |
+| Gmail S7                         | Implemented in `main`, **release-gated OFF**, not Production-activated                                                |
+| Manual Capture                   | Live                                                                                                                  |
+| Messages Review                  | **CLOSED / PRODUCTION-PROVEN**                                                                                        |
+| Messages Exclude Number          | **Not implemented**                                                                                                   |
+| Scheduler jobs                   | External, at cron-job.org. Gmail-poll and suggestion-processing present; **no** reminder job; **no** notification job |
+| Owner authentication             | Cookie and Bearer both live                                                                                           |
 
-**Nothing about this state creates time pressure to enable anything.** Confirm the deployed commit, deployment id, and alias in the Vercel dashboard rather than from this document, which does not track them.
+**A8 delivery remains the designated safe harbour:** the reminder and Owner-notification engines are deployed against the full migration set, both capture/delivery flags are absent, no scheduler invokes either worker, and nothing sends.
+
+**Near-term deployment constraints.** Do not set `ENABLE_GMAIL_REVIEW`. Do not enable reminder delivery. Do not enable Owner event capture or delivery. No migration is currently pending. The immediate rollback target is the prior D181 deployment above. `main` is now the normal Production baseline.
+
+**Nothing about this state creates time pressure to enable anything.** Confirm the live alias in the Vercel dashboard if the recorded identity and the public host disagree.
 
 **Standing restraint:** the Owner reminder routes are functional in Production. **The Owner must not create or modify a reminder** until a later rollout is authorized — no technical obstacle prevents doing so by accident.
 
@@ -318,7 +334,7 @@ Gmail settings UI and History recovery / `resync_required` operator UX remain de
 
 ### Suggestion processing
 
-**Product-target pointer.** Automatic Gmail suggestion processing below is **current implementation infrastructure**. The intended initial Owner commissioning UX is manual **"Review with Rocket"** after the Owner sees a message in an intake surface ([WORKFLOWS.md](WORKFLOWS.md) §1a; **D156**). **D179** / **D180** authorize **S7** as that implementation; the Gmail surface is **implemented** and **S7 is complete** at the locked Gmail boundary, not Production-activated. Do not mistake this operational A6 section for that target. S7 closeout does **not** authorize setting `INTERPRETATION_AI_ENABLED` in Production, applying the D180 migration, claiming a deployed S7 commit, or changing any other Production flag.
+**Product-target pointer.** Automatic Gmail suggestion processing below is **current implementation infrastructure**. The intended initial Owner commissioning UX is manual **"Review with Rocket"** after the Owner sees a message in an intake surface ([WORKFLOWS.md](WORKFLOWS.md) §1a; **D156**). **D179** / **D180** authorize **S7** as that implementation; the Gmail surface is **implemented** in `main` and **S7 is complete** at the locked Gmail boundary, **release-gated OFF**, not Production-activated. Do not mistake this operational A6 section for that target. `INTERPRETATION_AI_ENABLED` is already enabled for Manual Capture and Messages Review; that does **not** release S7. Do **not** set `ENABLE_GMAIL_REVIEW` without separate authorization.
 
 A **separate** scheduler job, independent of the Gmail poll:
 
