@@ -11,12 +11,15 @@ import {
   type AuditEventRecord,
 } from '../mappers/domain-mappers.js';
 import {
+  listTemporaryCommunicationExcerptsForGmailHistoryPage,
+  persistGmailHistoryPageTemporaryExcerpts,
+} from '../repositories/gmail-history-page-excerpts.js';
+import {
   listCommunicationEventsByProviderMessageIds,
-  listTemporaryCommunicationExcerptsByEventIds,
   purgeTemporaryCommunicationExcerpt,
   upsertCommunicationEvent,
-  upsertTemporaryCommunicationExcerpt,
 } from '../repositories/communication-event-repository.js';
+import { buildGmailHistoryPageExcerptIntents } from './gmail-history-page-excerpt-intent.js';
 import { persistEncryptedGmailCredential } from '../repositories/gmail-credential-repository.js';
 import { disconnectCommunicationAccount } from '../repositories/communication-account-repository.js';
 import { createAuditEvent, type CreateAuditEventInput } from '../repositories/audit-repository.js';
@@ -91,10 +94,25 @@ export async function persistGmailHistoryPageTransaction(input: {
           }),
         ),
       ];
-      const existingExcerpts = await listTemporaryCommunicationExcerptsByEventIds(
+      const excerptIntents = buildGmailHistoryPageExcerptIntents({
+        messages: input.messages,
+        existingEventIdByProviderMessageId: new Map(
+          existingEvents.map((event) => [event.providerMessageId, event.id]),
+        ),
+        defaultExcerptPurgeAt: input.defaultExcerptPurgeAt,
+      });
+      const existingExcerpts = await listTemporaryCommunicationExcerptsForGmailHistoryPage(
         tx,
         input.organizationId,
-        ineligibleExistingEventIds,
+        {
+          communicationEventIds: [
+            ...new Set([
+              ...excerptIntents.map((intent) => intent.communicationEventId),
+              ...ineligibleExistingEventIds,
+            ]),
+          ],
+          excerptIds: excerptIntents.map((intent) => intent.excerptId),
+        },
       );
       const excerptsByEventId = new Map(
         existingExcerpts.map((excerpt) => [excerpt.communicationEventId, excerpt]),
@@ -154,25 +172,14 @@ export async function persistGmailHistoryPageTransaction(input: {
         }
         events.push(event);
         eventsByProviderMessageId.set(event.providerMessageId, event);
-
-        if (message.excerptContent && message.excerptId && message.excerptPurgeAt) {
-          await upsertTemporaryCommunicationExcerpt(tx, {
-            organizationId: input.organizationId,
-            communicationEventId: event.id,
-            excerptId: message.excerptId,
-            content: message.excerptContent,
-            purgeAt: message.excerptPurgeAt,
-          });
-        } else if (message.excerptContent && message.excerptId && input.defaultExcerptPurgeAt) {
-          await upsertTemporaryCommunicationExcerpt(tx, {
-            organizationId: input.organizationId,
-            communicationEventId: event.id,
-            excerptId: message.excerptId,
-            content: message.excerptContent,
-            purgeAt: input.defaultExcerptPurgeAt,
-          });
-        }
       }
+
+      await persistGmailHistoryPageTemporaryExcerpts(
+        tx,
+        input.organizationId,
+        excerptIntents,
+        existingExcerpts,
+      );
 
       const updated = await tx.communicationAccount.update({
         where: { id: input.accountId },

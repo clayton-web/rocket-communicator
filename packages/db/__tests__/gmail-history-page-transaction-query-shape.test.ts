@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   asCommunicationEventId,
   asTemporaryCommunicationExcerptId,
+  measureExcerptByteLength,
   type ParsedGmailMessageFixture,
 } from '@aicaa/domain';
 import type { DbClient } from '../src/client/create-prisma-client.js';
@@ -190,14 +191,39 @@ function createRecordingTransaction(seed: {
     },
     temporaryCommunicationExcerpt: {
       findMany: async (args: {
-        where: { organizationId: string; communicationEventId: { in: string[] } };
+        where: {
+          organizationId: string;
+          communicationEventId?: { in: string[] };
+          id?: { in: string[] };
+          OR?: Array<{
+            communicationEventId?: { in: string[] };
+            id?: { in: string[] };
+          }>;
+        };
       }) => {
         record({ model: 'temporaryCommunicationExcerpt', method: 'findMany', args });
-        const ids = new Set(args.where.communicationEventId.in);
-        return [...excerpts.values()].filter(
-          (row) =>
-            row.organizationId === args.where.organizationId && ids.has(row.communicationEventId),
-        );
+        const matchesClause = (clause: {
+          communicationEventId?: { in: string[] };
+          id?: { in: string[] };
+        }) => {
+          const eventIds = clause.communicationEventId
+            ? new Set(clause.communicationEventId.in)
+            : null;
+          const excerptIds = clause.id ? new Set(clause.id.in) : null;
+          return [...excerpts.values()].filter((row) => {
+            if (row.organizationId !== args.where.organizationId) {
+              return false;
+            }
+            const eventMatch = eventIds ? eventIds.has(row.communicationEventId) : false;
+            const idMatch = excerptIds ? excerptIds.has(row.id) : false;
+            return eventMatch || idMatch;
+          });
+        };
+        const rows = args.where.OR
+          ? args.where.OR.flatMap((clause) => matchesClause(clause))
+          : matchesClause(args.where);
+        const unique = new Map(rows.map((row) => [row.communicationEventId, row]));
+        return [...unique.values()].map((row) => ({ ...row }));
       },
       findFirst: async (args: unknown) => {
         record({ model: 'temporaryCommunicationExcerpt', method: 'findFirst', args });
@@ -213,20 +239,25 @@ function createRecordingTransaction(seed: {
         skipDuplicates?: boolean;
       }) => {
         record({ model: 'temporaryCommunicationExcerpt', method: 'createMany', args });
+        let count = 0;
+        const existingIds = new Set([...excerpts.values()].map((row) => row.id));
         for (const data of args.data) {
           const communicationEventId = String(data.communicationEventId);
-          if (excerpts.has(communicationEventId)) {
+          const id = String(data.id);
+          if (excerpts.has(communicationEventId) || existingIds.has(id)) {
             continue;
           }
           excerpts.set(
             communicationEventId,
             excerptRow({
-              id: String(data.id),
+              id,
               communicationEventId,
             }),
           );
+          existingIds.add(id);
+          count += 1;
         }
-        return { count: args.data.length };
+        return { count };
       },
       updateMany: async (args: {
         where: { communicationEventId: string; organizationId: string; purgedAt: null };
@@ -317,7 +348,42 @@ describe('persistGmailHistoryPageTransaction query shape', () => {
     expect(callsOf(calls, 'communicationEvent', 'findUnique')).toHaveLength(0);
     expect(callsOf(calls, 'communicationEvent', 'findFirst')).toHaveLength(0);
     expect(callsOf(calls, 'communicationEvent', 'create')).toHaveLength(2);
-    expect(callsOf(calls, 'temporaryCommunicationExcerpt', 'createMany')).toHaveLength(2);
+
+    const excerptFinds = callsOf(calls, 'temporaryCommunicationExcerpt', 'findMany');
+    expect(excerptFinds).toHaveLength(1);
+    expect(excerptFinds[0]?.args).toEqual({
+      where: {
+        organizationId: org,
+        OR: [
+          { communicationEventId: { in: ['evt_a', 'evt_b'] } },
+          { id: { in: ['ex_a', 'ex_b'] } },
+        ],
+      },
+    });
+    const excerptCreates = callsOf(calls, 'temporaryCommunicationExcerpt', 'createMany');
+    expect(excerptCreates).toHaveLength(1);
+    expect(excerptCreates[0]?.args).toEqual({
+      data: [
+        expect.objectContaining({
+          id: 'ex_a',
+          organizationId: org,
+          communicationEventId: 'evt_a',
+          content: 'excerpt a',
+          purgedAt: null,
+        }),
+        expect.objectContaining({
+          id: 'ex_b',
+          organizationId: org,
+          communicationEventId: 'evt_b',
+          content: 'excerpt b',
+          purgedAt: null,
+        }),
+      ],
+      skipDuplicates: true,
+    });
+    expect(callsOf(calls, 'temporaryCommunicationExcerpt', 'findUnique')).toHaveLength(0);
+    expect(callsOf(calls, 'temporaryCommunicationExcerpt', 'findFirst')).toHaveLength(0);
+    expect(callsOf(calls, 'temporaryCommunicationExcerpt', 'updateMany')).toHaveLength(0);
     expect(callsOf(calls, 'communicationAccount', 'update')).toHaveLength(1);
   });
 
@@ -370,6 +436,104 @@ describe('persistGmailHistoryPageTransaction query shape', () => {
     expect(callsOf(calls, 'communicationEvent', 'findMany')).toHaveLength(0);
     expect(callsOf(calls, 'temporaryCommunicationExcerpt', 'findMany')).toHaveLength(0);
     expect(callsOf(calls, 'communicationAccount', 'findFirst')).toHaveLength(1);
+    expect(callsOf(calls, 'communicationAccount', 'update')).toHaveLength(1);
+  });
+
+  it('does not perform a per-message eligible excerpt findUnique', async () => {
+    const existing = eventRow({ id: 'evt_existing', providerMessageId: 'msg_existing' });
+    const { tx, calls } = createRecordingTransaction({
+      account: accountRow('1000'),
+      events: [existing],
+      excerpts: [excerptRow({ id: 'ex_existing', communicationEventId: existing.id })],
+    });
+
+    await persistWith(tx, [
+      inboxMessage({
+        eventId: asCommunicationEventId('evt_existing_ignored'),
+        providerMessageId: 'msg_existing',
+        excerptId: asTemporaryCommunicationExcerptId('ex_existing_ignored'),
+        excerptContent: 'updated excerpt',
+        excerptPurgeAt: purgeAt,
+      }),
+      inboxMessage({
+        eventId: asCommunicationEventId('evt_fresh'),
+        providerMessageId: 'msg_fresh',
+        excerptId: asTemporaryCommunicationExcerptId('ex_fresh'),
+        excerptContent: 'fresh excerpt',
+        excerptPurgeAt: purgeAt,
+      }),
+    ]);
+
+    expect(callsOf(calls, 'temporaryCommunicationExcerpt', 'findUnique')).toHaveLength(0);
+    expect(callsOf(calls, 'temporaryCommunicationExcerpt', 'findFirst')).toHaveLength(0);
+    expect(callsOf(calls, 'temporaryCommunicationExcerpt', 'createMany')).toHaveLength(1);
+    expect(callsOf(calls, 'temporaryCommunicationExcerpt', 'updateMany')).toHaveLength(1);
+  });
+
+  it('updates an existing unpurged excerpt without a page-level createMany', async () => {
+    const existing = eventRow({ id: 'evt_unpurged', providerMessageId: 'msg_unpurged' });
+    const { tx, calls } = createRecordingTransaction({
+      account: accountRow('1000'),
+      events: [existing],
+      excerpts: [excerptRow({ id: 'ex_unpurged', communicationEventId: existing.id })],
+    });
+
+    await persistWith(tx, [
+      inboxMessage({
+        eventId: asCommunicationEventId(existing.id),
+        providerMessageId: existing.providerMessageId,
+        excerptId: asTemporaryCommunicationExcerptId('ex_unpurged_ignored'),
+        excerptContent: 'updated unpurged',
+        excerptPurgeAt: purgeAt,
+      }),
+    ]);
+
+    expect(callsOf(calls, 'temporaryCommunicationExcerpt', 'createMany')).toHaveLength(0);
+    expect(callsOf(calls, 'temporaryCommunicationExcerpt', 'findUnique')).toHaveLength(0);
+    const excerptUpdates = callsOf(calls, 'temporaryCommunicationExcerpt', 'updateMany');
+    expect(excerptUpdates).toHaveLength(1);
+    expect(excerptUpdates[0]?.args).toEqual({
+      where: {
+        communicationEventId: existing.id,
+        organizationId: org,
+        purgedAt: null,
+      },
+      data: {
+        content: 'updated unpurged',
+        byteLength: measureExcerptByteLength('updated unpurged'),
+      },
+    });
+  });
+
+  it('skips excerpt writes for an already-purged eligible re-ingest', async () => {
+    const existing = eventRow({ id: 'evt_purged', providerMessageId: 'msg_purged' });
+    const { tx, calls } = createRecordingTransaction({
+      account: accountRow('1000'),
+      events: [existing],
+      excerpts: [
+        excerptRow({
+          id: 'ex_purged',
+          communicationEventId: existing.id,
+          purgedAt: new Date(now),
+        }),
+      ],
+    });
+
+    const page = await persistWith(tx, [
+      inboxMessage({
+        eventId: asCommunicationEventId(existing.id),
+        providerMessageId: existing.providerMessageId,
+        excerptId: asTemporaryCommunicationExcerptId('ex_purged_new'),
+        excerptContent: 'must not resurrect',
+        excerptPurgeAt: purgeAt,
+      }),
+    ]);
+
+    expect(page.eventsUpdated).toBe(1);
+    expect(callsOf(calls, 'temporaryCommunicationExcerpt', 'createMany')).toHaveLength(0);
+    expect(callsOf(calls, 'temporaryCommunicationExcerpt', 'updateMany')).toHaveLength(0);
+    expect(callsOf(calls, 'temporaryCommunicationExcerpt', 'update')).toHaveLength(0);
+    expect(callsOf(calls, 'temporaryCommunicationExcerpt', 'findUnique')).toHaveLength(0);
     expect(callsOf(calls, 'communicationAccount', 'update')).toHaveLength(1);
   });
 });
