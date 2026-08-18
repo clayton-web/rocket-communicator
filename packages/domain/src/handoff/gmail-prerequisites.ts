@@ -32,7 +32,8 @@ export interface GmailPrerequisiteOk {
  * Both delivery paths require Owner Gmail because D094 sends all A7 mail via Owner Gmail.
  * - Missing connection → GMAIL_NOT_CONNECTED (retryable dependency)
  * - Missing send / requiresSendReconsent → GMAIL_SEND_SCOPE_REQUIRED
- * - gmail_forward additionally requires readable access + usable source identifiers
+ * - gmail_forward additionally requires readable access + an exact Gmail message
+ *   identifier (`message_id` or Review-era `message`). A thread id alone is not usable.
  * - assignment_email does not require a Gmail source message
  */
 export function evaluateGmailHandoffPrerequisites(

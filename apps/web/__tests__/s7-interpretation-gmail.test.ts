@@ -14,15 +14,21 @@ import {
   type ProposedTask,
 } from '@aicaa/ai';
 import { createTestDatabase, type TestDatabase } from '@aicaa/db/testing';
+import {
+  asOrganizationId,
+  asTaskId,
+  findExactGmailMessageId,
+  type TaskSummaryPoint,
+} from '@aicaa/domain';
 import type {
   GmailInterpretationProvenance,
   InterpretationRequest,
 } from '@/lib/interpretation/service';
 import { interpretCapture } from '@/lib/interpretation/service';
+import { resolveTaskGmailForwardSource } from '@/lib/handoff/forward-source';
 import { computeInterpretationRequestFingerprint } from '@/lib/interpretation/fingerprint';
 import { clearDbTestRuntime, installDbTestRuntime } from './helpers/db-test-runtime';
 import { seedGmailAccount, seedGmailEventWithExcerpt } from './helpers/seed-review-excerpt';
-import type { TaskSummaryPoint } from '@aicaa/domain';
 
 const org = 'org_s7_service';
 const now = '2026-08-13T18:00:00.000Z';
@@ -169,9 +175,34 @@ describe('S7 Gmail shared interpretation source', () => {
         },
       });
       expect(suggestion.sourceReference?.externalIds).toEqual([
-        { provider: 'gmail', idType: 'message', id: 'msg_s7_service' },
+        { provider: 'gmail', idType: 'message_id', id: 'msg_s7_service' },
         { provider: 'gmail', idType: 'thread', id: 'thread_s7_service' },
       ]);
+      expect(findExactGmailMessageId(suggestion.sourceReference)).toBe('msg_s7_service');
+      expect(
+        resolveTaskGmailForwardSource({
+          organizationId: org,
+          accountId,
+          attemptId: 'att_s7_service',
+          task: {
+            id: asTaskId('task_s7_service'),
+            organizationId: asOrganizationId(org),
+            status: 'open',
+            summaryPoints: [],
+            notes: [],
+            reminder: { paused: false },
+            retention: {},
+            version: 1,
+            createdAt: now,
+            updatedAt: now,
+            sourceReference: suggestion.sourceReference,
+          },
+        }),
+      ).toEqual({
+        providerMessageId: 'msg_s7_service',
+        organizationId: org,
+        accountId,
+      });
     }
 
     const run = await db.prisma.interpretationRun.findFirstOrThrow();

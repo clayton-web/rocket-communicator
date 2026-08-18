@@ -153,6 +153,12 @@ const MAX_CONTACT_HINT = 128;
  * Review share the Gmail occurrence, and a later Review of the same message remains a separate
  * InterpretationRun (D161) with the same source identity.
  *
+ * The exact-message `externalIds` entry uses canonical A7 `idType: 'message_id'`. The stored `id`
+ * is still `CommunicationEvent.providerMessageId` (Gmail `users.messages.get` id). `thread` remains
+ * conversation identity only and is never interchangeable with the message id. Already-persisted
+ * Review Tasks that used the earlier `idType: 'message'` synonym stay resolvable by the trusted
+ * forward-source helper; this constructor does not rewrite them.
+ *
  * `sourceCommunicationEventId` stays unset: that column is A6 Gmail-origin suggestion linkage and
  * is not the S7 provenance path.
  */
@@ -168,7 +174,7 @@ function buildGmailSourceReference(input: {
   const externalIds = [
     {
       provider: 'gmail',
-      idType: 'message',
+      idType: 'message_id',
       id: input.provenance.providerMessageId,
     },
     {

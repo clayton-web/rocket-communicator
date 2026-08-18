@@ -12,6 +12,8 @@ import {
   computeHandoffRequestFingerprint,
   evaluateGmailHandoffPrerequisites,
   evaluateHandoffEligibility,
+  findExactGmailMessageId,
+  hasUsableGmailSourceIdentifiers,
   evaluateHandoffIdempotency,
   evaluateIncompleteForwardPreflight,
   formatETag,
@@ -282,6 +284,76 @@ describe('A7.2 Gmail prerequisites and incomplete forward', () => {
     if (!result.ok) {
       expect(result.failure.code).toBe('GMAIL_SOURCE_UNAVAILABLE');
     }
+  });
+
+  it('11b. canonical gmail:message_id is a usable exact forward source', () => {
+    const sourceReference = gmailOriginTask().sourceReference;
+    expect(hasUsableGmailSourceIdentifiers(sourceReference)).toBe(true);
+    expect(findExactGmailMessageId(sourceReference)).toBe('msg_1');
+    const result = evaluateGmailHandoffPrerequisites({
+      deliveryPath: 'gmail_forward',
+      connection: gmailConnected,
+      sourceReference,
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it('11c. persisted Review-era gmail:message + gmail:thread is usable without rewrite', () => {
+    const sourceReference = {
+      id: 'evt_review_canary',
+      sourceType: 'gmail' as const,
+      dedupeKey: 'gmail:msg_review_canary',
+      capturedAt: now,
+      externalIds: [
+        { provider: 'gmail', idType: 'message', id: 'msg_review_canary' },
+        { provider: 'gmail', idType: 'thread', id: 'thread_review_canary' },
+      ],
+    };
+    expect(hasUsableGmailSourceIdentifiers(sourceReference)).toBe(true);
+    expect(findExactGmailMessageId(sourceReference)).toBe('msg_review_canary');
+    const result = evaluateGmailHandoffPrerequisites({
+      deliveryPath: 'gmail_forward',
+      connection: gmailConnected,
+      sourceReference,
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it('11d. thread-only Gmail source is not an exact message and fails closed', () => {
+    const sourceReference = {
+      id: 'src_thread_only',
+      sourceType: 'gmail' as const,
+      dedupeKey: 'gmail:thread_only',
+      capturedAt: now,
+      externalIds: [{ provider: 'gmail', idType: 'thread', id: 'thread_only' }],
+    };
+    expect(hasUsableGmailSourceIdentifiers(sourceReference)).toBe(false);
+    expect(findExactGmailMessageId(sourceReference)).toBeUndefined();
+    const result = evaluateGmailHandoffPrerequisites({
+      deliveryPath: 'gmail_forward',
+      connection: gmailConnected,
+      sourceReference,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.failure.code).toBe('GMAIL_SOURCE_UNAVAILABLE');
+    }
+  });
+
+  it('11e. prefers canonical message_id when both synonyms are present', () => {
+    expect(
+      findExactGmailMessageId({
+        id: 'src_both',
+        sourceType: 'gmail',
+        dedupeKey: 'gmail:both',
+        capturedAt: now,
+        externalIds: [
+          { provider: 'gmail', idType: 'message', id: 'msg_review_synonym' },
+          { provider: 'gmail', idType: 'message_id', id: 'msg_canonical' },
+          { provider: 'gmail', idType: 'thread', id: 'thread_both' },
+        ],
+      }),
+    ).toBe('msg_canonical');
   });
 
   it('12. incomplete attachment preflight prohibits send', () => {

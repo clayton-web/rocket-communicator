@@ -41,17 +41,63 @@ export function rejectClientDeliveryPathOverride(clientDeliveryPath: unknown): H
 }
 
 /**
+ * Exact Gmail message identifier types the trusted A7 forward path may resolve.
+ *
+ * `message_id` is the canonical A5/A7 contract written by suggestion processing.
+ * `message` is the Review-era synonym written by D179 `buildGmailSourceReference`.
+ * Both store `CommunicationEvent.providerMessageId`, which is Gmail's
+ * `users.messages.get` id (`raw.id`). `thread` is conversation identity only and is
+ * never an exact-message identifier.
+ */
+const EXACT_GMAIL_MESSAGE_ID_TYPES = new Set(['message_id', 'message']);
+
+function isExactGmailMessageIdentifier(identifier: {
+  provider: string;
+  idType: string;
+  id: string;
+}): boolean {
+  return (
+    identifier.provider === 'gmail' &&
+    EXACT_GMAIL_MESSAGE_ID_TYPES.has(identifier.idType) &&
+    identifier.id.trim().length > 0
+  );
+}
+
+/**
+ * Exact Gmail provider message id from a trusted Task/source reference, if present.
+ *
+ * Prefers canonical `message_id` when both synonyms exist. Never falls back to a
+ * thread id or another message in the thread.
+ */
+export function findExactGmailMessageId(
+  sourceReference: SourceReference | undefined,
+): string | undefined {
+  if (!isGmailOriginSource(sourceReference) || !sourceReference) {
+    return undefined;
+  }
+  const ids = sourceReference.externalIds ?? [];
+  const canonical = ids.find(
+    (identifier) => identifier.idType === 'message_id' && isExactGmailMessageIdentifier(identifier),
+  );
+  if (canonical) {
+    return canonical.id.trim();
+  }
+  const reviewEra = ids.find(
+    (identifier) => identifier.idType === 'message' && isExactGmailMessageIdentifier(identifier),
+  );
+  return reviewEra?.id.trim();
+}
+
+/**
  * True when Gmail-origin source identifiers are present enough to attempt a forward.
- * Missing ids do not change the selected path; they block send via GMAIL_SOURCE_UNAVAILABLE.
+ *
+ * Agrees with the trusted forward-source resolver: a non-empty exact message
+ * identifier (`message_id` or Review-era `message`) is required. A thread id alone
+ * is not usable. Missing ids do not change the selected path; they block send via
+ * GMAIL_SOURCE_UNAVAILABLE.
  */
 export function hasUsableGmailSourceIdentifiers(
   sourceReference: SourceReference | undefined,
 ): boolean {
-  if (!isGmailOriginSource(sourceReference) || !sourceReference) {
-    return false;
-  }
-  const ids = sourceReference.externalIds ?? [];
-  return ids.some(
-    (id) => id.provider.trim().length > 0 && id.idType.trim().length > 0 && id.id.trim().length > 0,
-  );
+  return findExactGmailMessageId(sourceReference) != null;
 }

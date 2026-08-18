@@ -1,5 +1,5 @@
 import 'server-only';
-import type { Task } from '@aicaa/domain';
+import { findExactGmailMessageId, type Task } from '@aicaa/domain';
 import type { GmailForwardSource } from '@/lib/gmail/outbound/gmail-forward';
 
 /**
@@ -10,7 +10,12 @@ import type { GmailForwardSource } from '@/lib/gmail/outbound/gmail-forward';
  * delivery-mode hint. Requirements (D090, D094):
  *
  *  - `task.sourceReference.sourceType === 'gmail'`;
- *  - an `externalIds` entry with `provider === 'gmail'` and `idType === 'message_id'` and a non-empty id.
+ *  - an `externalIds` entry with `provider === 'gmail'` and a non-empty exact-message id.
+ *
+ * Canonical `idType` is `message_id` (A5/A7). Review-era persisted Tasks may still carry
+ * `idType === 'message'`; both store Gmail's `users.messages.get` id. A `thread` id is never
+ * treated as an exact message. This helper uses the same exact-id rule as
+ * `hasUsableGmailSourceIdentifiers`, so preflight and resolution cannot disagree.
  *
  * The authenticated organization's resolved Gmail `accountId` (from the access resolver) is supplied
  * by the preparer and used as the ownership guard. When the trusted reference is incomplete this
@@ -23,22 +28,12 @@ export function resolveTaskGmailForwardSource(input: {
   attemptId: string;
   task: Task;
 }): GmailForwardSource | undefined {
-  const source = input.task.sourceReference;
-  if (!source || source.sourceType !== 'gmail') {
-    return undefined;
-  }
-  const externalIds = source.externalIds ?? [];
-  const messageRef = externalIds.find(
-    (identifier) =>
-      identifier.provider === 'gmail' &&
-      identifier.idType === 'message_id' &&
-      identifier.id.trim().length > 0,
-  );
-  if (!messageRef) {
+  const providerMessageId = findExactGmailMessageId(input.task.sourceReference);
+  if (!providerMessageId) {
     return undefined;
   }
   return {
-    providerMessageId: messageRef.id.trim(),
+    providerMessageId,
     organizationId: input.organizationId,
     accountId: input.accountId,
   };

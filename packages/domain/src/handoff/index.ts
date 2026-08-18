@@ -32,6 +32,7 @@ export {
   isGmailOriginSource,
   selectHandoffDeliveryPath,
   rejectClientDeliveryPathOverride,
+  findExactGmailMessageId,
   hasUsableGmailSourceIdentifiers,
 } from './delivery-path.js';
 

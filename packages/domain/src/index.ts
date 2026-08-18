@@ -314,6 +314,7 @@ export {
   isGmailOriginSource,
   selectHandoffDeliveryPath,
   rejectClientDeliveryPathOverride,
+  findExactGmailMessageId,
   hasUsableGmailSourceIdentifiers,
   canonicalizeHandoffFingerprint,
   computeHandoffRequestFingerprint,
