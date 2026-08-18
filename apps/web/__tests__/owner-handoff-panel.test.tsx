@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { components } from '@aicaa/contracts/schema';
 import { HandoffPanel } from '@/app/(owner)/tasks/_components/handoff-panel';
@@ -64,6 +64,7 @@ vi.mock('@/lib/owner/api-client', () => ({
   fetchGmailConnection: vi.fn(),
   fetchOwnerTask: vi.fn(),
   postTaskHandoff: vi.fn(),
+  postTaskReturnToOwner: vi.fn(),
   startGmailOAuthNavigation: vi.fn(),
 }));
 
@@ -72,6 +73,7 @@ import {
   fetchGmailConnection,
   fetchOwnerTask,
   postTaskHandoff,
+  postTaskReturnToOwner,
   startGmailOAuthNavigation,
 } from '@/lib/owner/api-client';
 
@@ -97,6 +99,7 @@ describe('A7.8 Owner handoff panel', () => {
     });
     vi.mocked(fetchOwnerTask).mockResolvedValue({ ok: true, data: task });
     vi.mocked(postTaskHandoff).mockReset();
+    vi.mocked(postTaskReturnToOwner).mockReset();
     vi.mocked(startGmailOAuthNavigation).mockReset();
   });
 
@@ -387,5 +390,155 @@ describe('A7.8 Owner handoff panel', () => {
     const raw = window.sessionStorage.getItem('aicaa.handoff.pending.v1:task_handoff_ui_1')!;
     expect(raw).not.toContain('alex@example.com');
     expect(raw).not.toContain('Call the vendor');
+  });
+
+  function assignment(
+    deliveryStatus: NonNullable<TaskDto['assignment']>['deliveryStatus'],
+  ): NonNullable<TaskDto['assignment']> {
+    return {
+      id: 'asg_1',
+      recipientId: 'rcpt_1',
+      intendedRecipientEmail: 'alex@example.com',
+      assignedAt: '2026-07-18T01:00:00.000Z',
+      assignedByOwnerId: 'owner_1',
+      allowedCapabilityActions: ['complete_task'],
+      deliveryStatus,
+    };
+  }
+
+  it('shows Return to owner for a current permanent Delivery failed assignment', () => {
+    renderPanel({ ...task, assignment: assignment('failed') });
+    expect(screen.getByText('Delivery failed')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Return to owner' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retry handoff' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Hand off…' })).not.toBeInTheDocument();
+  });
+
+  it('does not show Return to owner for sent, pending, unassigned, or terminal Tasks', () => {
+    renderPanel({ ...task, assignment: assignment('sent') });
+    expect(screen.queryByRole('button', { name: 'Return to owner' })).not.toBeInTheDocument();
+
+    cleanup();
+    renderPanel({ ...task, assignment: assignment('pending') });
+    expect(screen.queryByRole('button', { name: 'Return to owner' })).not.toBeInTheDocument();
+
+    cleanup();
+    renderPanel(task);
+    expect(screen.queryByRole('button', { name: 'Return to owner' })).not.toBeInTheDocument();
+
+    cleanup();
+    renderPanel({ ...task, status: 'completed', assignment: assignment('failed') });
+    expect(screen.queryByRole('button', { name: 'Return to owner' })).not.toBeInTheDocument();
+
+    cleanup();
+    renderPanel({ ...task, status: 'dismissed', assignment: assignment('failed') });
+    expect(screen.queryByRole('button', { name: 'Return to owner' })).not.toBeInTheDocument();
+  });
+
+  it('keeps Retry handoff for retryable in-flight failure and does not offer Return to owner', async () => {
+    vi.mocked(postTaskHandoff).mockResolvedValue({
+      ok: false,
+      error: {
+        status: 503,
+        code: 'HANDOFF_DELIVERY_FAILED',
+        message: 'Temporary Gmail problem.',
+        outcomeCategory: 'retryable_failure',
+        allowSameKeyRetry: true,
+        allowNewOperation: false,
+        refetchTask: false,
+        refetchRecipients: false,
+      },
+    });
+    renderPanel();
+    fireEvent.change(screen.getByLabelText('Recipient'), { target: { value: 'rcpt_1' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Hand off…' }));
+    fireEvent.click(screen.getByLabelText('I confirm I want to hand off this Task'));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm handoff' }));
+    expect(await screen.findByRole('button', { name: 'Retry handoff' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Return to owner' })).not.toBeInTheDocument();
+  });
+
+  it('opens confirmation and does not mutate until the Owner confirms', () => {
+    renderPanel({ ...task, assignment: assignment('failed') });
+    fireEvent.click(screen.getByRole('button', { name: 'Return to owner' }));
+    expect(screen.getByRole('dialog', { name: 'Return to owner' })).toBeInTheDocument();
+    expect(
+      screen.getByText(/failed delivery will not be retried or sent again/i),
+    ).toBeInTheDocument();
+    expect(postTaskReturnToOwner).not.toHaveBeenCalled();
+    expect(postTaskHandoff).not.toHaveBeenCalled();
+  });
+
+  it('returns the failed assignment through the Owner route with the current If-Match', async () => {
+    const returned: TaskDto = {
+      ...task,
+      version: 2,
+      etag: '"task-task_handoff_ui_1-v2"',
+    };
+    vi.mocked(postTaskReturnToOwner).mockResolvedValue({ ok: true, data: returned });
+
+    renderPanel({ ...task, assignment: assignment('failed') });
+    fireEvent.click(screen.getByRole('button', { name: 'Return to owner' }));
+    const dialog = screen.getByRole('dialog', { name: 'Return to owner' });
+    fireEvent.click(screen.getByLabelText('I confirm I want to return this Task to myself'));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Return to owner' }));
+
+    await waitFor(() => expect(postTaskReturnToOwner).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(postTaskReturnToOwner).mock.calls[0]![0]).toEqual({
+      taskId: 'task_handoff_ui_1',
+      ifMatch: '"task-task_handoff_ui_1-v1"',
+    });
+    expect(postTaskHandoff).not.toHaveBeenCalled();
+    expect(await screen.findByText(/This Task is unassigned/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Hand off…' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Return to owner' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Return to owner' })).not.toBeInTheDocument();
+  });
+
+  it('does not pretend the Task is unassigned after a stale version', async () => {
+    vi.mocked(postTaskReturnToOwner).mockResolvedValue({
+      ok: false,
+      error: {
+        status: 412,
+        code: 'PRECONDITION_FAILED',
+        message: 'The Task changed since this page was loaded. Refreshing.',
+        outcomeCategory: 'stale',
+        allowSameKeyRetry: false,
+        allowNewOperation: true,
+        refetchTask: true,
+        refetchRecipients: false,
+      },
+    });
+    vi.mocked(fetchOwnerTask).mockResolvedValue({
+      ok: true,
+      data: {
+        ...task,
+        version: 4,
+        etag: '"task-task_handoff_ui_1-v4"',
+        assignment: assignment('failed'),
+      },
+    });
+
+    renderPanel({ ...task, assignment: assignment('failed') });
+    fireEvent.click(screen.getByRole('button', { name: 'Return to owner' }));
+    const staleDialog = screen.getByRole('dialog', { name: 'Return to owner' });
+    fireEvent.click(screen.getByLabelText('I confirm I want to return this Task to myself'));
+    fireEvent.click(within(staleDialog).getByRole('button', { name: 'Return to owner' }));
+
+    await waitFor(() => expect(postTaskReturnToOwner).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(fetchOwnerTask).toHaveBeenCalled());
+    expect(postTaskReturnToOwner).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('Delivery failed')).toBeInTheDocument();
+    expect(screen.getByText(/current state is shown/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Hand off…' })).not.toBeInTheDocument();
+  });
+
+  it('Escape closes return confirmation without mutation', () => {
+    renderPanel({ ...task, assignment: assignment('failed') });
+    fireEvent.click(screen.getByRole('button', { name: 'Return to owner' }));
+    expect(screen.getByRole('dialog', { name: 'Return to owner' })).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Return to owner' })).not.toBeInTheDocument();
+    expect(postTaskReturnToOwner).not.toHaveBeenCalled();
   });
 });

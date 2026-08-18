@@ -7,8 +7,10 @@ import {
   fetchGmailConnection,
   fetchOwnerTask,
   postTaskHandoff,
+  postTaskReturnToOwner,
   startGmailOAuthNavigation,
 } from '@/lib/owner/api-client';
+import { canReturnFailedAssignmentToOwner } from './return-failed-assignment';
 import {
   clearPendingHandoffOperation,
   createPendingHandoffOperation,
@@ -68,6 +70,11 @@ export interface UseTaskHandoffResult {
   showRetryAfterReconsent: boolean;
   showCheckStatus: boolean;
   showRetryHandoff: boolean;
+  showReturnToOwner: boolean;
+  returnDialogOpen: boolean;
+  openReturnDialog: () => void;
+  closeReturnDialog: () => void;
+  confirmReturnToOwner: () => Promise<void>;
 }
 
 function isTerminalStatus(status: TaskDto['status']): boolean {
@@ -94,6 +101,46 @@ function bannerForError(error: ParsedPublicError): HandoffBanner {
       ? 'warning'
       : 'error';
   return { tone, text: error.message };
+}
+
+function bannerForReturnError(
+  error: ParsedPublicError,
+  options: { rereadFailed: boolean; nowUnassigned: boolean },
+): HandoffBanner {
+  if (options.nowUnassigned) {
+    return {
+      tone: 'warning',
+      text:
+        error.outcomeCategory === 'ambiguous'
+          ? 'The request did not get an answer. This Task is now unassigned. The current state is shown.'
+          : 'The Task changed since this page was loaded. It is now unassigned. The current state is shown.',
+    };
+  }
+  if (options.rereadFailed) {
+    return {
+      tone: 'warning',
+      text: `${error.message} Rocket could not check the current Task either. Reload the Task to see where it stands.`,
+    };
+  }
+  if (error.outcomeCategory === 'stale') {
+    return {
+      tone: 'warning',
+      text: 'The Task changed since this page was loaded. The current state is shown. Confirm again only if you still want to return it to yourself.',
+    };
+  }
+  if (error.outcomeCategory === 'ambiguous') {
+    return {
+      tone: 'warning',
+      text: 'The request did not get an answer. This Task still shows a failed assignment. Check the current state before trying again.',
+    };
+  }
+  if (error.outcomeCategory === 'unauthorized') {
+    return { tone: 'error', text: error.message };
+  }
+  return {
+    tone: 'error',
+    text: 'This Task could not be returned to you. The current assignment is still shown.',
+  };
 }
 
 export interface UseTaskHandoffInput {
@@ -147,6 +194,7 @@ export function useTaskHandoff(input: UseTaskHandoffInput): UseTaskHandoffResult
   const [showRetryAfterReconsent, setShowRetryAfterReconsent] = useState(
     boot.showRetryAfterReconsent,
   );
+  const [returnDialogOpen, setReturnDialogOpen] = useState(false);
   const submitGuard = useRef(false);
 
   const selectedRecipient = useMemo(
@@ -189,6 +237,7 @@ export function useTaskHandoff(input: UseTaskHandoffInput): UseTaskHandoffResult
       showRetryAfterReconsent ||
       pending.lastOutcomeCategory === 'reconsent_required' ||
       pending.lastOutcomeCategory === 'not_connected');
+  const showReturnToOwner = canReturnFailedAssignmentToOwner(task);
 
   const refreshTask = useCallback(async () => {
     const result = await fetchOwnerTask(task.id);
@@ -406,6 +455,75 @@ export function useTaskHandoff(input: UseTaskHandoffInput): UseTaskHandoffResult
     startGmailOAuthNavigation(`/tasks/${task.id}`);
   }, [pending, task.id]);
 
+  const confirmReturnToOwner = useCallback(async () => {
+    if (submitGuard.current) {
+      return;
+    }
+    if (!task.etag || !canReturnFailedAssignmentToOwner(task)) {
+      return;
+    }
+    submitGuard.current = true;
+    setSubmitting(true);
+    setBanner(null);
+    try {
+      const result = await postTaskReturnToOwner({
+        taskId: task.id,
+        ifMatch: task.etag,
+      });
+
+      if (result.ok) {
+        setTask(result.data);
+        setReturnDialogOpen(false);
+        setLastSuccess(null);
+        clearPendingHandoffOperation(task.id);
+        setPending(null);
+        setBanner(
+          result.data.assignment
+            ? {
+                tone: 'warning',
+                text: 'The server accepted the request, but this Task still shows an assignment. The current state is shown.',
+              }
+            : {
+                tone: 'success',
+                text: 'This Task is unassigned. You can hand it off again when ready.',
+              },
+        );
+        return;
+      }
+
+      const error = result.error;
+      const shouldReread =
+        error.refetchTask ||
+        error.outcomeCategory === 'ambiguous' ||
+        error.outcomeCategory === 'stale';
+
+      if (!shouldReread) {
+        setBanner(bannerForReturnError(error, { rereadFailed: false, nowUnassigned: false }));
+        return;
+      }
+
+      const refreshed = await refreshTask();
+      if (refreshed && !refreshed.assignment) {
+        setReturnDialogOpen(false);
+        setLastSuccess(null);
+        clearPendingHandoffOperation(task.id);
+        setPending(null);
+        setBanner(bannerForReturnError(error, { rereadFailed: false, nowUnassigned: true }));
+        return;
+      }
+
+      setBanner(
+        bannerForReturnError(error, {
+          rereadFailed: refreshed === null,
+          nowUnassigned: false,
+        }),
+      );
+    } finally {
+      setSubmitting(false);
+      submitGuard.current = false;
+    }
+  }, [refreshTask, task]);
+
   return {
     task,
     recipients,
@@ -436,5 +554,10 @@ export function useTaskHandoff(input: UseTaskHandoffInput): UseTaskHandoffResult
     showRetryAfterReconsent,
     showCheckStatus,
     showRetryHandoff,
+    showReturnToOwner,
+    returnDialogOpen,
+    openReturnDialog: () => setReturnDialogOpen(true),
+    closeReturnDialog: () => setReturnDialogOpen(false),
+    confirmReturnToOwner,
   };
 }

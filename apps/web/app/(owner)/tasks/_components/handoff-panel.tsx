@@ -6,6 +6,7 @@ import { useTaskHandoff } from '@/lib/handoff/client/use-task-handoff';
 import { deliveryPathLabel } from '@/lib/handoff/client/delivery-copy';
 import { deliveryStatusLabel } from '@/lib/presentation/task-status';
 import { HandoffConfirmationDialog } from './handoff-confirmation-dialog';
+import { ReturnToOwnerDialog } from './return-to-owner-dialog';
 import styles from '../tasks.module.css';
 
 type TaskDto = components['schemas']['Task'];
@@ -45,6 +46,7 @@ export function HandoffPanel({
   });
   const recipientSelectId = useId();
   const handoffButtonRef = useRef<HTMLButtonElement>(null);
+  const returnButtonRef = useRef<HTMLButtonElement>(null);
   const assigned = Boolean(handoff.task.assignment);
 
   const recipientLabel = handoff.selectedRecipient
@@ -93,6 +95,25 @@ export function HandoffPanel({
           ) : null}
           {handoff.lastSuccess?.capabilityId ? (
             <p className={styles.srOnly}>Capability reference recorded.</p>
+          ) : null}
+          {handoff.showReturnToOwner ? (
+            <>
+              <p className={styles.muted}>
+                This delivery failed and will not be retried. Return the Task to yourself if you
+                want to hand it off again.
+              </p>
+              <div className={styles.actions}>
+                <button
+                  ref={returnButtonRef}
+                  type="button"
+                  className={styles.button}
+                  disabled={handoff.submitting}
+                  onClick={handoff.openReturnDialog}
+                >
+                  Return to owner
+                </button>
+              </div>
+            </>
           ) : null}
         </div>
       ) : null}
@@ -239,6 +260,21 @@ export function HandoffPanel({
             handoffButtonRef.current?.focus();
           }}
           onConfirm={() => void handoff.confirmHandoff()}
+        />
+      ) : null}
+
+      {handoff.returnDialogOpen ? (
+        <ReturnToOwnerDialog
+          open
+          recipientLabel={
+            handoff.task.assignment?.intendedRecipientEmail ?? 'the assigned Recipient'
+          }
+          submitting={handoff.submitting}
+          onCancel={() => {
+            handoff.closeReturnDialog();
+            returnButtonRef.current?.focus();
+          }}
+          onConfirm={() => void handoff.confirmReturnToOwner()}
         />
       ) : null}
     </section>

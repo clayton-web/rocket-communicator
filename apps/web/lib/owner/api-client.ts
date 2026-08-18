@@ -173,6 +173,44 @@ export async function fetchGmailConnection(): Promise<OwnerApiResult<GmailConnec
   return { ok: true, data: body as GmailConnectionDto };
 }
 
+/**
+ * Owner recovery for a current failed assignment (return-to-owner).
+ *
+ * Uses the Task ETag as If-Match. The contract has no Idempotency-Key; a missing
+ * answer is ambiguous and must not be automatically repeated.
+ */
+export async function postTaskReturnToOwner(input: {
+  taskId: string;
+  ifMatch: string;
+}): Promise<OwnerApiResult<TaskDto>> {
+  const sent = await send(
+    `/api/v1/tasks/${encodeURIComponent(input.taskId)}/return-to-owner`,
+    {
+      method: 'POST',
+      credentials: 'same-origin',
+      cache: 'no-store',
+      headers: {
+        Accept: 'application/json',
+        'If-Match': input.ifMatch,
+      },
+    },
+    { mutation: true },
+  );
+  if (!sent.ok) {
+    return sent;
+  }
+  const response = sent.response;
+  const body = await readJson(response);
+  if (!response.ok) {
+    return fail(response.status, body);
+  }
+  return {
+    ok: true,
+    data: body as TaskDto,
+    etag: response.headers.get('etag'),
+  };
+}
+
 export async function postTaskHandoff(input: {
   taskId: string;
   recipientId: string;
