@@ -31,8 +31,8 @@ android {
         applicationId = "com.aicommunication.assistant"
         minSdk = 31
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.9.3-a9.3"
+        versionCode = 5
+        versionName = "0.9.4-rc1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // Sideload / local defaults. Override via apps/android/local.properties (see README).
