@@ -232,6 +232,7 @@ fun AuthenticatedOwnerFlow(
                     assignReturn = AuthenticatedDestination.TaskDetail.name
                     destination = AuthenticatedDestination.Assign
                 },
+                onReturnToOwner = taskDetailViewModel::returnToOwner,
                 onSetDueDate = taskDetailViewModel::setDueDate,
                 onClearDueDate = taskDetailViewModel::clearDueDate,
                 onSetAdvanceEnabled = taskDetailViewModel::setAdvanceEnabled,

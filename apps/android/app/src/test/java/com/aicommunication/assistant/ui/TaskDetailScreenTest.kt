@@ -153,6 +153,35 @@ class TaskDetailScreenTest {
     }
 
     @Test
+    fun ready_failedDeliveryExposesReturnToOwnerWithoutSuccessSemantics() {
+        setReady(
+            task(
+                assignmentEmail = "alex@example.com",
+                deliveryStatus = "failed",
+                status = "in_progress"
+            )
+        )
+
+        composeRule.onNodeWithText("Assigned to alex@example.com (failed)").assertIsDisplayed()
+        composeRule.onNodeWithTag("task_return_to_owner_explanation").performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("task_action_return_to_owner").performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("task_action_assign").assertDoesNotExist()
+        composeRule.onNodeWithText("Assignment sent", substring = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun ready_unassignedTaskDoesNotShowFailedAssignmentRecovery() {
+        setReady(task())
+
+        composeRule.onNodeWithText("Owner work (unassigned)").assertIsDisplayed()
+        composeRule.onNodeWithTag("task_action_return_to_owner").assertDoesNotExist()
+        composeRule.onNodeWithTag("task_return_to_owner_explanation").assertDoesNotExist()
+        composeRule.onNodeWithText("Assign").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
     fun ready_toggleClickReportsAdvanceEnabledChange() {
         var reported: Boolean? = null
         setReady(
@@ -168,13 +197,19 @@ class TaskDetailScreenTest {
         assertEquals(false, reported)
     }
 
-    private fun task(dueLocalDate: String? = null, derivedUrgency: String? = null) = OwnerTask(
+    private fun task(
+        dueLocalDate: String? = null,
+        derivedUrgency: String? = null,
+        assignmentEmail: String? = null,
+        deliveryStatus: String? = null,
+        status: String = "open"
+    ) = OwnerTask(
         id = "t1",
         etag = "\"task-t1-v1\"",
-        status = "open",
+        status = status,
         displayTitle = "Call painter",
-        assignmentEmail = null,
-        deliveryStatus = null,
+        assignmentEmail = assignmentEmail,
+        deliveryStatus = deliveryStatus,
         noteBodies = emptyList(),
         updatedAt = null,
         dueLocalDate = dueLocalDate,
@@ -208,6 +243,7 @@ class TaskDetailScreenTest {
                     onComplete = {},
                     onDismiss = {},
                     onAssign = {},
+                    onReturnToOwner = {},
                     onSetDueDate = {},
                     onClearDueDate = {},
                     onSetAdvanceEnabled = onSetAdvanceEnabled,

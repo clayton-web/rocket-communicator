@@ -111,6 +111,14 @@ data class OwnerTask(
     val canAssign: Boolean get() = !isAssigned && !isTerminal
     val isOwnerWork: Boolean get() = !isAssigned
 
+    /**
+     * Owner recovery for a current permanent Recipient delivery failure.
+     * Mirrors web `canReturnFailedAssignmentToOwner`: non-terminal + current
+     * `assignment.deliveryStatus == failed`. Cleared history is not present.
+     */
+    val canReturnFailedAssignmentToOwner: Boolean
+        get() = !isTerminal && deliveryStatus == "failed"
+
     val statusLabel: String
         get() =
             when (status) {

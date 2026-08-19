@@ -90,19 +90,9 @@ class TaskHandoffViewModel(
                     connection = connection,
                     pending = pending,
                     showRetryAfterReconsent = pending?.reconsentPending == true,
-                    successDeliveryPath =
-                    if (task.isAssigned) task.deliveryStatus else null,
-                    banner =
-                    when {
-                        task.isAssigned -> str(R.string.handoff_already_assigned)
-                        else -> null
-                    },
-                    bannerTone =
-                    if (task.isAssigned) {
-                        HandoffUiState.BannerTone.Success
-                    } else {
-                        HandoffUiState.BannerTone.Info
-                    }
+                    successDeliveryPath = successfulAssignmentPath(task),
+                    banner = assignmentBanner(task),
+                    bannerTone = assignmentBannerTone(task)
                 )
         }
     }
@@ -395,7 +385,18 @@ class TaskHandoffViewModel(
             ErrorCode.PRECONDITION_FAILED -> {
                 when (val fresh = taskRepository.getTask(operation.taskId)) {
                     is OwnerApiResult.Success -> {
-                        if (fresh.value.isAssigned) {
+                        if (fresh.value.canReturnFailedAssignmentToOwner) {
+                            pendingStore.clear(operation.taskId)
+                            _uiState.value =
+                                current.copy(
+                                    task = fresh.value,
+                                    submitting = false,
+                                    pending = null,
+                                    successDeliveryPath = null,
+                                    banner = assignmentBanner(fresh.value),
+                                    bannerTone = assignmentBannerTone(fresh.value)
+                                )
+                        } else if (fresh.value.isAssigned) {
                             pendingStore.clear(operation.taskId)
                             _uiState.value =
                                 current.copy(
@@ -474,6 +475,27 @@ class TaskHandoffViewModel(
             }
         }
     }
+
+    private fun successfulAssignmentPath(task: OwnerTask): String? =
+        if (task.isAssigned && !task.canReturnFailedAssignmentToOwner) {
+            task.deliveryStatus
+        } else {
+            null
+        }
+
+    private fun assignmentBanner(task: OwnerTask): String? =
+        when {
+            task.canReturnFailedAssignmentToOwner -> str(R.string.handoff_delivery_failed)
+            task.isAssigned -> str(R.string.handoff_already_assigned)
+            else -> null
+        }
+
+    private fun assignmentBannerTone(task: OwnerTask): HandoffUiState.BannerTone =
+        when {
+            task.canReturnFailedAssignmentToOwner -> HandoffUiState.BannerTone.Warning
+            task.isAssigned -> HandoffUiState.BannerTone.Success
+            else -> HandoffUiState.BannerTone.Info
+        }
 
     class Factory(
         private val application: Application,

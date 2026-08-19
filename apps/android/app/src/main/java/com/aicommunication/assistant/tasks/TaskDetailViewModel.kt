@@ -24,6 +24,7 @@ class TaskDetailViewModel(
     val uiState: StateFlow<TaskDetailUiState> = _uiState.asStateFlow()
 
     private var taskId: String? = null
+    private var returnToOwnerInFlight = false
 
     private fun str(id: Int): String = getApplication<Application>().getString(id)
 
@@ -51,6 +52,77 @@ class TaskDetailViewModel(
     fun complete() = mutateTask { repository.completeTask(it.id, it.etag) }
 
     fun dismiss() = mutateTask { repository.dismissTask(it.id, it.etag) }
+
+    /**
+     * Owner-confirmed recovery from a permanent failed assignment. One POST, then
+     * an authoritative GET. Ambiguous results reconcile with GET and never repeat
+     * the mutation automatically.
+     */
+    fun returnToOwner() {
+        val current = _uiState.value as? TaskDetailUiState.Ready ?: return
+        if (current.mutating || returnToOwnerInFlight) return
+        if (!current.task.canReturnFailedAssignmentToOwner) return
+        returnToOwnerInFlight = true
+        viewModelScope.launch {
+            _uiState.value =
+                current.copy(
+                    mutating = true,
+                    errorMessage = null,
+                    connectivityIssue = false,
+                    banner = null
+                )
+            when (val result = repository.returnTaskToOwner(current.task.id, current.task.etag)) {
+                is OwnerApiResult.Success ->
+                    applyReturnReconciliation(
+                        previous = current,
+                        confirmedSuccess = true,
+                        connectivityIssue = false,
+                        fallbackTask = result.value
+                    )
+                OwnerApiResult.Unauthorized -> {
+                    _uiState.value =
+                        current.copy(
+                            mutating = false,
+                            errorMessage = str(R.string.error_session_unavailable)
+                        )
+                    onSessionInvalidated()
+                }
+                OwnerApiResult.Connectivity ->
+                    applyReturnReconciliation(
+                        previous = current,
+                        confirmedSuccess = false,
+                        connectivityIssue = true,
+                        fallbackTask = null
+                    )
+                OwnerApiResult.NotConfigured ->
+                    _uiState.value =
+                        current.copy(
+                            mutating = false,
+                            errorMessage = str(R.string.error_auth_config)
+                        )
+                is OwnerApiResult.HttpError -> {
+                    if (result.code == ErrorCode.PRECONDITION_FAILED) {
+                        rereadAfterTaskConflict(current.noteDraft)
+                    } else {
+                        _uiState.value =
+                            current.copy(
+                                mutating = false,
+                                errorMessage =
+                                result.message.ifBlank { str(R.string.tasks_error_generic) }
+                            )
+                    }
+                }
+                is OwnerApiResult.Unexpected ->
+                    applyReturnReconciliation(
+                        previous = current,
+                        confirmedSuccess = false,
+                        connectivityIssue = false,
+                        fallbackTask = null
+                    )
+            }
+            returnToOwnerInFlight = false
+        }
+    }
 
     fun addNote() {
         val current = _uiState.value as? TaskDetailUiState.Ready ?: return
@@ -310,6 +382,87 @@ class TaskDetailViewModel(
                         mutating = false,
                         errorMessage = str(R.string.task_detail_stale_reminder)
                     ) ?: TaskDetailUiState.Error(str(R.string.task_detail_stale_reminder))
+            }
+        }
+    }
+
+    private suspend fun applyReturnReconciliation(
+        previous: TaskDetailUiState.Ready,
+        confirmedSuccess: Boolean,
+        connectivityIssue: Boolean,
+        fallbackTask: OwnerTask?
+    ) {
+        val id = taskId ?: previous.task.id
+        when (val fresh = repository.getTask(id)) {
+            is OwnerApiResult.Success -> {
+                val recovered = !fresh.value.isAssigned
+                val banner: String?
+                val errorMessage: String?
+                when {
+                    confirmedSuccess && recovered -> {
+                        banner = str(R.string.task_return_to_owner_success)
+                        errorMessage = null
+                    }
+                    confirmedSuccess && !recovered -> {
+                        banner = null
+                        errorMessage = str(R.string.task_return_to_owner_still_assigned)
+                    }
+                    !confirmedSuccess && recovered -> {
+                        banner = str(R.string.task_return_to_owner_ambiguous_recovered)
+                        errorMessage = null
+                    }
+                    else -> {
+                        banner = null
+                        errorMessage =
+                            if (connectivityIssue) {
+                                str(R.string.error_connectivity)
+                            } else {
+                                str(R.string.task_return_to_owner_ambiguous)
+                            }
+                    }
+                }
+                _uiState.value =
+                    readyFromTask(
+                        task = fresh.value,
+                        noteDraft = previous.noteDraft,
+                        errorMessage = errorMessage,
+                        banner = banner
+                    ).let { ready ->
+                        if (connectivityIssue && !recovered) {
+                            ready.copy(connectivityIssue = true)
+                        } else {
+                            ready
+                        }
+                    }
+            }
+            else -> {
+                if (confirmedSuccess && fallbackTask != null) {
+                    val recovered = !fallbackTask.isAssigned
+                    _uiState.value =
+                        readyFromTask(
+                            task = fallbackTask,
+                            noteDraft = previous.noteDraft,
+                            banner =
+                            if (recovered) {
+                                str(R.string.task_return_to_owner_success)
+                            } else {
+                                null
+                            },
+                            errorMessage =
+                            if (recovered) {
+                                null
+                            } else {
+                                str(R.string.task_return_to_owner_still_assigned)
+                            }
+                        )
+                } else {
+                    _uiState.value =
+                        previous.copy(
+                            mutating = false,
+                            connectivityIssue = connectivityIssue,
+                            errorMessage = str(R.string.task_return_to_owner_ambiguous_unknown)
+                        )
+                }
             }
         }
     }

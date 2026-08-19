@@ -16,6 +16,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -62,6 +63,7 @@ fun TaskDetailScreen(
     onComplete: () -> Unit,
     onDismiss: () -> Unit,
     onAssign: () -> Unit,
+    onReturnToOwner: () -> Unit,
     onSetDueDate: (String) -> Unit,
     onClearDueDate: () -> Unit,
     onSetAdvanceEnabled: (Boolean) -> Unit,
@@ -97,6 +99,7 @@ fun TaskDetailScreen(
                 }
             }
             is TaskDetailUiState.Ready -> {
+                var confirmReturnToOwner by remember { mutableStateOf(false) }
                 Column(
                     modifier =
                     Modifier
@@ -209,6 +212,23 @@ fun TaskDetailScreen(
                                 Text(text = stringResource(R.string.task_action_assign))
                             }
                         }
+                        if (state.task.canReturnFailedAssignmentToOwner) {
+                            Text(
+                                text = stringResource(R.string.task_return_to_owner_explanation),
+                                color = AicaaColors.warning,
+                                modifier = Modifier.testTag("task_return_to_owner_explanation")
+                            )
+                            AicaaFilledButton(
+                                onClick = { confirmReturnToOwner = true },
+                                enabled = !state.mutating,
+                                modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .testTag("task_action_return_to_owner")
+                            ) {
+                                Text(text = stringResource(R.string.task_action_return_to_owner))
+                            }
+                        }
                     }
 
                     Text(
@@ -239,6 +259,57 @@ fun TaskDetailScreen(
                             Text(text = stringResource(R.string.task_note_save))
                         }
                     }
+                }
+                if (confirmReturnToOwner) {
+                    val recipientLabel =
+                        state.task.assignmentEmail
+                            ?: stringResource(R.string.task_return_to_owner_recipient_fallback)
+                    AlertDialog(
+                        onDismissRequest = {
+                            if (!state.mutating) {
+                                confirmReturnToOwner = false
+                            }
+                        },
+                        title = {
+                            Text(text = stringResource(R.string.task_return_to_owner_confirm_title))
+                        },
+                        text = {
+                            Text(
+                                text =
+                                stringResource(
+                                    R.string.task_return_to_owner_confirm_body,
+                                    recipientLabel
+                                ),
+                                modifier = Modifier.testTag("task_return_to_owner_confirm_body")
+                            )
+                        },
+                        confirmButton = {
+                            AicaaFilledButton(
+                                onClick = {
+                                    confirmReturnToOwner = false
+                                    onReturnToOwner()
+                                },
+                                enabled = !state.mutating,
+                                modifier = Modifier.testTag("task_return_to_owner_confirm")
+                            ) {
+                                Text(
+                                    text =
+                                    stringResource(
+                                        R.string.task_return_to_owner_confirm_action
+                                    )
+                                )
+                            }
+                        },
+                        dismissButton = {
+                            AicaaTextButton(
+                                onClick = { confirmReturnToOwner = false },
+                                enabled = !state.mutating,
+                                modifier = Modifier.testTag("task_return_to_owner_cancel")
+                            ) {
+                                Text(text = stringResource(R.string.handoff_cancel))
+                            }
+                        }
+                    )
                 }
             }
         }

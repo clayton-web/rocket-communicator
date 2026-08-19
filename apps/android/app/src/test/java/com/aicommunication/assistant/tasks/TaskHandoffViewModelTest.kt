@@ -19,7 +19,9 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -125,6 +127,29 @@ class TaskHandoffViewModelTest {
         assertEquals(firstHandoff.getHeader("If-Match"), retryHandoff.getHeader("If-Match"))
     }
 
+    @Test
+    fun load_failedAssignment_doesNotUseSuccessSemantics() = runBlocking {
+        enqueueLoadResponses(deliveryStatus = "failed")
+        val vm =
+            TaskHandoffViewModel(
+                application,
+                taskRepository,
+                recipientRepository,
+                gmailRepository,
+                pendingStore,
+                onSessionInvalidated = {}
+            )
+        vm.load("task-1")
+        val ready = awaitReady(vm)
+
+        assertTrue(ready.task.canReturnFailedAssignmentToOwner)
+        assertNull(ready.successDeliveryPath)
+        assertEquals(HandoffUiState.BannerTone.Warning, ready.bannerTone)
+        assertTrue(ready.banner!!.contains("failed"))
+        assertFalse(ready.canConfirm)
+        assertFalse(ready.task.canAssign)
+    }
+
     private suspend fun awaitReady(
         vm: TaskHandoffViewModel,
         predicate: (HandoffUiState.Ready) -> Boolean = { true }
@@ -141,7 +166,18 @@ class TaskHandoffViewModelTest {
         return vm.uiState.value as HandoffUiState.Ready
     }
 
-    private fun enqueueLoadResponses() {
+    private fun enqueueLoadResponses(deliveryStatus: String? = null) {
+        val assignment =
+            if (deliveryStatus == null) {
+                ""
+            } else {
+                """
+                ,"assignment": {
+                  "intendedRecipientEmail": "worker@example.com",
+                  "deliveryStatus": "$deliveryStatus"
+                }
+                """.trimIndent()
+            }
         server.enqueue(
             MockResponse()
                 .setResponseCode(200)
@@ -154,6 +190,7 @@ class TaskHandoffViewModelTest {
                       "summaryPoints": [
                         {"id":"p1","kind":"confirmed_fact","label":"Captured","order":0,"value":"Buy paint"}
                       ]
+                      $assignment
                     }
                     """.trimIndent()
                 )

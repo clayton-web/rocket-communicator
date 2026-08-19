@@ -36,6 +36,76 @@ class OwnerTaskMappingTest {
     }
 
     @Test
+    fun failedAssignment_canReturnToOwnerAndCannotAssign() {
+        val task =
+            TaskWire(
+                id = "t1",
+                etag = "e1",
+                status = "in_progress",
+                assignment =
+                AssignmentWire(
+                    intendedRecipientEmail = "a@example.com",
+                    deliveryStatus = "failed"
+                )
+            ).toOwnerTask()
+
+        assertTrue(task.canReturnFailedAssignmentToOwner)
+        assertFalse(task.canAssign)
+        assertTrue(task.ownershipLabel.contains("failed"))
+        assertFalse(task.ownershipLabel.contains("sent"))
+    }
+
+    @Test
+    fun healthyAssignment_cannotReturnToOwner() {
+        val task =
+            TaskWire(
+                id = "t1",
+                etag = "e1",
+                status = "open",
+                assignment =
+                AssignmentWire(
+                    intendedRecipientEmail = "a@example.com",
+                    deliveryStatus = "sent"
+                )
+            ).toOwnerTask()
+
+        assertFalse(task.canReturnFailedAssignmentToOwner)
+        assertFalse(task.canAssign)
+    }
+
+    @Test
+    fun terminalFailedAssignment_cannotReturnToOwner() {
+        val completed =
+            TaskWire(
+                id = "t1",
+                etag = "e1",
+                status = "completed",
+                assignment =
+                AssignmentWire(
+                    intendedRecipientEmail = "a@example.com",
+                    deliveryStatus = "failed"
+                )
+            ).toOwnerTask()
+        val dismissed = completed.copy(status = "dismissed")
+
+        assertFalse(completed.canReturnFailedAssignmentToOwner)
+        assertFalse(dismissed.canReturnFailedAssignmentToOwner)
+    }
+
+    @Test
+    fun unassignedTask_cannotReturnToOwner() {
+        val task =
+            TaskWire(
+                id = "t1",
+                etag = "e1",
+                status = "open"
+            ).toOwnerTask()
+
+        assertFalse(task.canReturnFailedAssignmentToOwner)
+        assertTrue(task.canAssign)
+    }
+
+    @Test
     fun assignedTask_cannotAssignAgain() {
         val task =
             TaskWire(

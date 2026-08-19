@@ -101,6 +101,15 @@ class TaskOwnerRepository(
     suspend fun dismissTask(taskId: String, etag: String): OwnerApiResult<OwnerTask> =
         mutate(taskId, "dismiss", etag, jsonBody = "{}")
 
+    /**
+     * Owner recovery for a current failed assignment. Contract: Task If-Match, no
+     * Idempotency-Key, no business payload. The shared executor POSTs JSON, so the
+     * transport body is `{}` — the same pattern as Task dismiss. A missing answer
+     * must not be repeated here.
+     */
+    suspend fun returnTaskToOwner(taskId: String, etag: String): OwnerApiResult<OwnerTask> =
+        mutate(taskId, "return-to-owner", etag, jsonBody = "{}")
+
     suspend fun addNote(taskId: String, etag: String, body: String): OwnerApiResult<OwnerTask> {
         val escaped = body.replace("\\", "\\\\").replace("\"", "\\\"")
         return mutate(taskId, "notes", etag, jsonBody = """{"body":"$escaped"}""")

@@ -12,6 +12,7 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -155,5 +156,39 @@ class TaskOwnerRepositoryA93Test {
         assertEquals("\"v2\"", request.getHeader("If-Match"))
         assertEquals("handoff-key-1", request.getHeader("Idempotency-Key"))
         assertTrue(request.body.readUtf8().contains("handoff_confirmed_v1"))
+    }
+
+    @Test
+    fun returnTaskToOwner_postsOwnerRouteWithIfMatchAndNoInventedBody() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody(
+                    """
+                    {
+                      "id": "task-1",
+                      "etag": "\"v3\"",
+                      "status": "in_progress",
+                      "summaryPoints": [
+                        {"id":"p1","kind":"confirmed_fact","label":"Captured","order":0,"value":"Buy paint"}
+                      ]
+                    }
+                    """.trimIndent()
+                )
+        )
+
+        val result = repository.returnTaskToOwner("task-1", "\"v2\"") as OwnerApiResult.Success
+
+        assertEquals("task-1", result.value.id)
+        assertFalse(result.value.isAssigned)
+        val request = server.takeRequest()
+        assertEquals("POST", request.method)
+        assertTrue(request.path!!.endsWith("/api/v1/tasks/task-1/return-to-owner"))
+        assertEquals("Bearer access-token", request.getHeader("Authorization"))
+        assertEquals("\"v2\"", request.getHeader("If-Match"))
+        assertNull(request.getHeader("Idempotency-Key"))
+        assertEquals("{}", request.body.readUtf8())
+        assertTrue(request.getHeader("Content-Type")!!.startsWith("application/json"))
+        assertEquals(1, server.requestCount)
     }
 }
